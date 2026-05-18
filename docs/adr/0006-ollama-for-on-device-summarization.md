@@ -2,7 +2,7 @@
 
 Intentive generates a prose summary of each Context Snapshot using a local LLM. We bundle the Ollama CLI binary inside the Tauri app (alongside the ScreenPipe binary) and manage its lifecycle as a private subprocess. Users never see or configure Ollama — it is an implementation detail.
 
-On first launch, Intentive pulls `llama3.2:1b` (~1.3GB) and shows a one-time setup progress screen. After that, the model is cached locally and all summarization is fully offline.
+On first launch, Intentive pulls `qwen3.5:0.8b` and shows a one-time setup progress screen presented as Intentive setup. After that, the model is cached locally and all summarization is fully offline.
 
 ## Considered Options
 
