@@ -1,12 +1,304 @@
-# Design System: Apple Human Interface Guidelines
+# Intentive Design System
 
-**Source:** [designsystems.surf/design-systems/apple](https://designsystems.surf/design-systems/apple)  
-**Reference:** Apple Human Interface Guidelines — macOS 26 Tahoe
-**Primary Platform:** macOS
+**Platform foundation:** Apple Human Interface Guidelines — macOS 26 Tahoe / iOS 26  
+**Brand layer:** Intentive — editorial voice-AI product  
+**Primary target:** macOS desktop (Electron / Tauri)
 
 ---
 
-## 0. macOS Platform Context
+## Overview
+
+Intentive reads like a **quietly editorial print magazine that happens to be a voice-AI product**. The base canvas is off-white `{colors.canvas}` (#f5f5f5) holding warm near-black ink `{colors.ink}` (#0c0a09). The brand voltage is **photographic, not chromatic**: soft pastel atmospheric gradient orbs (mint, peach, lavender, sky, rose) drift through the page as the only "color" moments. There is no neon accent, no saturated CTA color, no dark-canvas dev-tools atmosphere.
+
+Type pairs **Waldenburg Light** (custom serif at weight 300) for display with **Inter** for body, navigation, captions. The display weight at 300 is the editorial signature — never bold, never heavy.
+
+CTAs are subtle: a near-black ink pill (`{component.button-primary}`) is the primary, a transparent outline (`{component.button-outline}`) is the secondary. The brand trusts atmospheric photography and modest type weights to carry all brand work.
+
+---
+
+## B1. Brand Atmosphere & Voice
+
+**Mood:** Quiet editorial authority. Off-white canvas, warm ink, pastel atmospheric depth — the feeling of a premium print product running on a computer.
+
+**What makes it Intentive, not generic Apple:**
+- The canvas is `#f5f5f5` (warm off-white), not Apple's cool `#F2F2F7`
+- Display type is Waldenburg Light at 300 — a serif at low weight, intentionally un-bold
+- The only color moments are pastel gradient orbs — never button fills, never text
+- The primary CTA is near-black ink, not system blue
+- Section rhythm is 96px — editorial magazine pacing, not app-density pacing
+
+**What the Apple foundation provides:**  
+Window chrome, native controls, Liquid Glass chrome, keyboard nav, traffic lights, sidebar/toolbar geometry — all unchanged. The brand sits inside the content layer, not the navigation chrome.
+
+---
+
+## B2. Brand Color Tokens
+
+### Primary Action
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.primary}` | `#292524` | Ink pill — the one and only CTA fill |
+| `{colors.primary-active}` | `#0c0a09` | Press state for ink pill |
+| `{colors.on-primary}` | `#ffffff` | Text on ink pill |
+
+### Surface
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.canvas}` | `#f5f5f5` | Off-white page floor — primary background |
+| `{colors.canvas-soft}` | `#fafafa` | Lighter alternating section band |
+| `{colors.canvas-deep}` | `#0c0a09` | Rare dark-mode hero (Agents page) |
+| `{colors.surface-card}` | `#ffffff` | Pure white card |
+| `{colors.surface-strong}` | `#f0efed` | Badges, voice-icon plates |
+| `{colors.surface-dark}` | `#0c0a09` | Dark hero / CTA band |
+| `{colors.surface-dark-elevated}` | `#1c1917` | Cards on dark canvas |
+
+### Hairlines
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.hairline}` | `#e7e5e4` | Default 1px divider |
+| `{colors.hairline-soft}` | `#f0efed` | Lighter divider |
+| `{colors.hairline-strong}` | `#d6d3d1` | Panel outline, input border |
+
+### Text
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.ink}` | `#0c0a09` | Display, primary text |
+| `{colors.body}` | `#4e4e4e` | Default running copy |
+| `{colors.body-strong}` | `#292524` | Emphasized body |
+| `{colors.muted}` | `#777169` | Sub-titles, secondary labels |
+| `{colors.muted-soft}` | `#a8a29e` | Disabled, placeholder |
+| `{colors.on-dark}` | `#ffffff` | Text on dark hero |
+| `{colors.on-dark-soft}` | `#a8a29e` | Muted off-white on dark hero |
+
+### Atmospheric Gradient Stops (signature — decoration only)
+| Token | Hex | Personality |
+|---|---|---|
+| `{colors.gradient-mint}` | `#a7e5d3` | Fresh, calm |
+| `{colors.gradient-peach}` | `#f4c5a8` | Warm, inviting |
+| `{colors.gradient-lavender}` | `#c8b8e0` | Soft, thoughtful |
+| `{colors.gradient-sky}` | `#a8c8e8` | Open, clear |
+| `{colors.gradient-rose}` | `#e8b8c4` | Gentle, human |
+
+These appear **only** as soft radial-gradient atmospheric orbs inside `{component.gradient-orb-card}` and as background blooms behind hero copy. **Never** as button fills, text colors, or component backgrounds.
+
+### Semantic
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.semantic-success}` | `#16a34a` | Confirmation |
+| `{colors.semantic-error}` | `#dc2626` | Validation errors |
+
+---
+
+## B3. Brand Typography
+
+### Font Families
+
+**Waldenburg Light** — licensed display serif at weight 300. The editorial signature. Never bold.  
+Fallback: `'EB Garamond', 'Times New Roman', serif`
+
+**Inter** — body, navigation, captions, buttons, all UI chrome.  
+Fallback: `sans-serif`
+
+### Type Scale
+
+| Token | Font | Size | Weight | Line Height | Letter Spacing | Use |
+|---|---|---|---|---|---|---|
+| `{typography.display-mega}` | Waldenburg | 64px | 300 | 1.05 | −1.92px | Homepage hero h1 |
+| `{typography.display-xl}` | Waldenburg | 48px | 300 | 1.08 | −0.96px | Subsidiary heroes |
+| `{typography.display-lg}` | Waldenburg | 36px | 300 | 1.17 | −0.36px | Section heads |
+| `{typography.display-md}` | Waldenburg | 32px | 300 | 1.13 | −0.32px | Sub-section heads |
+| `{typography.display-sm}` | Waldenburg | 24px | 300 | 1.2 | 0 | Card group titles |
+| `{typography.title-md}` | Inter | 20px | 500 | 1.35 | 0 | Component titles |
+| `{typography.title-sm}` | Inter | 18px | 500 | 1.44 | +0.18px | List labels |
+| `{typography.body-md}` | Inter | 16px | 400 | 1.5 | +0.16px | Default body |
+| `{typography.body-strong}` | Inter | 16px | 500 | 1.5 | +0.16px | Emphasized body |
+| `{typography.body-sm}` | Inter | 15px | 400 | 1.47 | +0.15px | Footer body |
+| `{typography.caption}` | Inter | 14px | 400 | 1.5 | 0 | Photo captions |
+| `{typography.caption-uppercase}` | Inter | 12px | 600 | 1.4 | +0.96px | Section labels, badges |
+| `{typography.button}` | Inter | 15px | 500 | 1.0 | 0 | CTA pill label |
+| `{typography.nav-link}` | Inter | 15px | 500 | 1.4 | 0 | Top-nav menu |
+
+### Typography Principles
+
+- **Display stays at weight 300.** Waldenburg Light is the editorial signature. Bolding shifts the voice from editorial to consumer-marketing.
+- **Negative tracking on display.** Waldenburg pulls −0.32px to −1.92px tighter at display sizes — polished, premium.
+- **Subtle positive tracking on body.** Inter at +0.15–0.18px — slightly looser than default Inter for a more editorial feel.
+- **Never swap fonts.** Waldenburg for display headings only. Inter for everything else.
+
+---
+
+## B4. Brand Layout & Spacing
+
+### Spacing Tokens
+
+| Token | Value | Use |
+|---|---|---|
+| `{spacing.xxs}` | 4px | Micro-gaps, badge offsets |
+| `{spacing.xs}` | 8px | Tight internal padding |
+| `{spacing.sm}` | 12px | Cell vertical padding |
+| `{spacing.base}` | 16px | Standard horizontal inset |
+| `{spacing.md}` | 20px | Window corner margin |
+| `{spacing.lg}` | 24px | Card padding, section sub-spacing |
+| `{spacing.xl}` | 32px | Card generous padding, hero breathing |
+| `{spacing.xxl}` | 48px | Large section breathing room |
+| `{spacing.section}` | 96px | **Editorial section rhythm** — the brand's primary vertical cadence |
+
+### Grid & Container
+
+- Max content width: **1200px**
+- Column grid: 12-column editorial grid at desktop
+- Feature card grids: 2-up (hero splits), 3-up (benefit grids)
+- Footer: 5-column at desktop
+- Section padding: `{spacing.section}` (96px) top and bottom on every band
+- Card gaps within a band: `{spacing.base}` – `{spacing.lg}` (16–24px)
+
+### Responsive Breakpoints
+
+| Name | Width | Key Changes |
+|---|---|---|
+| Mobile | < 640px | Hero h1 64→32px; cards 1-up; nav hamburger; orbs shrink |
+| Tablet | 640–1024px | Hero h1 48px; cards 2-up |
+| Desktop | 1024–1280px | Full 64px hero; cards 3-up |
+| Wide | > 1280px | Content caps at 1200px |
+
+---
+
+## B5. Brand Component Tokens
+
+### Buttons
+
+**`{component.button-primary}`** — Near-black ink pill.  
+Background `{colors.primary}` (#292524) · Text `{colors.on-primary}` (#fff) · Font `{typography.button}` · Padding 10px × 20px · Height 40px · Radius `{rounded.pill}`
+
+**`{component.button-primary-active}`** — Press state.  
+Background `{colors.primary-active}` (#0c0a09)
+
+**`{component.button-outline}`** — Transparent pill, ink border.  
+Background transparent · Text `{colors.ink}` · Border 1px `{colors.hairline-strong}` · Same sizing as primary
+
+**`{component.button-tertiary-text}`** — Inline text link.  
+Text `{colors.ink}` · No border · No background
+
+### Hero & Atmospheric
+
+**`{component.hero-band}`** — Full-width display section.  
+Background `{colors.canvas}` · Headline `{typography.display-mega}` · Subhead `{typography.body-md}` · Atmospheric gradient orb behind headline · Two CTAs below
+
+**`{component.gradient-orb-card}`** — Atmospheric depth card.  
+Background `{colors.canvas-soft}` · Radius `{rounded.xxl}` (24px) · Padding 32px · One radial gradient orb from `{colors.gradient-*}` tokens, centered, no content inside the orb itself
+
+### Cards
+
+**`{component.feature-card}`** — Content card (2-up or 3-up grid).  
+Background `{colors.surface-card}` · Radius `{rounded.xl}` · Padding 24px · 1px `{colors.hairline}` border
+
+**`{component.testimonial-card}`** — Quote card.  
+Background `{colors.surface-card}` · Text `{colors.body}` · Radius `{rounded.xl}` · Padding 32px
+
+**`{component.pricing-tier-card}`** — Pricing card (light).  
+Background `{colors.surface-card}` · Radius `{rounded.xl}` · Padding 32px · 1px `{colors.hairline}` border
+
+**`{component.pricing-tier-featured}`** — Featured pricing (dark inversion).  
+Background `{colors.surface-dark}` · Text `{colors.on-dark}` · Same shape
+
+### Voice Library
+
+**`{component.voice-row}`** — List row.  
+Background transparent · 1px `{colors.hairline}` divider · 32px circular voice icon left · name + accent stack · optional preview button trailing
+
+**`{component.voice-icon-circular}`** — 32px Ø circle.  
+Background `{colors.surface-strong}` · Radius `{rounded.full}` · Initials or voice glyph
+
+### Forms & Tags
+
+**`{component.text-input}`** — Text input.  
+Background `{colors.surface-card}` · Radius `{rounded.md}` (8px) · Padding 12px × 16px · Height 44px · 1px `{colors.hairline-strong}` border · Focus: 2px `{colors.ink}` border
+
+**`{component.badge-pill}`** — Label badge.  
+Background `{colors.surface-strong}` · Font `{typography.caption-uppercase}` · Radius `{rounded.pill}` · Padding 4px × 10px
+
+### Navigation
+
+**`{component.top-nav}`** — App navigation bar.  
+Background `{colors.canvas}` · Text `{colors.ink}` · Height 64px · Wordmark left · Primary nav center · Sign In + CTA right
+
+### CTA & Footer
+
+**`{component.cta-band}`** — Pre-footer CTA section.  
+Background `{colors.canvas}` · Headline `{typography.display-lg}` · Single ink pill CTA · 96px padding
+
+**`{component.footer}`** — Closing footer.  
+Background `{colors.canvas}` · Text `{colors.body}` · 5-column links · Padding 64px × 48px
+
+---
+
+## B6. Brand Shapes & Elevation
+
+### Border Radius Scale
+
+| Token | Value | Use |
+|---|---|---|
+| `{rounded.none}` | 0px | Reserved |
+| `{rounded.xs}` | 4px | Inline tags |
+| `{rounded.sm}` | 6px | Compact rows |
+| `{rounded.md}` | 8px | Form inputs |
+| `{rounded.lg}` | 12px | Compact cards |
+| `{rounded.xl}` | 16px | Feature cards, pricing tiers |
+| `{rounded.xxl}` | 24px | Gradient orb cards |
+| `{rounded.pill}` | 9999px | All CTA buttons, badges |
+| `{rounded.full}` | 9999px | Voice icon circles, avatars |
+
+### Elevation
+
+| Level | Treatment | Use |
+|---|---|---|
+| Flat | `{colors.canvas}` #f5f5f5 | Body bands, footer |
+| Card | `{colors.surface-card}` #ffffff | Content cards |
+| Hairline border | 1px `{colors.hairline}` | Card outlines |
+| Soft drop | `0 4px 16px rgba(0,0,0,0.04)` | Hovered cards only |
+| Gradient orb | Radial `{colors.gradient-*}` | Atmospheric depth — never a card surface |
+
+Atmospheric depth comes from gradient orbs, not from stacked shadows. The system uses **hairline + whisper-soft drop** — never heavy elevation.
+
+---
+
+## B7. Do's & Don'ts
+
+### Do
+- Reserve `{colors.primary}` (ink pill) for primary CTAs only — one per view
+- Use Waldenburg Light at weight 300 for every display headline — never bold
+- Use Inter at +0.15–0.18px tracking for body — the editorial dialect
+- Use atmospheric gradient orbs (mint / peach / lavender / sky / rose) as decoration only
+- Use `{rounded.pill}` for every CTA and badge
+- Respect 96px section rhythm for editorial pacing
+
+### Don't
+- Don't introduce a saturated brand action color — ink pill is the only CTA color
+- Don't bold display copy — weight 300 is the editorial voice; bolding shifts to consumer-marketing
+- Don't use gradient orbs as button fills, text colors, or component backgrounds — pure atmosphere only
+- Don't use `{rounded.none}` on CTAs — pill geometry is the brand button
+- Don't drop body Inter to weight 300 to match Waldenburg — body stays 400/500 for legibility
+- Don't pick CTA colors from third-party widgets (cookie consent, OneTrust) — ignore those
+
+---
+
+## B8. Known Gaps & Substitutes
+
+- **Waldenburg** is a licensed typeface. Open-source substitute: **EB Garamond** at weight 300 (more humanist) or **Libre Baskerville** thin.
+- Animation timings (orb drift, waveform pulse, hero entrance) are out of scope for this document.
+- In-product surfaces (voice library editor, agent playground) only partially captured.
+- Form validation states beyond focus not yet defined.
+
+---
+---
+
+# Platform Foundation: Apple HIG / macOS
+
+> The sections below define the native platform layer — window chrome, controls, materials, keyboard navigation. The brand layer (§B1–B8 above) lives entirely within the **content area**. Navigation chrome (Liquid Glass toolbar, sidebar, menu bar) follows Apple HIG without brand overrides.
+
+---
+
+## §0. macOS Platform Context
 
 macOS targets **power users** who work across multiple windows simultaneously, rely on deep keyboard control, and expect persistent access to every command via the menu bar. Unlike iOS — where one app fills the screen — a Mac user might have six apps visible at once. This demands interfaces that are **spatially aware**, **non-intrusive**, and **keyboard-navigable** from corner to corner.
 
@@ -19,99 +311,51 @@ Every Mac app must honour three inviolable constraints:
 
 ---
 
-## 1. Visual Theme & Atmosphere
+## §1. Visual Theme & Atmosphere
 
 Apple's macOS design language is **precisely spatial, confidently minimal, and physically grounded** — the interface exists to serve content, never to announce itself. With macOS Tahoe, surfaces take on genuine optical depth: the new Liquid Glass material bends and concentrates light like real glass rather than simply blurring it. Navigation chrome floats as a distinct functional layer above app content.
 
-The overall mood: **Quiet authority.** Neutral backgrounds — white in light mode, near-black in dark mode — let a single vibrant accent carry all interactive weight. Whitespace is used aggressively; breathing room signals intent. The aesthetic sits at the intersection of **Swiss grid discipline** and **material physics** — mathematical in its spacing, tactile in its surfaces.
-
-Dark mode is a first-class citizen. Liquid Glass materials adapt automatically: they become slightly more opaque and contrasty in dark environments without requiring separate design decisions. The menu bar in macOS Tahoe can be set fully transparent, dissolving into the desktop wallpaper.
+Intentive sits inside this system: the Liquid Glass chrome is Apple's; the off-white canvas and editorial type beneath it are Intentive's.
 
 ---
 
-## 2. Color Palette & Roles
+## §2. Apple System Color Reference
+
+> Brand-level color decisions live in **§B2**. Use these system colors for native controls, focus rings, separators, and platform chrome only.
 
 ### System Accent Colors (Light Mode)
 
-| Descriptive Name | Hex | Functional Role |
+| Name | Hex | Role |
 |---|---|---|
-| Signature Apple Blue | `#007AFF` | Primary interactive elements, links, default tint, selected state |
-| Fresh Meadow Green | `#34C759` | Success states, confirmations, active toggles |
-| Electric Crimson | `#FF3B30` | Destructive actions, errors, delete confirmations |
-| Sunset Amber | `#FF9500` | Warnings, in-progress indicators |
-| Bubblegum Pink | `#FF2D55` | Favorites, hearts, media controls |
-| Soft Lavender Indigo | `#5856D6` | Secondary accent, Siri, focus ring on macOS |
-| Muted Amethyst Purple | `#AF52DE` | Premium or creative context accents |
-| Arctic Cyan | `#32ADE6` | Informational badges, supplementary tint |
-| Spearmint | `#00C7BE` | Health, fitness, wellness context |
-| Warm Cognac Brown | `#A2845E` | Neutral accent, maps, safari tint |
-| Canary Yellow | `#FFCC00` | Highlights, starred items, notes |
+| Signature Apple Blue | `#007AFF` | Focus rings, selected sidebar items, system toggles |
+| Fresh Meadow Green | `#34C759` | Success, active toggles |
+| Electric Crimson | `#FF3B30` | Destructive actions, errors |
+| Sunset Amber | `#FF9500` | Warnings |
 
-### Semantic UI Colors (Light Mode)
+### Semantic UI Colors
 
-| Descriptive Name | Hex | Functional Role |
+| Name | Hex | Role |
 |---|---|---|
-| Primary Label | `#000000` | Main body text, headlines |
-| Secondary Label | `#3C3C43` @ 60% → `#636366` | Supporting text, metadata |
-| Tertiary Label | `#3C3C43` @ 30% → `#8A8A8E` | Placeholder text, disabled labels |
-| Quaternary Label | `#3C3C43` @ 18% → `#BCBCC0` | Very subtle decorative text |
-| Pure Canvas White | `#FFFFFF` | Primary background (grouped lists, modals) |
-| Whisper Gray | `#F2F2F7` | System background, grouped table background |
-| Soft Chalk | `#FFFFFF` | Secondary grouped background (card surfaces) |
-| Opaque Hairline | `#C6C6C8` | List separators, dividers |
-| Translucent Separator | `#3C3C43` @ 29% | Inset separators between cells |
+| Pure Canvas White | `#FFFFFF` | Grouped list cells, modals |
+| Whisper Gray | `#F2F2F7` | System grouped background |
+| Opaque Hairline | `#C6C6C8` | List separators |
+| Graphite | `#8E8E93` | Inactive icons, placeholders |
 
-### Gray Scale
+### Dark Mode Shifts
 
-| Descriptive Name | Hex | Functional Role |
-|---|---|---|
-| Graphite | `#8E8E93` | systemGray — icons, captions, placeholders |
-| Pewter | `#AEAEB2` | systemGray2 — secondary icons, borders |
-| Silver Mist | `#C7C7CC` | systemGray3 — inactive track fills |
-| Pearl | `#D1D1D6` | systemGray4 — disabled control backgrounds |
-| Gossamer | `#E5E5EA` | systemGray5 — segmented control backgrounds |
-| Ice | `#F2F2F7` | systemGray6 — subtle section fills |
-
-### Dark Mode Semantic Shifts
-
-| Role | Dark Mode Hex | Notes |
-|---|---|---|
-| Primary Background | `#000000` | Pure black on OLED — power-efficient, maximum contrast |
-| Secondary Background | `#1C1C1E` | Elevated card surfaces, sheets |
-| Tertiary Background | `#2C2C2E` | Nested containers |
-| Primary Label | `#FFFFFF` | Full white text on black |
-| Secondary Label | `#EBEBF5` @ 60% → `#8E8E93` | Muted white for supporting copy |
-| Separator | `#38383A` | Hairline between cells |
-| System Blue (dark) | `#0A84FF` | Slightly lightened for dark context legibility |
+| Role | Hex |
+|---|---|
+| Primary Background | `#000000` |
+| Secondary Background | `#1C1C1E` |
+| Tertiary Background | `#2C2C2E` |
+| Separator | `#38383A` |
+| System Blue (dark) | `#0A84FF` |
 
 ---
 
-## 3. Typography Rules
+## §3. Apple Typography Reference
 
-Apple uses its proprietary **San Francisco** typeface family exclusively across all system interfaces. New York (NY) serves as an expressive serif companion for editorial and reading contexts.
-
-### Font Families
-
-- **SF Pro** — the workhorse. Switches between *SF Pro Text* (≤19pt) and *SF Pro Display* (≥20pt) automatically, optimized for each size range.
-- **SF Pro Rounded** — warmer, friendlier variant used in icons, widgets, and playful contexts (Fitness, Kids, Animoji).
-- **SF Compact** — condensed variant native to watchOS and used in compact layouts.
-- **New York (NY)** — classical serif for long-form reading, book apps, and editorial headlines.
-
-### iOS Text Styles (Dynamic Type Default Scale)
-
-| Style | Size | Weight | Line Height | Tracking | Usage |
-|---|---|---|---|---|---|
-| Large Title | 34pt | Regular | 41pt | +0.37pt | Hero screen titles (navigation bar expanded) |
-| Title 1 | 28pt | Regular | 34pt | +0.36pt | Primary section headers |
-| Title 2 | 22pt | Regular | 28pt | +0.35pt | Secondary headers, card titles |
-| Title 3 | 20pt | Regular | 25pt | +0.38pt | List group headers |
-| Headline | 17pt | Semibold | 22pt | −0.41pt | Emphasized body, cell labels |
-| Body | 17pt | Regular | 22pt | −0.41pt | Default reading copy |
-| Callout | 16pt | Regular | 21pt | −0.32pt | Descriptive text in popovers, notes |
-| Subheadline | 15pt | Regular | 20pt | −0.24pt | Supporting body copy |
-| Footnote | 13pt | Regular | 18pt | −0.08pt | Secondary metadata, timestamps |
-| Caption 1 | 12pt | Regular | 16pt | 0pt | Image captions, tertiary labels |
-| Caption 2 | 11pt | Regular | 13pt | +0.07pt | Fine print, badge labels |
+> Brand display type (Waldenburg + Inter) lives in **§B3**. Use SF Pro for all native system controls, menus, and chrome.
 
 ### macOS Text Styles (Default Scale)
 
@@ -124,324 +368,150 @@ Apple uses its proprietary **San Francisco** typeface family exclusively across 
 | Headline | 13pt | Semibold | List row labels, emphasized items |
 | Body | 13pt | Regular | Default system text |
 | Callout | 12pt | Regular | Supplementary descriptions |
-| Subheadline | 11pt | Regular | Captions within interface elements |
 | Footnote | 10pt | Regular | Metadata, auxiliary info |
-| Caption 1 | 10pt | Regular | Micro-labels, footnotes |
-
-### Typography Principles
-
-- **Weight for hierarchy, never size alone.** Semibold headlines paired with regular body creates clear rhythm without aggressive size jumps.
-- **Optical sizing is automatic.** SF Pro Text and Display variants swap at 20pt — never manually override this behavior.
-- **Letter spacing is negative at display sizes.** Tight tracking at large sizes creates a polished, premium feel. Open tracking only at Caption scale.
-- **Dynamic Type is non-negotiable.** All text must scale across all 12 Dynamic Type sizes including 5 accessibility sizes.
 
 ---
 
-## 4. Component Stylings
+## §4. Native Component Behavior
 
-### Buttons
+### Buttons (System Controls)
 
-**Large (Primary Action):**  
-Pill-shaped with fully rounded ends (`border-radius: 50pt`), minimum height 50pt, horizontal padding 24pt. Filled with Signature Apple Blue (`#007AFF`), white label text at Headline weight. On press: momentary opacity drop to 70%.
+**Filled** — one per screen, system accent tint. **Tinted** — secondary; accent at reduced saturation. **Gray** — neutral secondary. **Plain** — text-only tertiary. **Bordered** — macOS-specific, 1pt stroke.
 
-**Medium (Standard):**  
-Generously rounded corners (`border-radius: 10pt`), height 44pt, horizontal padding 16pt. Filled style uses system tint color. Gray style uses systemGray5 (`#E5E5EA`) fill with primary label text.
-
-**Small (Inline):**  
-Subtly rounded corners (`border-radius: 8pt`), height 30pt, horizontal padding 12pt. Often tinted (system color at 15% opacity background) rather than fully filled.
-
-**Styles:**
-- *Filled* — maximum emphasis, primary actions only. One per screen.
-- *Tinted* — secondary actions; system accent at reduced saturation background.
-- *Gray* — neutral, non-destructive secondary actions.
-- *Plain* — text-only, for tertiary or list-inline actions. Uses system accent color.
-- *Bordered* — macOS-specific; 1pt stroke in separator color, subtly rounded.
-
-**Destructive State:** Red Electric Crimson (`#FF3B30`) replaces the accent color. Never paired with filled + red for non-destructive contexts.
+Destructive: Electric Crimson (`#FF3B30`) fill. Never combined with non-destructive contexts.
 
 ### Cards & Containers
 
-Lightly rounded corners (`border-radius: 10–13pt`) on standard list cells; generously rounded (`border-radius: 20pt`) on featured cards, widgets, and App Store tiles. Background: Pure Canvas White (`#FFFFFF`) on Whisper Gray (`#F2F2F7`) backgrounds — creating a one-level-of-depth separation without shadows. Inset group lists use 16pt side insets with visible rounded card outlines.
-
-**Widget cards:** 20pt corner radius, vibrancy-aware background material, no stroke border.
-
-**Alerts and Sheets:** 13pt corner radius, thick material (blurred frosted glass) background — appear elevated above the primary content layer through blur, not shadow.
+Standard cells: 10–13pt radius. Featured cards / widgets: 20pt radius. Alerts/Sheets: 13pt radius, Liquid Glass material background.
 
 ### Inputs & Forms
 
-**Text Fields:**  
-No visible stroke in light mode within grouped table contexts — the cell background itself is the affordance. Standalone text fields in free layouts: 1pt separator-colored stroke (`#C6C6C8`), subtly rounded corners (10pt), 44pt height minimum. Placeholder text in Tertiary Label color (`#8A8A8E`).
+Text fields: 1pt `#C6C6C8` stroke, 10pt radius, 44pt height minimum. Search fields: pill-shaped, Ice (`#F2F2F7`) fill, 36pt height. Segmented controls: Ice container, white selected segment.
 
-**Search Fields:**  
-Pill-shaped container, Ice fill (`#F2F2F7`), SF Symbols magnifying glass icon in Graphite (`#8E8E93`). No border. Height 36pt standard.
+### Sidebar (macOS)
 
-**Toggles (Switches):**  
-29×31pt track, pill-shaped. Off state: systemGray3 (`#C7C7CC`) track. On state: Signature Apple Blue (`#007AFF`). White circular thumb with whisper-soft shadow.
-
-**Sliders:**  
-Thin track (2–4pt height), system accent fill on completed side, systemGray3 on remaining side. Circular thumb 28pt diameter, white fill, soft 2pt shadow.
-
-**Segmented Controls:**  
-Rounded-rectangle outer container in Ice (`#F2F2F7`), selected segment white (`#FFFFFF`) fill with 0.5pt shadow to distinguish elevation. Text in Primary Label when selected, Secondary Label when inactive.
-
-### Navigation
-
-**Navigation Bar (iOS):**  
-Liquid Glass background (macOS Tahoe era) or translucent material. Large title collapses to inline title on scroll. Back button uses SF Symbol `chevron.left` + destination label text in Signature Apple Blue. Height: 44pt (compact), ~96pt with large title.
-
-**Tab Bar (iOS):**  
-49pt height (plus home indicator inset). In iOS 26, tab bars shrink during scrolling to emphasize content, then fluidly expand when scrolling stops — built from Liquid Glass. Selected tab: Signature Apple Blue, unselected: Graphite (`#8E8E93`).
-
-**Sidebar (macOS/iPadOS):**  
-Liquid Glass material, full window height. Icons use SF Symbols at 18pt (medium weight, hierarchical rendering). Selected item: Signature Apple Blue filled pill. Width range: **225–275pt minimum, 350–400pt maximum** — splitter is user-draggable. Show/Hide via View menu. Maximum two levels of hierarchy. In macOS Tahoe, the sidebar refracts wallpaper and surrounding content, reinforcing the layering hierarchy.
+Liquid Glass material, full window height. SF Symbols at 18pt, medium weight. Selected: system blue filled pill. Width: **225–275pt min, 350–400pt max**, user-draggable. Max two hierarchy levels.
 
 ---
 
-## 5. Layout Principles
+## §5. macOS Layout & Window Chrome
 
-### macOS Window Chrome Anatomy
+### Window Chrome Anatomy
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  ● ● ●  [Title / Document Name]     [Toolbar Items]     │  ← Title Bar (28–52pt)
-├────────────────────────────────────────────────────────-─┤
+├──────────────────────────────────────────────────────────┤
 │         │                                                │
-│ Sidebar │  Content Area                                  │
-│ 225–    │  (primary scrollable region)                  │
+│ Sidebar │  Content Area  ← Intentive brand layer here   │
+│ 225–    │  canvas: #f5f5f5, Waldenburg + Inter           │
 │ 400pt   │                                                │
-│         ├────────────────────────────────────────────── ┤
-│         │  Inspector / Detail Pane (optional, trailing) │
+│         ├──────────────────────────────────────────────-─┤
+│         │  Inspector / Detail Pane (optional, trailing)  │
 └─────────┴────────────────────────────────────────────────┘
 ```
 
-**Traffic Light Controls (window buttons):**  
-Three 12pt diameter circles — Close (red `#FF5F57`), Minimize (amber `#FFBD2E`), Zoom (green `#28C840`) — spaced 8pt apart, 20pt from leading edge, vertically centered in title bar.
+**Traffic Lights:** Three 12pt Ø circles — Close `#FF5F57`, Minimize `#FFBD2E`, Zoom `#28C840` — 8pt apart, 20pt from leading edge.
 
-**Title Bar / Toolbar (Unified style):**  
-Standard height ~52pt (unified title + toolbar in one row). Compact/Preference style ~28pt. Expanded style (document apps): separate title row + toolbar row. Liquid Glass material fills the bar — content scrolls beneath and is visible through it.
+**Unified Title Bar:** ~52pt height. Liquid Glass material.
 
-**Menu Bar:**  
-System-wide bar at screen top. Height: **24pt** (standard since Big Sur), **37pt** on MacBook Pro with notch at default scaling. Menu bar extras (right side) use template images at 16×16pt within a 22pt working height. Fully transparent option in macOS Tahoe 26 — dissolves into wallpaper.
+**Menu Bar:** 24pt height (37pt on notched MacBook Pro). Fully transparent option in Tahoe 26.
 
-### Spacing Grid
-
-Apple uses a **4pt base unit** with multiples of 4 as the primary spacing vocabulary:
+### Apple Spacing Grid
 
 | Value | Usage |
 |---|---|
-| 4pt | Micro-gaps between icon and label, badge offsets |
-| 6pt | Vertical spacing between stacked controls (macOS Settings) |
-| 8pt | Horizontal spacing between controls; button-to-button gaps |
-| 12pt | Standard vertical padding within cells; button-to-view spacing |
-| 16pt | **Standard content margin** — primary horizontal inset (iPhone) |
-| 20pt | Window corner margin (macOS Settings); iPad horizontal inset |
-| 24pt | Generous section spacing, hero padding |
-| 32pt+ | Hero section vertical breathing room |
+| 4pt | Micro-gaps |
+| 6pt | Vertical between stacked controls |
+| 8pt | Horizontal between controls |
+| 12pt | Cell vertical padding |
+| 16pt | Standard content margin |
+| 20pt | Window corner margin |
 
-**macOS Settings window specifics:** 20pt corner margins, 8pt horizontal between controls, 6pt vertical between controls, 8pt between two-column gap, minimum 20pt on each side of separators.
+### Elevation (Liquid Glass Era)
 
-### Safe Area & Insets
+| Layer | Material |
+|---|---|
+| 0 — base content | System background (`{colors.canvas}` in Intentive) |
+| 1 — cards/cells | White surface; color contrast only |
+| 2 — sidebar/toolbar | Liquid Glass (Regular) |
+| 3 — sheets/alerts | Liquid Glass (Regular) |
+| 4 — menus/popovers | Liquid Glass + whisper-soft shadow |
 
-All content respects dynamic safe areas: top (menu bar + title bar), bottom (dock), and leading/trailing. Full-bleed backgrounds and materials extend beneath chrome intentionally — scroll content glides beneath sidebars and toolbars.
-
-**Minimum click target (macOS):** 44×44pt for primary actions; secondary controls may be smaller but must have hover states confirming interactivity.
-
-### Grid & Column System
-
-- **iPhone (390pt):** Single column, 16pt margins.
-- **iPad (768pt+):** Sidebar + detail pane, 20pt insets, column split via UISplitViewController.
-- **macOS (standard app):** Three-pane — sidebar (225–400pt) + content + optional inspector (280–320pt typical).
-- **macOS (document app):** Full-width content with floating inspector panels.
-
-### Whitespace Philosophy
-
-**Less is more, always.** Apple leaves generous vertical space between section groups (32–48pt between grouped table sections). Navigation chrome floats above content — it never competes. The empty space signals intent: this interface is for the task, not decoration. In macOS Tahoe, this extends to the menu bar itself becoming invisible when the task demands full focus.
-
-### Elevation & Depth (Liquid Glass Era)
-
-Depth is now communicated through **Liquid Glass lensing + material opacity**, not shadows:
-
-| Layer | Material | Notes |
-|---|---|---|
-| 0 — base content | System background color | White / near-black |
-| 1 — cards/cells | White surface on gray base | No shadow; color contrast alone |
-| 2 — sidebar/toolbar | Liquid Glass (Regular) | Refracts + lenses content beneath |
-| 3 — sheets/alerts | Liquid Glass (Regular) | Elevated via stronger lensing |
-| 4 — menus/popovers | Liquid Glass (Regular) | Most prominent; whisper-soft 1-stop diffused shadow |
-
-Explicit drop shadows appear **only on menus and popovers** — diffused, ~10–15% opacity, 8–20pt spread radius. Never on cards, buttons, or sidebars.
-
-**The golden rule for Liquid Glass placement:** navigation chrome only. Never apply `.glassEffect()` to content layers, scrollable lists, or full-screen backgrounds.
+Liquid Glass is **navigation chrome only** — never on content cards, lists, or backgrounds.
 
 ---
 
-## 6. macOS Control Dimensions (Native AppKit Sizes)
-
-These are the fixed system control heights across Regular / Small / Mini size variants:
+## §6. macOS Control Dimensions
 
 | Control | Regular | Small | Mini |
 |---|---|---|---|
-| Push Button height | ~22pt | ~18pt | ~15pt |
+| Push Button | ~22pt | ~18pt | ~15pt |
 | Checkbox | ~14pt | ~12pt | ~10pt |
 | Radio Button | ~14pt | ~12pt | ~10pt |
-| Pop-up Menu height | ~22pt | ~18pt | ~15pt |
-| Combo Box height | ~22pt | ~18pt | ~15pt |
-| Segmented Control height | ~22pt | ~18pt | ~15pt |
-| Text Field height | ~22pt | ~19pt | ~16pt |
-| Help Button diameter | 20pt | — | — |
-| Round Button (Regular) | 25pt Ø | 20pt Ø | — |
+| Pop-up Menu | ~22pt | ~18pt | ~15pt |
+| Text Field | ~22pt | ~19pt | ~16pt |
+| Help Button | 20pt Ø | — | — |
+| Round Button | 25pt Ø | 20pt Ø | — |
 
-**Spacing between controls:**
-- Regular: 12pt horizontal, 8pt vertical (checkboxes/radio), 10pt vertical (pop-ups)
-- Small: 10pt horizontal, 6pt vertical
-- Mini: 8pt horizontal, 5pt vertical
-
-**Slider thumb sizes:**
-- Directional (no ticks): Regular 19pt, Small 14pt, Mini 11pt
-- Directional (with ticks): Regular 25pt, Small 19pt, Mini 17pt
-- Round thumb: Regular 15pt, Small 12pt, Mini 10pt
-
-**Toolbar icon spacing:** 8pt between individual controls in toolbars.
+Spacing: Regular 12pt H / 8pt V · Small 10pt H / 6pt V · Mini 8pt H / 5pt V
 
 ---
 
-## 7. Liquid Glass Material System (macOS Tahoe 26 / iOS 26)
+## §7. Liquid Glass Material System
 
-Liquid Glass is the new Apple design material — not a blur, but a **real-time optical lens** that bends and concentrates light like physical glass.
+Two variants: **Regular** (default, all nav chrome) and **Clear** (only over media-rich content). Never mix.
 
-### Two Variants
+Tinting: primary actions only — one tinted element per view. Wrap multiple glass elements in `GlassEffectContainer`.
 
-| Variant | Usage Condition | SwiftUI |
-|---|---|---|
-| **Regular** | Default — all navigation chrome, sheets, menus | `.glassEffect(.regular)` |
-| **Clear** | Only over media-rich content (photos/video) where background won't degrade | `.glassEffect(.clear)` |
+**Auto-applied:** NavigationBar, TabBar, Toolbar, Sheets, Popovers, Menus, Alerts.  
+**Never apply to:** content cards, lists, full-screen backgrounds, scrollable regions.
 
-Never mix Regular and Clear in the same view. Clear requires: (1) positioned over media-rich content, (2) background won't suffer visual degradation, (3) foreground content is bold and bright.
-
-### Where Liquid Glass Belongs
-
-**Auto-applied (system handles it):**
-- NavigationBar, TabBar, Toolbar
-- Sheets, Popovers, Menus, Alerts
-- Search bars, Control Center toggles, sliders
-
-**Never apply manually:**
-- Content layers (lists, cards, tables)
-- Full-screen backgrounds
-- Scrollable content regions
-
-### Tinting
-
-Reserve tinting exclusively for **primary actions** — never tint secondary controls, never tint multiple elements simultaneously.
-
-```swift
-// Primary action (one per view)
-.glassEffect(.regular.tint(.blue))
-
-// Secondary action (no tint)
-.glassEffect(.regular)
-
-// Button styles
-.buttonStyle(.glassProminent)   // opaque, primary
-.buttonStyle(.glass)            // translucent, secondary
-```
-
-### Container Rule
-
-Multiple glass elements **must** be wrapped in `GlassEffectContainer` — glass cannot properly sample other glass without it.
-
-```swift
-GlassEffectContainer(spacing: 30) {
-    Button("Cancel") { }.buttonStyle(.glass)
-    Button("OK") { }.buttonStyle(.glassProminent)
-}
-```
-
-### Accessibility Behaviour
-
-| Setting | Liquid Glass Response |
+| Accessibility Setting | Response |
 |---|---|
-| Reduce Transparency | Frostier, more opaque appearance |
-| Increase Contrast | Black/white rendering with distinct borders |
-| Reduce Motion | Elastic/shimmer effects disabled |
-
-No additional developer code required — all accessibility adaptations are automatic.
-
-### Morphing / Navigation Transitions
-
-Glass elements can morph fluidly between states using `.glassEffectID()` and a `@Namespace` — the glass shape animates continuously rather than cross-fading.
+| Reduce Transparency | More opaque |
+| Increase Contrast | Black/white with borders |
+| Reduce Motion | Elastic effects off |
 
 ---
 
-## 8. Iconography & Imagery
+## §8. Iconography
 
-**SF Symbols** are the exclusive icon system — over 6,000 symbols designed to optically align with SF Pro at every weight and scale. Icons adapt weight to match adjacent text (`Regular`, `Medium`, `Semibold`, `Bold`). Use `hierarchical`, `palette`, or `multicolor` rendering modes contextually.
+SF Symbols exclusively for system chrome and native controls. Weight matches adjacent SF Pro text. Rendering modes: `hierarchical`, `palette`, or `multicolor` contextually.
 
-Image crops prefer **square or portrait aspect ratios** with rounded corners matching card radius. Artwork is always displayed at native resolution — never upscaled. Album art, app icons, and avatar photos get `continuous` corner curves (squircle, not a simple radius) — the iOS app icon shape is a mathematical superellipse, not a rounded rectangle.
-
----
-
-## 9. Motion & Animation
-
-Motion is **purposeful and physics-based**, never decorative. Spring animations (`mass: 1, stiffness: 300, damping: 35`) give UI a sense of physical weight. Standard easing: `easeInOut` for contained transitions, `easeOut` for appearing elements, `easeIn` for dismissals.
-
-- **Modal presentation:** Slide up from bottom, 0.35s spring, sheet corner radius matches origin element.
-- **Navigation push:** Slide in from trailing edge, parallel title cross-dissolve.
-- **Tab switch:** Cross-fade, no slide, preserving position memory.
-- **Button press:** Instantaneous scale-down (0.97) + opacity change, spring release on lift.
-
-**Duration targets:** 200ms (micro-interactions), 350ms (view transitions), 500ms (complex choreography). Never exceed 600ms for standard navigation.
+For Intentive brand content: icons should be simple, line-weight consistent with Inter's optical weight. Avoid filled/chunky icons in content areas — they compete with Waldenburg display type.
 
 ---
 
-## 10. macOS Keyboard & Interaction Patterns
+## §9. Motion & Animation
+
+Physics-based springs. `mass: 1, stiffness: 300, damping: 35`.
+
+- Modal: slide up, 0.35s spring
+- Nav push: trailing edge slide, title cross-dissolve
+- Button press: scale 0.97 + opacity, spring release
+- Durations: 200ms micro · 350ms transitions · 500ms choreography max
+
+---
+
+## §10. Keyboard & Interaction Patterns
 
 > For progressive disclosure patterns (disclosure triangles, inspector panels, hover-reveal, contextual menus, sheets) see the [macos-design skill](.claude/commands/macos-design.md).
 
-
-**Universal shortcuts every Mac app must support:**
-
 | Action | Shortcut |
 |---|---|
-| New window/document | `⌘N` |
-| Open | `⌘O` |
-| Close window | `⌘W` |
-| Save | `⌘S` |
-| Undo | `⌘Z` |
-| Redo | `⌘⇧Z` |
+| New | `⌘N` · Open `⌘O` · Close `⌘W` · Save `⌘S` |
+| Undo / Redo | `⌘Z` / `⌘⇧Z` |
 | Cut / Copy / Paste | `⌘X` / `⌘C` / `⌘V` |
-| Select All | `⌘A` |
-| Find | `⌘F` |
-| Quit | `⌘Q` |
-| Hide | `⌘H` |
-| Minimise | `⌘M` |
-| Preferences/Settings | `⌘,` |
-| Help | `⌘?` |
-| Quick Look preview | `Space` (on selected item) |
-
-**List / grid navigation:**
-- `↑` / `↓` — move selection
-- `←` / `→` — collapse/expand disclosure or navigate columns
-- `⌘↑` / `⌘↓` — jump to top / bottom
-- `Delete` — delete selection (with `⌘Z` undo)
-- `Return` — open / confirm
-- `Escape` — cancel / dismiss
-
-**Pointer interactions:**
-- **Single click** — select
-- **Double click** — open / edit inline
-- **Right-click / Control-click** — contextual menu
-- **Click + drag** — reorder (when supported)
-- **Hover** — reveal secondary controls (delete buttons, handles) — never require hover to discover primary actions
+| Find | `⌘F` · Quit `⌘Q` · Settings `⌘,` |
+| List nav | `↑↓` move · `←→` expand/collapse · `Space` Quick Look |
 
 ---
 
-## 11. Stitch Prompting Quick Reference
+## §11. Stitch Prompting Quick Reference
 
-When using this design system as context for AI screen generation, anchor prompts with these core descriptors:
+**Intentive brand:**
+> *"Intentive design system — off-white canvas `#f5f5f5`, warm near-black ink `#0c0a09` as the only CTA color, Waldenburg Light 300 display serif, Inter 400/500 body at +0.16px tracking, pastel gradient orbs (mint `#a7e5d3` / peach `#f4c5a8` / lavender `#c8b8e0`) as atmospheric decoration only, pill-shaped buttons `border-radius: 9999px`, `{rounded.xl}` 16px feature cards, 96px section rhythm, pure white cards on off-white canvas, 1px `#e7e5e4` hairline borders, `0 4px 16px rgba(0,0,0,0.04)` hover shadow only."*
 
-**General Apple:**
-> *"Apple Human Interface Guidelines aesthetic — clean, flat surfaces in `#FFFFFF` and `#F2F2F7`, Signature Apple Blue (`#007AFF`) as the single accent, SF Pro typography starting at 17pt body, 44pt minimum touch targets, 16pt horizontal margins, pill-shaped primary buttons, no decorative shadows, generous whitespace, squircle-rounded image crops."*
-
-**macOS Tahoe (Liquid Glass era):**
-> *"Native macOS Tahoe app — Liquid Glass sidebar and toolbar (225–400pt wide sidebar, ~52pt unified title bar), traffic lights 12pt diameter spaced 8pt apart, SF Pro 13pt body, 22pt control heights, three-pane layout (sidebar + content + optional inspector), system accent `#007AFF`, backgrounds `#FFFFFF` light / `#1C1C1E` dark, no decorative shadows on content, glass materials only on navigation chrome, 20pt window corner margins, 8pt horizontal control spacing, 6pt vertical control spacing, complete menu bar required."*
+**macOS Tahoe chrome:**
+> *"Native macOS Tahoe window chrome — Liquid Glass sidebar (225–400pt wide) and toolbar (~52pt unified), traffic lights 12pt Ø spaced 8pt, SF Pro 13pt body in chrome, 22pt control heights, three-pane layout, system accent `#007AFF` for focus/selection only, complete menu bar required."*

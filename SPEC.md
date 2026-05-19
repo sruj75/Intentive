@@ -62,16 +62,19 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] ScreenPipe stops when the user clicks "Stop" or quits the app
   - [ ] Status indicator reflects live state: capturing / stopped / error
 
-**Subprocess management — Ollama**
-- Intentive bundles the Ollama CLI binary in Tauri resources
-- On first launch, checks if Ollama is already running; uses existing instance if so, spawns bundled copy otherwise
-- Detects port `11434` conflict; surfaces error if unresolvable
-- Pulls `qwen3.5:0.8b` on first launch, shows progress UI ("Setting up Intentive…", no mention of Ollama)
+**LLM Provider detection**
+- On startup, Intentive resolves its LLM Provider in priority order:
+  1. **Apple Intelligence**: query ScreenPipe `/ai/status`; if available, use `/ai/chat/completions`
+  2. **Existing Ollama**: check `localhost:11434`; if responding, use it
+  3. **Bundled Ollama**: spawn Intentive's bundled Ollama binary; pull `qwen3.5:0.8b` on first run
+- First-run download (tier 3 only) shows progress UI: "Setting up Intentive…" — no mention of Ollama
+- Detects port `11434` conflict for the bundled path; surfaces error if unresolvable
 - Acceptance:
-  - [ ] First-run progress screen appears if model is not present
-  - [ ] Model is downloaded and cached; subsequent launches skip this step
-  - [ ] Ollama is available at `localhost:11434` before any Capture Session begins
-  - [ ] If another Ollama is already running, Intentive uses it without spawning a duplicate
+  - [ ] If Apple Intelligence is available via ScreenPipe, it is used and no Ollama process is spawned
+  - [ ] If Ollama is already running at `localhost:11434`, Intentive uses it without spawning a duplicate
+  - [ ] First-run progress screen appears only when neither Apple Intelligence nor existing Ollama is found
+  - [ ] Model is downloaded and cached; subsequent launches on tier 3 skip the download
+  - [ ] LLM Provider is resolved and ready before any Capture Session begins
 
 **Context Heartbeat**
 - Fires every 60 seconds during a Capture Session
@@ -204,9 +207,10 @@ macOS (user's machine)
 ├── ScreenPipe CLI binary (bundled)
 │   └── HTTP API on localhost:3030
 │
-└── Ollama CLI binary (bundled)
-    └── HTTP API on localhost:11434
-        └── Model: qwen3.5:0.8b
+└── LLM Provider (resolved at startup)
+    ├── Tier 1: Apple Intelligence (ScreenPipe /ai/chat/completions)
+    ├── Tier 2: Existing Ollama at localhost:11434
+    └── Tier 3: Bundled Ollama + qwen3.5:0.8b (downloaded on first run)
 ```
 
 ## Stack
@@ -216,7 +220,7 @@ macOS (user's machine)
 | App framework | Tauri 2.x | Lightweight, Rust-native, menu bar support, no Chromium |
 | Frontend | TypeScript + React | Standard Tauri stack |
 | Capture engine | ScreenPipe CLI binary (bundled) | Wraps, not reimplements; HTTP API is the boundary |
-| On-device LLM | Ollama (bundled) + `qwen3.5:0.8b` | Single standard, on-device, private, no API keys |
+| On-device LLM | Apple Intelligence → existing Ollama → bundled Ollama + `qwen3.5:0.8b` | Tiered: zero-download when possible, bundled fallback, always on-device |
 | Local storage | SQLite (via Tauri plugin) | Snapshot log + future transparency UI |
 | Agent transport | HTTPS POST (JSON) | OpenClaw Agent lives on GCP VM |
 

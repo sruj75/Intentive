@@ -1,22 +1,28 @@
-# Use bundled Ollama for on-device LLM summarization
+# Tiered on-device LLM provider: Apple Intelligence → existing Ollama → bundled Ollama
 
-Intentive generates a prose summary of each Context Snapshot using a local LLM. We bundle the Ollama CLI binary inside the Tauri app (alongside the ScreenPipe binary) and manage its lifecycle as a private subprocess. Users never see or configure Ollama — it is an implementation detail.
+Intentive resolves its LLM Provider at startup using a priority-ordered detection sequence. All tiers are fully on-device — no API keys, no network egress for summarization.
 
-On first launch, Intentive pulls `qwen3.5:0.8b` and shows a one-time setup progress screen presented as Intentive setup. After that, the model is cached locally and all summarization is fully offline.
+**Detection order:**
+1. **Apple Intelligence** — check ScreenPipe's `/ai/status` endpoint. If available, use `/ai/chat/completions`. Zero dependencies, zero download. Requires Apple Silicon + macOS 15.1+ with Apple Intelligence enabled.
+2. **Existing Ollama** — check `localhost:11434`. If an Ollama instance is already running, use it. No download needed.
+3. **Bundled Ollama** — if neither above is available, Intentive uses its own bundled Ollama binary and pulls `qwen3.5:0.8b` on first run (~0.8GB). Shown to the user as "Setting up Intentive…" with a progress indicator — no mention of Ollama in the UI.
+
+The user never selects or sees the provider. Intentive picks the best available option silently.
+
+## Why tiered rather than a single standard
+
+A single standard (Ollama always) was initially preferred for simplicity. Apple Intelligence was added back as the first-choice tier because: it is already exposed via ScreenPipe's HTTP API (zero additional dependencies), eliminates the first-run download for users who have it, and is fully private. The detection logic is a small `if/else` at startup — not meaningful complexity.
 
 ## Considered Options
 
-- **Apple Intelligence** (ScreenPipe `/ai/chat/completions`) — zero deps, but requires macOS 15.1+ in a specific configuration; not universally available even on Apple Silicon
-- **User-configured API key** (OpenAI/Anthropic) — simple to build, but requires internet, has cost, and is off-device
-- **RunAnywhere Swift SDK** — on-device, but requires a Tauri native plugin bridge into Swift; meaningful complexity
-- **Bundled Ollama** — one standard for all users, on-device, private, no API keys, manageable complexity
-
-A single standard was preferred over conditional logic (Apple Intelligence if available, fallback otherwise). Ollama is the only option that is on-device, free, and hardware-agnostic within the macOS Apple Silicon target.
+- **Always Ollama (bundled)** — one standard, but forces a download even when unnecessary
+- **Apple Intelligence only** — zero deps, but excludes users without macOS 15.1+ + Apple Silicon (confirmed: author's own M2 Air did not have it enabled)
+- **User-configured API key** — simplest to build, but off-device and has cost
+- **RunAnywhere Swift SDK** — on-device, but requires a Tauri native plugin bridge into Swift
 
 ## Consequences
 
-- Ollama binary (~50MB) is bundled in Tauri resources alongside the ScreenPipe binary
-- First-run requires a one-time model download — presented to the user as Intentive downloading its own components, no mention of Ollama in the UI
-- If the user already has Ollama installed, Intentive detects and uses the existing installation
-- Intentive owns port `11434`; conflict detection needed if another Ollama instance is running
-- Model: `qwen3.5:0.8b` — small, fast, sufficient for prose summarization on Apple Silicon
+- Startup must probe Apple Intelligence and Ollama before the first Capture Session begins
+- First-run download only occurs if neither Apple Intelligence nor an existing Ollama is found
+- `qwen3.5:0.8b` is the model for the bundled Ollama path — verify exact Ollama registry tag before implementation
+- If the user already has Ollama running, Intentive uses port `11434` without spawning a duplicate; conflict detection still needed for the bundled path
