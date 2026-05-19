@@ -6,10 +6,10 @@ macOS background service that captures on-device activity via [ScreenPipe](https
 
 ## How it works
 
-1. User starts a **Capture Session** from the menu bar (target UX; see [implementation status](#implementation-status)).
-2. Intentive runs ScreenPipe and watches for meaningful activity.
-3. The **Context Heartbeat** (60s cadence) builds a sanitized prose **Context Snapshot** using an on-device **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama).
-4. Snapshots are written to a local SQLite log, then **pushed** over HTTPS to the OpenClaw Agent when the user is signed in.
+1. A signed-in launch starts a **Capture Session** automatically; the menu bar toggle stops or restarts capture.
+2. Intentive runs ScreenPipe and queries its local HTTP API for each activity window.
+3. The **Context Heartbeat** (fixed 10-minute cadence) builds a sanitized prose **Context Snapshot** using an on-device **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama).
+4. Snapshots are written to a local SQLite log, then **pushed** over HTTPS to the OpenClaw Agent. When capture ends, Intentive sends a **Session End Marker**.
 
 ```
 ScreenPipe ──HTTP/WS──► Intentive (Rust) ──HTTPS POST──► OpenClaw Agent
@@ -49,7 +49,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ### Implementation status
 
-Core Rust modules exist for **`llm_provider`** and **`agent_interface`**. ScreenPipe lifecycle, Context Heartbeat, snapshot store, menu bar shell, and auth are specified in [`SPEC.md`](SPEC.md) but not fully wired in `src-tauri/src/lib.rs` yet. The UI is still the default Tauri window, not the menu bar agent described in [ADR-0003](docs/adr/0003-menu-bar-only-ui-v1.md).
+Core Rust modules exist for **`llm_provider`**, **`agent_interface`**, **`capture_state`**, and **`menu_bar`**. `src-tauri/src/lib.rs` now wires the menu bar shell with placeholder Auth surfaces. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot store, and real Auth are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
 
 ## Repository layout
 
@@ -57,6 +57,8 @@ Core Rust modules exist for **`llm_provider`** and **`agent_interface`**. Screen
 | --- | --- |
 | `src/` | React UI |
 | `src-tauri/` | Tauri app, orchestration, and Rust domains |
+| `src-tauri/src/capture_state/` | Capture Session shell state machine |
+| `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and menu commands |
 | `src-tauri/src/llm_provider/` | On-device summarization |
 | `src-tauri/src/agent_interface/` | HTTPS push to OpenClaw Agent |
 | `references/` | ScreenPipe / Ollama API notes |

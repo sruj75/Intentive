@@ -1,53 +1,40 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useMemo } from "react";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+type Surface = "settings" | "sign-in";
 
-  async function greet() {
-    try {
-      setGreetMsg(await invoke("greet", { name }));
-    } catch (err) {
-      console.error("Failed to invoke greet command:", err);
-      setGreetMsg(`Error: ${err}`);
-    }
+function resolveSurface(): Surface {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("surface") === "sign-in" ? "sign-in" : "settings";
+}
+
+function App() {
+  const surface = useMemo(resolveSurface, []);
+
+  if (surface === "sign-in") {
+    return (
+      <main className="container">
+        <h1>Sign In</h1>
+        <p>
+          By signing in, you agree that Intentive will start a Capture Session
+          automatically each time you launch it. Activity is summarized
+          on-device; only the summary is sent to your OpenClaw Agent.
+        </p>
+        <p>
+          <em>Auth provider is not yet wired (Issue #3 ships the menu bar shell
+          only). The real sign-in flow will replace this placeholder.</em>
+        </p>
+      </main>
+    );
   }
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank" rel="noopener noreferrer">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank" rel="noopener noreferrer">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      <h1>Settings</h1>
+      <p>
+        Auth, OpenClaw Agent endpoint, and capture preferences will live here.
+        This placeholder ships with the menu bar shell (Issue #3).
+      </p>
     </main>
   );
 }

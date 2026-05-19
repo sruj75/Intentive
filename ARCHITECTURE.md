@@ -1,6 +1,6 @@
 # Architecture
 
-Contract for v1: a macOS Tauri background service that manages ScreenPipe capture, runs on-device summarization, logs Context Snapshots locally, and pushes them to the OpenClaw Agent. Domain terms live in `CONTEXT.md`; acceptance criteria in `SPEC.md`; decisions in `docs/adr/`.
+Contract for v1: a macOS Tauri background service that manages ScreenPipe capture for a signed-in user, runs on-device summarization, logs Context Snapshots locally, pushes them to the OpenClaw Agent, and sends a Session End Marker when a Capture Session ends. Domain terms live in `CONTEXT.md`; acceptance criteria in `SPEC.md`; decisions in `docs/adr/`.
 
 ## Bird's-eye Overview
 
@@ -26,9 +26,9 @@ Intentive sits between three external systems and one user:
                                    └────────────────┘
 ```
 
-**Capture Session** — User starts capture from the menu bar. Intentive spawns ScreenPipe, subscribes to activity signals, and runs the **Context Heartbeat** on a 60s cadence when meaningful activity occurred. Each cycle: query ScreenPipe → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface** (if signed in). Stop or quit tears down ScreenPipe and Intentive-owned Ollama.
+**Capture Session** — Capture starts automatically when a signed-in user launches Intentive. Intentive spawns ScreenPipe and runs the **Context Heartbeat** on a fixed 10-minute cadence. Each cycle: query ScreenPipe for the preceding activity window → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface**. Stop, quit, or ScreenPipe crash ends the Capture Session and sends a **Session End Marker** before teardown. Intentive does not capture without Auth.
 
-**Current implementation state** — The repo is past starter scaffold for two Rust domains (`llm_provider`, `agent_interface`). ScreenPipe lifecycle, Context Heartbeat, snapshot persistence, menu bar shell, and auth are specified but not yet wired in `lib.rs`. The UI is still the default Tauri window, not the ADR-0003 menu bar agent.
+**Current implementation state** — The repo is past starter scaffold for Rust domains (`llm_provider`, `agent_interface`, `capture_state`, `menu_bar`). `lib.rs` wires a menu bar shell with placeholder Auth surfaces and state transitions. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot persistence, and real Auth are still planned.
 
 **Platform** — macOS only (v1). No Windows/Linux, no in-app agent reasoning, no push retry queue (ADR-0005).
 
@@ -36,11 +36,14 @@ Intentive sits between three external systems and one user:
 
 | Path | Role |
 |------|------|
-| `src/` | React UI — target: menu bar status, settings window, first-run setup progress (ADR-0003). Today: starter `App.tsx` + Vitest smoke test. |
-| `src-tauri/src/lib.rs` | Tauri entry: plugins, `invoke_handler`, app lifecycle. Orchestration modules will register commands here. |
+| `src/` | React UI for settings and placeholder sign-in/consent surfaces. Keep it thin: Rust owns capture, summarization, persistence, and delivery. |
+| `src-tauri/src/lib.rs` | Tauri entry: plugins, command registration, setup, and app lifecycle. Installs the menu bar shell and prevents window close from quitting the service. |
+| `src-tauri/src/capture_state/` | Pure Capture Session shell state machine: unauthenticated, stopped, capturing, error. No Tauri dependencies. |
+| `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, state holder, and command handlers for the menu bar shell. Runtime wiring lives in `install`; state-to-menu/icon mapping stays unit-testable. |
 | `src-tauri/src/llm_provider/` | **Deep module** — `resolve()` at startup (Apple Intelligence → existing Ollama → bundled Ollama); `summarize()` per heartbeat. Hides tier detection, prompts (`prompt.rs`), bundled binary spawn (`bundled.rs`). |
 | `src-tauri/src/agent_interface/` | **Deep module** — `ContextSnapshot` payload type; `AgentInterface::push()` HTTPS POST with Bearer auth, 10s timeout, drop-on-failure (ADR-0004, ADR-0005). |
 | `src-tauri/resources/` (planned) | Bundled ScreenPipe CLI and bundled Ollama binary per ADR-0002 / ADR-0006. |
+| `src-tauri/icons/tray/` | Pre-rendered menu bar icons for idle, capturing, and error states. |
 | `references/` | Integration notes for ScreenPipe routes and Ollama APIs (agent/debug reference, not runtime code). |
 | `CONTEXT.md` | Glossary — use these names in code and reviews. |
 | `SPEC.md` | v1 requirements and payload contracts. |
@@ -52,9 +55,9 @@ Intentive sits between three external systems and one user:
 **Planned Rust modules** (names may vary; keep one concern per module, same depth as existing two):
 
 - ScreenPipe subprocess manager — spawn/kill binary, health, crash → error state.
-- Context Heartbeat — 60s timer, `/ws/events` activity gate, ScreenPipe HTTP fetch, call `LlmProvider::summarize`, coordinate snapshot write + push.
+- Context Heartbeat — fixed 10-minute timer, ScreenPipe HTTP fetch for the preceding window, call `LlmProvider::summarize`, coordinate snapshot write + push, emit Session End Marker on stop/quit/crash.
 - Snapshot store — Intentive SQLite `snapshots` table, write-before-push, 7-day purge (ADR-0007).
-- Capture session / runtime coordinator — ties start/stop, provider resolve, heartbeat lifecycle.
+- Capture session / runtime coordinator — ties signed-in launch, manual stop/restart, ScreenPipe process lifecycle, provider resolve, heartbeat lifecycle, and teardown.
 
 **Agent skills** — `.claude/skills/screenpipe-*` for operational debugging of the capture engine.
 
@@ -66,12 +69,15 @@ Intentive sits between three external systems and one user:
 4. **ScreenPipe via HTTP, not SQLite** — Integrate through the bundled CLI and `localhost:3030` (HTTP + WebSocket). Do not read ScreenPipe's database unless an API gap is documented and approved (ADR-0002). Embedding `screenpipe-engine` in-process is a targeted future escape hatch, not the default.
 5. **Deep modules at integration seams** — `llm_provider` and `agent_interface` expose small public surfaces (`resolve`/`summarize`, `push` + `ContextSnapshot`). Callers do not branch on provider tiers or construct HTTP details.
 6. **Context Snapshot contract is frozen for v1** — Payload fields: `id`, `captured_at`, `period_start`, `period_end`, `summary` only. Same shape for local SQLite and HTTPS push. Do not add fields without an explicit contract change.
-7. **Write locally, then push** — Every snapshot is persisted before delivery attempt; `pushed_at` records success (ADR-0007). Push failure does not delete the local row (ADR-0005).
-8. **Drop failed pushes** — No retry queue in v1; heartbeat continues on the next cycle (ADR-0005).
-9. **On-device summarization** — Raw ScreenPipe content is input to the LLM Provider only; only sanitized prose leaves the machine (plus metadata in the snapshot).
-10. **Push, not pull** — Intentive POSTs to the OpenClaw Agent; the agent does not poll the Mac (ADR-0004).
-11. **Menu bar agent UX** — No Dock icon; no persistent main window (ADR-0003). Settings and first-run flows are separate windows.
-12. **ADR supremacy** — If code conflicts with `docs/adr/`, fix code or record a new ADR; do not drift silently.
+7. **Session End Marker contract is deferred** — It must be emitted when a Capture Session ends, but its payload shape and OpenClaw Agent handling are intentionally undefined until the agent-side contract exists (ADR-0008). Do not smuggle marker fields into `ContextSnapshot`.
+8. **Write locally, then push** — Every snapshot is persisted before delivery attempt; `pushed_at` records success (ADR-0007). Push failure does not delete the local row (ADR-0005).
+9. **Drop failed pushes** — No retry queue in v1; heartbeat continues on the next cycle (ADR-0005).
+10. **Fixed Context Heartbeat cadence** — During a Capture Session, the Context Heartbeat fires every 10 minutes regardless of activity level. There is no activity-gated skip path (ADR-0008).
+11. **Auth gates capture** — Intentive does not capture without a signed-in user. Completing sign-in includes explicit consent for future auto-start; opening the sign-in surface alone is not Auth (ADR-0009).
+12. **On-device summarization** — Raw ScreenPipe content is input to the LLM Provider only; only sanitized prose leaves the machine (plus metadata in the snapshot).
+13. **Push, not pull** — Intentive POSTs to the OpenClaw Agent; the agent does not poll the Mac (ADR-0004).
+14. **Menu bar agent UX** — No Dock icon; no persistent main window (ADR-0003). Settings and first-run/sign-in flows are separate windows.
+15. **ADR supremacy** — If code conflicts with `docs/adr/`, fix code or record a new ADR; do not drift silently.
 
 **Mechanical enforcement today** — CI runs `npx tsc --noEmit`, `npm run build`, `npm test`, `cargo check`, `cargo clippy -- -D warnings`, and `cargo test` on every PR. Module tests use `wiremock` for HTTP boundaries. This repo does not use the harness `Types → Config → Repo → Service → Runtime → UI` layer stack; boundaries are enforced by module privacy, ADR review, and the gates above.
 
@@ -80,7 +86,7 @@ Intentive sits between three external systems and one user:
 ### Intentive ↔ ScreenPipe
 
 - **Ownership** — Intentive bundles and spawns the ScreenPipe CLI; ScreenPipe owns capture storage in its SQLite DB.
-- **Interface** — Child process lifecycle; REST on port 3030; activity WebSocket `/ws/events` for heartbeat gating.
+- **Interface** — Child process lifecycle; REST on port 3030 for Context Heartbeat activity windows. WebSocket activity signals are not part of the fixed-interval v1 heartbeat contract.
 - **Rule** — Context Heartbeat reads activity through ScreenPipe's API, not by opening ScreenPipe's DB file.
 
 ### Intentive ↔ LLM Provider (on-device)
@@ -92,8 +98,9 @@ Intentive sits between three external systems and one user:
 ### Intentive ↔ OpenClaw Agent
 
 - **Interface** — `AgentInterface::push` — HTTPS POST to user-configured webhook URL, `Authorization: Bearer <api_key>`, 10s timeout.
-- **Semantics** — Agent is a black box; event-driven on receipt. Delivery requires network; capture may run without auth but snapshots are not pushed until signed in (`CONTEXT.md`).
+- **Semantics** — Agent is a black box; event-driven on receipt. Delivery requires Auth because Capture Sessions require a signed-in user.
 - **Failure** — Non-2xx, timeout, or network error → delivery dropped; local row kept with `pushed_at` null.
+- **Session End Marker** — Sent through the Agent Interface when a Capture Session ends. Payload shape is deliberately deferred until the OpenClaw Agent contract is defined.
 
 ### Intentive ↔ local data
 
@@ -102,13 +109,16 @@ Intentive sits between three external systems and one user:
 
 ### Frontend ↔ Rust (Tauri)
 
-- **Commands** — Start/stop capture, open settings, read status, first-run progress, persist settings.
+- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings.
 - **Events** — State changes (capturing / stopped / error), setup progress, push outcomes for UI if needed.
 - **Security** — CSP in `tauri.conf.json` restricts webview network; production paths for localhost services are Rust-side only.
 
-### Auth (deferred)
+### Auth
 
-- Provider (Supabase vs Neon) undecided. v1 may persist endpoint + API key without full sign-in. When added, auth retrieves webhook URL and API key for the Agent Interface — not implemented in architecture until wired.
+- Provider (Supabase vs Neon) remains deferred until the OpenClaw Agent backend is finalized.
+- Auth links the user's Intentive installation to an OpenClaw Agent endpoint and API key.
+- Completing sign-in includes explicit consent for Intentive to auto-start a Capture Session on future launches. The user cannot complete sign-in without consenting.
+- Until Auth is complete, Intentive remains unauthenticated and must not start ScreenPipe or a Context Heartbeat.
 
 ### CI / release
 
@@ -121,7 +131,7 @@ Intentive sits between three external systems and one user:
 
 **Logging and diagnostics** — Prefer structured Rust logging for heartbeat, provider tier, push results, and ScreenPipe child exit. ScreenPipe operational debugging: `.claude/skills/screenpipe-health`, `screenpipe-logs`, `screenpipe-api`.
 
-**Errors** — Domain errors as `thiserror` enums inside modules (`PushError`, `ProviderError`). UI maps capture/push/provider failures to menu bar **error** state without crashing the heartbeat loop.
+**Errors** — Domain errors as `thiserror` enums inside modules (`PushError`, `ProviderError`, state transition errors). UI maps capture/push/provider failures to menu bar **error** state without crashing the heartbeat loop.
 
 **Testing** — Rust: unit tests colocated (`agent_interface/tests`, `llm_provider/tests`, `wiremock` HTTP). Frontend: Vitest + Testing Library smoke tests. No E2E against real ScreenPipe in CI.
 
@@ -129,4 +139,4 @@ Intentive sits between three external systems and one user:
 
 **Documentation hierarchy** — `ARCHITECTURE.md` (this file) = structure and invariants; `CONTEXT.md` = language; `SPEC.md` = behavior; `docs/adr/` = decisions; `DESIGN.md` = UI. Agents should read ADRs before changing boundaries.
 
-**Known debt affecting shape** — Menu bar + `LSUIElement` not configured; heartbeat and ScreenPipe manager absent; auth provider open; `tauri.conf.json` still declares a default 800×600 window. Track against `SPEC.md` acceptance checklists.
+**Known debt affecting shape** — Real Auth is not wired; ScreenPipe manager, Context Heartbeat, Session End Marker, and snapshot store are absent; release packaging still needs macOS menu-bar-only verification beyond the current Accessory activation policy. Track against `SPEC.md` acceptance checklists.

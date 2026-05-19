@@ -11,8 +11,8 @@ AI agents that act on behalf of a user need to know what that user is actually d
 ## Goals
 
 1. **Reliable capture**: ScreenPipe runs without crashing for the full duration of a Capture Session — screen, audio, and UI events are recorded continuously.
-2. **Clean context**: Every Context Snapshot delivered to OpenClaw is a coherent prose summary that accurately represents the user's activity in the preceding 60 seconds, with no raw screen data or sensitive information leaked.
-3. **Silent operation**: The app runs in the background with zero user interruption during a Capture Session. Users interact with it only to start, stop, or configure.
+2. **Clean context**: Every Context Snapshot delivered to OpenClaw is a coherent prose summary that accurately represents the user's activity in the preceding 10-minute window, with no raw screen data or sensitive information leaked.
+3. **Silent operation**: The app runs in the background with zero user interruption during a Capture Session. A signed-in launch starts capture automatically; users interact with Intentive only to stop, restart, sign in, or configure.
 4. **Privacy by default**: No user data leaves the device except the sanitized Context Snapshot summary sent to OpenClaw Agent over HTTPS.
 5. **Compatibility**: The snapshot format and push mechanism work with OpenClaw Agent's GCP-hosted receiver from day one.
 
@@ -35,15 +35,17 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 ### End user (person running Intentive on their Mac)
 
-- As an end user, I want to start a Capture Session from the menu bar so that Intentive begins feeding context to my agent without opening any windows.
+- As an end user, I want Intentive to automatically start a Capture Session when I launch it signed in so that context is available without a manual start step.
 - As an end user, I want to stop capture from the menu bar so that Intentive stops recording immediately and no more data is sent to my agent.
 - As an end user, I want to see a status indicator in the menu bar so that I always know whether capture is active, stopped, or in an error state.
 - As an end user, I want Intentive to set itself up automatically on first launch so that I do not have to manually install or configure ScreenPipe or Ollama.
 - As an end user, I want my screen activity summarized on-device before anything is sent so that private information (passwords, financial data) is never transmitted in raw form.
+- As an end user, I want sign-in to include explicit consent for auto-starting capture so that capture never begins before I have agreed to it.
 
 ### Developer / agent builder (person integrating OpenClaw Agent)
 
-- As an agent builder, I want Intentive to push a Context Snapshot to a configured HTTPS endpoint every 60 seconds of user activity so that my agent can wake up and reason about what the user is doing.
+- As an agent builder, I want Intentive to push a Context Snapshot to a configured HTTPS endpoint every 10 minutes during a Capture Session so that my agent can wake up and reason about what the user is doing.
+- As an agent builder, I want Intentive to send a Session End Marker when a Capture Session ends so that my agent can distinguish an active quiet period from the user stopping or quitting.
 - As an agent builder, I want each snapshot to contain a unique ID and timestamps so that I can deduplicate and order snapshots correctly in the agent's context window.
 - As an agent builder, I want the snapshot payload to be a compact prose summary (not raw screen data) so that I can append it directly to the agent's context window without further processing.
 
@@ -55,11 +57,13 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 **Subprocess management — ScreenPipe**
 - Intentive bundles the ScreenPipe CLI binary in Tauri resources
-- On Capture Session start, spawns ScreenPipe as a child process; kills it on stop or quit
+- On signed-in launch or manual restart, spawns ScreenPipe as a child process; kills it on stop or quit
+- Intentive does not spawn ScreenPipe without completed Auth and consent
 - If ScreenPipe crashes, the menu bar status updates to "error" state
 - Acceptance:
-  - [ ] ScreenPipe starts when the user clicks "Start" in the menu bar
-  - [ ] ScreenPipe stops when the user clicks "Stop" or quits the app
+  - [ ] ScreenPipe starts automatically when a signed-in user launches Intentive
+  - [ ] ScreenPipe does not start for an unauthenticated user
+  - [ ] ScreenPipe stops when the user toggles capture off or quits Intentive
   - [ ] Status indicator reflects live state: capturing / stopped / error
 
 **LLM Provider detection**
@@ -78,14 +82,15 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] LLM Provider is resolved and ready before any Capture Session begins
 
 **Context Heartbeat**
-- Fires every 60 seconds during a Capture Session
-- Skips silently if no activity detected via ScreenPipe WebSocket (`/ws/events`) since last snapshot
-- Queries ScreenPipe HTTP API (`localhost:3030`) for activity data from the last window
+- Fires every 10 minutes during a Capture Session
+- Always fires on schedule; it does not skip quiet or unchanged windows
+- Queries ScreenPipe HTTP API (`localhost:3030`) for activity data from the preceding 10-minute window
 - Sends raw activity to Ollama with a privacy-guarded prompt; receives prose summary
 - Acceptance:
-  - [ ] Heartbeat does not fire when ScreenPipe reports no events in the window
+  - [ ] Heartbeat fires on the 10-minute cadence during a Capture Session, even when state is unchanged
   - [ ] LLM prompt explicitly instructs the model not to include passwords, credentials, financial data, or personal identifiers
   - [ ] Summary is coherent prose that a human or agent can understand without the raw source data
+  - [ ] Session End Marker is sent immediately when a Capture Session ends from stop, quit, or ScreenPipe crash
 
 **Context Snapshot — local write**
 - On each heartbeat, writes snapshot to local SQLite `snapshots` table before attempting push
@@ -104,30 +109,34 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Snapshot JSON matches the schema: `id`, `captured_at`, `period_start`, `period_end`, `summary`
   - [ ] Request includes `Authorization` header with API key
   - [ ] Failed pushes do not crash or stall the heartbeat; next cycle runs on schedule
+  - [ ] Session End Marker delivery is supported without adding fields to the v1 Context Snapshot payload
 
 **Menu bar UI**
 - Menu bar icon with status: capturing (active), stopped (idle), error
-- Menu items: Start / Stop, Open Settings, Quit
+- Menu items: Unauthenticated (when signed out), Start Capturing / Stop Capturing toggle (when signed in), Open Settings, Quit
 - No Dock icon (`LSUIElement = true`)
 - Acceptance:
   - [ ] App appears in menu bar only — not in the Dock
   - [ ] Status icon updates within 2 seconds of state change
-  - [ ] "Start" is disabled when already capturing; "Stop" is disabled when stopped
+  - [ ] Unauthenticated state shows only a clickable sign-in/consent entry, with the rest disabled
+  - [ ] Signed-in stopped state shows one enabled "Start Capturing" toggle
+  - [ ] Capturing state shows one enabled "Stop Capturing" toggle
 
 **Settings window**
 - Triggered from menu bar
-- Fields: sign in / sign up (deferred, placeholder for now), OpenClaw Agent endpoint URL, API key
+- Fields: sign in / sign up with consent placeholder (deferred, placeholder for now), OpenClaw Agent endpoint URL, API key
 - ScreenPipe status display
 - Capture toggle
 - Acceptance:
   - [ ] Endpoint URL and API key are persisted across app restarts
   - [ ] Settings window can be closed without affecting an active Capture Session
+  - [ ] Opening the sign-in surface alone does not mark the user signed in or start capture; only completed Auth plus consent can do that
 
 ---
 
 ### Nice-to-Have (P1)
 
-- **Capture Session auto-start on login**: Intentive registers as a macOS Login Item so capture begins automatically when the user logs in — no manual "Start" needed.
+- **Launch at login**: Intentive registers as a macOS Login Item so the app launches automatically when the user logs in; Capture Session auto-start still requires the user to be signed in.
 - **Error notifications**: Native macOS notification when ScreenPipe crashes or push fails repeatedly, so the user knows without checking the menu bar.
 - **Model warm-up**: Keep Ollama loaded between heartbeat cycles rather than cold-loading each time, reducing summarization latency.
 
@@ -153,7 +162,7 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 | Metric | Target |
 |---|---|
 | Snapshot delivery rate | ≥ 95% of generated snapshots successfully pushed (non-error sessions) |
-| Heartbeat accuracy | Heartbeat skips ≥ 90% of idle windows (no false fires during inactivity) |
+| Heartbeat cadence accuracy | Heartbeat fires every 10 minutes during Capture Sessions with no activity-gated skips |
 | Summarization latency | Ollama generates summary in < 5 seconds on M-series hardware |
 | First-run completion | User reaches "ready" state (Ollama model downloaded, settings configured) without manual intervention |
 
@@ -188,7 +197,7 @@ Intentive is built incrementally. Each phase is shippable on its own.
 |---|---|---|
 | **1. Subprocess shell** | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator | Rust + Tauri CLI installed |
 | **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call | Phase 1 |
-| **3. Context Heartbeat** | Activity detection via WebSocket, 60s cadence, summarization pipeline, local SQLite write | Phase 2 |
+| **3. Context Heartbeat** | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash | Phase 2 |
 | **4. Push pipeline** | HTTPS POST to OpenClaw endpoint, API key header, failure drop, `pushed_at` tracking | Phase 3, OpenClaw receiver ready |
 | **5. Settings window** | Endpoint URL + API key config, ScreenPipe status, capture toggle | Phase 4 |
 | **6. Auth** | Sign in / sign up wired to identity provider | Auth provider decision made |
@@ -203,7 +212,7 @@ macOS (user's machine)
 ├── Intentive (Tauri menu bar app)
 │   ├── Manages ScreenPipe subprocess (capture)
 │   ├── Manages Ollama subprocess (summarization)
-│   ├── Context Heartbeat service (60s, activity-gated)
+│   ├── Context Heartbeat service (10-minute fixed cadence)
 │   ├── Local SQLite log (snapshots, 7-day retention)
 │   └── HTTPS push → OpenClaw Agent (GCP VM)
 │
@@ -235,9 +244,9 @@ macOS (user's machine)
 {
   "id": "uuid-v4",
   "captured_at": "2025-01-15T14:32:00Z",
-  "period_start": "2025-01-15T14:31:00Z",
+  "period_start": "2025-01-15T14:22:00Z",
   "period_end": "2025-01-15T14:32:00Z",
-  "summary": "User spent 60s in Figma editing a dashboard component, briefly checked Slack, then opened Chrome to review a Notion doc titled 'Q3 Roadmap'."
+  "summary": "User spent the 10-minute window in Figma editing a dashboard component, briefly checked Slack, then opened Chrome to review a Notion doc titled 'Q3 Roadmap'."
 }
 ```
 

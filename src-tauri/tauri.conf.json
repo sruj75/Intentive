@@ -12,9 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "intentive",
-        "width": 800,
-        "height": 600
+        "label": "settings",
+        "title": "Intentive Settings",
+        "url": "index.html",
+        "width": 560,
+        "height": 480,
+        "visible": false,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {
@@ -28,8 +33,12 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.icns"
+    ],
+    "resources": [
+      "icons/tray/menu-icon-idle.png",
+      "icons/tray/menu-icon-capturing.png",
+      "icons/tray/menu-icon-error.png"
     ]
   }
 }
