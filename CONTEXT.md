@@ -25,7 +25,7 @@ The internal service that runs on a 60-second cadence during a Capture Session. 
 _Avoid_: polling service, summarizer, heartbeat (use "Context Heartbeat" in full)
 
 **LLM Provider**:
-The on-device model used by the Context Heartbeat to generate prose summaries. Resolved at startup in priority order: (1) Apple Intelligence via ScreenPipe's `/ai/status` + `/ai/chat/completions` endpoints, (2) existing Ollama installation detected at `localhost:11434`, (3) Intentive's bundled Ollama binary with `qwen3.5:0.8b` downloaded on first run. All three are fully on-device. The user never selects or sees the provider.
+The on-device model used by the Context Heartbeat to generate prose summaries. Resolved at startup in priority order: (1) Apple Intelligence via ScreenPipe's `/ai/status` + `/ai/chat/completions` endpoints, (2) existing Ollama at `localhost:11434` — selects the currently loaded model or first installed model ≤ 5GB on disk; falls through to Tier 3 if no such model exists, (3) Intentive's bundled Ollama binary with `qwen3.5:0.8b` downloaded on first run. All three are fully on-device. The user never selects or sees the provider.
 _Avoid_: LLM, model, AI (use "LLM Provider" when referring to the summarization backend)
 
 **OpenClaw Agent**:

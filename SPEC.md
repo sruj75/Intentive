@@ -65,14 +65,15 @@ AI agents that act on behalf of a user need to know what that user is actually d
 **LLM Provider detection**
 - On startup, Intentive resolves its LLM Provider in priority order:
   1. **Apple Intelligence**: query ScreenPipe `/ai/status`; if available, use `/ai/chat/completions`
-  2. **Existing Ollama**: check `localhost:11434`; if responding, use it
+  2. **Existing Ollama**: check `localhost:11434`; if responding, select the currently loaded model or first installed model ≤ 5GB on disk; fall through to Tier 3 if none qualify
   3. **Bundled Ollama**: spawn Intentive's bundled Ollama binary; pull `qwen3.5:0.8b` on first run
 - First-run download (tier 3 only) shows progress UI: "Setting up Intentive…" — no mention of Ollama
 - Detects port `11434` conflict for the bundled path; surfaces error if unresolvable
 - Acceptance:
   - [ ] If Apple Intelligence is available via ScreenPipe, it is used and no Ollama process is spawned
-  - [ ] If Ollama is already running at `localhost:11434`, Intentive uses it without spawning a duplicate
-  - [ ] First-run progress screen appears only when neither Apple Intelligence nor existing Ollama is found
+  - [ ] If Ollama is already running at `localhost:11434` with a model ≤ 5B available, Intentive uses it without spawning a duplicate
+  - [ ] If Ollama is running but no model ≤ 5B is found, Intentive falls through to Tier 3 (bundled Ollama + `qwen3.5:0.8b`)
+  - [ ] First-run progress screen appears whenever `qwen3.5:0.8b` needs to be downloaded (Tier 3, including Tier 2 fallthrough)
   - [ ] Model is downloaded and cached; subsequent launches on tier 3 skip the download
   - [ ] LLM Provider is resolved and ready before any Capture Session begins
 
@@ -170,10 +171,12 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 
 | Question | Owner | Blocking? |
 |---|---|---|
-| Exact Ollama model tag for `qwen3.5:0.8b` — verify this tag exists in the Ollama registry | Engineering | Yes — needed before first-run implementation |
 | Auth provider (Supabase vs Neon) | Stakeholder — depends on OpenClaw Agent backend decision | No — auth is the last thing wired in v1 |
-| Does OpenClaw Agent's receiver expect any specific headers beyond `Authorization`? (e.g. `Content-Type`, `X-Intentive-Version`) | Agent builder / Engineering | Yes — needed before push implementation |
-| What is the timeout threshold for HTTPS push before declaring failure? | Engineering | No — can default to 10s and adjust |
+
+**Resolved:**
+- Model tag: `qwen3.5:0.8b` — confirmed in Ollama registry. Tier 3 bundled model. Tier 2 uses existing models ≤ 5GB on disk, falls through to Tier 3 if none qualify.
+- Agent Interface headers: `Authorization` only. OpenClaw receiver will be built to conform to this contract. No `X-Intentive-Version` in v1.
+- Push timeout: **10 seconds**. On timeout or any non-2xx response, drop the snapshot per ADR-0005.
 
 ---
 
@@ -220,7 +223,7 @@ macOS (user's machine)
 | App framework | Tauri 2.x | Lightweight, Rust-native, menu bar support, no Chromium |
 | Frontend | TypeScript + React | Standard Tauri stack |
 | Capture engine | ScreenPipe CLI binary (bundled) | Wraps, not reimplements; HTTP API is the boundary |
-| On-device LLM | Apple Intelligence → existing Ollama → bundled Ollama + `qwen3.5:0.8b` | Tiered: zero-download when possible, bundled fallback, always on-device |
+| On-device LLM | Apple Intelligence → existing Ollama (≤ 5GB on disk) → bundled Ollama + `qwen3.5:0.8b` | Tiered: zero-download when possible, bundled fallback, always on-device |
 | Local storage | SQLite (via Tauri plugin) | Snapshot log + future transparency UI |
 | Agent transport | HTTPS POST (JSON) | OpenClaw Agent lives on GCP VM |
 
