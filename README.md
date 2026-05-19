@@ -1,7 +1,23 @@
-# Tauri + React + Typescript
+# Intentive
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+A Mac app that runs in the background, watches what you’re doing (via ScreenPipe), writes short on-device summaries, and sends them to your OpenClaw agent. Nothing leaves your machine except those summaries—and only after sign-in.
 
-## Recommended IDE Setup
+Built with Tauri (Rust) and React. **macOS only.**
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## Run it
+
+```bash
+npm install
+npm run tauri dev
+```
+
+You’ll need Node 22+, Rust, and Xcode command line tools.
+
+## Docs
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the pieces connect
+- [`CONTEXT.md`](CONTEXT.md) — vocabulary (snapshots, heartbeat, etc.)
+- [`SPEC.md`](SPEC.md) — what v1 should do
+- [`AGENTS.md`](AGENTS.md) — dev commands and repo conventions
+
+Still early: menu bar UI and full capture flow are specced but not finished yet.

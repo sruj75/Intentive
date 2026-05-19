@@ -1,6 +1,6 @@
-# Intentive
+# Intentive macOS app
 
-Intentive is a macOS Tauri app that runs ScreenPipe capture, summarizes activity on-device, and pushes Context Snapshots to an OpenClaw Agent.
+Intentive macOS Tauri app that runs ScreenPipe capture, summarizes activity on-device, and pushes Context Snapshots to an OpenClaw Agent.
 
 ## Working rules
 

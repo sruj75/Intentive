@@ -2,11 +2,11 @@
 
 OpenClaw Agent needs timely, privacy-respecting context about what the signed-in user is doing on their Mac. Today, the OpenClaw Agent is effectively blind unless the user manually explains their current activity. Raw screen capture is too sensitive to send to a remote agent, and a foreground app would interrupt the user while they are working.
 
-Intentive should become the local infrastructure layer that quietly runs on macOS, manages capture and local summarization, produces Context Snapshots from recent activity, and pushes those snapshots to the OpenClaw Agent through the Agent Interface. The current repository is still a Tauri starter scaffold, so the v1 work is to turn that scaffold into the menu bar background service described by the existing specification, glossary, design notes, and ADRs.
+Intentive tauri should become the local infrastructure layer that quietly runs on macOS, manages capture and local summarization, produces Context Snapshots from recent activity, and pushes those snapshots to the OpenClaw Agent through the Agent Interface. The current repository is still a Tauri starter scaffold, so the v1 work is to turn that scaffold into the menu bar background service described by the existing specification, glossary, design notes, and ADRs.
 
 ## Solution
 
-Build Intentive as a macOS-only Tauri 2 background service with a menu bar icon and settings window. During a Capture Session, Intentive manages ScreenPipe as the local capture process, observes meaningful activity through ScreenPipe's local APIs, runs a 60-second Context Heartbeat, summarizes recent activity on-device through a bundled or detected Ollama instance, writes each sanitized Context Snapshot to local SQLite, and then pushes the snapshot JSON to the configured OpenClaw Agent endpoint over HTTPS.
+Build Intentive macOS-only Tauri 2 background service with a menu bar icon and settings window. During a Capture Session, Intentive manages ScreenPipe as the local capture process, observes meaningful activity through ScreenPipe's local APIs, runs a 60-second Context Heartbeat, summarizes recent activity on-device through a bundled or detected Ollama instance, writes each sanitized Context Snapshot to local SQLite, and then pushes the snapshot JSON to the configured OpenClaw Agent endpoint over HTTPS.
 
 The user-facing product remains intentionally quiet. Users start and stop capture from the menu bar, configure auth and Agent Interface settings from the settings window, and see setup or error states only when needed. Raw ScreenPipe data is consumed internally and is never stored in Intentive's snapshot log or sent to the OpenClaw Agent.
 

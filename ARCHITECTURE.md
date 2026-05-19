@@ -1,4 +1,4 @@
-# Intentive — Architecture
+# Architecture
 
 Contract for v1: a macOS Tauri background service that manages ScreenPipe capture, runs on-device summarization, logs Context Snapshots locally, and pushes them to the OpenClaw Agent. Domain terms live in `CONTEXT.md`; acceptance criteria in `SPEC.md`; decisions in `docs/adr/`.
 
