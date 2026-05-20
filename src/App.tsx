@@ -1,4 +1,10 @@
 import { useMemo } from "react";
+import {
+  AuthView,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from "@neondatabase/neon-js/auth/react/ui";
 import "./App.css";
 
 type Surface = "settings" | "sign-in";
@@ -13,28 +19,51 @@ function App() {
 
   if (surface === "sign-in") {
     return (
-      <main className="container">
-        <h1>Sign In</h1>
-        <p>
-          By signing in, you agree that Intentive will start a Capture Session
-          automatically each time you launch it. Activity is summarized
-          on-device; only the summary is sent to your OpenClaw Agent.
-        </p>
-        <p>
-          <em>Auth provider is not yet wired (Issue #3 ships the menu bar shell
-          only). The real sign-in flow will replace this placeholder.</em>
-        </p>
+      <main className="settings-shell">
+        <section className="settings-section settings-section--intro">
+          <h1>Sign In</h1>
+          <p>
+            Use the same Google identity connected to your OpenClaw Agent.
+            After sign-in, Intentive can begin capturing quietly from the menu
+            bar.
+          </p>
+        </section>
+        <section className="settings-section">
+          <AuthView />
+        </section>
       </main>
     );
   }
 
   return (
-    <main className="container">
-      <h1>Settings</h1>
-      <p>
-        Auth, OpenClaw Agent endpoint, and capture preferences will live here.
-        This placeholder ships with the menu bar shell (Issue #3).
-      </p>
+    <main className="settings-shell">
+      <section className="settings-section settings-section--intro">
+        <h1>Settings</h1>
+        <p>
+          Intentive runs from the menu bar. Settings keeps account access and
+          quiet app state in one place.
+        </p>
+      </section>
+
+      <section className="settings-section" aria-labelledby="account-heading">
+        <div className="settings-section__header">
+          <div>
+            <h2 id="account-heading">Account</h2>
+            <p>Google sign-in connects Intentive to your OpenClaw Agent.</p>
+          </div>
+          <SignedIn>
+            <UserButton />
+          </SignedIn>
+        </div>
+        <SignedOut>
+          <AuthView />
+        </SignedOut>
+      </section>
+
+      <section className="settings-section" aria-labelledby="status-heading">
+        <h2 id="status-heading">Status</h2>
+        <p>Intentive is not capturing.</p>
+      </section>
     </main>
   );
 }

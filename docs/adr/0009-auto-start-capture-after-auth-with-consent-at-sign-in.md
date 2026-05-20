@@ -26,5 +26,5 @@ Intentive does not capture without a signed-in user. If the user is not signed i
 
 - The menu bar toggle changes meaning: it is no longer "start/stop" but "stop" (when capturing) or "start" (when manually stopped). There is no separate start action on launch.
 - The sign-in flow must include an explicit consent screen before account creation. This is a v1 requirement, not a nice-to-have.
-- The placeholder Auth surface in settings (deferred per ADR-0003) must reserve space for this consent step even before the auth provider is wired up.
+- The Neon Auth surface in Settings must support this consent step as Auth moves from account UI to completed Capture Session gating.
 - "Capture runs without auth" is removed from the spec. Auth is now a hard prerequisite for any Capture Session.

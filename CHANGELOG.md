@@ -29,9 +29,13 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **`menu_bar` Rust module** (`src-tauri/src/menu_bar/`) — Tauri tray icon setup,
   menu descriptors, command handlers, state holder, and icon mapping for the v1
   menu bar shell. Tests cover menu shape, icon selection, toggle behavior, and
-  placeholder sign-in state transitions.
+  current stub sign-in state transitions.
 - **Menu bar resources** (`src-tauri/icons/tray/`) and Tauri config updates for
   idle, capturing, and error tray icons plus the hidden settings window.
+- **Neon Auth Settings surface** — React Settings now uses Neon Auth UI
+  (`@neondatabase/neon-js`) with Google as the intended provider, plus
+  `src/auth.ts` for the `VITE_NEON_AUTH_URL` boundary. Tests cover missing env,
+  Neon Auth rendering, and absence of manual endpoint/API key fields.
 - **ADR-0008** fixed the Context Heartbeat contract to a 10-minute cadence with
   Session End Marker emission on Capture Session end.
 - **ADR-0009** locked auto-start-after-Auth semantics and made sign-in consent
@@ -68,11 +72,12 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   than reporting a phantom `Tier::BundledOllama`. Real path lands when the
   bundled binary is acquired via Tauri resources. An `#[ignore]`d integration
   test (`integration_real_bundled_ollama_prepares_qwen`) is in place.
-- Real Auth remains unwired. The current menu bar sign-in surface is a placeholder
-  and should not be treated as completed Auth or consent in production behavior.
+- Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
+  present, but mapping a signed-in user to an OpenClaw Agent endpoint and
+  credential lands in the follow-up Auth/Data API slice.
 - Tauri runtime wiring is partial: the menu bar shell is installed and commands are
   registered, but startup LLM Provider resolution and production capture
   orchestration are still deferred.
 - ScreenPipe subprocess lifecycle, Context Heartbeat, SQLite snapshot log,
-  first-run download UI, auth — tracked against
+  first-run download UI, and completed Auth gating — tracked against
   [SPEC.md](SPEC.md) Build Phases.

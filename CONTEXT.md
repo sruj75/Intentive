@@ -1,6 +1,6 @@
 # Intentive
 
-Intentive is a macOS background service that captures what a user is doing on their computer, periodically compresses that activity into structured snapshots, and delivers them to an external agent. It is infrastructure, not a product — v1 has no behavioral intelligence of its own.
+Intentive is a macOS background service that captures what a user is doing on their computer, periodically compresses that activity into structured snapshots, and delivers them to an external agent. v1 is infrastructure-only: it has no behavioral intelligence of its own.
 
 ## Language
 
@@ -37,8 +37,12 @@ The external agent that consumes Context Snapshots. Intentive treats it as a bla
 _Avoid_: agent, AI, LLM (use OpenClaw Agent when referring to the specific consumer)
 
 **Agent Interface**:
-The push mechanism by which Intentive delivers Context Snapshots to the OpenClaw Agent over HTTPS. Intentive POSTs each snapshot as a JSON payload to a configured webhook URL on the OpenClaw Agent's GCP VM. The agent wakes up on receipt.
+The push mechanism by which Intentive delivers Context Snapshots to the OpenClaw Agent over HTTPS. Intentive POSTs each snapshot as a JSON payload to an Auth-resolved webhook URL on the OpenClaw Agent's GCP VM. The agent wakes up on receipt.
 _Avoid_: pull, polling, WebSocket, IPC
+
+**Settings**:
+The user-facing place for Intentive account state and quiet app status. Settings uses Neon Auth UI for sign-in/account controls and must not expose endpoint URLs, API keys, or ScreenPipe diagnostics.
+_Avoid_: preferences, developer settings, config panel
 
 ## Relationships
 
@@ -47,6 +51,7 @@ _Avoid_: pull, polling, WebSocket, IPC
 - A **Capture Session** always ends with a **Session End Marker** pushed via the **Agent Interface**
 - Each **Context Snapshot** is derived from raw data stored in ScreenPipe's local SQLite
 - **Context Snapshots** and **Session End Markers** are delivered to the **OpenClaw Agent** via the **Agent Interface**
+- **Settings** exposes **Auth** without exposing internal **Agent Interface** configuration
 
 ## Example dialogue
 
@@ -60,14 +65,16 @@ _Avoid_: pull, polling, WebSocket, IPC
 > **Domain expert:** "No — it always fires every 10 minutes. If the user watched the same video the whole time, the summary just says so. The OpenClaw Agent needs that signal to know the user is still active, not gone."
 
 **Auth**:
-The mechanism that links a user's Intentive installation to their OpenClaw Agent endpoint. Signing in retrieves the webhook URL and API key for that user's agent, and simultaneously grants consent for Intentive to auto-start a Capture Session on every subsequent launch. The sign-in flow includes an explicit consent step before the account is created — the user cannot complete sign-in without agreeing. Intentive does not capture without a signed-in user.
+The mechanism that links a user's Intentive installation to their OpenClaw Agent endpoint. Auth uses Neon Auth, built on Better Auth, with Google sign-in as the intended provider; signing in ultimately resolves the webhook URL and credential for that user's agent without exposing those values in Settings. Intentive does not capture without a signed-in user.
 _Avoid_: login, account (use "sign in" / "signed-in user")
 
 ## Flagged ambiguities
 
 - "push vs pull" for the Agent Interface — resolved: **push**. Intentive delivers snapshots to the OpenClaw Agent. The agent is event-driven and wakes when a snapshot arrives. See ADR-0004.
 - "agent" was used generically throughout early discussions — resolved: use **OpenClaw Agent** for the specific consumer, **Agent Interface** for the delivery mechanism.
-- Auth provider (Supabase vs Neon vs other) — deliberately deferred. Decision depends on what database the OpenClaw Agent backend uses; both projects are being built in parallel and must be compatible. Placeholder Auth and consent surfaces can ship before provider-backed Auth is wired, but capture still requires completed Auth.
+- Auth provider — resolved: **Neon Auth**. Neon Auth is built on Better Auth; Google is the intended v1 provider. Agent Interface endpoint and credential resolution remains internal and belongs behind Auth, not in Settings.
+- Manual endpoint URL and API key fields — rejected for the user-facing product model. They make Intentive feel like a developer platform; endpoint and credential configuration should be resolved behind Auth.
+- ScreenPipe readiness in Settings — rejected for v1 user-facing Settings. User-facing surfaces should present Intentive status when needed, not ScreenPipe internals.
 - "activity-gated heartbeat vs fixed interval" — resolved: **fixed 10-minute interval**. Activity-gating created an ambiguity between "user is idle" and "user quit." Fixed interval keeps the agent consistently informed and makes the Session End Marker the unambiguous signal for session termination. See ADR-0008.
 - "Session End Marker payload shape and agent handling" — **deliberately deferred**. Whether the OpenClaw Agent treats it differently from a regular Context Snapshot, and what fields it needs, depends on the agent-side contract not yet defined.
 - "auto-start capture vs explicit toggle" — resolved: **auto-start after auth**. Capture starts automatically when a signed-in user launches Intentive. The menu bar toggle is stop-only (or restart after manual stop). Consent is baked into the sign-in flow — completing sign-in grants permission for auto-start. See ADR-0009.

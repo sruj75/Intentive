@@ -49,7 +49,17 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ### Implementation status
 
-Core Rust modules exist for **`llm_provider`**, **`agent_interface`**, **`capture_state`**, and **`menu_bar`**. `src-tauri/src/lib.rs` now wires the menu bar shell with placeholder Auth surfaces. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot store, and real Auth are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
+Core Rust modules exist for **`llm_provider`**, **`agent_interface`**, **`capture_state`**, and **`menu_bar`**. `src-tauri/src/lib.rs` wires the menu bar shell, and `src/` now renders the Settings/Auth surface with Neon Auth UI. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot store, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
+
+### Environment
+
+The Settings/Auth surface requires:
+
+```bash
+VITE_NEON_AUTH_URL=<Neon Auth URL from the Neon Console>
+```
+
+`VITE_NEON_DATA_API_URL` is known for the current Neon project but intentionally unused until Auth-resolved Agent Interface configuration lands.
 
 ## Repository layout
 

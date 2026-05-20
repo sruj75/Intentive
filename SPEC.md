@@ -124,11 +124,13 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 **Settings window**
 - Triggered from menu bar
-- Fields: sign in / sign up with consent placeholder (deferred, placeholder for now), OpenClaw Agent endpoint URL, API key
-- ScreenPipe status display
-- Capture toggle
+- Auth/account surface uses Neon Auth UI with Google as the intended OAuth provider
+- Settings may mirror user-facing Intentive status, but it is not a ScreenPipe diagnostics panel
+- Agent Interface endpoint and credential details are resolved behind Auth, not entered by the user
 - Acceptance:
-  - [ ] Endpoint URL and API key are persisted across app restarts
+  - [ ] Settings renders Neon Auth sign-in/account controls
+  - [ ] Settings does not expose endpoint URL or API key fields
+  - [ ] Settings does not expose ScreenPipe readiness or diagnostics
   - [ ] Settings window can be closed without affecting an active Capture Session
   - [ ] Opening the sign-in surface alone does not mark the user signed in or start capture; only completed Auth plus consent can do that
 
@@ -146,7 +148,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 - **Transparency / history UI**: A window that shows recent Context Snapshots — what was captured, what was sent. The local SQLite log is already structured for this.
 - **Persist-and-retry**: Queue failed pushes to SQLite, replay when connectivity restores. Schema already has `pushed_at` for this.
-- **Auth provider**: Full sign in / sign up flow once the OpenClaw Agent backend database is finalized (Supabase vs Neon TBD).
+- **Auth-resolved Agent Interface configuration**: Map the signed-in Neon user to one OpenClaw Agent endpoint and credential without exposing those values in Settings.
 - **AI chat UI**: A window for the user to talk to OpenClaw Agent directly inside Intentive.
 - **Multiple agent endpoints**: Fan-out to more than one agent per user.
 - **Approach 2 (embed screenpipe-engine)**: If the ScreenPipe HTTP API cannot serve a specific need, embed `screenpipe-engine` as a Rust library for in-process control.
@@ -178,11 +180,10 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 
 ## Open Questions
 
-| Question | Owner | Blocking? |
-|---|---|---|
-| Auth provider (Supabase vs Neon) | Stakeholder — depends on OpenClaw Agent backend decision | No — auth is the last thing wired in v1 |
+No open blocking questions remain for the currently documented v1 contracts.
 
 **Resolved:**
+- Auth provider: Neon Auth, built on Better Auth. Google is the intended v1 OAuth provider.
 - Model tag: `qwen3.5:0.8b` — confirmed in Ollama registry. Tier 3 bundled model. Tier 2 uses existing models ≤ 5GB on disk, falls through to Tier 3 if none qualify.
 - Agent Interface headers: `Authorization` only. OpenClaw receiver will be built to conform to this contract. No `X-Intentive-Version` in v1.
 - Push timeout: **10 seconds**. On timeout or any non-2xx response, drop the snapshot per ADR-0005.
@@ -198,9 +199,9 @@ Intentive is built incrementally. Each phase is shippable on its own.
 | **1. Subprocess shell** | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator | Rust + Tauri CLI installed |
 | **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call | Phase 1 |
 | **3. Context Heartbeat** | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash | Phase 2 |
-| **4. Push pipeline** | HTTPS POST to OpenClaw endpoint, API key header, failure drop, `pushed_at` tracking | Phase 3, OpenClaw receiver ready |
-| **5. Settings window** | Endpoint URL + API key config, ScreenPipe status, capture toggle | Phase 4 |
-| **6. Auth** | Sign in / sign up wired to identity provider | Auth provider decision made |
+| **4. Settings window** | Neon Auth UI account surface; no manual endpoint/API key fields | Phase 1 |
+| **5. Auth-resolved config** | Signed-in Neon user resolves one OpenClaw endpoint and credential internally | Settings window, Neon Data API/RLS |
+| **6. Push pipeline** | HTTPS POST to OpenClaw endpoint, API key header, failure drop, `pushed_at` tracking | Phase 3, Auth-resolved config, OpenClaw receiver ready |
 
 ---
 
@@ -268,7 +269,6 @@ Raw ScreenPipe data (OCR text, audio transcript, app/window fields) is consumed 
 
 | Decision | Why deferred |
 |---|---|
-| Auth provider (Supabase vs Neon vs other) | Depends on OpenClaw Agent backend stack; both projects built in parallel |
 | Snapshot history / transparency UI | SQLite log is ready; UI is a future phase |
 | Push retry / persist-and-retry | v1 drops on failure; revisit when reliability matters |
 | Approach 2 (embed screenpipe-engine as Rust library) | Only if ScreenPipe HTTP API proves insufficient for a specific gap |

@@ -4,7 +4,7 @@ Contract for v1: a macOS Tauri background service that manages ScreenPipe captur
 
 ## Bird's-eye Overview
 
-Intentive sits between three external systems and one user:
+Intentive sits between four external systems and one user:
 
 ```
 ┌─────────────┐     HTTP/WS      ┌──────────────┐
@@ -22,13 +22,13 @@ Intentive sits between three external systems and one user:
                                           │ Tauri invoke / events
                                    ┌──────▼─────────┐
                                    │ Menu bar +     │
-                                   │ settings (React)│
+                                   │ settings (React)│◄── Neon Auth
                                    └────────────────┘
 ```
 
 **Capture Session** — Capture starts automatically when a signed-in user launches Intentive. Intentive spawns ScreenPipe and runs the **Context Heartbeat** on a fixed 10-minute cadence. Each cycle: query ScreenPipe for the preceding activity window → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface**. Stop, quit, or ScreenPipe crash ends the Capture Session and sends a **Session End Marker** before teardown. Intentive does not capture without Auth.
 
-**Current implementation state** — The repo is past starter scaffold for Rust domains (`llm_provider`, `agent_interface`, `capture_state`, `menu_bar`). `lib.rs` wires a menu bar shell with placeholder Auth surfaces and state transitions. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot persistence, and real Auth are still planned.
+**Current implementation state** — The repo is past starter scaffold for Rust domains (`llm_provider`, `agent_interface`, `capture_state`, `menu_bar`). `lib.rs` wires a menu bar shell with state transitions, and `src/` renders a Neon Auth Settings surface. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot persistence, and Auth-resolved Agent Interface configuration are still planned.
 
 **Platform** — macOS only (v1). No Windows/Linux, no in-app agent reasoning, no push retry queue (ADR-0005).
 
@@ -36,7 +36,8 @@ Intentive sits between three external systems and one user:
 
 | Path | Role |
 |------|------|
-| `src/` | React UI for settings and placeholder sign-in/consent surfaces. Keep it thin: Rust owns capture, summarization, persistence, and delivery. |
+| `src/` | React UI for Settings/Auth. Keep it thin: Rust owns capture, summarization, persistence, and delivery. |
+| `src/auth.ts` | Frontend Auth boundary. Creates the Neon Auth client from `VITE_NEON_AUTH_URL`, validates the env var clearly in development, and does not create a Neon Data API client. |
 | `src-tauri/src/lib.rs` | Tauri entry: plugins, command registration, setup, and app lifecycle. Installs the menu bar shell and prevents window close from quitting the service. |
 | `src-tauri/src/capture_state/` | Pure Capture Session shell state machine: unauthenticated, stopped, capturing, error. No Tauri dependencies. |
 | `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, state holder, and command handlers for the menu bar shell. Runtime wiring lives in `install`; state-to-menu/icon mapping stays unit-testable. |
@@ -74,10 +75,11 @@ Intentive sits between three external systems and one user:
 9. **Drop failed pushes** — No retry queue in v1; heartbeat continues on the next cycle (ADR-0005).
 10. **Fixed Context Heartbeat cadence** — During a Capture Session, the Context Heartbeat fires every 10 minutes regardless of activity level. There is no activity-gated skip path (ADR-0008).
 11. **Auth gates capture** — Intentive does not capture without a signed-in user. Completing sign-in includes explicit consent for future auto-start; opening the sign-in surface alone is not Auth (ADR-0009).
-12. **On-device summarization** — Raw ScreenPipe content is input to the LLM Provider only; only sanitized prose leaves the machine (plus metadata in the snapshot).
-13. **Push, not pull** — Intentive POSTs to the OpenClaw Agent; the agent does not poll the Mac (ADR-0004).
-14. **Menu bar agent UX** — No Dock icon; no persistent main window (ADR-0003). Settings and first-run/sign-in flows are separate windows.
-15. **ADR supremacy** — If code conflicts with `docs/adr/`, fix code or record a new ADR; do not drift silently.
+12. **Settings is not a developer config panel** — Endpoint URLs, API keys, ScreenPipe readiness, and capture diagnostics stay out of user-facing Settings. The signed-in Neon user resolves Agent Interface configuration behind Auth (ADR-0010).
+13. **On-device summarization** — Raw ScreenPipe content is input to the LLM Provider only; only sanitized prose leaves the machine (plus metadata in the snapshot).
+14. **Push, not pull** — Intentive POSTs to the OpenClaw Agent; the agent does not poll the Mac (ADR-0004).
+15. **Menu bar agent UX** — No Dock icon; no persistent main window (ADR-0003). Settings and first-run/sign-in flows are separate windows.
+16. **ADR supremacy** — If code conflicts with `docs/adr/`, fix code or record a new ADR; do not drift silently.
 
 **Mechanical enforcement today** — CI runs `npx tsc --noEmit`, `npm run build`, `npm test`, `cargo check`, `cargo clippy -- -D warnings`, and `cargo test` on every PR. Module tests use `wiremock` for HTTP boundaries. This repo does not use the harness `Types → Config → Repo → Service → Runtime → UI` layer stack; boundaries are enforced by module privacy, ADR review, and the gates above.
 
@@ -97,7 +99,7 @@ Intentive sits between three external systems and one user:
 
 ### Intentive ↔ OpenClaw Agent
 
-- **Interface** — `AgentInterface::push` — HTTPS POST to user-configured webhook URL, `Authorization: Bearer <api_key>`, 10s timeout.
+- **Interface** — `AgentInterface::push` — HTTPS POST to the Auth-resolved webhook URL, `Authorization: Bearer <api_key>`, 10s timeout.
 - **Semantics** — Agent is a black box; event-driven on receipt. Delivery requires Auth because Capture Sessions require a signed-in user.
 - **Failure** — Non-2xx, timeout, or network error → delivery dropped; local row kept with `pushed_at` null.
 - **Session End Marker** — Sent through the Agent Interface when a Capture Session ends. Payload shape is deliberately deferred until the OpenClaw Agent contract is defined.
@@ -105,7 +107,7 @@ Intentive sits between three external systems and one user:
 ### Intentive ↔ local data
 
 - **Snapshot log** — Separate Intentive SQLite DB, table `snapshots`, 7-day retention purge on launch (ADR-0007).
-- **Settings** — Endpoint URL, API key, capture preferences persisted across restarts (mechanism TBD; must not land in frontend-only storage).
+- **Settings** — Account state and rare safe preferences only. Agent endpoint and credential values are internal Auth-resolved configuration, not persisted through frontend-only Settings controls.
 
 ### Frontend ↔ Rust (Tauri)
 
@@ -115,8 +117,10 @@ Intentive sits between three external systems and one user:
 
 ### Auth
 
-- Provider (Supabase vs Neon) remains deferred until the OpenClaw Agent backend is finalized.
-- Auth links the user's Intentive installation to an OpenClaw Agent endpoint and API key.
+- Provider is Neon Auth, built on Better Auth, with Google as the intended v1 OAuth provider.
+- `src/auth.ts` owns frontend Auth client setup and `VITE_NEON_AUTH_URL` validation.
+- Auth links the user's Intentive installation to an OpenClaw Agent endpoint and API key without exposing those values in Settings.
+- Neon Data API reads for endpoint/credential resolution are deferred to the Auth-resolved config slice; `src/auth.ts` must not become the Data API client.
 - Completing sign-in includes explicit consent for Intentive to auto-start a Capture Session on future launches. The user cannot complete sign-in without consenting.
 - Until Auth is complete, Intentive remains unauthenticated and must not start ScreenPipe or a Context Heartbeat.
 
@@ -127,7 +131,7 @@ Intentive sits between three external systems and one user:
 
 ## Cross-cutting Concerns
 
-**Configuration** — LLM endpoints default in `ProviderConfig` (`screenpipe_url`, `ollama_url`). User-facing agent endpoint and API key belong in persisted settings surfaced from the settings window.
+**Configuration** — LLM endpoints default in `ProviderConfig` (`screenpipe_url`, `ollama_url`). `VITE_NEON_AUTH_URL` is required by the Settings/Auth surface. `VITE_NEON_DATA_API_URL` is known for the Neon project but intentionally unused until Auth-resolved Agent Interface configuration lands. Agent endpoint and API key values are not user-facing Settings config.
 
 **Logging and diagnostics** — Prefer structured Rust logging for heartbeat, provider tier, push results, and ScreenPipe child exit. ScreenPipe operational debugging: `.claude/skills/screenpipe-health`, `screenpipe-logs`, `screenpipe-api`.
 
@@ -135,8 +139,8 @@ Intentive sits between three external systems and one user:
 
 **Testing** — Rust: unit tests colocated (`agent_interface/tests`, `llm_provider/tests`, `wiremock` HTTP). Frontend: Vitest + Testing Library smoke tests. No E2E against real ScreenPipe in CI.
 
-**Security posture** — Summaries only cross the network boundary to OpenClaw; API key in `Authorization` header only (SPEC resolved questions). Webview CSP limits exfiltration from UI code.
+**Security posture** — Summaries only cross the network boundary to OpenClaw; API key in `Authorization` header only (SPEC resolved questions). Webview CSP limits exfiltration from UI code and explicitly allows the Neon Auth origin needed by the Settings/Auth surface.
 
 **Documentation hierarchy** — `ARCHITECTURE.md` (this file) = structure and invariants; `CONTEXT.md` = language; `SPEC.md` = behavior; `docs/adr/` = decisions; `DESIGN.md` = UI. Agents should read ADRs before changing boundaries.
 
-**Known debt affecting shape** — Real Auth is not wired; ScreenPipe manager, Context Heartbeat, Session End Marker, and snapshot store are absent; release packaging still needs macOS menu-bar-only verification beyond the current Accessory activation policy. Track against `SPEC.md` acceptance checklists.
+**Known debt affecting shape** — Neon Auth UI is wired, but Auth-resolved Agent Interface configuration is not. ScreenPipe manager, Context Heartbeat, Session End Marker, and snapshot store are absent; release packaging still needs macOS menu-bar-only verification beyond the current Accessory activation policy. Track against `SPEC.md` acceptance checklists.

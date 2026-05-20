@@ -31,11 +31,11 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 17. As an end user, I want Intentive to keep working silently during a Capture Session, so that it does not interrupt my flow every 10 minutes.
 19. As an end user, I want Intentive to continue after a failed push, so that a temporary network or OpenClaw Agent outage does not break future Context Heartbeats.
 20. As an end user, I want the settings window to be closable while capture continues, so that configuration is separate from the Capture Session lifecycle.
-21. As an end user, I want endpoint URL and API key settings to persist across restarts, so that I do not have to reconfigure Intentive every time.
+21. As an end user, I want signing in to connect Intentive to my OpenClaw Agent automatically, so that I do not have to manage endpoint URLs or API keys.
 22. As an end user, I want the sign-in flow to include a consent step before my account is created, so that I explicitly agree to Intentive capturing my activity before it begins.
-22b. As an end user, I want a placeholder sign in / sign up surface in settings that reserves space for the consent step, so that the v1 UI has a home for Auth even while the provider decision is deferred.
-23. As an end user, I want to see ScreenPipe status in settings, so that I can diagnose capture readiness without reading logs.
-24. As an end user, I want a capture toggle in settings, so that I can control Capture Session state from the same place I configure Intentive.
+22b. As an end user, I want the Settings window to show the Neon Auth sign-in/account surface, so that identity is handled in one familiar place.
+23. As an end user, I want Settings to avoid internal diagnostics, so that Intentive feels like a product rather than a developer configuration panel.
+24. As an end user, I want Settings to mirror simple Intentive status when useful, while the menu bar remains the primary Capture Session control.
 25. As an end user, I want Intentive to retain a local record of recent Context Snapshots, so that a future transparency UI can show what was captured and sent.
 26. As an end user, I want local snapshot retention to be limited, so that Intentive does not accumulate an indefinite activity history.
 27. As an agent builder, I want Intentive to push Context Snapshots to the OpenClaw Agent, so that the OpenClaw Agent wakes up when new activity context exists.
@@ -57,7 +57,7 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 43. As an agent builder, I want the bundled local model tag locked to `qwen3.5:0.8b`, so that first-run setup does not pull a nonexistent model.
 44. As an agent builder, I want snapshot writes to happen before push attempts, so that local audit state exists even when network delivery fails.
 45. As an agent builder, I want snapshots older than 7 days purged on launch, so that retention is bounded by default.
-46. As an agent builder, I want Auth deferred behind a stable placeholder, so that the rest of v1 can ship before the OpenClaw Agent backend identity decision is final.
+46. As an agent builder, I want Neon Auth to be the v1 identity foundation, so that Intentive and the OpenClaw Agent can share a database-backed user identity.
 47. As an agent builder, I want the configured endpoint to be one OpenClaw Agent endpoint per user in v1, so that fan-out and multi-agent delivery do not complicate the first implementation.
 48. As a developer, I want the starter React UI removed or replaced, so that no Tauri template behavior leaks into Intentive.
 49. As a developer, I want Tauri commands and Rust modules organized around Intentive domain concepts, so that subprocess, heartbeat, storage, and Agent Interface behavior can be tested independently.
@@ -88,15 +88,15 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 - Intentive writes each Context Snapshot to a local SQLite snapshots table before attempting to push it.
 - The local snapshots table stores id, captured_at, period_start, period_end, summary, and nullable pushed_at.
 - Snapshot retention is 7 days. Entries older than 7 days are purged automatically on launch.
-- The Agent Interface is HTTPS POST to the configured OpenClaw Agent endpoint.
+- The Agent Interface is HTTPS POST to the Auth-resolved OpenClaw Agent endpoint.
 - The OpenClaw Agent is event-driven and wakes when a Context Snapshot arrives. Pull and polling from the OpenClaw Agent are out of scope.
 - The push request includes JSON payload fields id, captured_at, period_start, period_end, and summary. Session End Marker payload shape is deferred until the OpenClaw Agent contract is defined.
-- The push request includes an Authorization header containing the configured API key.
+- The push request includes an Authorization header containing the Auth-resolved credential.
 - Push success updates pushed_at locally.
 - Push failure from network error, timeout, or non-2xx response does not crash or stall the Context Heartbeat. The failed snapshot is dropped for v1 and pushed_at remains null.
-- Settings persist endpoint URL and API key across app restarts.
-- The settings window includes placeholder Auth controls for sign in / sign up, but provider-backed Auth is deferred.
-- The settings window includes ScreenPipe status and a Capture Session toggle.
+- Settings uses Neon Auth UI for sign-in/account controls, with Google as the intended OAuth provider.
+- Settings does not expose endpoint URL, API key, ScreenPipe diagnostics, or internal Agent Interface configuration.
+- Auth-resolved Agent Interface configuration is internal: a signed-in Neon user resolves one OpenClaw Agent endpoint and credential for push delivery.
 - Auto-start on login, native repeated failure notifications, and model warm-up are nice-to-have follow-on enhancements, not required for the first PRD implementation.
 - The main deep modules to build are: menu bar application shell, settings and setup UI, ScreenPipe process manager, Ollama process/model manager, Context Heartbeat, summarization prompt runner, local snapshot store, Agent Interface push client, app configuration store, and lifecycle/state coordinator.
 
@@ -109,7 +109,7 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 - Summarization tests should verify prompt constraints and output handling without depending on a real local model in ordinary unit tests.
 - Snapshot store tests should cover schema creation, inserting snapshots, marking pushed_at, leaving pushed_at null on failure, and 7-day retention purge.
 - Agent Interface tests should cover JSON payload shape, Authorization header, success handling, non-2xx handling, timeout handling, and network error handling against a local fake server or mocked HTTP client.
-- Settings/config tests should cover persisted endpoint URL and API key, reload across restarts, and missing/invalid configuration behavior.
+- Settings/Auth tests should cover Neon Auth UI rendering, missing `VITE_NEON_AUTH_URL`, absence of manual endpoint/API key fields, and missing/invalid Auth-resolved configuration behavior.
 - UI tests should cover user-visible state transitions for stopped, capturing, setup, and error states without asserting CSS implementation details.
 - End-to-end or manual smoke coverage should prove that a Capture Session can start, produce at least one fake or local Context Snapshot, write it locally, and attempt a push to a controlled test endpoint.
 - Build verification should include the standard TypeScript/Vite build and Rust/Tauri checks available in the repository.
@@ -121,7 +121,7 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 - Transparency/history UI for reviewing recent Context Snapshots.
 - Persist-and-retry or replay of failed snapshot pushes.
 - Windows and Linux support.
-- Full Auth provider integration.
+- Alternative Auth provider integration.
 - Multiple OpenClaw Agent endpoints or fan-out.
 - AI chat UI inside Intentive.
 - Direct embedding of `screenpipe-engine` as a Rust library, unless ScreenPipe's HTTP API proves insufficient for a specific v1 requirement.
@@ -132,4 +132,4 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 
 - Use the glossary in CONTEXT.md exactly: Intentive, ScreenPipe, Capture Session, Context Snapshot, Context Heartbeat, OpenClaw Agent, Agent Interface, and Auth.
 - The PRD intentionally follows the ADR decisions already present in the repo: Tauri over Electron, ScreenPipe CLI wrapping, menu bar-only v1 UI, push-based Agent Interface, dropping failed pushes in v1, Ollama for on-device summarization, and local snapshot storage with retention.
-- The repository still contains Tauri starter UI alongside early Rust modules (`llm_provider`, `agent_interface`). Remaining v1 work replaces template UI/commands and wires ScreenPipe lifecycle, Context Heartbeat, and snapshot storage behind the locked contracts above.
+- The repository has replaced the starter React UI with an Intentive Settings/Auth surface and early Rust modules (`llm_provider`, `agent_interface`, `capture_state`, `menu_bar`). Remaining v1 work wires ScreenPipe lifecycle, Context Heartbeat, snapshot storage, and Auth-resolved Agent Interface configuration behind the locked contracts above.
