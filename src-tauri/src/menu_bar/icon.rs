@@ -4,9 +4,9 @@
 
 use crate::capture_state::CaptureState;
 
-const IDLE: &str = "icons/tray/menu-icon-idle.png";
-const CAPTURING: &str = "icons/tray/menu-icon-capturing.png";
-const ERROR: &str = "icons/tray/menu-icon-error.png";
+const IDLE: &str = "icons/tray/status-item-idle.png";
+const CAPTURING: &str = "icons/tray/status-item-capturing.png";
+const ERROR: &str = "icons/tray/status-item-error.png";
 
 pub fn path_for(state: &CaptureState) -> &'static str {
     match state {

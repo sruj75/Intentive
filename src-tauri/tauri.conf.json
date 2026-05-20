@@ -36,9 +36,9 @@
       "icons/icon.icns"
     ],
     "resources": [
-      "icons/tray/menu-icon-idle.png",
-      "icons/tray/menu-icon-capturing.png",
-      "icons/tray/menu-icon-error.png"
+      "icons/tray/status-item-idle.png",
+      "icons/tray/status-item-capturing.png",
+      "icons/tray/status-item-error.png"
     ]
   }
 }

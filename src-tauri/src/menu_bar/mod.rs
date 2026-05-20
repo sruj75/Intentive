@@ -18,11 +18,18 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{App, AppHandle, Manager, WindowEvent, Wry};
 
-use crate::capture_state::{ErrorReason, StubAuthChecker};
+use crate::capture_state::{CaptureState, ErrorReason, StubAuthChecker};
 
 use self::icon::path_for;
 use self::menu::{describe, MenuItemDescriptor};
 use self::state_holder::StateHolder;
+
+/// Whether macOS should treat the tray icon as a template image (auto-tint
+/// for light/dark mode). Template mode strips color, so the capturing/error
+/// variants — whose colored dots encode state — opt out.
+fn icon_is_template(state: &CaptureState) -> bool {
+    matches!(state, CaptureState::Unauthenticated | CaptureState::Stopped)
+}
 
 pub const MENU_ID_SIGN_IN: &str = "intentive.sign_in";
 pub const MENU_ID_TOGGLE: &str = "intentive.toggle_capture";
@@ -64,12 +71,10 @@ pub fn install(app: &mut App, stub_auth: Arc<StubAuthChecker>) -> Result<(), Men
     let holder_for_events = holder.clone();
     let stub_for_events = stub_auth.clone();
 
+    let initial_state = holder.snapshot();
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(initial_icon)
-        // Template mode strips color so macOS can recolor for light/dark
-        // appearance. Disabled because the capturing/error variants encode
-        // state via colored dots that must be preserved.
-        .icon_as_template(false)
+        .icon_as_template(icon_is_template(&initial_state))
         .menu(&initial_menu)
         .on_menu_event(move |handle, event| {
             handle_menu_event(handle, &holder_for_events, &stub_for_events, event.id().0.as_str());
@@ -127,6 +132,7 @@ fn refresh_tray(app: &AppHandle, holder: &Arc<StateHolder>) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         if let Ok(icon) = load_icon(app, path_for(&snapshot)) {
             let _ = tray.set_icon(Some(icon));
+            let _ = tray.set_icon_as_template(icon_is_template(&snapshot));
         }
         if let Ok(new_menu) = build_menu(app, holder) {
             let _ = tray.set_menu(Some(new_menu));

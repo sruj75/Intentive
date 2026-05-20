@@ -91,19 +91,19 @@ fn menu_for_error_shows_disabled_info_text_and_no_toggle() {
 
 #[test]
 fn icon_for_unauthenticated_and_stopped_is_idle() {
-    assert!(path_for(&CaptureState::Unauthenticated).ends_with("menu-icon-idle.png"));
-    assert!(path_for(&CaptureState::Stopped).ends_with("menu-icon-idle.png"));
+    assert!(path_for(&CaptureState::Unauthenticated).ends_with("status-item-idle.png"));
+    assert!(path_for(&CaptureState::Stopped).ends_with("status-item-idle.png"));
 }
 
 #[test]
 fn icon_for_capturing_is_recording_dot() {
-    assert!(path_for(&CaptureState::Capturing).ends_with("menu-icon-capturing.png"));
+    assert!(path_for(&CaptureState::Capturing).ends_with("status-item-capturing.png"));
 }
 
 #[test]
 fn icon_for_error_is_warning_dot() {
     let reason = ErrorReason::new("anything".to_string()).unwrap();
-    assert!(path_for(&CaptureState::Error(reason)).ends_with("menu-icon-error.png"));
+    assert!(path_for(&CaptureState::Error(reason)).ends_with("status-item-error.png"));
 }
 
 #[test]

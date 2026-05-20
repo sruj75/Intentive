@@ -44,7 +44,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 ### Changed
 
 - **Issue #2 decisions locked and documented**
-  ([#2](https://github.com/sruj75/v1-macOS/issues/2)):
+  ([#2](https://github.com/sruj75/v1-tauri/issues/2)):
   - Tier 3 bundled model confirmed: `qwen3.5:0.8b` (verified in Ollama registry).
   - Tier 2 model selection rule encoded in
     [ADR-0006](docs/adr/0006-ollama-for-on-device-summarization.md): loaded model
