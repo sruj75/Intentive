@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues in `sruj75/v1-MacOS`.
+Issues and PRDs for this repo live as GitHub issues in `sruj75/v1-tauri`.
 Use the `gh` CLI for issue operations from inside this clone.
 
 ## Conventions

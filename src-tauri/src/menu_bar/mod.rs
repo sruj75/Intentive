@@ -18,6 +18,7 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{App, AppHandle, Manager, WindowEvent, Wry};
 
+use crate::capture_session::CaptureSessionManager;
 use crate::capture_state::{CaptureState, ErrorReason, StubAuthChecker};
 
 use self::icon::path_for;
@@ -77,7 +78,12 @@ pub fn install(app: &mut App, stub_auth: Arc<StubAuthChecker>) -> Result<(), Men
         .icon_as_template(icon_is_template(&initial_state))
         .menu(&initial_menu)
         .on_menu_event(move |handle, event| {
-            handle_menu_event(handle, &holder_for_events, &stub_for_events, event.id().0.as_str());
+            handle_menu_event(
+                handle,
+                &holder_for_events,
+                &stub_for_events,
+                event.id().0.as_str(),
+            );
         })
         .build(&app_handle)?;
 
@@ -108,10 +114,11 @@ fn handle_menu_event(
             let _ = commands::open_sign_in_surface_inner(holder, stub);
             open_settings_window(app, true);
             refresh_tray(app, holder);
+            dispatch_capture_session(app, holder);
         }
-        MENU_ID_TOGGLE => {
-            let _ = commands::toggle_capture_inner(holder);
+        MENU_ID_TOGGLE if commands::toggle_capture_inner(holder).is_ok() => {
             refresh_tray(app, holder);
+            dispatch_capture_session(app, holder);
         }
         MENU_ID_SETTINGS => {
             let _ = commands::open_settings_inner(holder);
@@ -127,7 +134,33 @@ fn handle_menu_event(
     }
 }
 
-fn refresh_tray(app: &AppHandle, holder: &Arc<StateHolder>) {
+/// Translate the FSM's new state into a lifecycle call on the capture session
+/// manager. Runs on the async runtime so the menu event handler stays
+/// non-blocking; refreshes the tray afterwards to catch any Error transition
+/// the manager makes from inside its watcher task.
+fn dispatch_capture_session(app: &AppHandle, holder: &Arc<StateHolder>) {
+    let manager = app
+        .try_state::<Arc<CaptureSessionManager>>()
+        .map(|s| s.inner().clone());
+    let Some(manager) = manager else {
+        // Setup hasn't completed yet (e.g. install() running before lib.rs
+        // wires the manager). Nothing to dispatch.
+        return;
+    };
+    let new_state = holder.snapshot();
+    let app = app.clone();
+    let holder = holder.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = match new_state {
+            CaptureState::Capturing => manager.start().await,
+            CaptureState::Stopped => manager.stop().await,
+            _ => Ok(()),
+        };
+        refresh_tray(&app, &holder);
+    });
+}
+
+pub(crate) fn refresh_tray(app: &AppHandle, holder: &Arc<StateHolder>) {
     let snapshot = holder.snapshot();
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         if let Ok(icon) = load_icon(app, path_for(&snapshot)) {
@@ -152,7 +185,10 @@ fn open_settings_window(app: &AppHandle, sign_in_surface: bool) {
     }
 }
 
-fn load_icon(app: &AppHandle, resource_relative: &str) -> Result<tauri::image::Image<'static>, MenuBarError> {
+fn load_icon(
+    app: &AppHandle,
+    resource_relative: &str,
+) -> Result<tauri::image::Image<'static>, MenuBarError> {
     let resolved = app
         .path()
         .resolve(resource_relative, tauri::path::BaseDirectory::Resource)
@@ -207,7 +243,9 @@ fn build_menu(app: &AppHandle, holder: &Arc<StateHolder>) -> Result<Menu<Wry>, M
 
 #[tauri::command]
 pub fn toggle_capture(state: tauri::State<'_, Arc<StateHolder>>) -> Result<(), String> {
-    commands::toggle_capture_inner(state.inner()).map(|_| ()).map_err(|e| e.to_string())
+    commands::toggle_capture_inner(state.inner())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -236,4 +274,3 @@ pub fn simulate_error(state: tauri::State<'_, Arc<StateHolder>>, app: AppHandle)
         refresh_tray(&app, state.inner());
     }
 }
-

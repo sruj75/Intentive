@@ -1,8 +1,8 @@
 # Intentive
 
-macOS background service that captures on-device activity via [ScreenPipe](https://github.com/mediar-ai/screenpipe), summarizes it into **Context Snapshots**, and pushes them to an **OpenClaw Agent**. v1 is infrastructure only — no in-app agent reasoning.
+macOS background service that captures on-device activity via [ScreenPipe](https://github.com/screenpipe/screenpipe), summarizes it into **Context Snapshots**, and pushes them to an **OpenClaw Agent**. v1 is infrastructure only — no in-app agent reasoning.
 
-**Stack:** Tauri 2 (Rust) + React + TypeScript (Vite). **Platform:** macOS only.
+**Stack:** Tauri 2 (Rust) + React + TypeScript (Vite). **Platform:** Apple Silicon macOS for v1.
 
 ## How it works
 
@@ -21,7 +21,7 @@ Details: [`ARCHITECTURE.md`](ARCHITECTURE.md). Domain terms: [`CONTEXT.md`](CONT
 
 ## Prerequisites
 
-- macOS (v1 target)
+- macOS on **Apple Silicon (M-series)** — v1 does not support Intel Macs (ADR-0014)
 - [Node.js](https://nodejs.org/) 22+ and npm
 - [Rust](https://www.rust-lang.org/tools/install) (stable)
 - Xcode Command Line Tools (for native builds)
@@ -49,7 +49,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ### Implementation status
 
-Core Rust modules exist for **`llm_provider`**, **`agent_interface`**, **`capture_state`**, and **`menu_bar`**. `src-tauri/src/lib.rs` wires the menu bar shell, and `src/` now renders the Settings/Auth surface with Neon Auth UI. ScreenPipe lifecycle, Context Heartbeat, Session End Marker delivery, snapshot store, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
+Core Rust modules exist for **`capture_session`**, **`capture_state`**, **`menu_bar`**, **`llm_provider`**, and **`agent_interface`**. `src-tauri/src/lib.rs` wires the menu bar shell and ScreenPipe lifecycle manager, and `src/` renders the Settings/Auth surface with Neon Auth UI. Context Heartbeat, Session End Marker delivery, snapshot store, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
 
 ### Environment
 
@@ -68,9 +68,11 @@ VITE_NEON_AUTH_URL=<Neon Auth URL from the Neon Console>
 | `src/` | React UI |
 | `src-tauri/` | Tauri app, orchestration, and Rust domains |
 | `src-tauri/src/capture_state/` | Capture Session shell state machine |
+| `src-tauri/src/capture_session/` | ScreenPipe child-process lifecycle manager |
 | `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and menu commands |
 | `src-tauri/src/llm_provider/` | On-device summarization |
 | `src-tauri/src/agent_interface/` | HTTPS push to OpenClaw Agent |
+| `src-tauri/resources/` | Bundled native artifacts, including ScreenPipe |
 | `references/` | ScreenPipe / Ollama API notes |
 | `docs/adr/` | Architectural decision records |
 

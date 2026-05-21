@@ -32,6 +32,14 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   current stub sign-in state transitions.
 - **Menu bar resources** (`src-tauri/icons/tray/`) and Tauri config updates for
   idle, capturing, and error tray icons plus the hidden settings window.
+- **`capture_session` Rust module** (`src-tauri/src/capture_session/`) —
+  ScreenPipe child-process lifecycle manager with pre-spawn port probing, start,
+  stop, duplicate-start protection, one silent crash retry, and persistent Capture
+  Error transitions. Eight tests cover the public `start`/`stop` behavior with
+  fake process boundaries.
+- **Bundled ScreenPipe resource** (`src-tauri/resources/screenpipe`) from the
+  official `@screenpipe/cli-darwin-arm64@0.3.336` package, listed in Tauri
+  resources and launched as `screenpipe record --port 44380`.
 - **Neon Auth Settings surface** — React Settings now uses Neon Auth UI
   (`@neondatabase/neon-js`) with Google as the intended provider, plus
   `src/auth.ts` for the `VITE_NEON_AUTH_URL` boundary. Tests cover missing env,
@@ -40,6 +48,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   Session End Marker emission on Capture Session end.
 - **ADR-0009** locked auto-start-after-Auth semantics and made sign-in consent
   the gate before capture can begin.
+- **ADR-0011/0012/0013/0014** document ScreenPipe retry behavior, shutdown-intent
+  routing, unique bundled ports (`44380`/`44381`), and macOS CPU-variant rules
+  for bundled native artifacts.
 - **Issue #3 smoke checklist** (`docs/smoke-issue-3.md`) for manually verifying
   the menu bar shell states.
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
@@ -64,6 +75,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   [ARCHITECTURE.md](ARCHITECTURE.md) now describe signed-in auto-start, consent
   as the Auth gate, fixed 10-minute Context Heartbeat behavior, and Session End
   Marker delivery.
+- ScreenPipe integration now uses Intentive-owned port `44380` instead of
+  ScreenPipe's default `3030`; bundled Ollama remains reserved for `44381`
+  while existing user Ollama stays on `11434`.
 
 ### Deferred
 
@@ -75,9 +89,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
   present, but mapping a signed-in user to an OpenClaw Agent endpoint and
   credential lands in the follow-up Auth/Data API slice.
-- Tauri runtime wiring is partial: the menu bar shell is installed and commands are
-  registered, but startup LLM Provider resolution and production capture
-  orchestration are still deferred.
-- ScreenPipe subprocess lifecycle, Context Heartbeat, SQLite snapshot log,
-  first-run download UI, and completed Auth gating — tracked against
-  [SPEC.md](SPEC.md) Build Phases.
+- Tauri runtime wiring is partial: the menu bar shell and ScreenPipe subprocess
+  manager are installed, but startup LLM Provider resolution, Context Heartbeat,
+  SQLite snapshot log, first-run download UI, and completed Auth gating are still
+  deferred and tracked against [SPEC.md](SPEC.md) Build Phases.

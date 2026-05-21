@@ -7,7 +7,7 @@ Intentive macOS Tauri app that runs ScreenPipe capture, summarizes activity on-d
 - Use domain vocabulary from `CONTEXT.md` (Intentive, ScreenPipe, Context Snapshot, Context Heartbeat, OpenClaw Agent, and related terms).
 - Read `ARCHITECTURE.md` before changing module boundaries, orchestration, or integration seams.
 - If work conflicts with an ADR in `docs/adr/`, call it out explicitly instead of overriding silently.
-- v1 is macOS-only; capture, summarization, and delivery logic live primarily in Rust under `src-tauri/`.
+- v1 is Apple Silicon macOS-only; capture, summarization, and delivery logic live primarily in Rust under `src-tauri/`.
 - Settings/Auth uses Neon Auth UI. Keep endpoint URLs, API keys, and ScreenPipe diagnostics out of user-facing Settings; Auth-resolved Agent Interface configuration is a later slice.
 - Keep changes scoped; match naming and patterns in the module you are editing.
 - When changing UI, read `DESIGN.md` and `.claude/commands/macos-design.md` (plus `.claude/commands/references/` as that command directs).

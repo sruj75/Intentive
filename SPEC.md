@@ -25,6 +25,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 | Behavioral analysis or goal comparison | That is OpenClaw Agent's job. Intentive delivers context, the agent reasons about it. |
 | Transparency / history UI | The SQLite log is ready for it, but the UI is a future phase. |
 | Windows or Linux support | macOS-only for v1. ScreenPipe and Ollama both support cross-platform but broadening the target adds QA scope we do not have. |
+| Intel Mac support | v1 targets **Apple Silicon (M-series) Macs only**. Intentive bundles `@screenpipe/cli-darwin-arm64` only (ADR-0014). Intel (`cli-darwin-x64`) and packaging strategy (separate builds vs dual-binary app) are future decisions. |
 | Push retry / persist-and-retry | Adds meaningful complexity. Acceptable to drop failed snapshots in v1. |
 | AI chat UI inside the app | Future. A separate window for talking to OpenClaw directly is v2+. |
 | Multiple agent endpoints | One endpoint per user in v1. Fan-out to multiple agents is a future concern. |
@@ -57,13 +58,16 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 **Subprocess management — ScreenPipe**
 - Intentive bundles the ScreenPipe CLI binary in Tauri resources
-- On signed-in launch or manual restart, spawns ScreenPipe as a child process; kills it on stop or quit
+- On signed-in launch or manual restart, spawns ScreenPipe as a child process on `127.0.0.1:44380`; kills it on stop or quit
 - Intentive does not spawn ScreenPipe without completed Auth and consent
-- If ScreenPipe crashes, the menu bar status updates to "error" state
+- If ScreenPipe exits unexpectedly, Intentive retries once silently; a second unexpected exit moves the menu bar to error state
+- If port `44380` is already in use, Intentive enters error state without spawning ScreenPipe
 - Acceptance:
   - [ ] ScreenPipe starts automatically when a signed-in user launches Intentive
   - [ ] ScreenPipe does not start for an unauthenticated user
   - [ ] ScreenPipe stops when the user toggles capture off or quits Intentive
+  - [ ] Duplicate start actions do not create duplicate ScreenPipe processes
+  - [ ] One unexpected ScreenPipe exit is retried silently; a second unexpected exit surfaces error
   - [ ] Status indicator reflects live state: capturing / stopped / error
 
 **LLM Provider detection**
@@ -84,7 +88,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 **Context Heartbeat**
 - Fires every 10 minutes during a Capture Session
 - Always fires on schedule; it does not skip quiet or unchanged windows
-- Queries ScreenPipe HTTP API (`localhost:3030`) for activity data from the preceding 10-minute window
+- Queries ScreenPipe HTTP API (`localhost:44380`) for activity data from the preceding 10-minute window
 - Sends raw activity to Ollama with a privacy-guarded prompt; receives prose summary
 - Acceptance:
   - [ ] Heartbeat fires on the 10-minute cadence during a Capture Session, even when state is unchanged
@@ -218,7 +222,7 @@ macOS (user's machine)
 │   └── HTTPS push → OpenClaw Agent (GCP VM)
 │
 ├── ScreenPipe CLI binary (bundled)
-│   └── HTTP API on localhost:3030
+│   └── HTTP API on localhost:44380
 │
 └── LLM Provider (resolved at startup)
     ├── Tier 1: Apple Intelligence (ScreenPipe /ai/chat/completions)

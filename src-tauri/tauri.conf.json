@@ -36,6 +36,7 @@
       "icons/icon.icns"
     ],
     "resources": [
+      "resources/screenpipe",
       "icons/tray/status-item-idle.png",
       "icons/tray/status-item-capturing.png",
       "icons/tray/status-item-error.png"

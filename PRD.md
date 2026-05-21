@@ -6,7 +6,7 @@ Intentive should become the local infrastructure layer that quietly runs on macO
 
 ## Solution
 
-Build Intentive as a macOS-only Tauri 2 background service with a menu bar icon and settings window. A Capture Session starts automatically when a signed-in user launches Intentive. During a Capture Session, Intentive manages ScreenPipe as the local capture process, runs a fixed 10-minute Context Heartbeat, summarizes recent activity on-device through a bundled or detected Ollama instance, writes each sanitized Context Snapshot to local SQLite, and then pushes the snapshot JSON to the configured OpenClaw Agent endpoint over HTTPS.
+Build Intentive as an Apple Silicon macOS Tauri 2 background service with a menu bar icon and settings window. A Capture Session starts automatically when a signed-in user launches Intentive. During a Capture Session, Intentive manages ScreenPipe as the local capture process, runs a fixed 10-minute Context Heartbeat, summarizes recent activity on-device through a bundled or detected Ollama instance, writes each sanitized Context Snapshot to local SQLite, and then pushes the snapshot JSON to the configured OpenClaw Agent endpoint over HTTPS.
 
 The user-facing product remains intentionally quiet. Capture starts on launch and runs in the background; users can stop and restart it from the menu bar. Auth includes an explicit consent step before account creation. Raw ScreenPipe data is consumed internally and is never stored in Intentive's snapshot log or sent to the OpenClaw Agent.
 
@@ -66,17 +66,17 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 ## Implementation Decisions
 
 - Intentive remains a Tauri 2 application using Rust for native process, storage, and menu bar responsibilities, and TypeScript + React for settings and setup UI.
-- Intentive is macOS-only for v1.
+- Intentive is macOS-only for v1, on **Apple Silicon (M-series) Macs only**; Intel Macs and dual-arch packaging are deferred (ADR-0014).
 - The v1 UI is menu bar plus settings window only. There is no persistent main window, AI chat UI, or history/transparency UI in this PRD.
 - The app should be configured as a menu bar agent with no Dock icon.
 - The existing Tauri/Vite starter UI and greet command are scaffolding and should be replaced by Intentive-specific surfaces and commands.
 - ScreenPipe is integrated by bundling and spawning the ScreenPipe CLI binary. Intentive wraps ScreenPipe and communicates over ScreenPipe's local HTTP and WebSocket APIs.
-- ScreenPipe's HTTP API on localhost:3030 is the primary integration boundary. Intentive does not read ScreenPipe's SQLite database directly unless the API proves insufficient for a specific need.
+- ScreenPipe's HTTP API on localhost:44380 is the primary integration boundary for the Intentive-owned bundled process. Intentive does not read ScreenPipe's SQLite database directly unless the API proves insufficient for a specific need.
 - A Capture Session starts automatically when a signed-in user launches Intentive. Intentive does not capture without a signed-in user. The menu bar toggle stops (or restarts) capture manually; there is no separate start action on launch. See ADR-0009.
 - Capture Session state is owned by Intentive and maps to ScreenPipe process lifecycle: auto-start on signed-in launch spawns ScreenPipe, stop kills the child process owned by Intentive, and quit stops capture cleanly.
-- ScreenPipe crash or unexpected exit moves Intentive into an error state visible from the menu bar and settings.
+- ScreenPipe crash or unexpected exit triggers one silent retry; a second unexpected exit moves Intentive into an error state visible from the menu bar and settings.
 - The **LLM Provider** resolves at startup in priority order (see ADR-0006): (1) Apple Intelligence via ScreenPipe `/ai/status` and `/ai/chat/completions`, (2) existing Ollama at `localhost:11434` — use the loaded model or the first installed model ≤ 5GB on disk, fall through to Tier 3 if none qualify, (3) bundled Ollama with `qwen3.5:0.8b` pulled on first run.
-- Intentive owns summarization readiness around ScreenPipe (`localhost:3030`) and Ollama (`localhost:11434`) and must detect unresolvable port conflicts for the bundled path.
+- Intentive owns summarization readiness around ScreenPipe (`localhost:44380` for the bundled process), existing Ollama (`localhost:11434`), and bundled Ollama (`localhost:44381`) and must detect unresolvable port conflicts for bundled paths.
 - First-run setup pulls `qwen3.5:0.8b` only when Tier 3 is needed (including Tier 2 fallthrough) and presents progress as Intentive setup, not as an exposed Ollama configuration screen.
 - **Locked (issue #2):** Tier 3 model tag is `qwen3.5:0.8b` (verified in Ollama registry). Agent Interface payload is exactly five JSON fields (`id`, `captured_at`, `period_start`, `period_end`, `summary`) with `Authorization: Bearer` and a 10-second push timeout; see `src-tauri/src/agent_interface/` and SPEC.md **Resolved**.
 - The Context Heartbeat is an internal service that runs on a fixed 10-minute cadence during a Capture Session. It always fires — there is no activity-gated skipping. See ADR-0008.
@@ -132,4 +132,4 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 
 - Use the glossary in CONTEXT.md exactly: Intentive, ScreenPipe, Capture Session, Context Snapshot, Context Heartbeat, OpenClaw Agent, Agent Interface, and Auth.
 - The PRD intentionally follows the ADR decisions already present in the repo: Tauri over Electron, ScreenPipe CLI wrapping, menu bar-only v1 UI, push-based Agent Interface, dropping failed pushes in v1, Ollama for on-device summarization, and local snapshot storage with retention.
-- The repository has replaced the starter React UI with an Intentive Settings/Auth surface and early Rust modules (`llm_provider`, `agent_interface`, `capture_state`, `menu_bar`). Remaining v1 work wires ScreenPipe lifecycle, Context Heartbeat, snapshot storage, and Auth-resolved Agent Interface configuration behind the locked contracts above.
+- The repository has replaced the starter React UI with an Intentive Settings/Auth surface and early Rust modules (`capture_session`, `capture_state`, `menu_bar`, `llm_provider`, `agent_interface`). Remaining v1 work wires Context Heartbeat, snapshot storage, and Auth-resolved Agent Interface configuration behind the locked contracts above.
