@@ -6,7 +6,7 @@ macOS background service that captures on-device activity via [ScreenPipe](https
 
 ## How it works
 
-1. A signed-in launch starts a **Capture Session** automatically; the menu bar toggle stops or restarts capture.
+1. A signed-in, capture-ready launch starts a **Capture Session** automatically; the menu bar toggle stops or restarts capture.
 2. Intentive runs ScreenPipe and queries its local HTTP API for each activity window.
 3. The **Context Heartbeat** (fixed 10-minute cadence) builds a sanitized prose **Context Snapshot** using an on-device **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama).
 4. Snapshots are written to a local SQLite log, then **pushed** over HTTPS to the OpenClaw Agent. When capture ends, Intentive sends a **Session End Marker**.
@@ -49,7 +49,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ### Implementation status
 
-Core Rust modules exist for **`capture_session`**, **`capture_state`**, **`menu_bar`**, **`llm_provider`**, and **`agent_interface`**. `src-tauri/src/lib.rs` wires the menu bar shell and ScreenPipe lifecycle manager, and `src/` renders the Settings/Auth surface with Neon Auth UI. Context Heartbeat, Session End Marker delivery, snapshot store, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
+Core Rust modules exist for **`capture_session`**, **`capture_state`**, **`screenpipe_supervisor`**, **`menu_bar`**, **`llm_provider`**, and **`agent_interface`**. `src-tauri/src/lib.rs` wires the menu bar shell, the Capture Session coordinator, and the ScreenPipe supervisor; `src/` renders the Settings/Auth surface with Neon Auth UI. Context Heartbeat, Session End Marker delivery, snapshot store, Capture Permission Setup, release packaging, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
 
 ### Environment
 
@@ -67,9 +67,10 @@ VITE_NEON_AUTH_URL=<Neon Auth URL from the Neon Console>
 | --- | --- |
 | `src/` | React UI |
 | `src-tauri/` | Tauri app, orchestration, and Rust domains |
-| `src-tauri/src/capture_state/` | Capture Session shell state machine |
-| `src-tauri/src/capture_session/` | ScreenPipe child-process lifecycle manager |
-| `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and menu commands |
+| `src-tauri/src/capture_state/` | Capture Session shell state machine (pure FSM) |
+| `src-tauri/src/capture_session/` | Capture Session coordinator — owns the FSM, accepts domain commands, notifies observers |
+| `src-tauri/src/screenpipe_supervisor/` | ScreenPipe child-process lifecycle (spawn, port probe, silent retry, intent flag) |
+| `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and command handlers |
 | `src-tauri/src/llm_provider/` | On-device summarization |
 | `src-tauri/src/agent_interface/` | HTTPS push to OpenClaw Agent |
 | `src-tauri/resources/` | Bundled native artifacts, including ScreenPipe |
@@ -93,7 +94,7 @@ Full codemap and invariants: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 ## CI and releases
 
 - **CI** (`.github/workflows/ci.yml`): frontend typecheck, build, Vitest; Rust check, clippy, tests on every PR and push to `main`.
-- **Release** (`.github/workflows/release.yml`): macOS app build on `v*` tags.
+- **Release** (`.github/workflows/release.yml`): v1 release target is a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`; `tauri dev` is not valid final evidence for macOS Privacy Settings identity.
 
 ## IDE setup
 

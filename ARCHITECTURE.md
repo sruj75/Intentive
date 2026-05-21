@@ -27,9 +27,9 @@ Intentive sits between four external systems and one user:
                                    └───────────────-─┘
 ```
 
-**Capture Session** — Capture starts automatically when a signed-in user launches Intentive. Intentive spawns ScreenPipe and runs the **Context Heartbeat** on a fixed 10-minute cadence. Each cycle: query ScreenPipe for the preceding activity window → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface**. Stop, quit, or ScreenPipe crash ends the Capture Session and sends a **Session End Marker** before teardown. Intentive does not capture without Auth.
+**Capture Session** — Capture starts automatically when a signed-in, capture-ready user launches Intentive. Intentive spawns ScreenPipe and runs the **Context Heartbeat** on a fixed 10-minute cadence. Each cycle: query ScreenPipe for the preceding activity window → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface**. Stop, quit, or ScreenPipe crash ends the Capture Session and sends a **Session End Marker** before teardown. Intentive does not capture without Auth and completed Capture Permission Setup.
 
-**Current implementation state** — The repo is past starter scaffold for Rust domains (`capture_session`, `capture_state`, `menu_bar`, `llm_provider`, `agent_interface`). `lib.rs` wires the menu bar shell and ScreenPipe lifecycle manager, and `src/` renders a Neon Auth Settings surface. Context Heartbeat, Session End Marker delivery, snapshot persistence, and Auth-resolved Agent Interface configuration are still planned.
+**Current implementation state** — The repo is past starter scaffold for Rust domains (`capture_session`, `capture_state`, `screenpipe_supervisor`, `menu_bar`, `llm_provider`, `agent_interface`). `lib.rs` constructs the ScreenPipe supervisor and the Capture Session coordinator (which owns the shell-state FSM), spawns the coordinator's event loop, and installs the menu bar shell as a single state observer; `src/` renders a Neon Auth Settings surface. Context Heartbeat, Session End Marker delivery, snapshot persistence, and Auth-resolved Agent Interface configuration are still planned and slot into seams the coordinator already exposes.
 
 **Platform** — macOS only, **Apple Silicon (M-series) only** for v1 (ADR-0014). No Windows/Linux, no Intel Macs in v1, no in-app agent reasoning, no push retry queue (ADR-0005).
 
@@ -41,8 +41,9 @@ Intentive sits between four external systems and one user:
 | `src/auth.ts` | Frontend Auth boundary. Creates the Neon Auth client from `VITE_NEON_AUTH_URL`, validates the env var clearly in development, and does not create a Neon Data API client. |
 | `src-tauri/src/lib.rs` | Tauri entry: plugins, command registration, setup, and app lifecycle. Installs the menu bar shell and prevents window close from quitting the service. |
 | `src-tauri/src/capture_state/` | Pure Capture Session shell state machine: unauthenticated, stopped, capturing, error. No Tauri dependencies. |
-| `src-tauri/src/capture_session/` | **Deep module** — ScreenPipe child-process lifecycle manager. Hides resource path spawning, pre-spawn port probe, stop/kill handling, one silent crash retry, and Capture Error transitions behind `start()` / `stop()`. |
-| `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, state holder, and command handlers for the menu bar shell. Runtime wiring lives in `install`; state-to-menu/icon mapping stays unit-testable. |
+| `src-tauri/src/capture_session/` | **Deep module** — Capture Session coordinator. Single owner of the shell-state FSM; accepts `CoordinatorCommand` (toggle, sign-in, simulated error), drains `SupervisorEvent`, notifies a single `StateObserver` per transition. Hides FSM mutation, supervisor lifecycle dispatch, and (future) Heartbeat / Snapshot Store / Session End Marker orchestration behind `submit()` + `subscribe()`. |
+| `src-tauri/src/screenpipe_supervisor/` | **Deep module** — ScreenPipe child-process lifecycle behind a `Supervisor` trait. Hides resource path spawning, pre-spawn port probe, stop/kill handling, one silent crash retry, and `shutdown_intended` flag (ADR-0012) behind `start()` / `stop()`. Publishes `SupervisorEvent` (`Stopped`, `Crashed { user_facing_copy }`) on an mpsc channel; never mutates the FSM directly. |
+| `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and command handlers. Publishes `CoordinatorCommand` to the coordinator and registers a `TrayObserver` that re-renders on every state-change notification. State-to-menu/icon mapping stays unit-testable. |
 | `src-tauri/src/llm_provider/` | **Deep module** — `resolve()` at startup (Apple Intelligence → existing Ollama → bundled Ollama); `summarize()` per heartbeat. Hides tier detection, prompts (`prompt.rs`), bundled binary spawn (`bundled.rs`). |
 | `src-tauri/src/agent_interface/` | **Deep module** — `ContextSnapshot` payload type; `AgentInterface::push()` HTTPS POST with Bearer auth, 10s timeout, drop-on-failure (ADR-0004, ADR-0005). |
 | `src-tauri/resources/` | Bundled native artifacts. v1 ScreenPipe: `@screenpipe/cli-darwin-arm64` only (M-series Macs). Bundled Ollama lands with Tier 3 (ADR-0002, ADR-0006, ADR-0014). |
@@ -55,11 +56,10 @@ Intentive sits between four external systems and one user:
 | `.github/workflows/ci.yml` | PR quality gate: frontend typecheck/build/test; Rust check/clippy/test. |
 | `.github/workflows/release.yml` | macOS release on `v*` tags. |
 
-**Planned Rust modules** (names may vary; keep one concern per module, same depth as existing modules):
+**Planned Rust modules** (names may vary; keep one concern per module, same depth as existing modules). They slot in behind seams the Capture Session coordinator already exposes:
 
 - Context Heartbeat — fixed 10-minute timer, ScreenPipe HTTP fetch for the preceding window, call `LlmProvider::summarize`, coordinate snapshot write + push, emit Session End Marker on stop/quit/crash.
 - Snapshot store — Intentive SQLite `snapshots` table, write-before-push, 7-day purge (ADR-0007).
-- Capture session / runtime coordinator — ties signed-in launch, manual stop/restart, ScreenPipe process lifecycle, provider resolve, heartbeat lifecycle, and teardown.
 
 **Agent skills** — `.claude/skills/screenpipe-*` for operational debugging of the capture engine.
 
@@ -69,18 +69,19 @@ Intentive sits between four external systems and one user:
 2. **Rust owns orchestration** — Capture, heartbeat, summarization routing, persistence, and delivery live in `src-tauri/`. The webview does not call ScreenPipe, Ollama, or the OpenClaw Agent directly.
 3. **Thin UI boundary** — React talks to Rust only via Tauri commands and events. No business logic duplicated in `src/` that belongs in Rust.
 4. **ScreenPipe via HTTP, not SQLite** — Integrate through the bundled CLI and `localhost:44380` (HTTP + WebSocket) for the Intentive-owned process. Do not read ScreenPipe's database unless an API gap is documented and approved (ADR-0002/0013). Embedding `screenpipe-engine` in-process is a targeted future escape hatch, not the default.
-5. **Deep modules at integration seams** — `llm_provider` and `agent_interface` expose small public surfaces (`resolve`/`summarize`, `push` + `ContextSnapshot`). Callers do not branch on provider tiers or construct HTTP details.
+5. **Deep modules at integration seams** — `llm_provider`, `agent_interface`, `screenpipe_supervisor`, and `capture_session` (coordinator) expose small public surfaces (`resolve`/`summarize`; `push` + `ContextSnapshot`; `start`/`stop` + `SupervisorEvent`; `submit`/`subscribe` + `CoordinatorCommand`/`StateObserver`). Callers do not branch on provider tiers, construct HTTP details, mutate the FSM, or read it back to dispatch lifecycle.
 6. **Context Snapshot contract is frozen for v1** — Payload fields: `id`, `captured_at`, `period_start`, `period_end`, `summary` only. Same shape for local SQLite and HTTPS push. Do not add fields without an explicit contract change.
 7. **Session End Marker contract is deferred** — It must be emitted when a Capture Session ends, but its payload shape and OpenClaw Agent handling are intentionally undefined until the agent-side contract exists (ADR-0008). Do not smuggle marker fields into `ContextSnapshot`.
 8. **Write locally, then push** — Every snapshot is persisted before delivery attempt; `pushed_at` records success (ADR-0007). Push failure does not delete the local row (ADR-0005).
 9. **Drop failed pushes** — No retry queue in v1; heartbeat continues on the next cycle (ADR-0005).
 10. **Fixed Context Heartbeat cadence** — During a Capture Session, the Context Heartbeat fires every 10 minutes regardless of activity level. There is no activity-gated skip path (ADR-0008).
-11. **Auth gates capture** — Intentive does not capture without a signed-in user. Completing sign-in includes explicit consent for future auto-start; opening the sign-in surface alone is not Auth (ADR-0009).
+11. **Auth gates capture** — Intentive does not capture without a signed-in, capture-ready user. Completing sign-in includes explicit consent for future auto-start, and Capture Permission Setup must complete before Auth can auto-start a Capture Session (ADR-0009, ADR-0015).
 12. **Settings is not a developer config panel** — Endpoint URLs, API keys, ScreenPipe readiness, and capture diagnostics stay out of user-facing Settings. The signed-in Neon user resolves Agent Interface configuration behind Auth (ADR-0010).
 13. **On-device summarization** — Raw ScreenPipe content is input to the LLM Provider only; only sanitized prose leaves the machine (plus metadata in the snapshot).
 14. **Push, not pull** — Intentive POSTs to the OpenClaw Agent; the agent does not poll the Mac (ADR-0004).
 15. **Menu bar agent UX** — No Dock icon; no persistent main window (ADR-0003). Settings and first-run/sign-in flows are separate windows.
-16. **ADR supremacy** — If code conflicts with `docs/adr/`, fix code or record a new ADR; do not drift silently.
+16. **Product-owned macOS permission identity** — Release builds must present **Intentive** in macOS Privacy Settings, with **Intentive Capture** as the only acceptable helper fallback. `ScreenPipe`, lowercase `intentive`, and debug paths are release blockers (ADR-0015).
+17. **ADR supremacy** — If code conflicts with `docs/adr/`, fix code or record a new ADR; do not drift silently.
 
 **Mechanical enforcement today** — CI runs `npx tsc --noEmit`, `npm run build`, `npm test`, `cargo check`, `cargo clippy -- -D warnings`, and `cargo test` on every PR. Module tests use `wiremock` for HTTP boundaries. This repo does not use the harness `Types → Config → Repo → Service → Runtime → UI` layer stack; boundaries are enforced by module privacy, ADR review, and the gates above.
 
@@ -129,6 +130,7 @@ Intentive sits between four external systems and one user:
 
 - **CI** — Ubuntu agents for compile/test; no macOS-specific UI tests in CI.
 - **Release** — Tagged `v*` builds macOS app bundle via `release.yml`.
+- **Release packaging** — v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`; release smoke is run from `/Applications/Intentive.app`, not `tauri dev` (ADR-0015).
 
 ## Cross-cutting Concerns
 
@@ -144,4 +146,4 @@ Intentive sits between four external systems and one user:
 
 **Documentation hierarchy** — `ARCHITECTURE.md` (this file) = structure and invariants; `CONTEXT.md` = language; `SPEC.md` = behavior; `docs/adr/` = decisions; `DESIGN.md` = UI. Agents should read ADRs before changing boundaries.
 
-**Known debt affecting shape** — Neon Auth UI is wired, but Auth-resolved Agent Interface configuration is not. Context Heartbeat, Session End Marker, and snapshot store are absent. Intel Mac support and dual-arch packaging are deferred by ADR-0014. Track against `SPEC.md` acceptance checklists.
+**Known debt affecting shape** — Neon Auth UI is wired, but Auth-resolved Agent Interface configuration is not. Context Heartbeat, Session End Marker, snapshot store, Capture Permission Setup, and signed/notarized release packaging are absent. Intel Mac support and dual-arch packaging are deferred by ADR-0014. Track against `SPEC.md` acceptance checklists.

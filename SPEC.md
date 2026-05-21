@@ -15,6 +15,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 3. **Silent operation**: The app runs in the background with zero user interruption during a Capture Session. A signed-in launch starts capture automatically; users interact with Intentive only to stop, restart, sign in, or configure.
 4. **Privacy by default**: No user data leaves the device except the sanitized Context Snapshot summary sent to OpenClaw Agent over HTTPS.
 5. **Compatibility**: The snapshot format and push mechanism work with OpenClaw Agent's GCP-hosted receiver from day one.
+6. **Finished macOS product packaging**: v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`, and macOS Privacy Settings shows **Intentive** or fallback **Intentive Capture** as the capture permission owner.
 
 ---
 
@@ -42,6 +43,8 @@ AI agents that act on behalf of a user need to know what that user is actually d
 - As an end user, I want Intentive to set itself up automatically on first launch so that I do not have to manually install or configure ScreenPipe or Ollama.
 - As an end user, I want my screen activity summarized on-device before anything is sent so that private information (passwords, financial data) is never transmitted in raw form.
 - As an end user, I want sign-in to include explicit consent for auto-starting capture so that capture never begins before I have agreed to it.
+- As an end user, I want Capture Permission Setup to guide me through macOS Privacy Settings step by step with clear screenshots so that I can grant capture permissions without guessing where to click.
+- As an end user, I want macOS Privacy Settings to show Intentive, not ScreenPipe or a debug path, so that I can trust the product requesting capture permissions.
 
 ### Developer / agent builder (person integrating OpenClaw Agent)
 
@@ -60,11 +63,13 @@ AI agents that act on behalf of a user need to know what that user is actually d
 - Intentive bundles the ScreenPipe CLI binary in Tauri resources
 - On signed-in launch or manual restart, spawns ScreenPipe as a child process on `127.0.0.1:44380`; kills it on stop or quit
 - Intentive does not spawn ScreenPipe without completed Auth and consent
+- Intentive does not spawn ScreenPipe until Capture Permission Setup has verified Screen & System Audio Recording, Microphone, and Accessibility grants
 - If ScreenPipe exits unexpectedly, Intentive retries once silently; a second unexpected exit moves the menu bar to error state
 - If port `44380` is already in use, Intentive enters error state without spawning ScreenPipe
 - Acceptance:
   - [ ] ScreenPipe starts automatically when a signed-in user launches Intentive
   - [ ] ScreenPipe does not start for an unauthenticated user
+  - [ ] ScreenPipe does not start for a signed-in user who has not completed Capture Permission Setup
   - [ ] ScreenPipe stops when the user toggles capture off or quits Intentive
   - [ ] Duplicate start actions do not create duplicate ScreenPipe processes
   - [ ] One unexpected ScreenPipe exit is retried silently; a second unexpected exit surfaces error
@@ -137,6 +142,35 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Settings does not expose ScreenPipe readiness or diagnostics
   - [ ] Settings window can be closed without affecting an active Capture Session
   - [ ] Opening the sign-in surface alone does not mark the user signed in or start capture; only completed Auth plus consent can do that
+
+**Capture Permission Setup**
+- Guides users through required macOS Privacy Settings grants before capture-ready Auth can auto-start capture
+- Uses static bundled instructional screenshots in the style of Opal, paired with live OS permission checks
+- Required v1 grants: Screen & System Audio Recording, Microphone, and Accessibility
+- Opens the exact macOS Privacy Settings pane when possible, falls back to Privacy & Security when needed, and offers a manual recheck
+- Acceptance:
+  - [ ] Capture Permission Setup presents one required permission at a time with curated instructional screenshots.
+  - [ ] Capture Permission Setup can open or deep-link to the relevant macOS Privacy Settings pane, with a fallback to Privacy & Security.
+  - [ ] Capture Permission Setup waits for live OS grant detection before advancing to the next step.
+  - [ ] Capture Permission Setup exposes a Recheck action for already-granted permissions.
+  - [ ] Capture Permission Setup is incomplete until Screen & System Audio Recording, Microphone, and Accessibility are granted.
+  - [ ] A Capture Session cannot auto-start until Capture Permission Setup is complete.
+  - [ ] User-facing copy says Intentive and never exposes ScreenPipe diagnostics.
+
+**Release packaging and macOS identity**
+- v1 ships as a direct-download Apple Silicon DMG containing only `Intentive.app`
+- Release builds are Developer ID signed and Apple-notarized; unsigned builds are dev-only
+- Product name is **Intentive** and bundle identifier is `com.tryintentive.tauri`
+- macOS Privacy Settings must show **Intentive** as the permission owner, with **Intentive Capture** as the only acceptable fallback helper identity
+- Acceptance:
+  - [ ] Tagged release builds produce a signed and notarized DMG containing only `Intentive.app`.
+  - [ ] The installed app at `/Applications/Intentive.app` launches as a menu bar app with no Dock icon.
+  - [ ] macOS Privacy Settings shows **Intentive** or fallback **Intentive Capture** for required capture grants.
+  - [ ] macOS Privacy Settings does not show ScreenPipe, lowercase `intentive`, raw helper names, or debug paths for release permission identity.
+  - [ ] Login Items, when enabled, shows **Intentive**.
+  - [ ] Release smoke verifies ScreenPipe health on `127.0.0.1:44380`, frame writes, microphone audio chunks, and system-audio chunks.
+  - [ ] Stop Capturing removes the ScreenPipe listener/process and returns the tray to stopped.
+  - [ ] Quit leaves no Intentive-owned ScreenPipe process behind.
 
 ---
 

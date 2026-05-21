@@ -51,6 +51,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **ADR-0011/0012/0013/0014** document ScreenPipe retry behavior, shutdown-intent
   routing, unique bundled ports (`44380`/`44381`), and macOS CPU-variant rules
   for bundled native artifacts.
+- **ADR-0015** documents final v1 release packaging and product-owned macOS
+  permission identity: signed/notarized Apple Silicon DMG, product name
+  **Intentive**, bundle identifier `com.tryintentive.tauri`, **Intentive** or
+  fallback **Intentive Capture** in macOS Privacy Settings, and Capture Permission
+  Setup as a release requirement.
 - **Issue #3 smoke checklist** (`docs/smoke-issue-3.md`) for manually verifying
   the menu bar shell states.
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
@@ -75,9 +80,24 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   [ARCHITECTURE.md](ARCHITECTURE.md) now describe signed-in auto-start, consent
   as the Auth gate, fixed 10-minute Context Heartbeat behavior, and Session End
   Marker delivery.
+- **Product docs aligned to ADR-0015**: [README.md](README.md),
+  [SPEC.md](SPEC.md), [PRD.md](PRD.md), [CONTEXT.md](CONTEXT.md), and
+  [ARCHITECTURE.md](ARCHITECTURE.md) now describe capture-ready Auth, Capture
+  Permission Setup, signed/notarized DMG release packaging, and product-owned
+  macOS Privacy Settings identity.
 - ScreenPipe integration now uses Intentive-owned port `44380` instead of
   ScreenPipe's default `3030`; bundled Ollama remains reserved for `44381`
   while existing user Ollama stays on `11434`.
+- **Capture Session coordinator** introduced
+  (`src-tauri/src/capture_session/`): single owner of the shell-state FSM,
+  consumes `CoordinatorCommand` (toggle, sign-in, simulated error) and drains
+  `SupervisorEvent` from the ScreenPipe supervisor, notifying one
+  `StateObserver` per transition. The original `src-tauri/src/capture_session/`
+  module was renamed to `src-tauri/src/screenpipe_supervisor/`, which now
+  publishes typed events instead of mutating the FSM via a `RefreshTray`
+  callback. Removed `menu_bar/state_holder.rs`, `menu_bar/commands.rs`, and
+  the per-handler tray-refresh choreography. Tauri commands now route through
+  the coordinator; `StubAuthChecker` no longer leaks past `lib.rs`.
 
 ### Deferred
 
@@ -91,5 +111,6 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   credential lands in the follow-up Auth/Data API slice.
 - Tauri runtime wiring is partial: the menu bar shell and ScreenPipe subprocess
   manager are installed, but startup LLM Provider resolution, Context Heartbeat,
-  SQLite snapshot log, first-run download UI, and completed Auth gating are still
-  deferred and tracked against [SPEC.md](SPEC.md) Build Phases.
+  SQLite snapshot log, first-run download UI, Capture Permission Setup,
+  signed/notarized release packaging, and completed Auth gating are still deferred
+  and tracked against [SPEC.md](SPEC.md) Build Phases.

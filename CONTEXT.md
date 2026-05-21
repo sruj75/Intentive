@@ -5,8 +5,8 @@ Intentive is a macOS background service that captures what a user is doing on th
 ## Language
 
 **Intentive**:
-The macOS application and the project itself.
-_Avoid_: app, client, wrapper
+The macOS application, product, and user-visible owner of capture permissions.
+_Avoid_: app, client, wrapper, intentive
 
 **ScreenPipe**:
 The third-party open-source capture engine (Rust CLI binary) that Intentive bundles and manages. Responsible for recording screen, audio, and UI events and storing them in a local SQLite database. Intentive ships a pinned ScreenPipe version inside the app; users do not install or update ScreenPipe themselves.
@@ -56,6 +56,18 @@ _Avoid_: pull, polling, WebSocket, IPC
 The user-facing place for Intentive account state and quiet app status. Settings uses Neon Auth UI for sign-in/account controls and must not expose endpoint URLs, API keys, or ScreenPipe diagnostics.
 _Avoid_: preferences, developer settings, config panel
 
+**macOS Privacy Settings**:
+Apple-controlled permission surfaces where the user grants Intentive and its capture components access to screen, system audio, microphone, Accessibility, and related OS capabilities.
+_Avoid_: Settings, Intentive Settings, config
+
+**Intentive Capture**:
+The only acceptable user-visible fallback identity for an Intentive-owned capture helper in macOS Privacy Settings when macOS cannot attribute capture permission to the main Intentive app.
+_Avoid_: ScreenPipe, screenpipe, helper, recorder
+
+**Capture Permission Setup**:
+The first-run product step that guides the user through required macOS Privacy Settings grants with curated instructional screenshots, one permission at a time, opening the relevant Apple panel when possible, and waiting for each live OS grant before Auth is considered capture-ready.
+_Avoid_: permissions wizard, ScreenPipe setup, diagnostics
+
 ## Relationships
 
 - **Intentive** bundles and manages one **ScreenPipe** process per **Capture Session**, using the **Bundled Native Artifact** for the host **Mac CPU variant**
@@ -64,6 +76,11 @@ _Avoid_: preferences, developer settings, config panel
 - Each **Context Snapshot** is derived from raw data stored in ScreenPipe's local SQLite
 - **Context Snapshots** and **Session End Markers** are delivered to the **OpenClaw Agent** via the **Agent Interface**
 - **Settings** exposes **Auth** without exposing internal **Agent Interface** configuration
+- **macOS Privacy Settings** controls OS-level capture permissions separately from Intentive **Settings**
+- **macOS Privacy Settings** should present **Intentive** as the user-facing permission owner, even when ScreenPipe remains the technical capture component
+- **Intentive Capture** may appear in **macOS Privacy Settings** only as a fallback to **Intentive**
+- **Capture Permission Setup** completes before Auth becomes capture-ready and before a Capture Session can auto-start
+- **Capture Permission Setup** requires Screen & System Audio Recording, Microphone, and Accessibility grants for v1
 
 ## Example dialogue
 
@@ -90,6 +107,14 @@ _Avoid_: login, account (use "sign in" / "signed-in user")
 - Auth provider — resolved: **Neon Auth**. Neon Auth is built on Better Auth; Google is the intended v1 provider. Agent Interface endpoint and credential resolution remains internal and belongs behind Auth, not in Settings.
 - Manual endpoint URL and API key fields — rejected for the user-facing product model. They make Intentive feel like a developer platform; endpoint and credential configuration should be resolved behind Auth.
 - ScreenPipe readiness in Settings — rejected for v1 user-facing Settings. User-facing surfaces should present Intentive status when needed, not ScreenPipe internals.
+- "settings" was used for both Intentive **Settings** and Apple's OS permission panels — resolved: use **macOS Privacy Settings** for the Apple-controlled permission surfaces.
+- "intentive" appeared as a lowercase dev/product surface — resolved: user-visible product surfaces use **Intentive**.
+- "ScreenPipe" appearing in **macOS Privacy Settings** would expose an implementation detail — resolved: release smoke must accept only **Intentive** or fallback **Intentive Capture**.
+- v1 packaging should expose only **Intentive** as the product app name; no lowercase product name, alternate app name, or visible ScreenPipe identity belongs in the release artifact.
+- "signed in" alone was not precise enough once OS capture grants entered the flow — resolved: completed Auth for auto-start means signed in, consented, and finished **Capture Permission Setup**.
+- "permissions onboarding" was too vague — resolved: **Capture Permission Setup** is a guided, step-by-step flow with clear screenshots and waits for each required macOS grant.
+- "clear photos" means static bundled instructional screenshots in the style of Opal, paired with live OS permission checks — not live screenshots of the user's macOS Privacy Settings.
+- **Capture Permission Setup** should open the exact macOS Privacy Settings pane when possible, fall back to Privacy & Security when needed, and offer a manual recheck for already-granted permissions.
 - "auto-retry on ScreenPipe crash" — resolved: **one silent retry in v1**. On unexpected ScreenPipe exit, the subprocess manager waits 2 seconds and respawns once. If the retry succeeds, capture continues invisibly. If it fails, Intentive enters Capture Error state (yellow tray icon). Recovery is app relaunch. Persistent backoff with circuit breaker is deferred to a future slice once real failure patterns are known. See ADR-0011.
 - "port conflicts for bundled binaries" — resolved: **unique ports**. Intentive-bundled ScreenPipe runs on `44380`; bundled Ollama (Tier 3) runs on `44381`. The subprocess manager performs a pre-spawn TCP probe; if the port is occupied, Intentive enters Capture Error with specific copy ("Another app is using Intentive's capture port") without consuming the crash retry. See ADR-0013.
 - "activity-gated heartbeat vs fixed interval" — resolved: **fixed 10-minute interval**. Activity-gating created an ambiguity between "user is idle" and "user quit." Fixed interval keeps the agent consistently informed and makes the Session End Marker the unambiguous signal for session termination. See ADR-0008.
