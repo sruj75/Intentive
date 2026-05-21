@@ -1,13 +1,11 @@
 //! Menu bar shell — Tauri tray icon, menu construction, and command handlers.
 //!
-//! Depends on `capture_state` for the FSM. The state→menu and state→icon
-//! mappings are pure (testable without a Tauri runtime); the runtime wiring
-//! lives in `install`.
+//! Publishes domain commands to the Capture Session coordinator and renders
+//! state-change notifications from a single observer. The FSM is no longer
+//! visible at this layer.
 
-pub mod commands;
 pub mod icon;
 pub mod menu;
-pub mod state_holder;
 
 #[cfg(test)]
 mod tests;
@@ -18,12 +16,11 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{App, AppHandle, Manager, WindowEvent, Wry};
 
-use crate::capture_session::CaptureSessionManager;
-use crate::capture_state::{CaptureState, ErrorReason, StubAuthChecker};
+use crate::capture_session::{CaptureSessionCoordinator, CoordinatorCommand, StateObserver};
+use crate::capture_state::{CaptureState, ErrorReason};
 
 use self::icon::path_for;
 use self::menu::{describe, MenuItemDescriptor};
-use self::state_holder::StateHolder;
 
 /// Whether macOS should treat the tray icon as a template image (auto-tint
 /// for light/dark mode). Template mode strips color, so the capturing/error
@@ -52,40 +49,47 @@ impl From<tauri::Error> for MenuBarError {
     }
 }
 
-/// Install the menu bar shell: builds the tray icon, attaches the initial
-/// menu, registers managed state, and wires menu events to the command
-/// inners. The auth stub is held both as `Arc<dyn AuthChecker>` (inside
-/// `StateHolder`) and as `Arc<StubAuthChecker>` (so the sign-in command
-/// can flip it).
-pub fn install(app: &mut App, stub_auth: Arc<StubAuthChecker>) -> Result<(), MenuBarError> {
+/// Tray observer — subscribed once by `install`. Receives every state-change
+/// notification from the coordinator and re-renders the menu bar icon + menu.
+struct TrayObserver {
+    app: AppHandle,
+}
+
+impl StateObserver for TrayObserver {
+    fn on_state(&self, state: &CaptureState) {
+        refresh_tray(&self.app, state);
+    }
+}
+
+/// Install the menu bar shell: build the tray icon and menu for the
+/// coordinator's initial state, then subscribe a `TrayObserver` so future
+/// transitions land on the menu bar without any caller-side choreography.
+pub fn install(
+    app: &mut App,
+    coordinator: Arc<CaptureSessionCoordinator>,
+) -> Result<(), MenuBarError> {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-    let holder = Arc::new(StateHolder::new(stub_auth.clone()));
-    app.manage(holder.clone());
-    app.manage(stub_auth.clone());
-
-    let initial_menu = build_menu(app.handle(), &holder)?;
-    let initial_icon = load_icon(app.handle(), path_for(&holder.snapshot()))?;
+    let initial_state = coordinator.snapshot();
+    let initial_menu = build_menu(app.handle(), &initial_state)?;
+    let initial_icon = load_icon(app.handle(), path_for(&initial_state))?;
 
     let app_handle = app.handle().clone();
-    let holder_for_events = holder.clone();
-    let stub_for_events = stub_auth.clone();
+    let coord_for_events = coordinator.clone();
 
-    let initial_state = holder.snapshot();
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(initial_icon)
         .icon_as_template(icon_is_template(&initial_state))
         .menu(&initial_menu)
         .on_menu_event(move |handle, event| {
-            handle_menu_event(
-                handle,
-                &holder_for_events,
-                &stub_for_events,
-                event.id().0.as_str(),
-            );
+            handle_menu_event(handle, &coord_for_events, event.id().0.as_str());
         })
         .build(&app_handle)?;
+
+    coordinator.subscribe(Arc::new(TrayObserver {
+        app: app_handle.clone(),
+    }));
 
     // Closing the Settings window must hide it, not destroy it — the user
     // expects the menu bar service to keep running and to reopen Settings
@@ -105,23 +109,18 @@ pub fn install(app: &mut App, stub_auth: Arc<StubAuthChecker>) -> Result<(), Men
 
 fn handle_menu_event(
     app: &AppHandle,
-    holder: &Arc<StateHolder>,
-    stub: &Arc<StubAuthChecker>,
+    coordinator: &Arc<CaptureSessionCoordinator>,
     id: &str,
 ) {
     match id {
         MENU_ID_SIGN_IN => {
-            let _ = commands::open_sign_in_surface_inner(holder, stub);
+            coordinator.submit(CoordinatorCommand::SignInCompleted);
             open_settings_window(app, true);
-            refresh_tray(app, holder);
-            dispatch_capture_session(app, holder);
         }
-        MENU_ID_TOGGLE if commands::toggle_capture_inner(holder).is_ok() => {
-            refresh_tray(app, holder);
-            dispatch_capture_session(app, holder);
+        MENU_ID_TOGGLE => {
+            coordinator.submit(CoordinatorCommand::ToggleRequested);
         }
         MENU_ID_SETTINGS => {
-            let _ = commands::open_settings_inner(holder);
             open_settings_window(app, false);
         }
         MENU_ID_QUIT => {
@@ -134,40 +133,13 @@ fn handle_menu_event(
     }
 }
 
-/// Translate the FSM's new state into a lifecycle call on the capture session
-/// manager. Runs on the async runtime so the menu event handler stays
-/// non-blocking; refreshes the tray afterwards to catch any Error transition
-/// the manager makes from inside its watcher task.
-fn dispatch_capture_session(app: &AppHandle, holder: &Arc<StateHolder>) {
-    let manager = app
-        .try_state::<Arc<CaptureSessionManager>>()
-        .map(|s| s.inner().clone());
-    let Some(manager) = manager else {
-        // Setup hasn't completed yet (e.g. install() running before lib.rs
-        // wires the manager). Nothing to dispatch.
-        return;
-    };
-    let new_state = holder.snapshot();
-    let app = app.clone();
-    let holder = holder.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = match new_state {
-            CaptureState::Capturing => manager.start().await,
-            CaptureState::Stopped => manager.stop().await,
-            _ => Ok(()),
-        };
-        refresh_tray(&app, &holder);
-    });
-}
-
-pub(crate) fn refresh_tray(app: &AppHandle, holder: &Arc<StateHolder>) {
-    let snapshot = holder.snapshot();
+pub(crate) fn refresh_tray(app: &AppHandle, state: &CaptureState) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        if let Ok(icon) = load_icon(app, path_for(&snapshot)) {
+        if let Ok(icon) = load_icon(app, path_for(state)) {
             let _ = tray.set_icon(Some(icon));
-            let _ = tray.set_icon_as_template(icon_is_template(&snapshot));
+            let _ = tray.set_icon_as_template(icon_is_template(state));
         }
-        if let Ok(new_menu) = build_menu(app, holder) {
+        if let Ok(new_menu) = build_menu(app, state) {
             let _ = tray.set_menu(Some(new_menu));
         }
     }
@@ -196,11 +168,11 @@ fn load_icon(
     tauri::image::Image::from_path(resolved).map_err(MenuBarError::from)
 }
 
-fn build_menu(app: &AppHandle, holder: &Arc<StateHolder>) -> Result<Menu<Wry>, MenuBarError> {
-    let descriptor = describe(&holder.snapshot());
+fn build_menu(app: &AppHandle, state: &CaptureState) -> Result<Menu<Wry>, MenuBarError> {
+    let descriptor = describe(state);
     let mut builder = MenuBuilder::new(app);
 
-    for (idx, item) in descriptor.items().iter().enumerate() {
+    for item in descriptor.items() {
         match item {
             MenuItemDescriptor::SignIn { enabled } => {
                 let mi = MenuItemBuilder::with_id(MENU_ID_SIGN_IN, "Unauthenticated")
@@ -235,30 +207,29 @@ fn build_menu(app: &AppHandle, holder: &Arc<StateHolder>) -> Result<Menu<Wry>, M
                 builder = builder.item(&mi);
             }
         }
-        let _ = idx;
     }
 
     builder.build().map_err(MenuBarError::from)
 }
 
 #[tauri::command]
-pub fn toggle_capture(state: tauri::State<'_, Arc<StateHolder>>) -> Result<(), String> {
-    commands::toggle_capture_inner(state.inner())
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+pub fn toggle_capture(coordinator: tauri::State<'_, Arc<CaptureSessionCoordinator>>) {
+    coordinator
+        .inner()
+        .submit(CoordinatorCommand::ToggleRequested);
 }
 
 #[tauri::command]
-pub fn open_settings(state: tauri::State<'_, Arc<StateHolder>>) {
-    let _ = commands::open_settings_inner(state.inner());
+pub fn open_settings() {
+    // Window plumbing is handled by the menu event handler; this command
+    // exists for the frontend invoke surface and is currently a no-op.
 }
 
 #[tauri::command]
-pub fn open_sign_in_surface(
-    holder: tauri::State<'_, Arc<StateHolder>>,
-    stub: tauri::State<'_, Arc<StubAuthChecker>>,
-) {
-    let _ = commands::open_sign_in_surface_inner(holder.inner(), stub.inner());
+pub fn open_sign_in_surface(coordinator: tauri::State<'_, Arc<CaptureSessionCoordinator>>) {
+    coordinator
+        .inner()
+        .submit(CoordinatorCommand::SignInCompleted);
 }
 
 #[tauri::command]
@@ -268,9 +239,10 @@ pub fn quit_app(app: AppHandle) {
 
 #[cfg(debug_assertions)]
 #[tauri::command]
-pub fn simulate_error(state: tauri::State<'_, Arc<StateHolder>>, app: AppHandle) {
+pub fn simulate_error(coordinator: tauri::State<'_, Arc<CaptureSessionCoordinator>>) {
     if let Ok(reason) = ErrorReason::new("Simulated error for smoke test".to_string()) {
-        state.inner().to_error(reason);
-        refresh_tray(&app, state.inner());
+        coordinator
+            .inner()
+            .submit(CoordinatorCommand::SimulateError(reason));
     }
 }

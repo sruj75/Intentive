@@ -3,48 +3,51 @@ pub mod capture_session;
 pub mod capture_state;
 pub mod llm_provider;
 pub mod menu_bar;
+pub mod screenpipe_supervisor;
 
 use std::sync::Arc;
 
 use tauri::path::BaseDirectory;
 use tauri::Manager;
 
-use capture_session::{CaptureSessionManager, OsSpawner, Spawner};
-use capture_state::{CaptureState, StubAuthChecker};
-use menu_bar::state_holder::StateHolder;
+use capture_session::{CaptureSessionCoordinator, CoordinatorCommand};
+use capture_state::{AuthChecker, StubAuthChecker};
+use screenpipe_supervisor::{OsSpawner, ScreenpipeSupervisor, Spawner, Supervisor};
+use tokio::sync::mpsc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let stub = Arc::new(StubAuthChecker::new(false));
-            menu_bar::install(app, stub)?;
-
-            // The Capture Session manager owns the ScreenPipe child process
-            // (Issue #5). Wired here so the menu event handler can dispatch
-            // start/stop on toggle and the watcher can refresh the tray when
-            // it transitions the FSM from inside its async task.
-            let holder = app.state::<Arc<StateHolder>>().inner().clone();
+            // The ScreenPipe Supervisor owns the child process; the Capture
+            // Session coordinator owns the shell-state FSM and orchestrates
+            // start/stop. The supervisor publishes outcomes on its events
+            // channel, which the coordinator drains.
             let binary_path = app
                 .path()
                 .resolve("resources/screenpipe", BaseDirectory::Resource)?;
             let spawner: Arc<dyn Spawner> = Arc::new(OsSpawner);
-            let app_handle = app.handle().clone();
-            let holder_for_refresh = holder.clone();
-            let refresh: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-                menu_bar::refresh_tray(&app_handle, &holder_for_refresh);
-            });
-            let manager = CaptureSessionManager::new(binary_path, spawner, holder.clone(), refresh);
-            app.manage(manager.clone());
+            let (events_tx, events_rx) = mpsc::unbounded_channel();
+            let supervisor = ScreenpipeSupervisor::new(binary_path, spawner, events_tx);
 
-            // Signed-in launch lands the FSM in Capturing per ADR-0009; kick
-            // off the Capture Session immediately so the user doesn't have
-            // to toggle on every relaunch.
-            if matches!(holder.snapshot(), CaptureState::Capturing) {
-                tauri::async_runtime::spawn(async move {
-                    let _ = manager.start().await;
-                });
+            let auth = StubAuthChecker::new(false);
+            let signed_in = auth.is_signed_in();
+            let coordinator: Arc<CaptureSessionCoordinator> = CaptureSessionCoordinator::new(
+                supervisor.clone() as Arc<dyn Supervisor>,
+                events_rx,
+                &auth,
+            );
+            app.manage(coordinator.clone());
+            app.manage(supervisor);
+
+            tauri::async_runtime::spawn(coordinator.clone().run());
+
+            menu_bar::install(app, coordinator.clone())?;
+
+            // Signed-in launch auto-starts a Capture Session per ADR-0009.
+            if signed_in {
+                coordinator.submit(CoordinatorCommand::SignInCompleted);
             }
 
             Ok(())
