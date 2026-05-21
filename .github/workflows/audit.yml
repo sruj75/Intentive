@@ -15,7 +15,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node scripts/npm-audit-high.mjs
+      - run: npm audit --audit-level=high
 
   cargo-audit:
     name: cargo audit
