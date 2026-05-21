@@ -4,7 +4,7 @@ The OpenClaw Agent is event-driven — it wakes up when a snapshot arrives rathe
 
 ## Consequences
 
-- Transport is HTTPS POST to a configured webhook URL — the OpenClaw Agent runs on a GCP VM, not locally
-- Intentive must be configured with the agent's endpoint URL and an auth credential (API key)
+- Transport is HTTPS POST to an internally configured, Auth-resolved webhook URL — the OpenClaw Agent runs on a GCP VM, not locally
+- Intentive must resolve the agent endpoint URL and auth credential internally from the signed-in user; those values are not user-facing Settings fields
 - Retry and failure handling (agent down, network error) must be defined — see ADR-0005 once resolved
 - The user's machine must have internet access for snapshots to be delivered during a Capture Session

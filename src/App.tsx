@@ -1,53 +1,69 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useMemo } from "react";
+import {
+  AuthView,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from "@neondatabase/neon-js/auth/react/ui";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+type Surface = "settings" | "sign-in";
 
-  async function greet() {
-    try {
-      setGreetMsg(await invoke("greet", { name }));
-    } catch (err) {
-      console.error("Failed to invoke greet command:", err);
-      setGreetMsg(`Error: ${err}`);
-    }
+function resolveSurface(): Surface {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("surface") === "sign-in" ? "sign-in" : "settings";
+}
+
+function App() {
+  const surface = useMemo(resolveSurface, []);
+
+  if (surface === "sign-in") {
+    return (
+      <main className="settings-shell">
+        <section className="settings-section settings-section--intro">
+          <h1>Sign In</h1>
+          <p>
+            Use the same Google identity connected to your OpenClaw Agent.
+            After sign-in, Intentive can begin capturing quietly from the menu
+            bar.
+          </p>
+        </section>
+        <section className="settings-section">
+          <AuthView />
+        </section>
+      </main>
+    );
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <main className="settings-shell">
+      <section className="settings-section settings-section--intro">
+        <h1>Settings</h1>
+        <p>
+          Intentive runs from the menu bar. Settings keeps account access and
+          quiet app state in one place.
+        </p>
+      </section>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank" rel="noopener noreferrer">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank" rel="noopener noreferrer">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <section className="settings-section" aria-labelledby="account-heading">
+        <div className="settings-section__header">
+          <div>
+            <h2 id="account-heading">Account</h2>
+            <p>Google sign-in connects Intentive to your OpenClaw Agent.</p>
+          </div>
+          <SignedIn>
+            <UserButton />
+          </SignedIn>
+        </div>
+        <SignedOut>
+          <AuthView />
+        </SignedOut>
+      </section>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      <section className="settings-section" aria-labelledby="status-heading">
+        <h2 id="status-heading">Status</h2>
+        <p>Intentive is not capturing.</p>
+      </section>
     </main>
   );
 }

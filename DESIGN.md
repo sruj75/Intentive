@@ -1,8 +1,8 @@
 # Intentive Design System
 
-**Platform foundation:** Apple Human Interface Guidelines — macOS 26 Tahoe / iOS 26  
+**Platform foundation:** Apple Human Interface Guidelines — macOS 26 Tahoe  
 **Brand layer:** Intentive — editorial voice-AI product  
-**Primary target:** macOS desktop (Electron / Tauri)
+**Primary target:** macOS desktop (Tauri) — macOS-only; iOS rules not in scope
 
 ---
 
@@ -79,13 +79,57 @@ Window chrome, native controls, Liquid Glass chrome, keyboard nav, traffic light
 | `{colors.gradient-sky}` | `#a8c8e8` | Open, clear |
 | `{colors.gradient-rose}` | `#e8b8c4` | Gentle, human |
 
-These appear **only** as soft radial-gradient atmospheric orbs inside `{component.gradient-orb-card}` and as background blooms behind hero copy. **Never** as button fills, text colors, or component backgrounds.
+These appear **only** as soft radial-gradient atmospheric orbs inside `{component.gradient-orb-card}` and as background blooms behind hero copy. **Never** as button fills, text colors, or component backgrounds. Orb opacity softens slightly in dark mode (0.18 → 0.12) so they remain atmospheric rather than luminous.
+
+> **HIG Gap #4 — contrast guard:** Any text rendered over or near a gradient orb must maintain **WCAG AA contrast (4.5:1 body, 3:1 large text)** in all four rendering contexts: light mode, dark mode, Increase Contrast, and Reduce Transparency. Implementation rule: orbs must sit below a semi-opaque text backdrop or be positioned so text never overlaps the orb centre. Before shipping any hero, run the orb + copy combination through a contrast checker at worst-case orb opacity. If contrast fails at Increase Contrast, replace the orb with a flat `{colors.canvas}` swatch behind the text — the orb may remain as a non-overlapping background decoration only.
 
 ### Semantic
 | Token | Hex | Role |
 |---|---|---|
 | `{colors.semantic-success}` | `#16a34a` | Confirmation |
-| `{colors.semantic-error}` | `#dc2626` | Validation errors |
+| `{colors.semantic-error}` | `#dc2626` | **Brand** form validation errors only |
+
+> **HIG boundary — Fix #4:** `{colors.semantic-error}` (`#dc2626`) is for inline brand validation errors (e.g. "Email is required"). System-level destructive actions — delete confirmation sheets, remove-item alerts, irreversible operations — must use HIG's Electric Crimson `#FF3B30` (see §4 Native Component Behavior). Never swap them.
+
+### Dark Mode Brand Tokens
+
+> **Fix #5:** Full OS dark mode token set. Applied when `prefers-color-scheme: dark` (CSS media query — Tauri's WKWebView surfaces this correctly from the macOS appearance setting). Gradient orb tokens are unchanged — pastels stay; only opacity reduces.
+
+#### Surface (Dark)
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.canvas}` | `#0f0e0d` | Warm near-black page floor |
+| `{colors.canvas-soft}` | `#161412` | Slightly lighter alternating band |
+| `{colors.canvas-deep}` | `#0c0a09` | Deepest dark — hero / full-bleed bands |
+| `{colors.surface-card}` | `#1c1917` | Elevated card surface |
+| `{colors.surface-strong}` | `#292524` | Badges, voice-icon plates |
+| `{colors.surface-dark}` | `#0c0a09` | Dark CTA band (same as deep) |
+| `{colors.surface-dark-elevated}` | `#1c1917` | Cards within dark bands |
+
+#### Hairlines (Dark)
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.hairline}` | `#2d2927` | Default 1px divider |
+| `{colors.hairline-soft}` | `#1f1d1c` | Lighter divider |
+| `{colors.hairline-strong}` | `#3d3935` | Panel outline, input border |
+
+#### Text (Dark)
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.ink}` | `#f5f4f2` | Display, primary text — warm off-white |
+| `{colors.body}` | `#b5b0ab` | Default running copy |
+| `{colors.body-strong}` | `#d4cfc9` | Emphasized body |
+| `{colors.muted}` | `#857e78` | Sub-titles, secondary labels |
+| `{colors.muted-soft}` | `#5c5753` | Disabled, placeholder |
+| `{colors.on-dark}` | `#f5f4f2` | Text on dark hero (same as ink) |
+| `{colors.on-dark-soft}` | `#a8a29e` | Muted off-white on dark hero |
+
+#### Primary Action (Dark)
+| Token | Hex | Role |
+|---|---|---|
+| `{colors.primary}` | `#ede9e4` | Light warm pill — inverted from near-black |
+| `{colors.primary-active}` | `#f5f4f2` | Press state |
+| `{colors.on-primary}` | `#0c0a09` | Dark ink text on light pill |
 
 ---
 
@@ -124,6 +168,13 @@ Fallback: `sans-serif`
 - **Negative tracking on display.** Waldenburg pulls −0.32px to −1.92px tighter at display sizes — polished, premium.
 - **Subtle positive tracking on body.** Inter at +0.15–0.18px — slightly looser than default Inter for a more editorial feel.
 - **Never swap fonts.** Waldenburg for display headings only. Inter for everything else.
+- **Accessibility scaling — HIG Gap #2:** The fixed-pixel type scale above is the default design target. Implementation must honour macOS text scaling and browser zoom:
+  - All `font-size` values must be set in `rem` or `em` relative units so that system-level text size preferences scale them proportionally.
+  - Minimum readable floor: `{typography.caption}` (14px default) must never render below 11px at any zoom level. If the user has set a larger text preference, allow it to scale up without clipping.
+  - `{typography.display-mega}` (64px default) must collapse gracefully at large text settings — test at 1.5× and 2× zoom. No truncation, no overflow clip on headings.
+  - Waldenburg Light at weight 300 is legible at large display sizes; never use it below 20px — switch to Inter for any copy that risks illegibility at reduced sizes or high contrast mode.
+  - Line height values (1.05–1.2 on display) must stay proportional; never fix line heights in `px` on text that scales.
+- **Inter is for Intentive content only — Fix #3 (HIG):** Inter applies to `{component.top-nav}`, body copy, cards, and CTAs inside the Tauri WebView content area. The OS-rendered chrome — the native menu bar (built via Tauri's `tauri::menu::Menu` in Rust), the title bar, and any native OS dialogs triggered via `tauri::dialog` — renders in SF Pro automatically because the OS controls it. CSS `font-family` rules never reach those surfaces. Only style elements inside the `<body>` WebView; never attempt to override OS chrome fonts.
 
 ---
 
@@ -168,7 +219,8 @@ Fallback: `sans-serif`
 ### Buttons
 
 **`{component.button-primary}`** — Near-black ink pill.  
-Background `{colors.primary}` (#292524) · Text `{colors.on-primary}` (#fff) · Font `{typography.button}` · Padding 10px × 20px · Height 40px · Radius `{rounded.pill}`
+Background `{colors.primary}` (#292524) · Text `{colors.on-primary}` (#fff) · Font `{typography.button}` · Padding 10px × 20px · Visual height 40px · Radius `{rounded.pill}`  
+> **HIG Fix #1 — touch target:** Visual height is 40px but the interactive hit zone must be **44px minimum** (HIG §6). In Tauri/Electron, add `min-height: 44px` and center the pill visually inside with padding, or add 2px transparent top/bottom padding outside the pill border. Never ship a primary action below 44px tap height.
 
 **`{component.button-primary-active}`** — Press state.  
 Background `{colors.primary-active}` (#0c0a09)
@@ -212,15 +264,17 @@ Background `{colors.surface-strong}` · Radius `{rounded.full}` · Initials or v
 ### Forms & Tags
 
 **`{component.text-input}`** — Text input.  
-Background `{colors.surface-card}` · Radius `{rounded.md}` (8px) · Padding 12px × 16px · Height 44px · 1px `{colors.hairline-strong}` border · Focus: 2px `{colors.ink}` border
+Background `{colors.surface-card}` · Radius `{rounded.md}` (8px) · Padding 12px × 16px · Height 44px · 1px `{colors.hairline-strong}` border · Hover: 2px `{colors.ink}` border  
+> **HIG Gap #3 — focus ring (semantic, not hard-coded):** Keyboard focus ring uses `{colors.system-accent-focus}` — a semantic token. In Tauri on macOS, read the system accent color at app startup via a Tauri Rust command (call `NSColor.controlAccentColor` through the `objc` crate → convert to hex → emit to the frontend as a CSS custom property `--system-accent`), then set `{colors.system-accent-focus}` to `var(--system-accent, #007AFF)`. This way users who've set a custom accent color (orange, green, etc. in System Settings) see their chosen color in focus rings. Fallback `#007AFF` applies only when the Rust bridge hasn't resolved yet. Do not suppress `outline` without replacing it — WCAG 2.4.7. Minimum replacement: `box-shadow: 0 0 0 3px var(--system-accent, #007AFF)`. The 2px ink border on this component is for hover/active pointer state only.
 
 **`{component.badge-pill}`** — Label badge.  
 Background `{colors.surface-strong}` · Font `{typography.caption-uppercase}` · Radius `{rounded.pill}` · Padding 4px × 10px
 
 ### Navigation
 
-**`{component.top-nav}`** — App navigation bar.  
-Background `{colors.canvas}` · Text `{colors.ink}` · Height 64px · Wordmark left · Primary nav center · Sign In + CTA right
+**`{component.top-nav}`** — Marketing and onboarding navigation bar.  
+Background `{colors.canvas}` · Text `{colors.ink}` · Height 64px · Wordmark left · Primary nav center · Sign In + CTA right  
+> **HIG Fix #6 — scope and macOS app navigation — Gap #5:** `{component.top-nav}` is for **marketing pages and onboarding flows only** — not the core Intentive macOS workspace. The ScreenPipe capture workspace, Context Snapshot view, Context Heartbeat dashboard, and OpenClaw Agent interface must use **macOS-native navigation patterns**: a CSS sidebar panel (leading, `width: clamp(225px, 280px, 400px)`, drag-resizable via a `<div>` resize handle) for section switching, a Tauri `toolbar`-style button row beneath the title bar for primary actions, and an optional inspector panel trailing. In Tauri this is all web layout — a flex/grid split inside the `<body>` with `backdrop-filter` on the sidebar. A horizontal top-nav bar has no place in the core app window — macOS users expect sidebar-driven navigation, and a top nav would compete with the native menu bar. `{component.top-nav}` must never replace the native macOS title bar — keep Tauri's `decorations: true` and do not set `titleBarStyle: "overlay"` on the main window.
 
 ### CTA & Footer
 
@@ -264,15 +318,24 @@ Atmospheric depth comes from gradient orbs, not from stacked shadows. The system
 
 ## B7. Do's & Don'ts
 
-### Do
+### Do — Brand
 - Reserve `{colors.primary}` (ink pill) for primary CTAs only — one per view
 - Use Waldenburg Light at weight 300 for every display headline — never bold
 - Use Inter at +0.15–0.18px tracking for body — the editorial dialect
 - Use atmospheric gradient orbs (mint / peach / lavender / sky / rose) as decoration only
 - Use `{rounded.pill}` for every CTA and badge
 - Respect 96px section rhythm for editorial pacing
+- Apply dark mode brand tokens (B2 dark table) whenever `prefers-color-scheme: dark`
 
-### Don't
+### Do — HIG Compliance
+- Ensure every primary interactive element has a **44px minimum hit zone** — even when visual size is smaller
+- Use system blue `#007AFF` (3pt `box-shadow`) as the keyboard focus indicator on all inputs and buttons
+- Use HIG's Electric Crimson `#FF3B30` for system-level destructive actions (delete sheets, remove alerts)
+- Use SF Pro for all macOS window chrome (sidebar, toolbar, menus) — Inter lives in the content area only
+- Keep the native macOS title bar intact — `{component.top-nav}` goes below it, never replaces it
+- Support full keyboard navigation: every action reachable without a pointer, `⌘Z` always undoes deletion
+
+### Don't — Brand
 - Don't introduce a saturated brand action color — ink pill is the only CTA color
 - Don't bold display copy — weight 300 is the editorial voice; bolding shifts to consumer-marketing
 - Don't use gradient orbs as button fills, text colors, or component backgrounds — pure atmosphere only
@@ -280,14 +343,38 @@ Atmospheric depth comes from gradient orbs, not from stacked shadows. The system
 - Don't drop body Inter to weight 300 to match Waldenburg — body stays 400/500 for legibility
 - Don't pick CTA colors from third-party widgets (cookie consent, OneTrust) — ignore those
 
+### Don't — HIG Compliance
+- Don't suppress `outline` on focusable elements without replacing it with `box-shadow: 0 0 0 3px #007AFF`
+- Don't use `{colors.semantic-error}` (#dc2626) for destructive action buttons — use `#FF3B30`
+- Don't try to style the native menu bar, title bar, or OS dialogs with CSS — Tauri's WKWebView has no access to those surfaces; the OS renders them in SF Pro automatically
+- Don't ship `{component.button-primary}` with only 40px height — pad to 44px touch zone
+- Don't configure `titleBarStyle: "overlay"` to merge `{component.top-nav}` with the macOS title bar
+
 ---
 
-## B8. Known Gaps & Substitutes
+## B8. Reduce Motion Behaviour — HIG Gap #6
+
+All brand animations must respect `prefers-reduced-motion: reduce` (CSS) and the macOS Accessibility › Reduce Motion system preference. These are the Intentive-specific animation contexts and their reduced-motion counterparts:
+
+| Animation | Default | Reduce Motion |
+|---|---|---|
+| Gradient orb drift | Slow radial float, 8–12s loop | Static orb, no movement — opacity only |
+| Waveform pulse | Continuous amplitude animation | Flat static waveform line |
+| Hero entrance | Fade + translate-up, 0.5s | Instant render, no translate |
+| Context Heartbeat indicator | Pulsing ring or beat animation | Static dot or solid ring |
+| OpenClaw Agent activity | Spinning / morphing glass indicator | Static icon |
+| Card hover lift | `transform: translateY(-2px)`, 200ms | No transform — border color change only |
+| Orb appear on scroll | Scale-in + fade, 350ms | Fade only (no scale) |
+
+Implementation: wrap all motion in `@media (prefers-reduced-motion: no-preference) { }` and provide the static fallback outside. For Tauri's WebView, the CSS media query maps correctly to the macOS system preference — no additional bridge needed. Never disable the static fallback "for visual polish" — Reduce Motion is a medical necessity for some users.
+
+## B9. Known Gaps & Substitutes
 
 - **Waldenburg** is a licensed typeface. Open-source substitute: **EB Garamond** at weight 300 (more humanist) or **Libre Baskerville** thin.
-- Animation timings (orb drift, waveform pulse, hero entrance) are out of scope for this document.
+- Animation timing curves (spring parameters for orb drift, waveform pulse easing) remain to be spec'd alongside motion design work.
 - In-product surfaces (voice library editor, agent playground) only partially captured.
-- Form validation states beyond focus not yet defined.
+- Form validation states beyond focus/hover not yet defined.
+- `{colors.system-accent-focus}` runtime resolution in Tauri's WKWebView needs validation — test against non-blue macOS accent colors.
 
 ---
 ---
@@ -442,36 +529,77 @@ Liquid Glass is **navigation chrome only** — never on content cards, lists, or
 
 ---
 
-## §6. macOS Control Dimensions
+## §6. macOS Visual Reference Sizes
 
-| Control | Regular | Small | Mini |
-|---|---|---|---|
-| Push Button | ~22pt | ~18pt | ~15pt |
-| Checkbox | ~14pt | ~12pt | ~10pt |
-| Radio Button | ~14pt | ~12pt | ~10pt |
-| Pop-up Menu | ~22pt | ~18pt | ~15pt |
-| Text Field | ~22pt | ~19pt | ~16pt |
-| Help Button | 20pt Ø | — | — |
-| Round Button | 25pt Ø | 20pt Ø | — |
+> These are **visual target sizes** from Apple HIG — not AppKit control classes. In Tauri everything is a web component. Match these dimensions so the UI has the same visual weight as native macOS apps; do not use native AppKit widgets.
 
-Spacing: Regular 12pt H / 8pt V · Small 10pt H / 6pt V · Mini 8pt H / 5pt V
+| Element | HIG visual target | Tauri CSS equivalent |
+|---|---|---|
+| Push button (regular) | ~22pt tall | `height: 28px`, `padding: 0 14px` |
+| Checkbox | ~14pt | Custom `<input type="checkbox">` styled to 14×14px |
+| Text field (regular) | ~22pt | `height: 28px` (distinct from `{component.text-input}` 44px — see note) |
+| Toolbar icon button | ~22pt | `height: 28px`, `width: 28px` |
+| Segmented control | ~22pt | Flex row with shared border, 28px height |
+| Sidebar row | ~24pt | `height: 30px`, `padding: 0 12px` |
+
+**Note on text field height conflict:** `{component.text-input}` (B5) is 44px — the HIG minimum touch target for primary form inputs. The 28px HIG size above is for compact toolbar/settings-style fields where space is constrained and pointer precision is expected. Use 44px for form fields, 28px for compact in-toolbar search or settings rows.
+
+Spacing between web-rendered controls (matching HIG rhythm): `gap: 8px` horizontal, `gap: 6px` vertical in settings-style layouts.
 
 ---
 
-## §7. Liquid Glass Material System
+## §7. Liquid Glass Material System (Tauri Implementation)
 
-Two variants: **Regular** (default, all nav chrome) and **Clear** (only over media-rich content). Never mix.
+> Liquid Glass is a macOS Tahoe 26 visual language. In Tauri, there is no `.glassEffect()` SwiftUI modifier — the effect is achieved through two mechanisms: **Tauri window vibrancy** (Rust, for the outer window chrome) and **CSS `backdrop-filter`** (for in-content panels that need to feel glass-like).
 
-Tinting: primary actions only — one tinted element per view. Wrap multiple glass elements in `GlassEffectContainer`.
+### Window-level vibrancy (Rust / `tauri.conf.json`)
 
-**Auto-applied:** NavigationBar, TabBar, Toolbar, Sheets, Popovers, Menus, Alerts.  
-**Never apply to:** content cards, lists, full-screen backgrounds, scrollable regions.
+Tauri v2 exposes macOS window effects via the `effects` config or `window.set_effects()` at runtime. For a Liquid Glass-adjacent sidebar and toolbar:
 
-| Accessibility Setting | Response |
+```json
+// tauri.conf.json (app window)
+"effects": [{ "effect": "Sidebar", "state": "FollowsWindowActiveState", "radius": 0 }]
+```
+
+Available macOS effects relevant to Intentive: `Sidebar`, `HudWindow`, `Tooltip`, `Popover`, `UnderWindowBackground`. Use `Sidebar` for the main split-view chrome; it produces the closest match to macOS native sidebar translucency.
+
+### In-content glass panels (CSS)
+
+For web-rendered panels that need a glass feel (floating inspector, Context Snapshot cards, popovers):
+
+```css
+.glass-panel {
+  background: rgba(245, 245, 245, 0.72);     /* {colors.canvas} at 72% */
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .glass-panel {
+    background: rgba(28, 25, 23, 0.78);      /* {colors.surface-card dark} at 78% */
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+}
+```
+
+### Placement rule (same HIG principle, CSS implementation)
+
+**Apply glass to:** sidebar panel, toolbar row, floating inspector, sheets, popovers, context menus (if web-rendered).  
+**Never apply to:** content cards, list rows, full-screen backgrounds, scrollable regions.
+
+### Tinting
+
+Reserve tinted glass for one primary-action element per view — increase `background` opacity and add a subtle brand-color tint: `rgba(41, 37, 36, 0.15)` for ink-tinted glass.
+
+### Accessibility
+
+| macOS Setting | CSS response |
 |---|---|
-| Reduce Transparency | More opaque |
-| Increase Contrast | Black/white with borders |
-| Reduce Motion | Elastic effects off |
+| Reduce Transparency | `@media (prefers-reduced-transparency: reduce)` → remove `backdrop-filter`, replace with solid `{colors.canvas}` / `{colors.surface-card}` |
+| Increase Contrast | `@media (prefers-contrast: more)` → add `1px solid {colors.hairline-strong}` border, remove translucency |
+| Reduce Motion | No glass-specific motion; see B8 for orb/animation rules |
 
 ---
 
@@ -485,12 +613,23 @@ For Intentive brand content: icons should be simple, line-weight consistent with
 
 ## §9. Motion & Animation
 
-Physics-based springs. `mass: 1, stiffness: 300, damping: 35`.
+Physics-based spring feel — **target values from HIG, implemented in CSS/JS in Tauri.**
 
-- Modal: slide up, 0.35s spring
-- Nav push: trailing edge slide, title cross-dissolve
-- Button press: scale 0.97 + opacity, spring release
-- Durations: 200ms micro · 350ms transitions · 500ms choreography max
+| Transition | CSS implementation | Duration |
+|---|---|---|
+| Modal / sheet appear | `transform: translateY(0)` from `translateY(20px)` + `opacity` | 350ms `cubic-bezier(0.32, 0.72, 0, 1)` |
+| Panel slide in (sidebar) | `transform: translateX(0)` from `translateX(-100%)` | 280ms `cubic-bezier(0.32, 0.72, 0, 1)` |
+| Button press | `transform: scale(0.97)` + `opacity: 0.85` on `:active` | 120ms `ease-out`; release 200ms `ease-out` |
+| Fade / cross-dissolve | `opacity` 0→1 | 200ms `ease-out` |
+| Complex choreography | Staggered children, 60ms delay between items | Total ≤ 500ms |
+
+**CSS spring approximation** (no JS library needed for most cases):
+```css
+/* HIG spring: mass 1, stiffness 300, damping 35 */
+transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+```
+
+For more complex spring physics (Context Heartbeat pulse, waveform), use the Web Animations API or a lightweight library (Motion One). All spring durations: 200ms micro · 350ms view transitions · 500ms max choreography. See **B8** for Reduce Motion overrides — all transforms must be disabled under `prefers-reduced-motion: reduce`.
 
 ---
 

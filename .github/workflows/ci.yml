@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ["**"]
+    tags-ignore: ["**"]
 
 jobs:
   frontend:
@@ -18,6 +19,7 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run build
+      - run: npm test
 
   rust:
     name: Rust (check + clippy + test)
