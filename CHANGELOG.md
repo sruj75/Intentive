@@ -85,6 +85,8 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   [ARCHITECTURE.md](ARCHITECTURE.md) now describe capture-ready Auth, Capture
   Permission Setup, signed/notarized DMG release packaging, and product-owned
   macOS Privacy Settings identity.
+- **Tray icons** — capturing dot recolored to Apple system green; both dots
+  gain a transparent gap separating them from the head silhouette.
 - ScreenPipe integration now uses Intentive-owned port `44380` instead of
   ScreenPipe's default `3030`; bundled Ollama remains reserved for `44381`
   while existing user Ollama stays on `11434`.
