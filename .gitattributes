@@ -1,0 +1,2 @@
+*ollama filter=lfs diff=lfs merge=lfs -text
+*screenpipe filter=lfs diff=lfs merge=lfs -text
