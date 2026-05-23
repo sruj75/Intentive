@@ -4,6 +4,8 @@ pub mod capture_state;
 pub mod llm_provider;
 pub mod menu_bar;
 pub mod screenpipe_supervisor;
+pub mod snapshot;
+pub mod snapshot_store;
 
 use std::sync::Arc;
 
@@ -13,6 +15,7 @@ use tauri::Manager;
 use capture_session::{CaptureSessionCoordinator, CoordinatorCommand};
 use capture_state::{AuthChecker, StubAuthChecker};
 use screenpipe_supervisor::{OsSpawner, ScreenpipeSupervisor, Spawner, Supervisor};
+use snapshot_store::SnapshotStore;
 use tokio::sync::mpsc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,6 +43,21 @@ pub fn run() {
             );
             app.manage(coordinator.clone());
             app.manage(supervisor);
+
+            // Snapshot Store (Issue #6, ADR-0007). Opens or creates the local
+            // SQLite file, runs migrations, and purges rows older than 7 days
+            // before the first caller (Context Heartbeat) can hand it a row.
+            // `block_on` is acceptable here — migrations + purge finish in
+            // milliseconds and the store must be ready before app.manage().
+            let db_path = app
+                .path()
+                .resolve("intentive.db", BaseDirectory::AppLocalData)?;
+            if let Some(parent) = db_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let snapshot_store = tauri::async_runtime::block_on(SnapshotStore::new(&db_path))
+                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+            app.manage(Arc::new(snapshot_store));
 
             tauri::async_runtime::spawn(coordinator.clone().run());
 

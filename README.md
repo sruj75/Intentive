@@ -49,7 +49,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ### Implementation status
 
-Core Rust modules exist for **`capture_session`**, **`capture_state`**, **`screenpipe_supervisor`**, **`menu_bar`**, **`llm_provider`**, and **`agent_interface`**. `src-tauri/src/lib.rs` wires the menu bar shell, the Capture Session coordinator, and the ScreenPipe supervisor; `src/` renders the Settings/Auth surface with Neon Auth UI. Context Heartbeat, Session End Marker delivery, snapshot store, Capture Permission Setup, release packaging, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not fully wired yet.
+Core Rust modules exist for **`capture_session`**, **`capture_state`**, **`screenpipe_supervisor`**, **`menu_bar`**, **`llm_provider`**, **`agent_interface`**, **`snapshot`**, and **`snapshot_store`**. `src-tauri/src/lib.rs` wires the menu bar shell, the Capture Session coordinator, the ScreenPipe supervisor, and the snapshot store (opened at `~/Library/Application Support/<bundle-id>/intentive.db`). `src/` renders the Settings/Auth surface with Neon Auth UI. Context Heartbeat, Session End Marker delivery, Capture Permission Setup, release packaging, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not yet wired.
 
 ### Environment
 
@@ -73,6 +73,9 @@ VITE_NEON_AUTH_URL=<Neon Auth URL from the Neon Console>
 | `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and command handlers |
 | `src-tauri/src/llm_provider/` | On-device summarization |
 | `src-tauri/src/agent_interface/` | HTTPS push to OpenClaw Agent |
+| `src-tauri/src/snapshot/` | Shared `ContextSnapshot` domain type |
+| `src-tauri/src/snapshot_store/` | Local SQLite log + retention (ADR-0007) |
+| `src-tauri/migrations/` | sqlx-managed schema migrations |
 | `src-tauri/resources/` | Bundled native artifacts, including ScreenPipe |
 | `references/` | ScreenPipe / Ollama API notes |
 | `docs/adr/` | Architectural decision records |

@@ -7,6 +7,33 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **`snapshot_store` Rust module** (`src-tauri/src/snapshot_store/`) — sqlx-backed
+  local SQLite log per [ADR-0007](docs/adr/0007-local-snapshot-log-with-retention.md).
+  Public API: `SnapshotStore::new` (opens or creates the file, runs migrations,
+  purges rows older than 7 days), `insert`, `mark_pushed` (idempotent single-UPDATE
+  per ScreenPipe pattern), `list_recent`. `SnapshotStoreError` wraps `sqlx::Error`
+  at the module boundary so callers do not depend on sqlx. The store accepts only
+  `&ContextSnapshot` — raw ScreenPipe data has no representation in the API, which
+  is the privacy boundary. Ten `tokio::test`s cover insert, mark-pushed,
+  null-pushed-at, idempotency, NotFound, duplicate-id, ordering, and the 7-day
+  retention boundary. Schema lives in `src-tauri/migrations/0001_create_snapshots.sql`
+  and is applied via `sqlx::migrate!()` at startup.
+- **`snapshot` Rust module** (`src-tauri/src/snapshot/`) — neutral home for
+  `ContextSnapshot` per [ADR-0017](docs/adr/0017-context-snapshot-in-shared-snapshot-module.md).
+  Both `agent_interface` and `snapshot_store` import from here; neither depends
+  on the other.
+- **ADR-0016** records the sqlx-over-rusqlite choice for the snapshot store
+  (matches ScreenPipe's own DB stack; built-in migration files; async-native).
+- **ADR-0017** records the `ContextSnapshot` move to the shared `snapshot` module.
+- **Snapshot Store wiring in `lib.rs`** — store is constructed at
+  `BaseDirectory::AppLocalData/intentive.db` during Tauri setup and shared as
+  `Arc<SnapshotStore>` via `app.manage`, ready for the Context Heartbeat slice.
+- **Rust dependencies**: `sqlx 0.8` (`sqlite`, `runtime-tokio-rustls`, `chrono`,
+  `migrate`, `macros`). Dev-dep: `tempfile`.
+- **CONTEXT.md** gains canonical terms **Snapshot Store** and **Snapshot Privacy
+  Boundary**, and standing rules **Implementation Pattern Rule** (follow
+  ScreenPipe's patterns first) and **Schema Evolution Rule** (internal
+  observability is a valid reason to add a column).
 - **`agent_interface` Rust module** (`src-tauri/src/agent_interface/`) — `ContextSnapshot`
   payload type and `AgentInterface::push` HTTPS POST with `Authorization: Bearer`
   header, 10-second timeout, and drop-on-failure semantics per
@@ -73,6 +100,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
     `period_start`, `period_end`, `summary`) + `Authorization` header, 10s timeout.
   - The corresponding "Open Questions" entries in [SPEC.md](SPEC.md) moved to
     the **Resolved** list.
+- **`ContextSnapshot` relocated** from `agent_interface` to a shared `snapshot`
+  module so `snapshot_store` and `agent_interface` can both import it without
+  depending on each other (ADR-0017). No payload shape change.
 - **[CONTEXT.md](CONTEXT.md) — `LLM Provider`** definition updated to describe
   the Tier 2 selection rule.
 - **Product docs aligned to ADR-0008/0009**: [README.md](README.md),
@@ -111,8 +141,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
   present, but mapping a signed-in user to an OpenClaw Agent endpoint and
   credential lands in the follow-up Auth/Data API slice.
-- Tauri runtime wiring is partial: the menu bar shell and ScreenPipe subprocess
-  manager are installed, but startup LLM Provider resolution, Context Heartbeat,
-  SQLite snapshot log, first-run download UI, Capture Permission Setup,
-  signed/notarized release packaging, and completed Auth gating are still deferred
-  and tracked against [SPEC.md](SPEC.md) Build Phases.
+- Tauri runtime wiring is partial: the menu bar shell, ScreenPipe subprocess
+  manager, and snapshot store are installed, but startup LLM Provider
+  resolution, Context Heartbeat (which will drive `SnapshotStore::insert` and
+  `mark_pushed`), first-run download UI, Capture Permission Setup,
+  signed/notarized release packaging, and completed Auth gating are still
+  deferred and tracked against [SPEC.md](SPEC.md) Build Phases.

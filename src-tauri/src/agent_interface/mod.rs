@@ -1,27 +1,15 @@
 //! Agent Interface — pushes Context Snapshots to the OpenClaw Agent over HTTPS.
 //!
-//! Callers construct a `ContextSnapshot` and hand it to `AgentInterface::push`.
-//! Everything else (JSON serialization, the `Authorization: Bearer` scheme, the
-//! 10-second timeout, drop-on-failure semantics per ADR-0005) is hidden inside
-//! this module — see SPEC.md "Context Snapshot Payload" and ADR-0004.
+//! Callers construct a `ContextSnapshot` (defined in `crate::snapshot`) and hand
+//! it to `AgentInterface::push`. Everything else (JSON serialization, the
+//! `Authorization: Bearer` scheme, the 10-second timeout, drop-on-failure
+//! semantics per ADR-0005) is hidden inside this module — see SPEC.md
+//! "Context Snapshot Payload" and ADR-0004.
 
-use chrono::{DateTime, Utc};
-use serde::Serialize;
 use std::time::Duration;
 use url::Url;
-use uuid::Uuid;
 
-/// The exact payload shape consumed by the OpenClaw Agent receiver.
-/// Field order, naming, and the absence of additional fields are all part of
-/// the contract locked in Issue #2 — do not extend in v1.
-#[derive(Serialize, Clone, Debug)]
-pub struct ContextSnapshot {
-    pub id: Uuid,
-    pub captured_at: DateTime<Utc>,
-    pub period_start: DateTime<Utc>,
-    pub period_end: DateTime<Utc>,
-    pub summary: String,
-}
+use crate::snapshot::ContextSnapshot;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PushError {

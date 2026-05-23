@@ -1,12 +1,32 @@
 # Intentive
 
-Intentive is a macOS background service that captures what a user is doing on their computer, periodically compresses that activity into structured snapshots, and delivers them to an external agent. v1 is infrastructure-only: it has no behavioral intelligence of its own.
+Intentive is the broader product system that lets a user sign in from mobile or desktop, complete onboarding once, and connect every client surface to the same agent runtime. This repo is the macOS desktop client: it captures what a user is doing on their computer, periodically compresses that activity into structured snapshots, and delivers them to the user's agent runtime.
 
 ## Language
 
 **Intentive**:
-The macOS application, product, and user-visible owner of capture permissions.
-_Avoid_: app, client, wrapper, intentive
+The broader product system spanning mobile, desktop, control plane, durable state, provisioning, and agent runtime.
+_Avoid_: macOS app, Tauri app, client, wrapper
+
+**Mobile Client**:
+The iOS client surface for Intentive. It renders product state from the Control Plane, collects onboarding answers, registers the mobile device, and connects to the user's agent runtime.
+_Avoid_: Expo truth, mobile backend, mobile lifecycle owner
+
+**Desktop Client**:
+The macOS client surface for Intentive — the application bundle, product identity, and user-visible owner of capture permissions. It renders product state from the Control Plane, registers the Mac device, runs the local Capture Session, and connects to the user's agent runtime.
+_Avoid_: Tauri truth, desktop backend, desktop lifecycle owner, intentive (lowercase)
+
+**Control Plane**:
+The server-side source of truth for account state, onboarding state, device registry, agent instance registry, provisioning state, Neon database access, and routing a signed-in user to the correct agent runtime.
+_Avoid_: client logic, app state, local truth
+
+**Agent Runtime**:
+The behavior runtime that receives Context Snapshots and user actions for one signed-in user. In v1 this is the DeepAgent/OpenClaw-compatible runtime provisioned behind the Control Plane.
+_Avoid_: control plane, database, client
+
+**Durable State**:
+The Neon Postgres data owned by the Control Plane for user, onboarding, device, agent instance, provisioning, and routing records.
+_Avoid_: client cache, local settings, runtime memory
 
 **ScreenPipe**:
 The third-party open-source capture engine (Rust CLI binary) that Intentive bundles and manages. Responsible for recording screen, audio, and UI events and storing them in a local SQLite database. Intentive ships a pinned ScreenPipe version inside the app; users do not install or update ScreenPipe themselves.
@@ -45,7 +65,7 @@ The on-device model used by the Context Heartbeat to generate prose summaries. R
 _Avoid_: LLM, model, AI (use "LLM Provider" when referring to the summarization backend)
 
 **OpenClaw Agent**:
-The external agent that consumes Context Snapshots. Intentive treats it as a black box — the agent's internal behavior is out of scope for v1.
+The external agent-compatible runtime that consumes Context Snapshots. The Desktop Client treats it as a black box — the agent's internal behavior is out of scope for this repo.
 _Avoid_: agent, AI, LLM (use OpenClaw Agent when referring to the specific consumer)
 
 **Agent Interface**:
@@ -57,30 +77,62 @@ The user-facing place for Intentive account state and quiet app status. Settings
 _Avoid_: preferences, developer settings, config panel
 
 **macOS Privacy Settings**:
-Apple-controlled permission surfaces where the user grants Intentive and its capture components access to screen, system audio, microphone, Accessibility, and related OS capabilities.
+Apple-controlled permission surfaces where the user grants Intentive (Desktop Client) and its capture components access to screen, system audio, microphone, Accessibility, and related OS capabilities.
 _Avoid_: Settings, Intentive Settings, config
 
 **Intentive Capture**:
-The only acceptable user-visible fallback identity for an Intentive-owned capture helper in macOS Privacy Settings when macOS cannot attribute capture permission to the main Intentive app.
+The only acceptable user-visible fallback identity for an Intentive-owned capture helper in macOS Privacy Settings when macOS cannot attribute capture permission to the main Desktop Client app.
 _Avoid_: ScreenPipe, screenpipe, helper, recorder
 
 **Capture Permission Setup**:
 The first-run product step that guides the user through required macOS Privacy Settings grants with curated instructional screenshots, one permission at a time, opening the relevant Apple panel when possible, and waiting for each live OS grant before Auth is considered capture-ready.
 _Avoid_: permissions wizard, ScreenPipe setup, diagnostics
 
+**Auth**:
+The shared product capability that signs a user into any Intentive client and lets the Control Plane resolve onboarding state, registered devices, and the user's agent runtime. Intentive clients do not capture or connect to an agent runtime without a signed-in user.
+_Avoid_: login, account (use "sign in" / "signed-in user")
+
+**Snapshot Store**:
+The local SQLite module (`src-tauri/src/snapshot_store/`) that persists Context Snapshots before and after delivery. It is the Desktop Client's primary record of what was captured and sent — not a cache. Backed by sqlx with WAL mode; schema is managed via numbered migration files in `src-tauri/migrations/`. The store's insert API accepts only `ContextSnapshot`, making it structurally impossible to persist raw ScreenPipe data. See ADR-0007, ADR-0016.
+_Avoid_: cache, buffer, log (it is a store — durable and queryable)
+
+**Snapshot Privacy Boundary**:
+The point in the pipeline where raw ScreenPipe data (OCR text, audio transcripts, window names) is transformed into sanitized prose and may no longer be persisted or transmitted. This boundary is the LLM summarization step — enforced at the type level by the `ContextSnapshot` struct, which has no fields for raw data. The Snapshot Store and Agent Interface both operate exclusively on `ContextSnapshot` values, which are by definition post-boundary.
+_Avoid_: content filtering, runtime validation, data scrubbing (the boundary is structural, not behavioral)
+
 ## Relationships
 
-- **Intentive** bundles and manages one **ScreenPipe** process per **Capture Session**, using the **Bundled Native Artifact** for the host **Mac CPU variant**
+- **Intentive** has replaceable client surfaces; the current surfaces are the **Mobile Client** and **Desktop Client**
+- The **Control Plane** owns **Durable State** and routes each signed-in user to one **Agent Runtime**
+- **Mobile Client** and **Desktop Client** display lifecycle state from the **Control Plane** rather than deciding onboarding or agent lifecycle locally
+- The **Desktop Client** bundles and manages one **ScreenPipe** process per **Capture Session**, using the **Bundled Native Artifact** for the host **Mac CPU variant**
 - A **Capture Session** produces a stream of **Context Snapshots** via the **Context Heartbeat** on a fixed 10-minute cadence
 - A **Capture Session** always ends with a **Session End Marker** pushed via the **Agent Interface**
 - Each **Context Snapshot** is derived from raw data stored in ScreenPipe's local SQLite
 - **Context Snapshots** and **Session End Markers** are delivered to the **OpenClaw Agent** via the **Agent Interface**
+- Each **Context Snapshot** is written to the **Snapshot Store** before any push attempt — local record exists regardless of delivery outcome
+- The **Snapshot Store** and **Agent Interface** both import `ContextSnapshot` from the shared `snapshot` module; neither depends on the other
+- The **Snapshot Privacy Boundary** is crossed at LLM summarization; everything downstream (Snapshot Store, Agent Interface) operates only on already-sanitized `ContextSnapshot` values
 - **Settings** exposes **Auth** without exposing internal **Agent Interface** configuration
 - **macOS Privacy Settings** controls OS-level capture permissions separately from Intentive **Settings**
 - **macOS Privacy Settings** should present **Intentive** as the user-facing permission owner, even when ScreenPipe remains the technical capture component
 - **Intentive Capture** may appear in **macOS Privacy Settings** only as a fallback to **Intentive**
 - **Capture Permission Setup** completes before Auth becomes capture-ready and before a Capture Session can auto-start
 - **Capture Permission Setup** requires Screen & System Audio Recording, Microphone, and Accessibility grants for v1
+
+## Schema Evolution Rule
+
+When deciding whether to add a column to a store: **distinguish user-facing from internally observable.** A column does not need a UI to justify its existence — storing delivery error reasons, LLM provider used, or retry counts for internal debugging and future tooling is valid even in v1, as long as the feature that *reads* it is deferred. The test is whether the column reflects something the system already knows (e.g. `PushError` variants from the Agent Interface) — if so, storing it is low-cost observability, not speculative design.
+
+Follow ScreenPipe's practice: add columns when a real need (including internal observability) is identified. Don't pre-populate with guesses. Use migration files for any post-initial schema change.
+
+## Implementation Pattern Rule
+
+When implementing any module in the Desktop Client that touches SQLite, async Rust, subprocess management, or local data handling: **check ScreenPipe's codebase first** (`github.com/mediar-ai/screenpipe`, primarily `crates/screenpipe-db/`). ScreenPipe has already solved most of the hard infrastructure problems this project builds on top of. Following their patterns avoids reinventing decisions they made for good reasons — and keeps the two codebases consistent enough that their solutions remain readable as a reference.
+
+This applies to: sqlx query patterns, connection pool setup, WAL configuration, migration file conventions, type derivation (`FromRow`, `Serialize`), error handling shapes, and async task patterns.
+
+When a ScreenPipe pattern exists for a problem, adopt it unless there is a specific, documented reason not to.
 
 ## Example dialogue
 
@@ -96,12 +148,10 @@ _Avoid_: permissions wizard, ScreenPipe setup, diagnostics
 > **Dev:** "Do we ship one ScreenPipe binary for everyone?"
 > **Domain expert:** "In v1, **M-series only** — we bundle `@screenpipe/cli-darwin-arm64` at a pinned version. Same build for every Apple Silicon user; not per-account customization. Intel Macs are unsupported until we pick a future packaging approach (two builds or one app with both binaries). Users never run npm install for ScreenPipe."
 
-**Auth**:
-The mechanism that links a user's Intentive installation to their OpenClaw Agent endpoint. Auth uses Neon Auth, built on Better Auth, with Google sign-in as the intended provider; signing in ultimately resolves the webhook URL and credential for that user's agent without exposing those values in Settings. Intentive does not capture without a signed-in user.
-_Avoid_: login, account (use "sign in" / "signed-in user")
-
 ## Flagged ambiguities
 
+- "Intentive" previously meant the macOS app and project itself — resolved: **Intentive** is the broader product system; this repo is the **Desktop Client**.
+- "client lifecycle truth" — resolved: **Mobile Client** and **Desktop Client** render lifecycle state; the **Control Plane** owns onboarding, device, provisioning, and agent runtime lifecycle truth.
 - "push vs pull" for the Agent Interface — resolved: **push**. Intentive delivers snapshots to the OpenClaw Agent. The agent is event-driven and wakes when a snapshot arrives. See ADR-0004.
 - "agent" was used generically throughout early discussions — resolved: use **OpenClaw Agent** for the specific consumer, **Agent Interface** for the delivery mechanism.
 - Auth provider — resolved: **Neon Auth**. Neon Auth is built on Better Auth; Google is the intended v1 provider. Agent Interface endpoint and credential resolution remains internal and belongs behind Auth, not in Settings.
@@ -124,3 +174,6 @@ _Avoid_: login, account (use "sign in" / "signed-in user")
 - "Start/Stop menu items vs toggle" — resolved: **single toggle**. Menu bar shows one item that changes label based on state ("Start Capturing" / "Stop Capturing"). Removes the grayed-out item UX problem and matches the Option A mental model (barely-noticed background utility).
 - "personalized ScreenPipe binary" — resolved: means **Mac CPU variant** (device type), not per signed-in user. See ADR-0014.
 - "which ScreenPipe binary for v1" — resolved: **Apple Silicon only**. Bundle `@screenpipe/cli-darwin-arm64` only; pin version per Intentive release. Intel / dual-arch packaging (**two builds** vs **one app, both binaries**) — **deferred**, not decided. See ADR-0014.
+- "where does ContextSnapshot live?" — resolved: **shared `snapshot` module** (`src-tauri/src/snapshot/`). Not inside `agent_interface` (leakage) and not duplicated per module. Both `agent_interface` and `snapshot_store` import from there. See ADR-0017.
+- "SQLite library for the Snapshot Store" — resolved: **sqlx** with `sqlite`, `runtime-tokio-rustls`, `chrono`, and `migrate` features. Runtime queries only (`sqlx::query()`, not the `query!` macro). Migration files in `src-tauri/migrations/`. Follows ScreenPipe's own DB stack. See ADR-0016.
+- "how does the Snapshot Store enforce the privacy boundary?" — resolved: **structurally, via the `ContextSnapshot` type**. The store's insert function accepts only `ContextSnapshot` — a struct with no fields for raw ScreenPipe data. Runtime content inspection was rejected as a shallow, fragile layer on top of a boundary that the LLM prompt already owns.
