@@ -18,7 +18,9 @@ use tokio::sync::Mutex;
 use capture_session::{CaptureSessionCoordinator, CoordinatorCommand};
 use capture_state::{AuthChecker, CaptureState, StubAuthChecker};
 use llm_provider::{LlmProvider, ProviderConfig};
-use screenpipe_supervisor::{OsSpawner, ScreenpipeSupervisor, Spawner, Supervisor};
+use screenpipe_supervisor::{
+    OsSpawner, ScreenpipeEndpoint, ScreenpipeSupervisor, Spawner, Supervisor,
+};
 use snapshot_store::SnapshotStore;
 use tokio::sync::mpsc;
 
@@ -30,7 +32,10 @@ pub struct LlmProviderSlot(pub Mutex<Option<Arc<LlmProvider>>>);
 
 /// Tauri-managed state for the `ProviderConfig` resolved at startup. The
 /// command path reads this to drive `LlmProvider::resolve_with_progress`.
-pub struct ProviderConfigState(pub ProviderConfig);
+pub struct ProviderConfigState {
+    pub config: ProviderConfig,
+    pub screenpipe_endpoint: ScreenpipeEndpoint,
+}
 
 /// Force the settings webview to the onboarding surface and bring it
 /// forward. Matches the URL-mutation pattern `menu_bar::open_settings_window`
@@ -66,7 +71,7 @@ pub fn run() {
                 &auth,
             );
             app.manage(coordinator.clone());
-            app.manage(supervisor);
+            app.manage(supervisor.clone());
 
             // Snapshot Store (Issue #6, ADR-0007). Opens or creates the local
             // SQLite file, runs migrations, and purges rows older than 7 days
@@ -100,10 +105,14 @@ pub fn run() {
                 .path()
                 .resolve("resources/ollama", BaseDirectory::Resource)?;
             let provider_config = ProviderConfig {
+                screenpipe_url: supervisor.endpoint().current_or_primary_url(),
                 bundled_ollama_binary,
                 ..ProviderConfig::default()
             };
-            app.manage(ProviderConfigState(provider_config));
+            app.manage(ProviderConfigState {
+                config: provider_config,
+                screenpipe_endpoint: supervisor.endpoint(),
+            });
             app.manage(LlmProviderSlot(Mutex::new(None)));
 
             // Onboarding-window open logic (Issue #7, ADR-0018). Open the

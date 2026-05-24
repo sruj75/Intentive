@@ -155,6 +155,18 @@ fn host_port_for_extracts_host_and_port() {
 }
 
 #[tokio::test]
+async fn bundled_ollama_url_falls_back_when_primary_port_is_in_use() {
+    let url = resolve_bundled_ollama_url_with(
+        &Url::parse("http://127.0.0.1:44381").unwrap(),
+        |port| async move { port == 44381 },
+    )
+    .await
+    .expect("fallback should resolve");
+
+    assert_eq!(url.as_str(), "http://127.0.0.1:44383/");
+}
+
+#[tokio::test]
 async fn system_ollama_has_model_true_when_model_in_api_tags() {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))

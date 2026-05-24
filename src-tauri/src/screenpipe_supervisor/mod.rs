@@ -15,11 +15,12 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::task::JoinHandle;
+use url::Url;
 
 mod config;
 mod spawner;
@@ -106,10 +107,50 @@ struct Inner {
     spawner: Arc<dyn Spawner>,
     events_tx: mpsc::UnboundedSender<SupervisorEvent>,
     state: Mutex<State>,
+    endpoint: ScreenpipeEndpoint,
 }
 
 pub struct ScreenpipeSupervisor {
     inner: Arc<Inner>,
+}
+
+/// Shared record of the ScreenPipe HTTP endpoint selected at spawn time.
+/// Consumers read this instead of guessing which ADR-0013 port won.
+#[derive(Clone, Debug)]
+pub struct ScreenpipeEndpoint {
+    active_url: Arc<RwLock<Option<Url>>>,
+}
+
+impl ScreenpipeEndpoint {
+    fn new() -> Self {
+        Self {
+            active_url: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    pub fn primary_url() -> Url {
+        Url::parse(&format!("http://127.0.0.1:{PORT}")).expect("valid ScreenPipe primary URL")
+    }
+
+    pub fn active_url(&self) -> Option<Url> {
+        self.active_url
+            .read()
+            .expect("screenpipe endpoint lock poisoned")
+            .clone()
+    }
+
+    pub fn current_or_primary_url(&self) -> Url {
+        self.active_url().unwrap_or_else(Self::primary_url)
+    }
+
+    fn record_port(&self, port: u16) {
+        let url =
+            Url::parse(&format!("http://127.0.0.1:{port}")).expect("valid ScreenPipe URL port");
+        *self
+            .active_url
+            .write()
+            .expect("screenpipe endpoint lock poisoned") = Some(url);
+    }
 }
 
 impl ScreenpipeSupervisor {
@@ -124,8 +165,17 @@ impl ScreenpipeSupervisor {
                 spawner,
                 events_tx,
                 state: Mutex::new(State::new()),
+                endpoint: ScreenpipeEndpoint::new(),
             }),
         })
+    }
+
+    pub fn endpoint(&self) -> ScreenpipeEndpoint {
+        self.inner.endpoint.clone()
+    }
+
+    pub fn active_url(&self) -> Option<String> {
+        self.inner.endpoint.active_url().map(|url| url.to_string())
     }
 }
 
@@ -202,6 +252,7 @@ impl Inner {
                 return Ok(());
             }
         };
+        self.endpoint.record_port(port);
 
         let (kill_tx, kill_rx) = oneshot::channel();
         let watcher = {

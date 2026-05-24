@@ -117,6 +117,8 @@ impl LlmProvider {
             progress,
         )
         .await?;
+        let mut config = config;
+        config.bundled_ollama_url = bundled_process.url();
         Ok(Self {
             tier: Tier::BundledOllama,
             model: Some(model),

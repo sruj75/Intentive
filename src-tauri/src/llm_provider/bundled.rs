@@ -10,6 +10,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::RwLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -19,6 +20,9 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use super::ProviderError;
+use crate::port::resolve_port;
+#[cfg(test)]
+use crate::port::resolve_port_with;
 
 #[derive(Deserialize)]
 struct TagsResponse {
@@ -32,6 +36,8 @@ struct TagsEntry {
 
 /// The Tier 3 bundled model — confirmed in the Ollama registry, see ADR-0006.
 pub(crate) const BUNDLED_MODEL: &str = "qwen3.5:0.8b";
+const BUNDLED_OLLAMA_PORT: u16 = 44381;
+const BUNDLED_OLLAMA_PORT_FALLBACK: u16 = 44383;
 
 /// Where Ollama stores its model manifests. Honors `OLLAMA_MODELS` if set
 /// (matching Ollama's own behavior), otherwise falls back to
@@ -121,6 +127,42 @@ pub(super) fn host_port_for(url: &Url) -> Option<String> {
     Some(format!("{host}:{port}"))
 }
 
+fn url_with_port(url: &Url, port: u16) -> Result<Url, ProviderError> {
+    let mut resolved = url.clone();
+    resolved
+        .set_port(Some(port))
+        .map_err(|_| ProviderError::Unavailable)?;
+    Ok(resolved)
+}
+
+async fn resolve_bundled_ollama_url(url: &Url) -> Result<Url, ProviderError> {
+    if url.port_or_known_default() != Some(BUNDLED_OLLAMA_PORT) {
+        return Ok(url.clone());
+    }
+    let port = resolve_port(BUNDLED_OLLAMA_PORT, BUNDLED_OLLAMA_PORT_FALLBACK)
+        .await
+        .map_err(|_| ProviderError::Unavailable)?;
+    url_with_port(url, port)
+}
+
+#[cfg(test)]
+pub(super) async fn resolve_bundled_ollama_url_with<F, Fut>(
+    url: &Url,
+    probe: F,
+) -> Result<Url, ProviderError>
+where
+    F: Fn(u16) -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    if url.port_or_known_default() != Some(BUNDLED_OLLAMA_PORT) {
+        return Ok(url.clone());
+    }
+    let port = resolve_port_with(BUNDLED_OLLAMA_PORT, BUNDLED_OLLAMA_PORT_FALLBACK, probe)
+        .await
+        .map_err(|_| ProviderError::Unavailable)?;
+    url_with_port(url, port)
+}
+
 #[async_trait]
 pub(super) trait OllamaProcess: Send + Sync {
     async fn is_running(&self) -> bool;
@@ -166,7 +208,7 @@ async fn prepare_with(
 /// outlives us. The `url` is the configured `bundled_ollama_url` (default
 /// `localhost:44381`, with fallback port resolution at spawn time).
 pub(crate) struct SystemOllamaProcess {
-    url: Url,
+    url: RwLock<Url>,
     binary_path: PathBuf,
     http: reqwest::Client,
     child: Mutex<Option<Child>>,
@@ -175,11 +217,22 @@ pub(crate) struct SystemOllamaProcess {
 impl SystemOllamaProcess {
     pub(crate) fn new(url: Url, binary_path: PathBuf, http: reqwest::Client) -> Self {
         Self {
-            url,
+            url: RwLock::new(url),
             binary_path,
             http,
             child: Mutex::new(None),
         }
+    }
+
+    pub(crate) fn url(&self) -> Url {
+        self.url
+            .read()
+            .expect("bundled Ollama URL lock poisoned")
+            .clone()
+    }
+
+    fn set_url(&self, url: Url) {
+        *self.url.write().expect("bundled Ollama URL lock poisoned") = url;
     }
 }
 
@@ -196,7 +249,7 @@ const READY_POLL_INTERVAL: Duration = Duration::from_millis(50);
 #[async_trait]
 impl OllamaProcess for SystemOllamaProcess {
     async fn is_running(&self) -> bool {
-        let Ok(endpoint) = self.url.join("/api/tags") else {
+        let Ok(endpoint) = self.url().join("/api/tags") else {
             return false;
         };
         let Ok(Ok(response)) =
@@ -207,7 +260,9 @@ impl OllamaProcess for SystemOllamaProcess {
         response.status().is_success()
     }
     async fn spawn(&self) -> Result<(), ProviderError> {
-        let host = host_port_for(&self.url).ok_or(ProviderError::Unavailable)?;
+        let resolved_url = resolve_bundled_ollama_url(&self.url()).await?;
+        let host = host_port_for(&resolved_url).ok_or(ProviderError::Unavailable)?;
+        self.set_url(resolved_url);
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("serve")
             .env("OLLAMA_HOST", &host)
@@ -242,7 +297,7 @@ impl OllamaProcess for SystemOllamaProcess {
         }
     }
     async fn has_model(&self, model: &str) -> bool {
-        let Ok(endpoint) = self.url.join("/api/tags") else {
+        let Ok(endpoint) = self.url().join("/api/tags") else {
             return false;
         };
         let Ok(Ok(response)) =
@@ -264,7 +319,7 @@ impl OllamaProcess for SystemOllamaProcess {
         progress: tokio::sync::mpsc::Sender<PullProgress>,
     ) -> Result<(), ProviderError> {
         let endpoint = self
-            .url
+            .url()
             .join("/api/pull")
             .map_err(|e| ProviderError::Http(e.to_string()))?;
         let mut response = self

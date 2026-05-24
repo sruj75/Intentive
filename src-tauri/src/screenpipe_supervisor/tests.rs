@@ -299,6 +299,11 @@ async fn start_falls_back_to_secondary_port_when_primary_is_in_use() {
         calls[0].port, PORT_FALLBACK,
         "spawn uses the fallback port when primary is occupied",
     );
+    assert_eq!(
+        supervisor.active_url().as_deref(),
+        Some("http://127.0.0.1:44382/"),
+        "consumers see the same resolved ScreenPipe endpoint the supervisor spawned",
+    );
     assert!(
         drain(&mut rx).is_empty(),
         "happy fallback path emits no event — coordinator stays in Capturing",

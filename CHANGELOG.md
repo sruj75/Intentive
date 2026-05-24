@@ -9,8 +9,8 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 - **Bundled-Ollama readiness and first-run onboarding** ([Issue #7]) — Intentive
   now ships the Apple Silicon Ollama binary at `src-tauri/resources/ollama` and
-  spawns it on its own primary port (44381); ADR-0013's reserved 44383
-  fallback still requires provider-side runtime wiring. The new
+  spawns it on its own primary port (`44381`) with `44383` fallback per
+  ADR-0013. The new
   onboarding surface (`?surface=onboarding`) walks the user through a one-time
   `qwen3.5:0.8b` download with a live percentage bar and a retry path on
   failure, per [ADR-0018](docs/adr/0018-bundled-model-download-during-onboarding.md).
@@ -22,7 +22,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   - `SystemOllamaProcess` polls the local `/api/tags` endpoint for readiness;
     spawn fails after 10s if the HTTP boundary never becomes available.
   - New `port::resolve_port` helper (primary-to-fallback) is applied to the
-    ScreenPipe capture session path.
+    ScreenPipe supervisor and bundled Ollama spawn paths.
   - `model_is_present_on_disk` startup check opens the onboarding window only
     when the user is signed in and the model is genuinely absent.
 - **`snapshot_store` Rust module** (`src-tauri/src/snapshot_store/`) — sqlx-backed
@@ -140,9 +140,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   macOS Privacy Settings identity.
 - **Tray icons** — capturing dot recolored to Apple system green; both dots
   gain a transparent gap separating them from the head silhouette.
-- ScreenPipe integration now uses Intentive-owned port `44380` instead of
-  ScreenPipe's default `3030`; bundled Ollama remains reserved for `44381`
-  while existing user Ollama stays on `11434`.
+- ScreenPipe integration now uses Intentive-owned port `44380` (or `44382`
+  fallback) instead of ScreenPipe's default `3030`; bundled Ollama uses `44381`
+  (or `44383` fallback) while existing user Ollama stays on `11434`.
 - **Capture Session coordinator** introduced
   (`src-tauri/src/capture_session/`): single owner of the shell-state FSM,
   consumes `CoordinatorCommand` (toggle, sign-in, simulated error) and drains

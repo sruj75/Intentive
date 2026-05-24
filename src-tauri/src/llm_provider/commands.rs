@@ -51,7 +51,8 @@ pub async fn start_model_download(
         .await;
     });
 
-    let cfg = config.0.clone();
+    let mut cfg = config.config.clone();
+    cfg.screenpipe_url = config.screenpipe_endpoint.current_or_primary_url();
     let http = reqwest::Client::new();
     let result = LlmProvider::resolve_with_progress(cfg, http, tx).await;
     // Wait for the forwarder to drain whatever's still in flight before
