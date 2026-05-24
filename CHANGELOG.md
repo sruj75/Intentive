@@ -101,7 +101,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   **Intentive**, bundle identifier `com.heyintentive.tauri`, **Intentive** or
   fallback **Intentive Capture** in macOS Privacy Settings, and Capture Permission
   Setup as a release requirement.
-- **Issue #3 smoke checklist** (`docs/smoke-issue-3.md`) for manually verifying
+- **Issue #3 smoke checklist** for manually verifying
   the menu bar shell states.
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
   `chrono`, `thiserror`, `url`, `async-trait`. Dev-dep: `wiremock`.

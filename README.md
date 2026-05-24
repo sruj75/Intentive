@@ -69,7 +69,8 @@ VITE_NEON_AUTH_URL=<Neon Auth URL from the Neon Console>
 | `src-tauri/` | Tauri app, orchestration, and Rust domains |
 | `src-tauri/src/capture_state/` | Capture Session shell state machine (pure FSM) |
 | `src-tauri/src/capture_session/` | Capture Session coordinator — owns the FSM, accepts domain commands, notifies observers |
-| `src-tauri/src/screenpipe_supervisor/` | ScreenPipe child-process lifecycle (spawn, port probe, silent retry, intent flag) |
+| `src-tauri/src/screenpipe_supervisor/` | ScreenPipe child-process lifecycle (spawn, port probe with primary/fallback, silent retry, intent flag) |
+| `src-tauri/src/port/` | Shared TCP port probe with primary/fallback resolution (ADR-0013) |
 | `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and command handlers |
 | `src-tauri/src/llm_provider/` | On-device summarization |
 | `src-tauri/src/agent_interface/` | HTTPS push to OpenClaw Agent |
