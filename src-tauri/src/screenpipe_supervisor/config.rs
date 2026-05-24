@@ -1,15 +1,17 @@
 //! Configuration constants for the capture session. Centralised so call sites
 //! never embed magic numbers or error copy strings.
 
-/// Port on which Intentive's bundled ScreenPipe binary listens. Chosen to
-/// avoid collisions with default `3030` and other common developer ports
-/// (ADR-0013).
+/// Primary port for Intentive's bundled ScreenPipe binary (ADR-0013).
 pub(crate) const PORT: u16 = 44380;
 
-/// Capture Error copy surfaced when the pre-spawn TCP probe finds the port
-/// already bound (ADR-0013). The user-facing string lives here so callers
-/// never embed copy.
-pub(crate) const PORT_CONFLICT_COPY: &str = "Can't start — port conflict";
+/// Fallback port — used when the primary is occupied, typically by a zombie
+/// ScreenPipe from a crashed prior Intentive session. ADR-0013 picks `+2` so
+/// neither bundled binary can ever claim the other's fallback slot.
+pub(crate) const PORT_FALLBACK: u16 = 44382;
+
+/// Capture Error copy surfaced when both the primary and fallback ports are
+/// occupied (ADR-0013).
+pub(crate) const PORT_CONFLICT_COPY: &str = "Can't start — all Intentive ports in use";
 
 /// Delay between an unexpected ScreenPipe exit and the single silent retry
 /// (ADR-0011). Short enough that the user doesn't notice a hiccup; long

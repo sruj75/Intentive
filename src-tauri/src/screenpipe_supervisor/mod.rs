@@ -26,7 +26,8 @@ mod spawner;
 
 pub use spawner::OsSpawner;
 
-use config::{CRASH_COPY, PORT, PORT_CONFLICT_COPY, RETRY_DELAY};
+use crate::port::resolve_port_with;
+use config::{CRASH_COPY, PORT, PORT_CONFLICT_COPY, PORT_FALLBACK, RETRY_DELAY};
 
 /// Outcomes the supervisor publishes when a Capture Session changes shape.
 /// The coordinator subscribes to this channel and translates events into
@@ -165,18 +166,30 @@ impl Inner {
             state.retry_used = false;
         }
 
-        if self.spawner.port_in_use(PORT).await {
-            if self.finish_start_without_child().await {
-                self.emit(SupervisorEvent::Stopped);
-            } else {
-                self.emit(SupervisorEvent::Crashed {
-                    user_facing_copy: PORT_CONFLICT_COPY,
-                });
+        // ADR-0013: probe primary, fall back to PORT_FALLBACK if occupied,
+        // crash with PORT_CONFLICT_COPY only when both are taken. The closure
+        // borrows the spawner via the shared Arc inside `self`.
+        let spawner = self.spawner.clone();
+        let port = match resolve_port_with(PORT, PORT_FALLBACK, |p| {
+            let s = spawner.clone();
+            async move { s.port_in_use(p).await }
+        })
+        .await
+        {
+            Ok(p) => p,
+            Err(_) => {
+                if self.finish_start_without_child().await {
+                    self.emit(SupervisorEvent::Stopped);
+                } else {
+                    self.emit(SupervisorEvent::Crashed {
+                        user_facing_copy: PORT_CONFLICT_COPY,
+                    });
+                }
+                return Ok(());
             }
-            return Ok(());
-        }
+        };
 
-        let child = match self.spawner.spawn(&self.binary_path, PORT).await {
+        let child = match self.spawner.spawn(&self.binary_path, port).await {
             Ok(child) => child,
             Err(_) => {
                 if self.finish_start_without_child().await {
@@ -193,7 +206,7 @@ impl Inner {
         let (kill_tx, kill_rx) = oneshot::channel();
         let watcher = {
             let this = self.clone();
-            tokio::spawn(async move { this.watch(child, kill_rx).await })
+            tokio::spawn(async move { this.watch(child, kill_rx, port).await })
         };
 
         let mut state = self.state.lock().await;
@@ -241,6 +254,7 @@ impl Inner {
         self: Arc<Self>,
         mut child: Box<dyn ChildHandle>,
         mut kill_rx: oneshot::Receiver<()>,
+        port: u16,
     ) {
         loop {
             tokio::select! {
@@ -276,7 +290,7 @@ impl Inner {
 
             tokio::time::sleep(RETRY_DELAY).await;
 
-            let new_child = match self.spawner.spawn(&self.binary_path, PORT).await {
+            let new_child = match self.spawner.spawn(&self.binary_path, port).await {
                 Ok(c) => c,
                 Err(_) => {
                     self.emit(SupervisorEvent::Crashed {

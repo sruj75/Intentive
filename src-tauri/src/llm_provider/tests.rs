@@ -5,14 +5,18 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 fn config_pointing_at(screenpipe: &MockServer) -> ProviderConfig {
     ProviderConfig {
         screenpipe_url: Url::parse(&screenpipe.uri()).unwrap(),
-        ollama_url: Url::parse("http://127.0.0.1:1").unwrap(), // unreachable
+        existing_ollama_url: Url::parse("http://127.0.0.1:1").unwrap(), // unreachable
+        bundled_ollama_url: Url::parse("http://127.0.0.1:1").unwrap(),  // unreachable
+        bundled_ollama_binary: std::path::PathBuf::from("/nonexistent/ollama"),
     }
 }
 
 fn config_with_both(screenpipe: &MockServer, ollama: &MockServer) -> ProviderConfig {
     ProviderConfig {
         screenpipe_url: Url::parse(&screenpipe.uri()).unwrap(),
-        ollama_url: Url::parse(&ollama.uri()).unwrap(),
+        existing_ollama_url: Url::parse(&ollama.uri()).unwrap(),
+        bundled_ollama_url: Url::parse("http://127.0.0.1:1").unwrap(), // unreachable
+        bundled_ollama_binary: std::path::PathBuf::from("/nonexistent/ollama"),
     }
 }
 
@@ -200,6 +204,45 @@ async fn summarize_prompt_includes_privacy_constraints() {
         .summarize("anything")
         .await
         .expect("summarize should succeed");
+}
+
+#[tokio::test]
+async fn tier_two_uses_existing_ollama_url_not_bundled() {
+    // The bundled URL must be a separate field on ProviderConfig and must NOT
+    // be consulted on the Tier 2 path. We wire `existing_ollama_url` at our
+    // mock server and `bundled_ollama_url` at an unreachable address — if the
+    // code accidentally probes the bundled URL during Tier 2 resolution the
+    // mock won't see the request and the test fails. ADR-0013.
+    let screenpipe = MockServer::start().await;
+    let existing_ollama = MockServer::start().await;
+    stub_apple_intelligence_unavailable(&screenpipe).await;
+    Mock::given(method("GET"))
+        .and(path("/api/ps"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "models": [{ "name": "qwen3.5:0.8b", "size": 942_656_512u64 }]
+        })))
+        .expect(1)
+        .mount(&existing_ollama)
+        .await;
+
+    let config = ProviderConfig {
+        screenpipe_url: Url::parse(&screenpipe.uri()).unwrap(),
+        existing_ollama_url: Url::parse(&existing_ollama.uri()).unwrap(),
+        bundled_ollama_url: Url::parse("http://127.0.0.1:1").unwrap(),
+        bundled_ollama_binary: std::path::PathBuf::from("/nonexistent/ollama"),
+    };
+
+    let provider = LlmProvider::resolve(config, reqwest::Client::new())
+        .await
+        .expect("Tier 2 should resolve via existing_ollama_url");
+    assert_eq!(provider.tier(), Tier::ExistingOllama);
+}
+
+#[tokio::test]
+async fn provider_config_default_has_distinct_existing_and_bundled_urls() {
+    let cfg = ProviderConfig::default();
+    assert_eq!(cfg.existing_ollama_url.as_str(), "http://localhost:11434/");
+    assert_eq!(cfg.bundled_ollama_url.as_str(), "http://localhost:44381/");
 }
 
 #[tokio::test]

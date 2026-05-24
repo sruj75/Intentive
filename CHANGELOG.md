@@ -7,6 +7,24 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Bundled-Ollama readiness and first-run onboarding** ([Issue #7]) — Intentive
+  now ships the Apple Silicon Ollama binary at `src-tauri/resources/ollama` and
+  spawns it on its own port (44381, with 44383 fallback) per
+  [ADR-0013](docs/adr/0013-unique-local-ports-for-bundled-binaries.md). The new
+  onboarding surface (`?surface=onboarding`) walks the user through a one-time
+  `qwen3.5:0.8b` download with a live percentage bar and a retry path on
+  failure, per [ADR-0018](docs/adr/0018-bundled-model-download-during-onboarding.md).
+  Behind the scenes:
+  - `LlmProvider::resolve_with_progress` exposes Tier 3 pull progress on a
+    `tokio::sync::mpsc::Sender<PullProgress>` channel.
+  - `start_model_download` Tauri command drives the resolve and forwards
+    progress as `bundled-ollama:{progress,complete,failed}` events.
+  - `SystemOllamaProcess` watches stdout/stderr for `"Listening on"` to detect
+    readiness without time-based polling; spawn fails after 10s.
+  - New `port::resolve_port` helper (primary→fallback) applied to both the
+    bundled Ollama and the ScreenPipe capture session paths.
+  - `model_is_present_on_disk` startup check opens the onboarding window only
+    when the user is signed in and the model is genuinely absent.
 - **`snapshot_store` Rust module** (`src-tauri/src/snapshot_store/`) — sqlx-backed
   local SQLite log per [ADR-0007](docs/adr/0007-local-snapshot-log-with-retention.md).
   Public API: `SnapshotStore::new` (opens or creates the file, runs migrations,

@@ -92,6 +92,10 @@ _Avoid_: permissions wizard, ScreenPipe setup, diagnostics
 The shared product capability that signs a user into any Intentive client and lets the Control Plane resolve onboarding state, registered devices, and the user's agent runtime. Intentive clients do not capture or connect to an agent runtime without a signed-in user.
 _Avoid_: login, account (use "sign in" / "signed-in user")
 
+**Sibling Client Invitation**:
+An optional prompt from the client a user currently uses to connect the other Intentive client later, without making either platform primary or changing where identity and onboarding progress live.
+_Avoid_: primary platform setup, platform ownership, required handoff
+
 **Snapshot Store**:
 The local SQLite module (`src-tauri/src/snapshot_store/`) that persists Context Snapshots before and after delivery. It is the Desktop Client's primary record of what was captured and sent — not a cache. Backed by sqlx with WAL mode; schema is managed via numbered migration files in `src-tauri/migrations/`. The store's insert API accepts only `ContextSnapshot`, making it structurally impossible to persist raw ScreenPipe data. See ADR-0007, ADR-0016.
 _Avoid_: cache, buffer, log (it is a store — durable and queryable)
@@ -105,6 +109,8 @@ _Avoid_: content filtering, runtime validation, data scrubbing (the boundary is 
 - **Intentive** has replaceable client surfaces; the current surfaces are the **Mobile Client** and **Desktop Client**
 - The **Control Plane** owns **Durable State** and routes each signed-in user to one **Agent Runtime**
 - **Mobile Client** and **Desktop Client** display lifecycle state from the **Control Plane** rather than deciding onboarding or agent lifecycle locally
+- A user may authenticate and complete onboarding from either client; the **Control Plane** preserves the same identity and onboarding progress across both
+- Either client may offer a **Sibling Client Invitation** later; the invitation does not make that platform the owner of identity or onboarding progress
 - The **Desktop Client** bundles and manages one **ScreenPipe** process per **Capture Session**, using the **Bundled Native Artifact** for the host **Mac CPU variant**
 - A **Capture Session** produces a stream of **Context Snapshots** via the **Context Heartbeat** on a fixed 10-minute cadence
 - A **Capture Session** always ends with a **Session End Marker** pushed via the **Agent Interface**
@@ -152,6 +158,7 @@ When a ScreenPipe pattern exists for a problem, adopt it unless there is a speci
 
 - "Intentive" previously meant the macOS app and project itself — resolved: **Intentive** is the broader product system; this repo is the **Desktop Client**.
 - "client lifecycle truth" — resolved: **Mobile Client** and **Desktop Client** render lifecycle state; the **Control Plane** owns onboarding, device, provisioning, and agent runtime lifecycle truth.
+- "primary onboarding platform" — rejected: a user may begin in either client, and a **Sibling Client Invitation** is convenience rather than platform ownership. This refines the shared Control Plane decision already recorded by the sibling mobile client.
 - "push vs pull" for the Agent Interface — resolved: **push**. Intentive delivers snapshots to the OpenClaw Agent. The agent is event-driven and wakes when a snapshot arrives. See ADR-0004.
 - "agent" was used generically throughout early discussions — resolved: use **OpenClaw Agent** for the specific consumer, **Agent Interface** for the delivery mechanism.
 - Auth provider — resolved: **Neon Auth**. Neon Auth is built on Better Auth; Google is the intended v1 provider. Agent Interface endpoint and credential resolution remains internal and belongs behind Auth, not in Settings.
@@ -166,7 +173,7 @@ When a ScreenPipe pattern exists for a problem, adopt it unless there is a speci
 - "clear photos" means static bundled instructional screenshots in the style of Opal, paired with live OS permission checks — not live screenshots of the user's macOS Privacy Settings.
 - **Capture Permission Setup** should open the exact macOS Privacy Settings pane when possible, fall back to Privacy & Security when needed, and offer a manual recheck for already-granted permissions.
 - "auto-retry on ScreenPipe crash" — resolved: **one silent retry in v1**. On unexpected ScreenPipe exit, the subprocess manager waits 2 seconds and respawns once. If the retry succeeds, capture continues invisibly. If it fails, Intentive enters Capture Error state (yellow tray icon). Recovery is app relaunch. Persistent backoff with circuit breaker is deferred to a future slice once real failure patterns are known. See ADR-0011.
-- "port conflicts for bundled binaries" — resolved: **unique ports**. Intentive-bundled ScreenPipe runs on `44380`; bundled Ollama (Tier 3) runs on `44381`. The subprocess manager performs a pre-spawn TCP probe; if the port is occupied, Intentive enters Capture Error with specific copy ("Another app is using Intentive's capture port") without consuming the crash retry. See ADR-0013.
+- "port conflicts for bundled binaries" — resolved: **unique ports with a single fallback**. Bundled ScreenPipe: `44380`, fallback `44382`. Bundled Ollama: `44381`, fallback `44383`. The subprocess manager probes the primary port; if occupied, tries the fallback; if that is also occupied, surfaces an error. Ports are determined at spawn time (not compile-time constants) and passed through to `ProviderConfig` and `CaptureSessionManager`. See ADR-0013.
 - "activity-gated heartbeat vs fixed interval" — resolved: **fixed 10-minute interval**. Activity-gating created an ambiguity between "user is idle" and "user quit." Fixed interval keeps the agent consistently informed and makes the Session End Marker the unambiguous signal for session termination. See ADR-0008.
 - "Session End Marker payload shape and agent handling" — **deliberately deferred**. Whether the OpenClaw Agent treats it differently from a regular Context Snapshot, and what fields it needs, depends on the agent-side contract not yet defined.
 - "auto-start capture vs explicit toggle" — resolved: **auto-start after auth**. Capture starts automatically when a signed-in user launches Intentive. The menu bar toggle is stop-only (or restart after manual stop). Consent is baked into the sign-in flow — completing sign-in grants permission for auto-start. See ADR-0009.
@@ -177,3 +184,4 @@ When a ScreenPipe pattern exists for a problem, adopt it unless there is a speci
 - "where does ContextSnapshot live?" — resolved: **shared `snapshot` module** (`src-tauri/src/snapshot/`). Not inside `agent_interface` (leakage) and not duplicated per module. Both `agent_interface` and `snapshot_store` import from there. See ADR-0017.
 - "SQLite library for the Snapshot Store" — resolved: **sqlx** with `sqlite`, `runtime-tokio-rustls`, `chrono`, and `migrate` features. Runtime queries only (`sqlx::query()`, not the `query!` macro). Migration files in `src-tauri/migrations/`. Follows ScreenPipe's own DB stack. See ADR-0016.
 - "how does the Snapshot Store enforce the privacy boundary?" — resolved: **structurally, via the `ContextSnapshot` type**. The store's insert function accepts only `ContextSnapshot` — a struct with no fields for raw ScreenPipe data. Runtime content inspection was rejected as a shallow, fragile layer on top of a boundary that the LLM prompt already owns.
+- "when and how does the bundled Ollama model download happen?" — resolved: **during onboarding, user-initiated and non-blocking**. A dedicated onboarding step presents the model download to the user; pressing Continue starts the download in the background and onboarding proceeds. The user is not blocked waiting for the download to finish. Design C (pre-auth, first-launch download) was rejected because ScreenPipe is not running pre-auth, making the Apple Intelligence tier check impossible. Design A (automatic post-auth) was rejected as surprising — 500MB bandwidth without explicit user awareness. See ADR-0018.

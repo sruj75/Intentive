@@ -3,6 +3,7 @@ pub mod capture_session;
 pub mod capture_state;
 pub mod llm_provider;
 pub mod menu_bar;
+pub mod port;
 pub mod screenpipe_supervisor;
 pub mod snapshot;
 pub mod snapshot_store;
@@ -11,12 +12,35 @@ use std::sync::Arc;
 
 use tauri::path::BaseDirectory;
 use tauri::Manager;
+use tauri::WebviewWindow;
+use tokio::sync::Mutex;
 
 use capture_session::{CaptureSessionCoordinator, CoordinatorCommand};
-use capture_state::{AuthChecker, StubAuthChecker};
+use capture_state::{AuthChecker, CaptureState, StubAuthChecker};
+use llm_provider::{LlmProvider, ProviderConfig};
 use screenpipe_supervisor::{OsSpawner, ScreenpipeSupervisor, Spawner, Supervisor};
 use snapshot_store::SnapshotStore;
 use tokio::sync::mpsc;
+
+/// Tauri-managed state for the resolved on-device LLM Provider. Starts as
+/// `None` and is populated by the `start_model_download` command (Slice 9)
+/// after a successful Tier 3 prepare. The Context Heartbeat will eventually
+/// read this at tick time to summarize activity windows.
+pub struct LlmProviderSlot(pub Mutex<Option<Arc<LlmProvider>>>);
+
+/// Tauri-managed state for the `ProviderConfig` resolved at startup. The
+/// command path reads this to drive `LlmProvider::resolve_with_progress`.
+pub struct ProviderConfigState(pub ProviderConfig);
+
+/// Force the settings webview to the onboarding surface and bring it
+/// forward. Matches the URL-mutation pattern `menu_bar::open_settings_window`
+/// uses for the sign-in surface — same single window, different `?surface=`
+/// query value.
+fn open_onboarding_window(window: &WebviewWindow) {
+    let _ = window.eval("window.location.search = '?surface=onboarding';");
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -68,6 +92,42 @@ pub fn run() {
                 coordinator.submit(CoordinatorCommand::SignInCompleted);
             }
 
+            // LLM Provider wiring (Issue #7, ADR-0006, ADR-0018). The slot
+            // starts empty — Tier 3 may need a model download that drives
+            // through the `start_model_download` command. The Context
+            // Heartbeat reads this at tick time; if `None`, skips the tick.
+            let bundled_ollama_binary = app
+                .path()
+                .resolve("resources/ollama", BaseDirectory::Resource)?;
+            let provider_config = ProviderConfig {
+                bundled_ollama_binary,
+                ..ProviderConfig::default()
+            };
+            app.manage(ProviderConfigState(provider_config));
+            app.manage(LlmProviderSlot(Mutex::new(None)));
+
+            // Onboarding-window open logic (Issue #7, ADR-0018). Open the
+            // onboarding surface only when the user is signed in (FSM in
+            // Capturing per ADR-0009) and the bundled model is not yet on
+            // disk. We intentionally don't open it pre-auth — onboarding
+            // follows sign-in, never replaces it. FSM state is read via
+            // the coordinator's snapshot() — refactor canonicalized this
+            // path; StateHolder no longer exists.
+            let needs_onboarding = matches!(coordinator.snapshot(), CaptureState::Capturing)
+                && llm_provider::bundled::default_models_root()
+                    .map(|root| {
+                        !llm_provider::bundled::model_is_present_on_disk(
+                            &root,
+                            llm_provider::bundled::BUNDLED_MODEL,
+                        )
+                    })
+                    .unwrap_or(true);
+            if needs_onboarding {
+                if let Some(window) = app.get_webview_window("settings") {
+                    open_onboarding_window(&window);
+                }
+            }
+
             Ok(())
         });
 
@@ -79,6 +139,7 @@ pub fn run() {
             menu_bar::open_sign_in_surface,
             menu_bar::quit_app,
             menu_bar::simulate_error,
+            llm_provider::commands::start_model_download,
         ]);
     }
     #[cfg(not(debug_assertions))]
@@ -88,6 +149,7 @@ pub fn run() {
             menu_bar::open_settings,
             menu_bar::open_sign_in_surface,
             menu_bar::quit_app,
+            llm_provider::commands::start_model_download,
         ]);
     }
 

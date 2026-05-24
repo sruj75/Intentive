@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::{mpsc, Notify};
 
-use super::config::{CRASH_COPY, PORT_CONFLICT_COPY};
+use super::config::{CRASH_COPY, PORT, PORT_CONFLICT_COPY, PORT_FALLBACK};
 use super::{
     ChildHandle, ScreenpipeSupervisor, Spawner, Supervisor, SupervisorError, SupervisorEvent,
 };
@@ -72,7 +73,7 @@ struct SpawnCall {
 struct FakeSpawner {
     spawn_calls: Mutex<Vec<SpawnCall>>,
     children: Mutex<Vec<Arc<ChildControls>>>,
-    port_in_use: AtomicBool,
+    ports_in_use: Mutex<HashSet<u16>>,
     spawn_blocked: AtomicBool,
     spawn_release: Notify,
     spawn_fails: AtomicBool,
@@ -83,7 +84,7 @@ impl FakeSpawner {
         Self {
             spawn_calls: Mutex::new(Vec::new()),
             children: Mutex::new(Vec::new()),
-            port_in_use: AtomicBool::new(false),
+            ports_in_use: Mutex::new(HashSet::new()),
             spawn_blocked: AtomicBool::new(false),
             spawn_release: Notify::new(),
             spawn_fails: AtomicBool::new(false),
@@ -98,8 +99,13 @@ impl FakeSpawner {
         self.children.lock().unwrap()[index].clone()
     }
 
-    fn set_port_in_use(&self, value: bool) {
-        self.port_in_use.store(value, Ordering::SeqCst);
+    /// Mark a specific port as in-use for the pre-spawn probe. Call once
+    /// per port that should report busy. The supervisor probes primary,
+    /// then fallback, so tests can simulate any of the three states:
+    /// neither marked (happy path on primary), primary marked (falls back),
+    /// both marked (terminal port-conflict).
+    fn set_port_in_use(&self, port: u16) {
+        self.ports_in_use.lock().unwrap().insert(port);
     }
 
     fn block_spawn(&self) {
@@ -137,8 +143,8 @@ impl Spawner for FakeSpawner {
         Ok(Box::new(FakeChild { controls }))
     }
 
-    async fn port_in_use(&self, _port: u16) -> bool {
-        self.port_in_use.load(Ordering::SeqCst)
+    async fn port_in_use(&self, port: u16) -> bool {
+        self.ports_in_use.lock().unwrap().contains(&port)
     }
 }
 
@@ -251,9 +257,10 @@ async fn duplicate_start_returns_already_running_and_spawns_once() {
 }
 
 #[tokio::test]
-async fn start_with_port_in_use_emits_port_conflict_crashed_without_spawning() {
+async fn start_with_all_candidate_ports_in_use_emits_port_conflict_without_spawning() {
     let spawner = Arc::new(FakeSpawner::new());
-    spawner.set_port_in_use(true);
+    spawner.set_port_in_use(PORT);
+    spawner.set_port_in_use(PORT_FALLBACK);
     let (tx, mut rx) = event_channel();
     let supervisor =
         ScreenpipeSupervisor::new(PathBuf::from("/fake/screenpipe"), spawner.clone(), tx);
@@ -272,7 +279,29 @@ async fn start_with_port_in_use_emits_port_conflict_crashed_without_spawning() {
     assert_eq!(
         spawner.spawn_calls().len(),
         0,
-        "spawn is skipped when port probe finds the port in use",
+        "spawn is skipped when every candidate port is occupied",
+    );
+}
+
+#[tokio::test]
+async fn start_falls_back_to_secondary_port_when_primary_is_in_use() {
+    let spawner = Arc::new(FakeSpawner::new());
+    spawner.set_port_in_use(PORT);
+    let (tx, mut rx) = event_channel();
+    let supervisor =
+        ScreenpipeSupervisor::new(PathBuf::from("/fake/screenpipe"), spawner.clone(), tx);
+
+    supervisor.start().await.expect("start succeeds on fallback");
+
+    let calls = spawner.spawn_calls();
+    assert_eq!(calls.len(), 1, "spawn fires exactly once on fallback path");
+    assert_eq!(
+        calls[0].port, PORT_FALLBACK,
+        "spawn uses the fallback port when primary is occupied",
+    );
+    assert!(
+        drain(&mut rx).is_empty(),
+        "happy fallback path emits no event — coordinator stays in Capturing",
     );
 }
 

@@ -42,7 +42,9 @@ Intentive sits between four external systems and one user:
 | `src-tauri/src/lib.rs` | Tauri entry: plugins, command registration, setup, and app lifecycle. Installs the menu bar shell and prevents window close from quitting the service. |
 | `src-tauri/src/capture_state/` | Pure Capture Session shell state machine: unauthenticated, stopped, capturing, error. No Tauri dependencies. |
 | `src-tauri/src/capture_session/` | **Deep module** — Capture Session coordinator. Single owner of the shell-state FSM; accepts `CoordinatorCommand` (toggle, sign-in, simulated error), drains `SupervisorEvent`, notifies a single `StateObserver` per transition. Hides FSM mutation, supervisor lifecycle dispatch, and (future) Heartbeat / Snapshot Store / Session End Marker orchestration behind `submit()` + `subscribe()`. |
-| `src-tauri/src/screenpipe_supervisor/` | **Deep module** — ScreenPipe child-process lifecycle behind a `Supervisor` trait. Hides resource path spawning, pre-spawn port probe, stop/kill handling, one silent crash retry, and `shutdown_intended` flag (ADR-0012) behind `start()` / `stop()`. Publishes `SupervisorEvent` (`Stopped`, `Crashed { user_facing_copy }`) on an mpsc channel; never mutates the FSM directly. |
+| `src-tauri/src/screenpipe_supervisor/` | **Deep module** — ScreenPipe child-process lifecycle behind a `Supervisor` trait. Hides resource path spawning, pre-spawn port probe with primary/fallback resolution (ADR-0013), stop/kill handling, one silent crash retry, and `shutdown_intended` flag (ADR-0012) behind `start()` / `stop()`. Publishes `SupervisorEvent` (`Stopped`, `Crashed { user_facing_copy }`) on an mpsc channel; never mutates the FSM directly. |
+| `src-tauri/src/port/` | Shared pre-spawn TCP port probe with primary/fallback resolution (ADR-0013). Used by `screenpipe_supervisor` and bundled Ollama spawn. |
+| `src-tauri/src/llm_provider/commands/` | Tauri commands the Onboarding webview invokes — `start_model_download` drives `LlmProvider::resolve_with_progress` and emits `bundled-ollama:*` progress events. |
 | `src-tauri/src/menu_bar/` | Tauri tray icon, menu descriptors, and command handlers. Publishes `CoordinatorCommand` to the coordinator and registers a `TrayObserver` that re-renders on every state-change notification. State-to-menu/icon mapping stays unit-testable. |
 | `src-tauri/src/llm_provider/` | **Deep module** — `resolve()` at startup (Apple Intelligence → existing Ollama → bundled Ollama); `summarize()` per heartbeat. Hides tier detection, prompts (`prompt.rs`), bundled binary spawn (`bundled.rs`). |
 | `src-tauri/src/agent_interface/` | **Deep module** — `AgentInterface::push()` HTTPS POST with Bearer auth, 10s timeout, drop-on-failure (ADR-0004, ADR-0005). Imports `ContextSnapshot` from `crate::snapshot`. |
@@ -51,7 +53,6 @@ Intentive sits between four external systems and one user:
 | `src-tauri/migrations/` | sqlx-managed schema migrations (`0001_create_snapshots.sql`). Runs on `SnapshotStore::new` via `sqlx::migrate!()`. |
 | `src-tauri/resources/` | Bundled native artifacts. v1 ScreenPipe: `@screenpipe/cli-darwin-arm64` only (M-series Macs). Bundled Ollama lands with Tier 3 (ADR-0002, ADR-0006, ADR-0014). |
 | `src-tauri/icons/tray/` | Pre-rendered menu bar icons for idle, capturing, and error states. |
-| `references/` | Integration notes for ScreenPipe routes and Ollama APIs (agent/debug reference, not runtime code). |
 | `CONTEXT.md` | Glossary — use these names in code and reviews. |
 | `SPEC.md` | v1 requirements and payload contracts. |
 | `DESIGN.md`, `.claude/commands/macos-design.md` | UI brand and native macOS patterns. |

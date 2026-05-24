@@ -76,8 +76,7 @@ VITE_NEON_AUTH_URL=<Neon Auth URL from the Neon Console>
 | `src-tauri/src/snapshot/` | Shared `ContextSnapshot` domain type |
 | `src-tauri/src/snapshot_store/` | Local SQLite log + retention (ADR-0007) |
 | `src-tauri/migrations/` | sqlx-managed schema migrations |
-| `src-tauri/resources/` | Bundled native artifacts, including ScreenPipe |
-| `references/` | ScreenPipe / Ollama API notes |
+| `src-tauri/resources/` | Bundled native artifacts (ScreenPipe, Ollama) |
 | `docs/adr/` | Architectural decision records |
 
 Full codemap and invariants: [`ARCHITECTURE.md`](ARCHITECTURE.md).

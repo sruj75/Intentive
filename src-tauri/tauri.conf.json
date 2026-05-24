@@ -37,6 +37,7 @@
     ],
     "resources": [
       "resources/screenpipe",
+      "resources/ollama",
       "icons/tray/status-item-idle.png",
       "icons/tray/status-item-capturing.png",
       "icons/tray/status-item-error.png"

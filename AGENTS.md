@@ -11,7 +11,7 @@ Intentive macOS Tauri app that runs ScreenPipe capture, summarizes activity on-d
 - Settings/Auth uses Neon Auth UI. Keep endpoint URLs, API keys, and ScreenPipe diagnostics out of user-facing Settings; Auth-resolved Agent Interface configuration is a later slice.
 - Keep changes scoped; match naming and patterns in the module you are editing.
 - When changing UI, read `DESIGN.md` and `.claude/commands/macos-design.md` (plus `.claude/commands/references/` as that command directs).
-- When integrating ScreenPipe or Ollama, read `references/` (`screenpipe-routes-llms.txt`, `ollama-api-llms.txt`, `ollama-server-llms.txt`).
+- When integrating ScreenPipe or Ollama, read `docs/adr/` for ports and boundaries and use `.claude/skills/screenpipe-*` for operational API/debug workflows.
 
 ## Commands
 
@@ -43,5 +43,4 @@ The frontend Auth surface requires `VITE_NEON_AUTH_URL=<Neon Auth URL from the N
 - `docs/agents/issue-tracker.md` — GitHub issue workflows via `gh`.
 - `docs/agents/triage-labels.md` — issue labels used in this repo.
 - `docs/adr/` — architectural decisions; read before changing system boundaries.
-- `references/` — ScreenPipe HTTP routes and Ollama API notes for capture/summarization work.
 - `.claude/skills/screenpipe-*/` — ScreenPipe health, API, CLI, and logs when debugging capture.

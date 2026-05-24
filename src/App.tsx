@@ -5,17 +5,25 @@ import {
   SignedOut,
   UserButton,
 } from "@neondatabase/neon-js/auth/react/ui";
+import Onboarding from "./Onboarding";
 import "./App.css";
 
-type Surface = "settings" | "sign-in";
+type Surface = "settings" | "sign-in" | "onboarding";
 
 function resolveSurface(): Surface {
   const params = new URLSearchParams(window.location.search);
-  return params.get("surface") === "sign-in" ? "sign-in" : "settings";
+  const value = params.get("surface");
+  if (value === "sign-in") return "sign-in";
+  if (value === "onboarding") return "onboarding";
+  return "settings";
 }
 
 function App() {
   const surface = useMemo(resolveSurface, []);
+
+  if (surface === "onboarding") {
+    return <Onboarding />;
+  }
 
   if (surface === "sign-in") {
     return (

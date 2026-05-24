@@ -14,16 +14,26 @@ Because Intentive bundles and manages these binaries itself, it can configure th
 - **Bundled Ollama (Tier 3)**: `44381` (passed via `OLLAMA_HOST=127.0.0.1:44381`)
 - **Existing Ollama (Tier 2)**: `11434` — this is the user's own installation; Intentive reads it, does not configure it
 
-Before spawning ScreenPipe, the subprocess manager performs a pre-spawn TCP probe to `127.0.0.1:44380`. If the probe succeeds (port is already bound), Intentive skips the spawn entirely and enters Capture Error state with copy: **"Can't start — port conflict"**. This path does not consume the crash retry.
+Before spawning each bundled binary, the subprocess manager performs a pre-spawn TCP probe. If the primary port is occupied, it tries the fallback port. If the fallback is also occupied, Intentive enters an error state — something genuinely unusual is happening.
+
+| Binary | Primary | Fallback |
+|---|---|---|
+| Bundled ScreenPipe | `44380` | `44382` |
+| Bundled Ollama (Tier 3) | `44381` | `44383` |
+
+Fallbacks skip by 2 so the two binaries can never accidentally claim each other's fallback. Existing Ollama (Tier 2) is always read at `11434` — Intentive does not configure or conflict with a user's own installation.
+
+The actual port used is determined at spawn time and passed through to `ProviderConfig` / `CaptureSessionManager` — ports are not compile-time constants.
 
 ## Considered Options
 
 - **Keep default ports (`3030` / `11434`):** trivial to implement but collides with common developer setups and with users who run ScreenPipe or Ollama independently.
-- **Dynamic port selection (bind to :0):** eliminates conflicts but requires the subprocess manager to read the assigned port back from the child process stdout, adding complexity with no benefit given we control the binary.
+- **Dynamic port selection (bind to :0):** eliminates conflicts but requires reading the assigned port back from child stdout, adding complexity.
+- **Error on primary port conflict (original):** simpler but forces user intervention for what is almost always a zombie from a crashed prior Intentive session.
 
 ## Consequences
 
-- All internal references to `localhost:3030` for ScreenPipe and `localhost:11434` for bundled Ollama must use the configured ports (`44380` / `44381`).
-- `ProviderConfig` must distinguish `bundled_ollama_url` (`127.0.0.1:44381`) from `existing_ollama_url` (`127.0.0.1:11434`).
-- Pre-spawn port probe is a fast TCP connect with a short timeout (~200ms). If it times out (neither connect nor refuse), treat port as free and proceed.
-- If a zombie Intentive-owned ScreenPipe holds `44380` from a crashed prior session, the probe fires the "another app" error. User relaunches — startup cleanup logic should attempt to kill any orphaned process on `44380` before probing.
+- `ProviderConfig` must distinguish `bundled_ollama_url` (resolved at spawn, default `127.0.0.1:44381`) from `existing_ollama_url` (`127.0.0.1:11434`).
+- `CaptureSessionManager` and the LLM Provider subprocess manager both receive their port as a runtime value, not a constant.
+- Pre-spawn TCP probe timeout: ~200ms. Timeout (no response) → treat as free and proceed.
+- If both primary and fallback are occupied, surface a specific error: **"Can't start — all Intentive ports in use."**
