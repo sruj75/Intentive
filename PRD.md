@@ -69,7 +69,7 @@ The user-facing product remains intentionally quiet. Capture starts on launch an
 
 - Intentive remains a Tauri 2 application using Rust for native process, storage, and menu bar responsibilities, and TypeScript + React for settings and setup UI.
 - Intentive is macOS-only for v1, on **Apple Silicon (M-series) Macs only**; Intel Macs and dual-arch packaging are deferred (ADR-0014).
-- Intentive v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`; product name is **Intentive** and bundle identifier is `com.tryintentive.tauri` (ADR-0015).
+- Intentive v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`; product name is **Intentive** and bundle identifier is `com.heyintentive.tauri` (ADR-0015).
 - The v1 UI is menu bar plus settings window only. There is no persistent main window, AI chat UI, or history/transparency UI in this PRD.
 - The app should be configured as a menu bar agent with no Dock icon.
 - The existing Tauri/Vite starter UI and greet command are scaffolding and should be replaced by Intentive-specific surfaces and commands.

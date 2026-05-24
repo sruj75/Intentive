@@ -160,7 +160,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 **Release packaging and macOS identity**
 - v1 ships as a direct-download Apple Silicon DMG containing only `Intentive.app`
 - Release builds are Developer ID signed and Apple-notarized; unsigned builds are dev-only
-- Product name is **Intentive** and bundle identifier is `com.tryintentive.tauri`
+- Product name is **Intentive** and bundle identifier is `com.heyintentive.tauri`
 - macOS Privacy Settings must show **Intentive** as the permission owner, with **Intentive Capture** as the only acceptable fallback helper identity
 - Acceptance:
   - [ ] Tagged release builds produce a signed and notarized DMG containing only `Intentive.app`.

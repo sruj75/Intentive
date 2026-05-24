@@ -14,7 +14,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::Deserialize;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use url::Url;
@@ -81,14 +80,6 @@ pub(super) fn parse_pull_line(line: &str) -> Option<PullProgress> {
     Some(PullProgress { percent, status })
 }
 
-/// Returns true if `line` looks like Ollama's "ready" log line. Match the
-/// substring `Listening on` rather than the full structured format — Ollama
-/// emits the line via Go's structured logger and the surrounding fields
-/// (timestamp, source file, version) drift between releases.
-pub(super) fn parse_ready_line(line: &str) -> bool {
-    line.contains("Listening on")
-}
-
 /// Returns `true` if the Ollama manifest file for `model` exists under
 /// `models_root`. Ollama lays its model store out as
 /// `<root>/manifests/registry.ollama.ai/library/<name>/<tag>` — checking the
@@ -151,8 +142,10 @@ pub(super) async fn prepare(
     binary_path: PathBuf,
     http: reqwest::Client,
     progress: tokio::sync::mpsc::Sender<PullProgress>,
-) -> Result<String, ProviderError> {
-    prepare_with(&SystemOllamaProcess::new(url, binary_path, http), progress).await
+) -> Result<(String, SystemOllamaProcess), ProviderError> {
+    let process = SystemOllamaProcess::new(url, binary_path, http);
+    let model = prepare_with(&process, progress).await?;
+    Ok((model, process))
 }
 
 async fn prepare_with(
@@ -194,9 +187,11 @@ impl SystemOllamaProcess {
 /// never block visibly, long enough to tolerate a busy local TCP stack.
 const PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Hard ceiling for the post-spawn readiness wait. ADR / grilling session
-/// agreed: 10s is generous enough for Apple Silicon under memory pressure.
+/// Hard ceiling for the post-spawn HTTP readiness wait. Ollama can log that it
+/// is listening just before `/api/tags` accepts requests, so process output is
+/// not a sufficiently strong readiness boundary for the onboarding pull.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
+const READY_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[async_trait]
 impl OllamaProcess for SystemOllamaProcess {
@@ -204,11 +199,8 @@ impl OllamaProcess for SystemOllamaProcess {
         let Ok(endpoint) = self.url.join("/api/tags") else {
             return false;
         };
-        let Ok(Ok(response)) = tokio::time::timeout(
-            PROBE_TIMEOUT,
-            self.http.get(endpoint).send(),
-        )
-        .await
+        let Ok(Ok(response)) =
+            tokio::time::timeout(PROBE_TIMEOUT, self.http.get(endpoint).send()).await
         else {
             return false;
         };
@@ -219,60 +211,34 @@ impl OllamaProcess for SystemOllamaProcess {
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("serve")
             .env("OLLAMA_HOST", &host)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .kill_on_drop(true);
         // Any subprocess failure is reported as Unavailable — the caller
         // distinguishes tier outcomes by variant, not by specific error
         // strings.
         let mut child = cmd.spawn().map_err(|_| ProviderError::Unavailable)?;
 
-        // Ollama logs the ready line to stderr in most builds; read both
-        // streams so we don't miss it.
-        let stdout = child.stdout.take().ok_or(ProviderError::Unavailable)?;
-        let stderr = child.stderr.take().ok_or(ProviderError::Unavailable)?;
-        let mut stdout_lines = BufReader::new(stdout).lines();
-        let mut stderr_lines = BufReader::new(stderr).lines();
-
-        let ready = tokio::time::timeout(READY_TIMEOUT, async {
-            loop {
-                tokio::select! {
-                    line = stdout_lines.next_line() => {
-                        match line {
-                            Ok(Some(l)) if parse_ready_line(&l) => return Ok(()),
-                            Ok(Some(_)) => continue,
-                            Ok(None) => return Err(ProviderError::Unavailable), // EOF → process exited early
-                            Err(_) => return Err(ProviderError::Unavailable),
-                        }
-                    }
-                    line = stderr_lines.next_line() => {
-                        match line {
-                            Ok(Some(l)) if parse_ready_line(&l) => return Ok(()),
-                            Ok(Some(_)) => continue,
-                            Ok(None) => return Err(ProviderError::Unavailable),
-                            Err(_) => return Err(ProviderError::Unavailable),
-                        }
-                    }
-                }
-            }
-        })
-        .await;
-
-        match ready {
-            Ok(Ok(())) => {
+        let deadline = tokio::time::Instant::now() + READY_TIMEOUT;
+        loop {
+            if self.is_running().await {
                 // Store the child so it lives as long as `self`. kill_on_drop
                 // ensures it dies when Intentive quits.
                 *self.child.lock().await = Some(child);
-                Ok(())
+                return Ok(());
             }
-            Ok(Err(e)) => {
+            if child
+                .try_wait()
+                .map_err(|_| ProviderError::Unavailable)?
+                .is_some()
+            {
+                return Err(ProviderError::Unavailable);
+            }
+            if tokio::time::Instant::now() >= deadline {
                 let _ = child.kill().await;
-                Err(e)
+                return Err(ProviderError::Unavailable);
             }
-            Err(_elapsed) => {
-                let _ = child.kill().await;
-                Err(ProviderError::Unavailable)
-            }
+            tokio::time::sleep(READY_POLL_INTERVAL).await;
         }
     }
     async fn has_model(&self, model: &str) -> bool {

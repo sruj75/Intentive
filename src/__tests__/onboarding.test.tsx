@@ -125,6 +125,17 @@ describe("Onboarding surface", () => {
     expect(invokeMock).toHaveBeenLastCalledWith("start_model_download");
   });
 
+  it("shows an error with Retry when the Tauri command cannot be invoked", async () => {
+    invokeMock.mockRejectedValueOnce("command not found");
+
+    render(<Onboarding />);
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await flush();
+
+    expect(screen.getByText(/command not found/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
+  });
+
   it("disables the Continue button while the download is in flight", async () => {
     let resolveInvoke: (() => void) | undefined;
     invokeMock.mockImplementationOnce(

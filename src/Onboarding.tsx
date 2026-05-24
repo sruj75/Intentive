@@ -78,10 +78,14 @@ export default function Onboarding() {
 
   const startDownload = useCallback(() => {
     setStep({ kind: "downloading", percent: 0, status: "starting" });
-    void invoke("start_model_download").catch(() => {
-      // The backend also emits `bundled-ollama:failed` on error; the event
-      // handler above carries the message. The catch here just stops the
-      // promise rejection from bubbling up unhandled.
+    void invoke("start_model_download").catch((error: unknown) => {
+      // Dispatch can fail before Rust has a chance to emit EVENT_FAILED
+      // (missing command, state, or IPC wiring), so do not strand the setup
+      // flow at "starting".
+      setStep({
+        kind: "failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
     });
   }, []);
 

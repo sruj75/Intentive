@@ -9,8 +9,8 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 - **Bundled-Ollama readiness and first-run onboarding** ([Issue #7]) — Intentive
   now ships the Apple Silicon Ollama binary at `src-tauri/resources/ollama` and
-  spawns it on its own port (44381, with 44383 fallback) per
-  [ADR-0013](docs/adr/0013-unique-local-ports-for-bundled-binaries.md). The new
+  spawns it on its own primary port (44381); ADR-0013's reserved 44383
+  fallback still requires provider-side runtime wiring. The new
   onboarding surface (`?surface=onboarding`) walks the user through a one-time
   `qwen3.5:0.8b` download with a live percentage bar and a retry path on
   failure, per [ADR-0018](docs/adr/0018-bundled-model-download-during-onboarding.md).
@@ -19,10 +19,10 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
     `tokio::sync::mpsc::Sender<PullProgress>` channel.
   - `start_model_download` Tauri command drives the resolve and forwards
     progress as `bundled-ollama:{progress,complete,failed}` events.
-  - `SystemOllamaProcess` watches stdout/stderr for `"Listening on"` to detect
-    readiness without time-based polling; spawn fails after 10s.
-  - New `port::resolve_port` helper (primary→fallback) applied to both the
-    bundled Ollama and the ScreenPipe capture session paths.
+  - `SystemOllamaProcess` polls the local `/api/tags` endpoint for readiness;
+    spawn fails after 10s if the HTTP boundary never becomes available.
+  - New `port::resolve_port` helper (primary-to-fallback) is applied to the
+    ScreenPipe capture session path.
   - `model_is_present_on_disk` startup check opens the onboarding window only
     when the user is signed in and the model is genuinely absent.
 - **`snapshot_store` Rust module** (`src-tauri/src/snapshot_store/`) — sqlx-backed
@@ -98,7 +98,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   for bundled native artifacts.
 - **ADR-0015** documents final v1 release packaging and product-owned macOS
   permission identity: signed/notarized Apple Silicon DMG, product name
-  **Intentive**, bundle identifier `com.tryintentive.tauri`, **Intentive** or
+  **Intentive**, bundle identifier `com.heyintentive.tauri`, **Intentive** or
   fallback **Intentive Capture** in macOS Privacy Settings, and Capture Permission
   Setup as a release requirement.
 - **Issue #3 smoke checklist** (`docs/smoke-issue-3.md`) for manually verifying
@@ -108,6 +108,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Post-rebase onboarding repair** — the Settings/onboarding webview is now
+  included in the Tauri event capability so live download progress and
+  completion reach the user, command-dispatch failures surface Retry rather
+  than an indefinite starting state, and the resolved bundled provider retains
+  its Ollama child for later Context Heartbeats.
 - **Issue #2 decisions locked and documented**
   ([#2](https://github.com/sruj75/v1-tauri/issues/2)):
   - Tier 3 bundled model confirmed: `qwen3.5:0.8b` (verified in Ollama registry).

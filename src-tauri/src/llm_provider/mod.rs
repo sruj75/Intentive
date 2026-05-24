@@ -66,6 +66,10 @@ pub struct LlmProvider {
     model: Option<String>,
     config: ProviderConfig,
     http: reqwest::Client,
+    /// Retains the bundled child process after onboarding resolves. Without
+    /// this owner, `kill_on_drop` stops Ollama before the first heartbeat can
+    /// send a summary request.
+    _bundled_process: Option<bundled::SystemOllamaProcess>,
 }
 
 impl LlmProvider {
@@ -94,6 +98,7 @@ impl LlmProvider {
                 model: None,
                 config,
                 http,
+                _bundled_process: None,
             });
         }
         if let Some(model) = ollama::select_model(&config.existing_ollama_url, &http).await? {
@@ -102,9 +107,10 @@ impl LlmProvider {
                 model: Some(model),
                 config,
                 http,
+                _bundled_process: None,
             });
         }
-        let model = bundled::prepare(
+        let (model, bundled_process) = bundled::prepare(
             config.bundled_ollama_url.clone(),
             config.bundled_ollama_binary.clone(),
             http.clone(),
@@ -116,6 +122,7 @@ impl LlmProvider {
             model: Some(model),
             config,
             http,
+            _bundled_process: Some(bundled_process),
         })
     }
 

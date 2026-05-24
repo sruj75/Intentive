@@ -1,6 +1,6 @@
 # Product-owned macOS permission identity and release packaging
 
-Intentive v1 ships as a direct-download, Developer ID signed and notarized Apple Silicon macOS app distributed in a DMG containing only `Intentive.app`; release builds use product name **Intentive** and bundle identifier `com.tryintentive.tauri`. macOS Privacy Settings must show **Intentive** as the user-facing permission owner, with **Intentive Capture** as the only acceptable fallback helper identity; `ScreenPipe`, lowercase `intentive`, debug paths, or raw helper names are release blockers.
+Intentive v1 ships as a direct-download, Developer ID signed and notarized Apple Silicon macOS app distributed in a DMG containing only `Intentive.app`; release builds use product name **Intentive** and bundle identifier `com.heyintentive.tauri`. macOS Privacy Settings must show **Intentive** as the user-facing permission owner, with **Intentive Capture** as the only acceptable fallback helper identity; `ScreenPipe`, lowercase `intentive`, debug paths, or raw helper names are release blockers.
 
 ## Considered Options
 

@@ -60,7 +60,9 @@ async fn tier_three_pulls_bundled_model_on_first_run() {
     let pulled_model = stub.pulled_model.clone();
 
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
-    let result = prepare_with(&stub, tx).await.expect("prepare should succeed");
+    let result = prepare_with(&stub, tx)
+        .await
+        .expect("prepare should succeed");
     assert_eq!(result, BUNDLED_MODEL);
     assert_eq!(pull_count.load(Ordering::SeqCst), 1);
     assert_eq!(pulled_model.lock().unwrap().as_deref(), Some(BUNDLED_MODEL));
@@ -76,7 +78,9 @@ async fn tier_three_skips_spawn_when_process_already_running() {
     let spawn_count = stub.spawn_count.clone();
 
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
-    prepare_with(&stub, tx).await.expect("prepare should succeed");
+    prepare_with(&stub, tx)
+        .await
+        .expect("prepare should succeed");
     assert_eq!(
         spawn_count.load(Ordering::SeqCst),
         0,
@@ -94,35 +98,25 @@ async fn tier_three_spawns_when_process_not_running() {
     let spawn_count = stub.spawn_count.clone();
 
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
-    prepare_with(&stub, tx).await.expect("prepare should succeed");
+    prepare_with(&stub, tx)
+        .await
+        .expect("prepare should succeed");
     assert_eq!(spawn_count.load(Ordering::SeqCst), 1);
 }
 
 #[test]
-fn parse_ready_line_matches_ollama_listening_message() {
-    // Ollama's serve log writes the canonical ready line via Go's structured
-    // logger. Match the substring "Listening on" — robust to surrounding
-    // timestamp / level / source-file fields.
-    assert!(parse_ready_line(
-        r#"time=2026-05-23T10:00:00.000Z level=INFO source=server.go:99 msg="Listening on 127.0.0.1:44381 (version 0.13.3)""#
-    ));
-    assert!(parse_ready_line("Listening on 127.0.0.1:44381"));
-}
-
-#[test]
 fn parse_pull_line_manifest_step_has_zero_percent() {
-    let progress = parse_pull_line(r#"{"status":"pulling manifest"}"#)
-        .expect("status-only line parses");
+    let progress =
+        parse_pull_line(r#"{"status":"pulling manifest"}"#).expect("status-only line parses");
     assert_eq!(progress.percent, 0);
     assert_eq!(progress.status, "pulling manifest");
 }
 
 #[test]
 fn parse_pull_line_layer_step_computes_percent_from_total_and_completed() {
-    let progress = parse_pull_line(
-        r#"{"status":"pulling 8eeb52dfb3bb","total":1000,"completed":250}"#,
-    )
-    .expect("layer line parses");
+    let progress =
+        parse_pull_line(r#"{"status":"pulling 8eeb52dfb3bb","total":1000,"completed":250}"#)
+            .expect("layer line parses");
     assert_eq!(progress.percent, 25);
 }
 
@@ -130,8 +124,8 @@ fn parse_pull_line_layer_step_computes_percent_from_total_and_completed() {
 fn parse_pull_line_clamps_percent_to_100() {
     // Defensive: Ollama once shipped a release where completed briefly
     // exceeded total at the very end of a layer. Don't surface 101%.
-    let progress = parse_pull_line(r#"{"status":"x","total":100,"completed":150}"#)
-        .expect("line parses");
+    let progress =
+        parse_pull_line(r#"{"status":"x","total":100,"completed":150}"#).expect("line parses");
     assert_eq!(progress.percent, 100);
 }
 
@@ -158,15 +152,6 @@ fn host_port_for_extracts_host_and_port() {
         host_port_for(&url::Url::parse("http://127.0.0.1:44383/").unwrap()).as_deref(),
         Some("127.0.0.1:44383"),
     );
-}
-
-#[test]
-fn parse_ready_line_ignores_unrelated_lines() {
-    assert!(!parse_ready_line(""));
-    assert!(!parse_ready_line("starting up"));
-    assert!(!parse_ready_line(
-        r#"time=2026-05-23T10:00:00.000Z level=INFO msg="loaded weights""#
-    ));
 }
 
 #[tokio::test]
@@ -270,7 +255,7 @@ async fn system_ollama_is_running_false_when_api_tags_returns_500() {
 #[ignore = "requires bundled Ollama binary; pulls real model weights"]
 async fn integration_real_bundled_ollama_prepares_qwen() {
     let (tx, _rx) = tokio::sync::mpsc::channel(64);
-    let model = prepare(
+    let (model, _process) = prepare(
         Url::parse("http://localhost:44381").unwrap(),
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ollama"),
         reqwest::Client::new(),
@@ -289,7 +274,9 @@ async fn pull_forwards_final_success_event_to_progress_channel() {
         ..Default::default()
     };
     let (tx, mut rx) = tokio::sync::mpsc::channel(8);
-    prepare_with(&stub, tx).await.expect("prepare should succeed");
+    prepare_with(&stub, tx)
+        .await
+        .expect("prepare should succeed");
     let event = rx.recv().await.expect("a progress event was sent");
     assert_eq!(event.percent, 100);
     assert_eq!(event.status, "success");
@@ -352,7 +339,9 @@ async fn tier_three_skips_pull_when_model_already_cached() {
     let pull_count = stub.pull_count.clone();
 
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
-    prepare_with(&stub, tx).await.expect("prepare should succeed");
+    prepare_with(&stub, tx)
+        .await
+        .expect("prepare should succeed");
     assert_eq!(
         pull_count.load(Ordering::SeqCst),
         0,
