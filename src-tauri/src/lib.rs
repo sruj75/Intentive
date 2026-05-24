@@ -112,16 +112,10 @@ pub fn run() {
             // disk. We intentionally don't open it pre-auth — onboarding
             // follows sign-in, never replaces it. FSM state is read via
             // the coordinator's snapshot() — refactor canonicalized this
-            // path; StateHolder no longer exists.
+            // path; StateHolder no longer exists. Models-root resolution,
+            // disk probe, and failsafe direction live inside the helper.
             let needs_onboarding = matches!(coordinator.snapshot(), CaptureState::Capturing)
-                && llm_provider::bundled::default_models_root()
-                    .map(|root| {
-                        !llm_provider::bundled::model_is_present_on_disk(
-                            &root,
-                            llm_provider::bundled::BUNDLED_MODEL,
-                        )
-                    })
-                    .unwrap_or(true);
+                && llm_provider::bundled::bundled_model_needs_install();
             if needs_onboarding {
                 if let Some(window) = app.get_webview_window("settings") {
                     open_onboarding_window(&window);

@@ -322,6 +322,26 @@ fn model_is_present_on_disk_false_when_model_string_has_no_colon() {
     assert!(!model_is_present_on_disk(dir.path(), "qwen3.5"));
 }
 
+/// Composition behavior under `bundled_model_needs_install()`: when the
+/// resolved models root is empty (no manifest for the bundled model), the
+/// helper must report "needs install" so the onboarding gate opens. This
+/// is what `lib.rs::setup` consumes — the failsafe direction is what the
+/// helper deepens beyond the lower-level disk probe.
+#[test]
+fn bundled_model_needs_install_true_when_resolved_root_has_no_manifest() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    // SAFETY: tests in this binary do not otherwise touch OLLAMA_MODELS
+    // (grep-verified). Using `set_var` is acceptable for this isolated probe.
+    unsafe {
+        std::env::set_var("OLLAMA_MODELS", dir.path());
+    }
+    let result = bundled_model_needs_install();
+    unsafe {
+        std::env::remove_var("OLLAMA_MODELS");
+    }
+    assert!(result, "empty models root means onboarding must open");
+}
+
 #[tokio::test]
 async fn tier_three_skips_pull_when_model_already_cached() {
     let stub = StubProcess {

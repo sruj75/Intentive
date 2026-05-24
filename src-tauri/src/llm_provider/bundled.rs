@@ -108,6 +108,20 @@ pub(crate) fn model_is_present_on_disk(models_root: &Path, model: &str) -> bool 
         .is_file()
 }
 
+/// Composed predicate used by the onboarding gate in `lib.rs::setup`:
+/// returns `true` when the bundled model is not yet on disk and onboarding
+/// should download it. Encapsulates the three things the call site would
+/// otherwise have to know: how to resolve the models root, how to probe
+/// the manifest path, and which direction is failsafe when neither can be
+/// determined. Failsafe is "needs install" — the worst case is a redundant
+/// onboarding open, which is recoverable; missing it strands the user
+/// without a working Tier 3.
+pub(crate) fn bundled_model_needs_install() -> bool {
+    default_models_root()
+        .map(|root| !model_is_present_on_disk(&root, BUNDLED_MODEL))
+        .unwrap_or(true)
+}
+
 /// Extract the `host:port` value Ollama expects via `OLLAMA_HOST` from the
 /// configured URL. Returns `None` if the URL has no host or port.
 pub(super) fn host_port_for(url: &Url) -> Option<String> {
