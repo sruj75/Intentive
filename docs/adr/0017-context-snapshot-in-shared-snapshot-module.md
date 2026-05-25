@@ -14,5 +14,5 @@ We created a dedicated `snapshot` module at `src-tauri/src/snapshot/` that owns 
 
 - `ContextSnapshot` is defined once in `src-tauri/src/snapshot/mod.rs`.
 - `agent_interface` and `snapshot_store` both import `use crate::snapshot::ContextSnapshot`.
-- The Context Heartbeat (future slice) will also import from `snapshot` when it produces one.
+- The Context Heartbeat imports from `snapshot` when it produces a Context Snapshot.
 - Moving a field on `ContextSnapshot` (e.g. adding `llm_provider` for the transparency UI) is one change in one file, not a hunt across modules.

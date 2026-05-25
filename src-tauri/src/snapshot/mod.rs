@@ -19,3 +19,17 @@ pub struct ContextSnapshot {
     pub period_end: DateTime<Utc>,
     pub summary: String,
 }
+
+/// Signal that a Capture Session ended for any reason (user toggle, quit,
+/// ScreenPipe crash). Distinguishes "still capturing, no snapshot yet" from
+/// "session over" on the agent side.
+///
+/// Payload shape is intentionally minimal — the full contract is deferred
+/// until the OpenClaw Agent receiver is defined (ADR-0008). Today the marker
+/// carries only enough to identify the event; future fields (reason,
+/// last_snapshot_id, etc.) belong here when that contract lands.
+#[derive(Serialize, Clone, Debug)]
+pub struct SessionEndMarker {
+    pub id: Uuid,
+    pub session_ended_at: DateTime<Utc>,
+}

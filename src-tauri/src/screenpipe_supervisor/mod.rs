@@ -151,6 +151,16 @@ impl ScreenpipeEndpoint {
             .write()
             .expect("screenpipe endpoint lock poisoned") = Some(url);
     }
+
+    /// Build an endpoint pre-bound to a fixed URL. Test-only — production
+    /// supervisors construct an empty endpoint and call `record_port` after
+    /// ScreenPipe spawns.
+    #[cfg(test)]
+    pub fn fixed(url: Url) -> Self {
+        Self {
+            active_url: Arc::new(RwLock::new(Some(url))),
+        }
+    }
 }
 
 impl ScreenpipeSupervisor {

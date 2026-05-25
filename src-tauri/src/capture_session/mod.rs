@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 use crate::capture_state::{
     AuthChecker, CaptureState, CaptureStateMachine, ErrorReason, TransitionError,
 };
+use crate::context_heartbeat::ContextHeartbeat;
 use crate::screenpipe_supervisor::{Supervisor, SupervisorEvent};
 
 /// Domain commands the coordinator consumes. Producers (menu bar, future auth
@@ -42,6 +43,9 @@ struct Inner {
     fsm: Mutex<CaptureStateMachine>,
     observers: Mutex<Vec<Arc<dyn StateObserver>>>,
     supervisor: Arc<dyn Supervisor>,
+    /// Installed once after construction via `set_heartbeat`. `None` in tests
+    /// that only exercise the FSM ↔ supervisor wiring.
+    heartbeat: Mutex<Option<Arc<ContextHeartbeat>>>,
     command_tx: mpsc::UnboundedSender<CoordinatorCommand>,
 }
 
@@ -66,11 +70,24 @@ impl CaptureSessionCoordinator {
                 fsm: Mutex::new(fsm),
                 observers: Mutex::new(Vec::new()),
                 supervisor,
+                heartbeat: Mutex::new(None),
                 command_tx,
             }),
             command_rx: Mutex::new(Some(command_rx)),
             supervisor_rx: Mutex::new(Some(supervisor_rx)),
         })
+    }
+
+    /// Install the Context Heartbeat. Called once at startup from `lib.rs`
+    /// after the heartbeat's dependencies are assembled. Coordinator tests
+    /// that don't exercise heartbeat lifecycle skip this and the lifecycle
+    /// hooks become no-ops.
+    pub fn set_heartbeat(&self, heartbeat: Arc<ContextHeartbeat>) {
+        *self
+            .inner
+            .heartbeat
+            .lock()
+            .expect("heartbeat slot poisoned") = Some(heartbeat);
     }
 
     /// Publish a domain command. Non-blocking; the command is queued for the
@@ -82,16 +99,15 @@ impl CaptureSessionCoordinator {
     }
 
     pub fn subscribe(&self, observer: Arc<dyn StateObserver>) {
-        self.inner.observers.lock().expect("observers poisoned").push(observer);
+        self.inner
+            .observers
+            .lock()
+            .expect("observers poisoned")
+            .push(observer);
     }
 
     pub fn snapshot(&self) -> CaptureState {
-        self.inner
-            .fsm
-            .lock()
-            .expect("fsm poisoned")
-            .state()
-            .clone()
+        self.inner.fsm.lock().expect("fsm poisoned").state().clone()
     }
 
     /// Drive the coordinator's event loop. Consumes the command and supervisor
@@ -117,7 +133,7 @@ impl CaptureSessionCoordinator {
                     None => return,
                 },
                 evt = supervisor_rx.recv() => match evt {
-                    Some(evt) => self.inner.handle_supervisor_event(evt),
+                    Some(evt) => self.inner.handle_supervisor_event(evt).await,
                     None => {
                         // Supervisor channel closed; keep listening for commands.
                         continue;
@@ -130,11 +146,7 @@ impl CaptureSessionCoordinator {
 
 impl Inner {
     fn notify_observers(&self, state: &CaptureState) {
-        let observers = self
-            .observers
-            .lock()
-            .expect("observers poisoned")
-            .clone();
+        let observers = self.observers.lock().expect("observers poisoned").clone();
         for observer in observers {
             observer.on_state(state);
         }
@@ -160,9 +172,11 @@ impl Inner {
         match next {
             CaptureState::Capturing => {
                 let _ = self.supervisor.start().await;
+                self.start_heartbeat().await;
             }
             CaptureState::Stopped => {
                 let _ = self.supervisor.stop().await;
+                self.stop_heartbeat().await;
             }
             _ => {}
         }
@@ -176,6 +190,7 @@ impl Inner {
         self.notify_observers(&next);
         // ADR-0009: completing sign-in starts a Capture Session.
         let _ = self.supervisor.start().await;
+        self.start_heartbeat().await;
     }
 
     fn handle_simulate_error(&self, reason: ErrorReason) {
@@ -186,7 +201,7 @@ impl Inner {
         self.notify_observers(&next);
     }
 
-    fn handle_supervisor_event(&self, event: SupervisorEvent) {
+    async fn handle_supervisor_event(&self, event: SupervisorEvent) {
         let next = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
             match event {
@@ -199,6 +214,28 @@ impl Inner {
             }
         };
         self.notify_observers(&next);
+        // ScreenPipe is gone either way — stop the heartbeat so its Session
+        // End Marker fires before the FSM settles in its terminal state.
+        self.stop_heartbeat().await;
+    }
+
+    fn heartbeat_handle(&self) -> Option<Arc<ContextHeartbeat>> {
+        self.heartbeat
+            .lock()
+            .expect("heartbeat slot poisoned")
+            .clone()
+    }
+
+    async fn start_heartbeat(&self) {
+        if let Some(hb) = self.heartbeat_handle() {
+            let _ = hb.start().await;
+        }
+    }
+
+    async fn stop_heartbeat(&self) {
+        if let Some(hb) = self.heartbeat_handle() {
+            hb.stop().await;
+        }
     }
 }
 

@@ -49,7 +49,9 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ### Implementation status
 
-Core Rust modules exist for **`capture_session`**, **`capture_state`**, **`screenpipe_supervisor`**, **`menu_bar`**, **`llm_provider`**, **`agent_interface`**, **`snapshot`**, and **`snapshot_store`**. `src-tauri/src/lib.rs` wires the menu bar shell, the Capture Session coordinator, the ScreenPipe supervisor, and the snapshot store (opened at `~/Library/Application Support/<bundle-id>/intentive.db`). `src/` renders the Settings/Auth surface with Neon Auth UI. Context Heartbeat, Session End Marker delivery, Capture Permission Setup, release packaging, and Auth-resolved Agent Interface configuration are specified in [`SPEC.md`](SPEC.md) but not yet wired.
+Core Rust modules now include **`context_heartbeat`** in addition to **`capture_session`**, **`capture_state`**, **`screenpipe_supervisor`**, **`menu_bar`**, **`llm_provider`**, **`agent_interface`**, **`snapshot`**, and **`snapshot_store`**. `src-tauri/src/lib.rs` wires the menu bar shell, Capture Session coordinator, ScreenPipe supervisor, Snapshot Store, and Context Heartbeat service. The heartbeat runs on a fixed 10-minute cadence, writes Context Snapshots locally before delivery attempts, stamps `pushed_at` on successful delivery, and emits one Session End Marker per Capture Session end. `src/` renders the Settings/Auth surface with Neon Auth UI.
+
+Capture Permission Setup, signed/notarized release packaging evidence, and fully Auth-resolved Agent Interface endpoint/credential configuration remain tracked in [`SPEC.md`](SPEC.md).
 
 ### Environment
 

@@ -7,6 +7,23 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Context Heartbeat implementation** ([Issue #8]) — `src-tauri/src/context_heartbeat/`
+  now runs a fixed 10-minute cadence service that:
+  - queries ScreenPipe for the preceding activity window,
+  - summarizes through the on-device LLM Provider seam,
+  - writes each Context Snapshot to the Snapshot Store before delivery,
+  - stamps `pushed_at` only when Agent Interface delivery succeeds, and
+  - emits exactly one Session End Marker per active Capture Session end.
+  Regression coverage includes first-tick timing, interval window shape,
+  unresolved-provider skip behavior, write-before-push ordering, successful
+  delivery marking, failed delivery retention with null `pushed_at`, and
+  duplicate-stop marker suppression.
+
+- **Capture-start provider preparation without implicit download** — startup
+  wiring now prepares any already-available provider tier for the heartbeat via
+  `LlmProvider::resolve_ready` while keeping Tier 3 model download behind the
+  explicit onboarding `start_model_download` flow (ADR-0018).
+
 - **Bundled-Ollama readiness and first-run onboarding** ([Issue #7]) — Intentive
   now ships the Apple Silicon Ollama binary at `src-tauri/resources/ollama` and
   spawns it on its own primary port (`44381`) with `44383` fallback per
@@ -164,9 +181,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
   present, but mapping a signed-in user to an OpenClaw Agent endpoint and
   credential lands in the follow-up Auth/Data API slice.
-- Tauri runtime wiring is partial: the menu bar shell, ScreenPipe subprocess
-  manager, and snapshot store are installed, but startup LLM Provider
-  resolution, Context Heartbeat (which will drive `SnapshotStore::insert` and
-  `mark_pushed`), first-run download UI, Capture Permission Setup,
-  signed/notarized release packaging, and completed Auth gating are still
+- Tauri runtime wiring is still partial for release-completion scope: Capture
+  Permission Setup hardening, signed/notarized release packaging evidence, and
+  completed Auth-resolved Agent Interface endpoint/credential resolution remain
   deferred and tracked against [SPEC.md](SPEC.md) Build Phases.

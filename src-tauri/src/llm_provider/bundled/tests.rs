@@ -360,3 +360,39 @@ async fn tier_three_skips_pull_when_model_already_cached() {
         "should not pull when cached"
     );
 }
+
+#[tokio::test]
+async fn cached_only_prepare_rejects_missing_model_without_pull() {
+    let stub = StubProcess {
+        initially_running: true,
+        initially_has_model: false,
+        ..Default::default()
+    };
+    let pull_count = stub.pull_count.clone();
+
+    let result = prepare_cached_with(&stub).await;
+
+    assert!(matches!(result, Err(ProviderError::Unavailable)));
+    assert_eq!(
+        pull_count.load(Ordering::SeqCst),
+        0,
+        "Capture Session preparation must not initiate an onboarding download"
+    );
+}
+
+#[tokio::test]
+async fn cached_only_prepare_accepts_an_installed_model_without_pull() {
+    let stub = StubProcess {
+        initially_running: true,
+        initially_has_model: true,
+        ..Default::default()
+    };
+    let pull_count = stub.pull_count.clone();
+
+    let model = prepare_cached_with(&stub)
+        .await
+        .expect("installed model should be ready for capture");
+
+    assert_eq!(model, BUNDLED_MODEL);
+    assert_eq!(pull_count.load(Ordering::SeqCst), 0);
+}

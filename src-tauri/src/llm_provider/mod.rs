@@ -85,6 +85,48 @@ impl LlmProvider {
         Self::resolve_with_progress(config, http, tx).await
     }
 
+    /// Resolve only an already-usable provider for a newly started Capture
+    /// Session. Tier 3 is eligible only when onboarding already installed its
+    /// bundled model; this path never initiates a download (ADR-0018).
+    pub async fn resolve_ready(
+        config: ProviderConfig,
+        http: reqwest::Client,
+    ) -> Result<Self, ProviderError> {
+        if apple_intelligence::is_available(&config.screenpipe_url, &http).await? {
+            return Ok(Self {
+                tier: Tier::AppleIntelligence,
+                model: None,
+                config,
+                http,
+                _bundled_process: None,
+            });
+        }
+        if let Some(model) = ollama::select_model(&config.existing_ollama_url, &http).await? {
+            return Ok(Self {
+                tier: Tier::ExistingOllama,
+                model: Some(model),
+                config,
+                http,
+                _bundled_process: None,
+            });
+        }
+        let (model, bundled_process) = bundled::prepare_cached(
+            config.bundled_ollama_url.clone(),
+            config.bundled_ollama_binary.clone(),
+            http.clone(),
+        )
+        .await?;
+        let mut config = config;
+        config.bundled_ollama_url = bundled_process.url();
+        Ok(Self {
+            tier: Tier::BundledOllama,
+            model: Some(model),
+            config,
+            http,
+            _bundled_process: Some(bundled_process),
+        })
+    }
+
     /// Same as [`Self::resolve`] but forwards Tier 3 pull progress to
     /// `progress`. Tier 1 and Tier 2 send nothing on the channel.
     pub async fn resolve_with_progress(
@@ -132,7 +174,7 @@ impl LlmProvider {
         self.tier
     }
 
-    /// Summarize a 60-second activity window. The privacy constraints in the
+    /// Summarize a 10-minute activity window. The privacy constraints in the
     /// prompt are applied regardless of which tier was resolved.
     pub async fn summarize(&self, activity: &str) -> Result<String, ProviderError> {
         match self.tier {
@@ -152,13 +194,8 @@ impl LlmProvider {
             }
             Tier::BundledOllama => {
                 let model = self.model.as_deref().ok_or(ProviderError::Unavailable)?;
-                ollama::summarize(
-                    &self.config.bundled_ollama_url,
-                    &self.http,
-                    model,
-                    activity,
-                )
-                .await
+                ollama::summarize(&self.config.bundled_ollama_url, &self.http, model, activity)
+                    .await
             }
         }
     }

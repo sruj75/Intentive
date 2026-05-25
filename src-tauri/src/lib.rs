@@ -1,6 +1,7 @@
 pub mod agent_interface;
 pub mod capture_session;
 pub mod capture_state;
+pub mod context_heartbeat;
 pub mod llm_provider;
 pub mod menu_bar;
 pub mod port;
@@ -10,13 +11,17 @@ pub mod snapshot_store;
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tauri::path::BaseDirectory;
 use tauri::Manager;
 use tauri::WebviewWindow;
 use tokio::sync::Mutex;
+use url::Url;
 
+use agent_interface::{AgentInterface, AgentSink};
 use capture_session::{CaptureSessionCoordinator, CoordinatorCommand};
 use capture_state::{AuthChecker, CaptureState, StubAuthChecker};
+use context_heartbeat::{ContextHeartbeat, ReqwestActivityClient, Summarizer, SummarizerError};
 use llm_provider::{LlmProvider, ProviderConfig};
 use screenpipe_supervisor::{
     OsSpawner, ScreenpipeEndpoint, ScreenpipeSupervisor, Spawner, Supervisor,
@@ -25,10 +30,52 @@ use snapshot_store::SnapshotStore;
 use tokio::sync::mpsc;
 
 /// Tauri-managed state for the resolved on-device LLM Provider. Starts as
-/// `None` and is populated by the `start_model_download` command (Slice 9)
-/// after a successful Tier 3 prepare. The Context Heartbeat will eventually
-/// read this at tick time to summarize activity windows.
+/// `None`; the Context Heartbeat prepares any already-available tier when a
+/// Capture Session starts, while `start_model_download` supplies Tier 3 after
+/// explicit onboarding consent. A tick skips only while no tier is ready.
 pub struct LlmProviderSlot(pub Mutex<Option<Arc<LlmProvider>>>);
+
+/// Production adapter wiring `LlmProviderSlot` behind the heartbeat's
+/// `Summarizer` seam. Lives here (not in `context_heartbeat`) because
+/// `LlmProviderSlot` is a Tauri-state concern owned by this wiring layer.
+struct LlmProviderSlotSummarizer {
+    slot: Arc<LlmProviderSlot>,
+    config: ProviderConfig,
+    screenpipe_endpoint: ScreenpipeEndpoint,
+    http: reqwest::Client,
+}
+
+#[async_trait]
+impl Summarizer for LlmProviderSlotSummarizer {
+    async fn prepare(&self) {
+        self.resolve_ready_if_needed().await;
+    }
+
+    async fn summarize(&self, activity: &str) -> Result<String, SummarizerError> {
+        self.resolve_ready_if_needed().await;
+        let provider = {
+            let guard = self.slot.0.lock().await;
+            guard.as_ref().cloned().ok_or(SummarizerError::Unresolved)?
+        };
+        provider
+            .summarize(activity)
+            .await
+            .map_err(|e| SummarizerError::Failed(e.to_string()))
+    }
+}
+
+impl LlmProviderSlotSummarizer {
+    async fn resolve_ready_if_needed(&self) {
+        if self.slot.0.lock().await.is_some() {
+            return;
+        }
+        let mut config = self.config.clone();
+        config.screenpipe_url = self.screenpipe_endpoint.current_or_primary_url();
+        if let Ok(provider) = LlmProvider::resolve_ready(config, self.http.clone()).await {
+            *self.slot.0.lock().await = Some(Arc::new(provider));
+        }
+    }
+}
 
 /// Tauri-managed state for the `ProviderConfig` resolved at startup. The
 /// command path reads this to drive `LlmProvider::resolve_with_progress`.
@@ -92,11 +139,6 @@ pub fn run() {
 
             menu_bar::install(app, coordinator.clone())?;
 
-            // Signed-in launch auto-starts a Capture Session per ADR-0009.
-            if signed_in {
-                coordinator.submit(CoordinatorCommand::SignInCompleted);
-            }
-
             // LLM Provider wiring (Issue #7, ADR-0006, ADR-0018). The slot
             // starts empty — Tier 3 may need a model download that drives
             // through the `start_model_download` command. The Context
@@ -109,11 +151,50 @@ pub fn run() {
                 bundled_ollama_binary,
                 ..ProviderConfig::default()
             };
+            let screenpipe_endpoint = supervisor.endpoint();
             app.manage(ProviderConfigState {
-                config: provider_config,
-                screenpipe_endpoint: supervisor.endpoint(),
+                config: provider_config.clone(),
+                screenpipe_endpoint: screenpipe_endpoint.clone(),
             });
-            app.manage(LlmProviderSlot(Mutex::new(None)));
+            let llm_slot = Arc::new(LlmProviderSlot(Mutex::new(None)));
+            app.manage(llm_slot.clone());
+
+            // Context Heartbeat (Issue #8, ADR-0008). The placeholder
+            // AgentInterface URL is replaced when Auth-resolved Agent
+            // Interface configuration lands; `send_session_end` is stubbed
+            // until the OpenClaw Agent contract is defined, and `push`
+            // errors are silently dropped per ADR-0005 — so the placeholder
+            // URL never causes user-visible noise.
+            let snapshot_store_arc: Arc<SnapshotStore> =
+                app.state::<Arc<SnapshotStore>>().inner().clone();
+            let http = reqwest::Client::new();
+            let agent_sink: Arc<dyn AgentSink> = Arc::new(AgentInterface::new(
+                Url::parse("http://localhost:0/stub").expect("stub URL parses"),
+                "stub".to_string(),
+                http.clone(),
+            ));
+            let summarizer = Arc::new(LlmProviderSlotSummarizer {
+                slot: llm_slot.clone(),
+                config: provider_config,
+                screenpipe_endpoint: screenpipe_endpoint.clone(),
+                http: http.clone(),
+            });
+            let activity_client = Arc::new(ReqwestActivityClient::new(http));
+            let heartbeat = ContextHeartbeat::new(
+                summarizer,
+                activity_client,
+                screenpipe_endpoint,
+                snapshot_store_arc,
+                agent_sink,
+            );
+            coordinator.set_heartbeat(heartbeat);
+
+            // Signed-in launch auto-starts a Capture Session per ADR-0009.
+            // Install orchestration collaborators first so startup cannot
+            // begin capture without a corresponding Context Heartbeat.
+            if signed_in {
+                coordinator.submit(CoordinatorCommand::SignInCompleted);
+            }
 
             // Onboarding-window open logic (Issue #7, ADR-0018). Open the
             // onboarding surface only when the user is signed in (FSM in

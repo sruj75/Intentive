@@ -2,7 +2,7 @@
 //! The instructions are part of the v1 privacy guarantee — see SPEC §Privacy.
 
 const SYSTEM_INSTRUCTIONS: &str = "\
-You summarize a 60-second window of a user's computer activity into a single \
+You summarize a 10-minute window of a user's computer activity into a single \
 prose paragraph for an assistant agent. Do not include passwords, credentials, \
 financial data, or personal identifiers. If you see any such content, omit it \
 silently. Output only the summary text — no preamble, no JSON.";

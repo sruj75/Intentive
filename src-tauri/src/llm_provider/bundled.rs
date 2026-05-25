@@ -190,6 +190,22 @@ pub(super) async fn prepare(
     Ok((model, process))
 }
 
+/// Start bundled Ollama only when onboarding has already installed its model.
+/// Capture startup calls this path so it never pulls model weights without the
+/// explicit user action required by ADR-0018.
+pub(super) async fn prepare_cached(
+    url: Url,
+    binary_path: PathBuf,
+    http: reqwest::Client,
+) -> Result<(String, SystemOllamaProcess), ProviderError> {
+    if bundled_model_needs_install() {
+        return Err(ProviderError::Unavailable);
+    }
+    let process = SystemOllamaProcess::new(url, binary_path, http);
+    let model = prepare_cached_with(&process).await?;
+    Ok((model, process))
+}
+
 async fn prepare_with(
     process: &impl OllamaProcess,
     progress: tokio::sync::mpsc::Sender<PullProgress>,
@@ -199,6 +215,16 @@ async fn prepare_with(
     }
     if !process.has_model(BUNDLED_MODEL).await {
         process.pull(BUNDLED_MODEL, progress).await?;
+    }
+    Ok(BUNDLED_MODEL.to_string())
+}
+
+async fn prepare_cached_with(process: &impl OllamaProcess) -> Result<String, ProviderError> {
+    if !process.is_running().await {
+        process.spawn().await?;
+    }
+    if !process.has_model(BUNDLED_MODEL).await {
+        return Err(ProviderError::Unavailable);
     }
     Ok(BUNDLED_MODEL.to_string())
 }

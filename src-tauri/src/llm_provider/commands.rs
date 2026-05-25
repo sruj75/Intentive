@@ -39,7 +39,7 @@ where
 #[tauri::command]
 pub async fn start_model_download(
     app: AppHandle,
-    slot: State<'_, LlmProviderSlot>,
+    slot: State<'_, Arc<LlmProviderSlot>>,
     config: State<'_, ProviderConfigState>,
 ) -> Result<(), String> {
     let (tx, rx) = mpsc::channel::<PullProgress>(64);
