@@ -1,0 +1,22 @@
+{
+  "name": "@intentive/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WebSocket message contract every client speaks and the Agent Runtime understands. Single source of truth for the wire format.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

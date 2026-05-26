@@ -1,31 +1,51 @@
-# Intentive macOS app
+# Desktop Client — Agent Guide
 
-Intentive is a macOS Tauri desktop client: ScreenPipe capture, on-device summarization, local Context Snapshot logging, and push to an OpenClaw Agent.
+macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile Client.
 
-## Essentials
+**Always read first:**
+- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary
+- [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
 
-- **Stack** — React (`src/`) + Rust/Tauri (`src-tauri/`). npm for the frontend; Cargo for the backend.
-- **Domain language** — Use terms from `CONTEXT.md` (Intentive, ScreenPipe, Context Snapshot, Context Heartbeat, OpenClaw Agent, etc.).
-- **Structure** — Read `ARCHITECTURE.md` before changing module boundaries or orchestration. ADR conflicts must be called out explicitly (`docs/adr/`).
-- **Verify** — `docs/agents/build.md` lists dev, test, typecheck, and Rust lint commands.
+## Role in V1
 
-## Agent docs
+- Runs the bundled **ScreenPipe** subprocess to capture screen + audio
+- On a fixed 10-minute **Context Heartbeat**, summarizes the window via the **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama, in that priority)
+- Produces a **Context Snapshot** per heartbeat tick; writes it to the **Snapshot Store** (local SQLite, **local-truth, not a cache**)
+- Sends each Context Snapshot to the **Agent Runtime** as a `context_snapshot` WebSocket event using **Protocol** schemas from `packages/protocol/`
+- Emits a `session_end_marker` when a **Capture Session** ends
+- Menu bar capture toggle + state. **No chat UI.**
 
-| Doc | When |
-| --- | --- |
-| `docs/agents/working-rules.md` | Repo-wide constraints (platform, Auth UI, scoped edits) |
-| `docs/agents/build.md` | Commands, CI, release tags, Auth env vars |
-| `docs/agents/domain.md` | Glossary, ADRs, vocabulary |
-| `docs/agents/ui.md` | Settings, menu bar, macOS-native UI |
-| `docs/agents/integrations.md` | ScreenPipe, Ollama, capture debug skills |
-| `docs/agents/issue-tracker.md` | GitHub issues via `gh` |
-| `docs/agents/triage-labels.md` | Issue labels |
+## Domains
 
-## Product and design
+TypeScript side (`src/domains/<name>/`):
+- `auth` — Neon Auth UI integration, sign-in
+- `onboarding` — Capture Permission Setup flow (macOS Privacy Settings wizard)
+- `menubar` — tray icon, toggle, Capture Error state
+- `account` — Settings surface
 
-- `ARCHITECTURE.md` — codemap, invariants, boundaries
-- `CONTEXT.md` — glossary and domain relationships
-- `SPEC.md` — v1 requirements and acceptance criteria
-- `PRD.md` — product requirements
-- `DESIGN.md` — brand and UX system
-- `CHANGELOG.md` — update `[Unreleased]` for user-visible changes
+Rust side (`src-tauri/src/domains/<name>/`):
+- `capture` — ScreenPipe subprocess lifecycle, port management
+- `summarization` — LLM Provider resolution, Context Heartbeat
+- `snapshots` — Snapshot Store (sqlx), Snapshot Privacy Boundary, WebSocket delivery
+
+## Working docs
+
+- [`PRD.md`](PRD.md), [`SPEC.md`](SPEC.md), [`DESIGN.md`](DESIGN.md) — Desktop-specific product/design. ⚠️ Predate unified `docs/CONTEXT.md`; review before relying on them.
+- [`CHANGELOG.md`](CHANGELOG.md) — user-visible changes
+- [`docs/adr/`](docs/adr/) — Desktop-specific ADRs (to be merged into root later)
+- [`docs/agents/`](docs/agents/) — Desktop-specific working rules (build commands, integrations, triage)
+
+## Stack & deploy
+
+- React + Vite (frontend), Rust + Tauri (backend), TypeScript + sqlx
+- **Apple Silicon only in V1** (Intel deferred)
+- Builds, signs (Developer ID), notarizes to `.dmg` via GitHub Actions → uploads to GitHub Releases / R2 → linked from landing page
+- Tauri built-in updater for in-app auto-update
+
+## Guardrails specific to this deployable
+
+- **No chat UI.** Desktop's WebSocket connection sends only `context_snapshot` and `session_end_marker`.
+- **Snapshot Privacy Boundary is structural.** The `ContextSnapshot` Rust struct has no fields for raw ScreenPipe data. Do not add any.
+- **Bundled native artifacts** match the host **Mac CPU variant**, not the signed-in user.
+- ScreenPipe is an internal implementation detail — never user-visible. macOS Privacy Settings should present "Intentive" or fallback "Intentive Capture", never "ScreenPipe".
+- Capture is gated by **Desktop Capture Readiness** — Control Plane confirms this Mac is ready before auto-start.

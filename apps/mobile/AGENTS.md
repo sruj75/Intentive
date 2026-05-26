@@ -1,50 +1,45 @@
-# Agent Instructions
+# Mobile Client — Agent Guide
 
-Intentive Expo is the mobile relationship surface for the Intentive Execution Companion: an iOS-first Expo client for authentication, consent, setup, and one continuous companion chat.
+iOS Expo client. The chat surface for the **Companion**. Capture concerns and Mac-specific work live in `apps/desktop/`.
 
-## Start Here
+**Always read first:**
+- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary (Companion, Pre-Chat Gate, Post-Message-Back, etc.)
+- [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule, why this deployable is structured the way it is
 
-- Read `CONTEXT.md` for domain language before naming modules, screens, or concepts.
-- Read `PRD.md` for current V1 scope, user stories, implementation decisions, and testing expectations.
-- Read `DESIGN.md` before changing UI, tokens, navigation, chat layout, or visual copy.
-- Read relevant ADRs in `docs/adr/` before changing architecture boundaries or product scope.
+## Role in V1
 
-## Current Repository Shape
+The Mobile Client is the **only client with a chat surface**. It:
+- Renders the **Liquid Glass Chat Shell** (no header, no bottom tabs)
+- Runs the Pre-Chat Gate sequence: Identity Gate → Consent Primer → Sibling Client Invitation
+- Connects to the **Agent Runtime** directly via WebSocket using **Protocol** schemas from `packages/protocol/`
+- Reads **Conversation History** from the WebSocket reconnect snapshot — **no local message store**
+- Registers APNs token with the Control Plane; receives **Push Notifications** triggered by **Post-Message-Back**
 
-- This repo is documentation-first right now; there is no committed Expo app scaffold or package manager config yet.
-- `ios/` and `android/` currently contain app icon assets only.
-- Treat `docs/adr/` as the durable record of architectural decisions.
-- If implementation begins, keep route files under `app/` and reusable source under `src/`.
+## Domains
 
-## Architectural Guardrails
+Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
-- The Expo app is a Client App and Mobile Surface, not the Agent Runtime, Control Plane, provisioning layer, or Deep Agent.
-- Production client-to-agent communication must go through the Control Plane via a Runtime Adapter.
-- Keep `assistant-ui/native` replaceable: wrap it behind Intentive Chat Components and do not let vendor visuals or data shapes define the product.
-- Persist chat as structured Conversation Messages, not transcript blobs.
-- Preserve the V1 shell decision: one Liquid Glass Companion Chat, no header-first frame, no bottom tabs, no dashboard, no task board, no streaks.
-- Keep Identity Gate, Consent Primer, macOS Setup, Relationship Onboarding, Main App, and Account Surface as distinct product states.
-- Defer notification permission until a contextual Held Intention or Follow-Up creates a reason.
+- `auth` — sign-in, JWT lifecycle
+- `onboarding` — Pre-Chat Gate rendering
+- `chat` — Companion Chat shell, composer, message rendering, agent state display
+- `notifications` — APNs token registration, permission ask (on first chat entry, not at launch)
+- `account` — Account Surface, logout, app info
 
-## Design And Product Language
+## Working docs
 
-- Use the product terms from `CONTEXT.md`: Execution Companion, Mobile Surface, Control Plane, Runtime Adapter, Conversation Store, Companion Chat, Liquid Glass Composer, Account Surface, Held Intention.
-- Avoid generic terms that blur boundaries, such as chatbot, task bot, mobile backend, in-app agent, or transcript blob.
-- Capability honesty matters: never imply the companion read, acted, scheduled, or connected something unless the remote runtime or Control Plane actually did.
+- [`PRD.md`](PRD.md) — Mobile product requirements. ⚠️ Predates unified `docs/CONTEXT.md`; review against current vocabulary before relying on it.
+- [`DESIGN.md`](DESIGN.md) — Liquid Glass visual system. ⚠️ Predates unified `docs/CONTEXT.md`.
+- [`docs/adr/`](docs/adr/) — Mobile-specific ADRs (to be merged into root `docs/adr/` later).
 
-## Documentation Practice
+## Stack & deploy
 
-- Keep root instructions short. Put durable product and architecture detail in `CONTEXT.md`, `PRD.md`, `DESIGN.md`, and `docs/adr/`.
-- Add or update an ADR when changing a boundary, dependency stance, runtime assumption, persistence model, or major product-scope decision.
-- Keep `AGENTS.md` canonical and keep `CLAUDE.md` as a shim pointer to `AGENTS.md`.
+- Expo / React Native, TypeScript
+- Deploys to TestFlight / App Store via **EAS Build** (Git-based)
+- `assistant-ui/native` may be used as a **Chat Primitive Engine** behind Intentive Chat Components — keep it replaceable
 
+## Guardrails specific to this deployable
 
-<!-- V1_META_SHARED_ALIGNMENT:START -->
-## Shared Alignment Layer
-
-- This repo's role: Mobile client surface for authentication, setup, conversation UX, and account presentation.
-- Depends on: v1-controlplane APIs and policies; v1-deepagent outcomes via control-plane contracts.
-- Must obey: Client is UI/state only: no direct runtime authority and no control-plane business ownership.
-- Shared contracts live at: ../v1-meta (or the canonical v1-meta checkout in your workspace)
-- Do not duplicate logic from: control-plane auth/provisioning logic and deepagent runtime internals.
-<!-- V1_META_SHARED_ALIGNMENT:END -->
+- The Mobile Client is **not** the Agent Runtime, Control Plane, or DeepAgents. It is a view.
+- Persist **nothing** durably about messages — the server is truth.
+- Defer notification permission until the user enters chat for the first time.
+- Keep `assistant-ui/native` behind Intentive Chat Components — never let vendor visuals or data shapes leak into product code.

@@ -1,0 +1,19 @@
+{
+  "name": "@intentive/domain-types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared domain shapes not tied to a wire format.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,7 @@
+# @intentive/providers
+
+The single explicit interface for cross-cutting concerns. See [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) → "Cross-cutting via Providers."
+
+Auth, telemetry, feature flags, and any future cross-cutting client lives here. Domain code must import these from `@intentive/providers` (or from its own deployable's `providers/` re-export) — never directly from underlying SDKs.
+
+Lint rule will enforce this once `tools/linters/` is in place.
