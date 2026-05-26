@@ -1,0 +1,2248 @@
+# Reference pack: openclaw / heartbeat
+# Generated: 2026-05-26T06:06:15.691Z
+# Source: https://github.com/openclaw/openclaw
+# Pack path: reference/openclaw/heartbeat-llms.txt
+# Repomix: compressed plain text, tests excluded
+# Sections: rg -n "SECTION:" reference/openclaw/heartbeat-llms.txt
+#
+# Build context: OpenClaw-like shell on LangChain DeepAgents (TypeScript).
+# DeepAgents owns: planning, tool loop, vfs, subagents, long-term memory.
+# This file covers: Periodic wake loop and HEARTBEAT_OK semantics.
+#
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where content has been formatted for parsing in plain style, content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/infra/heartbeat-*.ts, docs/gateway/heartbeat.md, docs/reference/templates/HEARTBEAT.md, docs/automation/tasks.md
+- Files matching these patterns are excluded: **/*.test.ts, **/*.test.tsx, **/*.test.py, **/__tests__/**, **/test/**, **/tests/**, **/*.snap, **/ui/**, **/website/i18n/**, **/patches/**, **/changelog/**, **/.agents/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been formatted for parsing in plain style
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Files
+================================================================
+
+================
+===== SECTION:docs-automation-tasks-md =====
+File: docs/automation/tasks.md
+================
+---
+summary: "Background task tracking for ACP runs, subagents, isolated cron jobs, and CLI operations"
+read_when:
+  - Inspecting background work in progress or recently completed
+  - Debugging delivery failures for detached agent runs
+  - Understanding how background runs relate to sessions, cron, and heartbeat
+title: "Background tasks"
+sidebarTitle: "Background tasks"
+---
+
+<Note>
+Looking for scheduling? See [Automation](/automation) for choosing the right mechanism. This page is the activity ledger for background work, not the scheduler.
+</Note>
+
+Background tasks track work that runs **outside your main conversation session**: ACP runs, subagent spawns, isolated cron job executions, and CLI-initiated operations.
+
+Tasks do **not** replace sessions, cron jobs, or heartbeats - they are the **activity ledger** that records what detached work happened, when, and whether it succeeded.
+
+<Note>
+Not every agent run creates a task. Heartbeat turns and normal interactive chat do not. All cron executions, ACP spawns, subagent spawns, and CLI agent commands do.
+</Note>
+
+## TL;DR
+
+- Tasks are **records**, not schedulers - cron and heartbeat decide _when_ work runs, tasks track _what happened_.
+- ACP, subagents, all cron jobs, and CLI operations create tasks. Heartbeat turns do not.
+- Each task moves through `queued → running → terminal` (succeeded, failed, timed_out, cancelled, or lost).
+- Cron tasks stay live while the cron runtime still owns the job; if the
+  in-memory runtime state is gone, task maintenance first checks durable cron
+  run history before marking a task lost.
+- Completion is push-driven: detached work can notify directly or wake the
+  requester session/heartbeat when it finishes, so status polling loops are
+  usually the wrong shape.
+- Isolated cron runs and subagent completions best-effort clean up tracked browser tabs/processes for their child session before final cleanup bookkeeping.
+- Isolated cron delivery suppresses stale interim parent replies while descendant subagent work is still draining, and it prefers final descendant output when that arrives before delivery.
+- Completion notifications are delivered directly to a channel or queued for the next heartbeat.
+- `openclaw tasks list` shows all tasks; `openclaw tasks audit` surfaces issues.
+- Terminal records are kept for 7 days, then automatically pruned.
+
+## Quick start
+
+<Tabs>
+  <Tab title="List and filter">
+    ```bash
+    # List all tasks (newest first)
+    openclaw tasks list
+
+    # Filter by runtime or status
+    openclaw tasks list --runtime acp
+    openclaw tasks list --status running
+    ```
+
+  </Tab>
+  <Tab title="Inspect">
+    ```bash
+    # Show details for a specific task (by ID, run ID, or session key)
+    openclaw tasks show <lookup>
+    ```
+  </Tab>
+  <Tab title="Cancel and notify">
+    ```bash
+    # Cancel a running task (kills the child session)
+    openclaw tasks cancel <lookup>
+
+    # Change notification policy for a task
+    openclaw tasks notify <lookup> state_changes
+    ```
+
+  </Tab>
+  <Tab title="Audit and maintenance">
+    ```bash
+    # Run a health audit
+    openclaw tasks audit
+
+    # Preview or apply maintenance
+    openclaw tasks maintenance
+    openclaw tasks maintenance --apply
+    ```
+
+  </Tab>
+  <Tab title="Task flow">
+    ```bash
+    # Inspect TaskFlow state
+    openclaw tasks flow list
+    openclaw tasks flow show <lookup>
+    openclaw tasks flow cancel <lookup>
+    ```
+  </Tab>
+</Tabs>
+
+## What creates a task
+
+| Source                 | Runtime type | When a task record is created                                          | Default notify policy |
+| ---------------------- | ------------ | ---------------------------------------------------------------------- | --------------------- |
+| ACP background runs    | `acp`        | Spawning a child ACP session                                           | `done_only`           |
+| Subagent orchestration | `subagent`   | Spawning a subagent via `sessions_spawn`                               | `done_only`           |
+| Cron jobs (all types)  | `cron`       | Every cron execution (main-session and isolated)                       | `silent`              |
+| CLI operations         | `cli`        | `openclaw agent` commands that run through the gateway                 | `silent`              |
+| Agent media jobs       | `cli`        | Session-backed `image_generate`/`music_generate`/`video_generate` runs | `silent`              |
+
+<AccordionGroup>
+  <Accordion title="Notify defaults for cron and media">
+    Main-session cron tasks use `silent` notify policy by default - they create records for tracking but do not generate notifications. Isolated cron tasks also default to `silent` but are more visible because they run in their own session.
+
+    Session-backed `image_generate`, `music_generate`, and `video_generate` runs also use `silent` notify policy. They still create task records, but completion is handed back to the original agent session as an internal wake so the agent can write the follow-up message and attach the finished media itself. Generated-media completion events require message-tool delivery: the agent must send the finished media with the `message` tool, then reply `NO_REPLY`. If the requester session is no longer active and the completion agent misses some or all generated media, OpenClaw sends an idempotent direct fallback with only the missing media to the original channel target.
+
+  </Accordion>
+  <Accordion title="Concurrent media-generation guardrail">
+    While a session-backed media-generation task is still active, media tools also act as guardrails for accidental retries. Repeated `image_generate` calls for the same prompt return the matching active task status, while a distinct image prompt can start its own task. `music_generate` and `video_generate` calls still return the active task status for that session instead of starting a second concurrent generation. Use `action: "status"` when you want an explicit progress/status lookup from the agent side.
+  </Accordion>
+  <Accordion title="What does not create tasks">
+    - Heartbeat turns - main-session; see [Heartbeat](/gateway/heartbeat)
+    - Normal interactive chat turns
+    - Direct `/command` responses
+
+  </Accordion>
+</AccordionGroup>
+
+## Task lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> running : agent starts
+    running --> succeeded : completes ok
+    running --> failed : error
+    running --> timed_out : timeout exceeded
+    running --> cancelled : operator cancels
+    queued --> lost : session gone > 5 min
+    running --> lost : session gone > 5 min
+```
+
+| Status      | What it means                                                              |
+| ----------- | -------------------------------------------------------------------------- |
+| `queued`    | Created, waiting for the agent to start                                    |
+| `running`   | Agent turn is actively executing                                           |
+| `succeeded` | Completed successfully                                                     |
+| `failed`    | Completed with an error                                                    |
+| `timed_out` | Exceeded the configured timeout                                            |
+| `cancelled` | Stopped by the operator via `openclaw tasks cancel`                        |
+| `lost`      | The runtime lost authoritative backing state after a 5-minute grace period |
+
+Transitions happen automatically - when the associated agent run ends, the task status updates to match.
+
+Agent run completion is authoritative for active task records. A successful detached run finalizes as `succeeded`, ordinary run errors finalize as `failed`, and timeout or abort outcomes finalize as `timed_out`. If an operator already cancelled the task, or the runtime already recorded a stronger terminal state such as `failed`, `timed_out`, or `lost`, a later success signal does not downgrade that terminal status.
+
+`lost` is runtime-aware:
+
+- ACP tasks: backing ACP child session metadata disappeared.
+- Subagent tasks: backing child session disappeared from the target agent store.
+- Cron tasks: the cron runtime no longer tracks the job as active and durable
+  cron run history does not show a terminal result for that run. Offline CLI
+  audit does not treat its own empty in-process cron runtime state as authority.
+- CLI tasks: tasks with a run id/source id use the live run context, so
+  lingering child-session or chat-session rows do not keep them alive after the
+  gateway-owned run disappears. Legacy CLI tasks without run identity still fall
+  back to the child session. Gateway-backed `openclaw agent` runs also finalize
+  from their run result, so completed runs do not sit active until the sweeper
+  marks them `lost`.
+
+## Delivery and notifications
+
+When a task reaches a terminal state, OpenClaw notifies you. There are two delivery paths:
+
+**Direct delivery** - if the task has a channel target (the `requesterOrigin`), the completion message goes straight to that channel (Telegram, Discord, Slack, etc.). Group and channel task completions are instead routed through the requester session so the parent agent can write the visible reply. For subagent completions, OpenClaw also preserves bound thread/topic routing when available and can fill a missing `to` / account from the requester session's stored route (`lastChannel` / `lastTo` / `lastAccountId`) before giving up on direct delivery.
+
+**Session-queued delivery** - if direct delivery fails or no origin is set, the update is queued as a system event in the requester's session and surfaces on the next heartbeat.
+
+<Tip>
+Task completion triggers an immediate heartbeat wake so you see the result quickly - you do not have to wait for the next scheduled heartbeat tick.
+</Tip>
+
+That means the usual workflow is push-based: start detached work once, then let the runtime wake or notify you on completion. Poll task state only when you need debugging, intervention, or an explicit audit.
+
+### Notification policies
+
+Control how much you hear about each task:
+
+| Policy                | What is delivered                                                       |
+| --------------------- | ----------------------------------------------------------------------- |
+| `done_only` (default) | Only terminal state (succeeded, failed, etc.) - **this is the default** |
+| `state_changes`       | Every state transition and progress update                              |
+| `silent`              | Nothing at all                                                          |
+
+Change the policy while a task is running:
+
+```bash
+openclaw tasks notify <lookup> state_changes
+```
+
+## CLI reference
+
+<AccordionGroup>
+  <Accordion title="tasks list">
+    ```bash
+    openclaw tasks list [--runtime <acp|subagent|cron|cli>] [--status <status>] [--json]
+    ```
+
+    Output columns: Task ID, Kind, Status, Delivery, Run ID, Child Session, Summary.
+
+  </Accordion>
+  <Accordion title="tasks show">
+    ```bash
+    openclaw tasks show <lookup>
+    ```
+
+    The lookup token accepts a task ID, run ID, or session key. Shows the full record including timing, delivery state, error, and terminal summary.
+
+  </Accordion>
+  <Accordion title="tasks cancel">
+    ```bash
+    openclaw tasks cancel <lookup>
+    ```
+
+    For ACP and subagent tasks, this kills the child session. For CLI-tracked tasks, cancellation is recorded in the task registry (there is no separate child runtime handle). Status transitions to `cancelled` and a delivery notification is sent when applicable.
+
+  </Accordion>
+  <Accordion title="tasks notify">
+    ```bash
+    openclaw tasks notify <lookup> <done_only|state_changes|silent>
+    ```
+  </Accordion>
+  <Accordion title="tasks audit">
+    ```bash
+    openclaw tasks audit [--json]
+    ```
+
+    Surfaces operational issues. Findings also appear in `openclaw status` when issues are detected.
+
+    | Finding                   | Severity   | Trigger                                                                                                      |
+    | ------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+    | `stale_queued`            | warn       | Queued for more than 10 minutes                                                                              |
+    | `stale_running`           | error      | Running for more than 30 minutes                                                                             |
+    | `lost`                    | warn/error | Runtime-backed task ownership disappeared; retained lost tasks warn until `cleanupAfter`, then become errors |
+    | `delivery_failed`         | warn       | Delivery failed and notify policy is not `silent`                                                            |
+    | `missing_cleanup`         | warn       | Terminal task with no cleanup timestamp                                                                      |
+    | `inconsistent_timestamps` | warn       | Timeline violation (for example ended before started)                                                        |
+
+  </Accordion>
+  <Accordion title="tasks maintenance">
+    ```bash
+    openclaw tasks maintenance [--json]
+    openclaw tasks maintenance --apply [--json]
+    ```
+
+    Use this to preview or apply reconciliation, cleanup stamping, and pruning for tasks, Task Flow state, and stale cron run session registry rows.
+
+    Reconciliation is runtime-aware:
+
+    - ACP/subagent tasks check their backing child session.
+    - Subagent tasks whose child session has a restart-recovery tombstone are marked lost instead of being treated as recoverable backing sessions.
+    - Cron tasks check whether the cron runtime still owns the job, then recover terminal status from persisted cron run logs/job state before falling back to `lost`. Only the Gateway process is authoritative for the in-memory cron active-job set; offline CLI audit uses durable history but does not mark a cron task lost solely because that local Set is empty.
+    - CLI tasks with run identity check the owning live run context, not just child-session or chat-session rows.
+
+    Completion cleanup is also runtime-aware:
+
+    - Subagent completion best-effort closes tracked browser tabs/processes for the child session before announce cleanup continues.
+    - Isolated cron completion best-effort closes tracked browser tabs/processes for the cron session before the run fully tears down.
+    - Isolated cron delivery waits out descendant subagent follow-up when needed and suppresses stale parent acknowledgement text instead of announcing it.
+    - Subagent completion delivery prefers the latest visible assistant text; if that is empty it falls back to sanitized latest tool/toolResult text, and timeout-only tool-call runs can collapse to a short partial-progress summary. Terminal failed runs announce failure status without replaying captured reply text.
+    - Cleanup failures do not mask the real task outcome.
+
+    When applying maintenance, OpenClaw also removes stale `cron:<jobId>:run:<uuid>` session registry rows older than 7 days, while preserving rows for currently running cron jobs and leaving non-cron session rows untouched.
+
+  </Accordion>
+  <Accordion title="tasks flow list | show | cancel">
+    ```bash
+    openclaw tasks flow list [--status <status>] [--json]
+    openclaw tasks flow show <lookup> [--json]
+    openclaw tasks flow cancel <lookup>
+    ```
+
+    Use these when the orchestrating Task Flow is the thing you care about rather than one individual background task record.
+
+  </Accordion>
+</AccordionGroup>
+
+## Chat task board (`/tasks`)
+
+Use `/tasks` in any chat session to see background tasks linked to that session. The board shows active and recently completed tasks with runtime, status, timing, and progress or error detail.
+
+When the current session has no visible linked tasks, `/tasks` falls back to agent-local task counts so you still get an overview without leaking other-session details.
+
+For the full operator ledger, use the CLI: `openclaw tasks list`.
+
+## Status integration (task pressure)
+
+`openclaw status` includes an at-a-glance task summary:
+
+```
+Tasks: 3 queued · 2 running · 1 issues
+```
+
+The summary reports:
+
+- **active** - count of `queued` + `running`
+- **failures** - count of `failed` + `timed_out` + `lost`
+- **byRuntime** - breakdown by `acp`, `subagent`, `cron`, `cli`
+
+Both `/status` and the `session_status` tool use a cleanup-aware task snapshot: active tasks are preferred, stale completed rows are hidden, and recent failures only surface when no active work remains. This keeps the status card focused on what matters right now.
+
+## Storage and maintenance
+
+### Where tasks live
+
+Task records persist in SQLite at:
+
+```
+$OPENCLAW_STATE_DIR/tasks/runs.sqlite
+```
+
+The registry loads into memory at gateway start and syncs writes to SQLite for durability across restarts.
+The Gateway keeps the SQLite write-ahead log bounded by using SQLite's default
+autocheckpoint threshold plus periodic and shutdown `TRUNCATE` checkpoints.
+
+### Automatic maintenance
+
+A sweeper runs every **60 seconds** and handles four things:
+
+<Steps>
+  <Step title="Reconciliation">
+    Checks whether active tasks still have authoritative runtime backing. ACP/subagent tasks use child-session state, cron tasks use active-job ownership, and CLI tasks with run identity use the owning run context. If that backing state is gone for more than 5 minutes, the task is marked `lost`.
+  </Step>
+  <Step title="ACP session repair">
+    Closes terminal or orphaned parent-owned one-shot ACP sessions, and closes stale terminal or orphaned persistent ACP sessions only when no active conversation binding remains.
+  </Step>
+  <Step title="Cleanup stamping">
+    Sets a `cleanupAfter` timestamp on terminal tasks (endedAt + 7 days). During retention, lost tasks still appear in audit as warnings; after `cleanupAfter` expires or when cleanup metadata is missing, they are errors.
+  </Step>
+  <Step title="Pruning">
+    Deletes records past their `cleanupAfter` date.
+  </Step>
+</Steps>
+
+<Note>
+**Retention:** terminal task records are kept for **7 days**, then automatically pruned. No configuration needed.
+</Note>
+
+## How tasks relate to other systems
+
+<AccordionGroup>
+  <Accordion title="Tasks and Task Flow">
+    [Task Flow](/automation/taskflow) is the flow orchestration layer above background tasks. A single flow may coordinate multiple tasks over its lifetime using managed or mirrored sync modes. Use `openclaw tasks` to inspect individual task records and `openclaw tasks flow` to inspect the orchestrating flow.
+
+    See [Task Flow](/automation/taskflow) for details.
+
+  </Accordion>
+  <Accordion title="Tasks and cron">
+    A cron job **definition** lives in `~/.openclaw/cron/jobs.json`; runtime execution state lives beside it in `~/.openclaw/cron/jobs-state.json`. **Every** cron execution creates a task record - both main-session and isolated. Main-session cron tasks default to `silent` notify policy so they track without generating notifications.
+
+    See [Cron Jobs](/automation/cron-jobs).
+
+  </Accordion>
+  <Accordion title="Tasks and heartbeat">
+    Heartbeat runs are main-session turns - they do not create task records. When a task completes, it can trigger a heartbeat wake so you see the result promptly.
+
+    See [Heartbeat](/gateway/heartbeat).
+
+  </Accordion>
+  <Accordion title="Tasks and sessions">
+    A task may reference a `childSessionKey` (where work runs) and a `requesterSessionKey` (who started it). Sessions are conversation context; tasks are activity tracking on top of that.
+  </Accordion>
+  <Accordion title="Tasks and agent runs">
+    A task's `runId` links to the agent run doing the work. Agent lifecycle events (start, end, error) automatically update the task status - you do not need to manage the lifecycle manually.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Automation](/automation) - all automation mechanisms at a glance
+- [CLI: Tasks](/cli/tasks) - CLI command reference
+- [Heartbeat](/gateway/heartbeat) - periodic main-session turns
+- [Scheduled Tasks](/automation/cron-jobs) - scheduling background work
+- [Task Flow](/automation/taskflow) - flow orchestration above tasks
+
+================
+===== SECTION:docs-gateway-heartbeat-md =====
+===== SECTION:heartbeat:doc =====
+File: docs/gateway/heartbeat.md
+================
+---
+summary: "Heartbeat polling messages and notification rules"
+read_when:
+  - Adjusting heartbeat cadence or messaging
+  - Deciding between heartbeat and cron for scheduled tasks
+title: "Heartbeat"
+sidebarTitle: "Heartbeat"
+---
+
+<Note>
+**Heartbeat vs cron?** See [Automation](/automation) for guidance on when to use each.
+</Note>
+
+Heartbeat runs **periodic agent turns** in the main session so the model can surface anything that needs attention without spamming you.
+
+Heartbeat is a scheduled main-session turn — it does **not** create [background task](/automation/tasks) records. Task records are for detached work (ACP runs, subagents, isolated cron jobs).
+
+Troubleshooting: [Scheduled Tasks](/automation/cron-jobs#troubleshooting)
+
+## Quick start (beginner)
+
+<Steps>
+  <Step title="Pick a cadence">
+    Leave heartbeats enabled (default is `30m`, or `1h` for Anthropic OAuth/token auth, including Claude CLI reuse) or set your own cadence.
+  </Step>
+  <Step title="Add HEARTBEAT.md (optional)">
+    Create a tiny `HEARTBEAT.md` checklist or `tasks:` block in the agent workspace.
+  </Step>
+  <Step title="Decide where heartbeat messages should go">
+    `target: "none"` is the default; set `target: "last"` to route to the last contact.
+  </Step>
+  <Step title="Optional tuning">
+    - Enable heartbeat reasoning delivery for transparency.
+    - Use lightweight bootstrap context if heartbeat runs only need `HEARTBEAT.md`.
+    - Enable isolated sessions to avoid sending full conversation history each heartbeat.
+    - Restrict heartbeats to active hours (local time).
+
+  </Step>
+</Steps>
+
+Example config:
+
+```json5
+{
+  agents: {
+    defaults: {
+      heartbeat: {
+        every: "30m",
+        target: "last", // explicit delivery to last contact (default is "none")
+        directPolicy: "allow", // default: allow direct/DM targets; set "block" to suppress
+        lightContext: true, // optional: only inject HEARTBEAT.md from bootstrap files
+        isolatedSession: true, // optional: fresh session each run (no conversation history)
+        skipWhenBusy: true, // optional: also defer when this agent's subagent or nested lanes are busy
+        // activeHours: { start: "08:00", end: "24:00" },
+        // includeReasoning: true, // optional: send separate `Thinking` message too
+      },
+    },
+  },
+}
+```
+
+## Defaults
+
+- Interval: `30m` (or `1h` when Anthropic OAuth/token auth is the detected auth mode, including Claude CLI reuse). Set `agents.defaults.heartbeat.every` or per-agent `agents.list[].heartbeat.every`; use `0m` to disable.
+- Prompt body (configurable via `agents.defaults.heartbeat.prompt`): `Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
+- The heartbeat prompt is sent **verbatim** as the user message. The system prompt includes a "Heartbeat" section only when heartbeats are enabled for the default agent, and the run is flagged internally.
+- When heartbeats are disabled with `0m`, normal runs also omit `HEARTBEAT.md` from bootstrap context so the model does not see heartbeat-only instructions.
+- Active hours (`heartbeat.activeHours`) are checked in the configured timezone. Outside the window, heartbeats are skipped until the next tick inside the window.
+- Heartbeats automatically defer while cron work is active or queued. Set `heartbeat.skipWhenBusy: true` to also defer an agent on its own session-keyed subagent or nested command lanes; sibling agents no longer pause just because another agent has subagent work in flight.
+
+## What the heartbeat prompt is for
+
+The default prompt is intentionally broad:
+
+- **Background tasks**: "Consider outstanding tasks" nudges the agent to review follow-ups (inbox, calendar, reminders, queued work) and surface anything urgent.
+- **Human check-in**: "Checkup sometimes on your human during day time" nudges an occasional lightweight "anything you need?" message, but avoids night-time spam by using your configured local timezone (see [Timezone](/concepts/timezone)).
+
+Heartbeat can react to completed [background tasks](/automation/tasks), but a heartbeat run itself does not create a task record.
+
+If you want a heartbeat to do something very specific (e.g. "check Gmail PubSub stats" or "verify gateway health"), set `agents.defaults.heartbeat.prompt` (or `agents.list[].heartbeat.prompt`) to a custom body (sent verbatim).
+
+## Response contract
+
+- If nothing needs attention, reply with **`HEARTBEAT_OK`**.
+- Tool-capable heartbeat runs may instead call `heartbeat_respond` with `notify: false` for no visible update, or `notify: true` plus `notificationText` for an alert. When present, the structured tool response takes precedence over the text fallback.
+- During heartbeat runs, OpenClaw treats `HEARTBEAT_OK` as an ack when it appears at the **start or end** of the reply. The token is stripped and the reply is dropped if the remaining content is **≤ `ackMaxChars`** (default: 300).
+- If `HEARTBEAT_OK` appears in the **middle** of a reply, it is not treated specially.
+- For alerts, **do not** include `HEARTBEAT_OK`; return only the alert text.
+
+Outside heartbeats, stray `HEARTBEAT_OK` at the start/end of a message is stripped and logged; a message that is only `HEARTBEAT_OK` is dropped.
+
+## Config
+
+```json5
+{
+  agents: {
+    defaults: {
+      heartbeat: {
+        every: "30m", // default: 30m (0m disables)
+        model: "anthropic/claude-opus-4-6",
+        includeReasoning: false, // default: false (deliver separate Thinking message when available)
+        lightContext: false, // default: false; true keeps only HEARTBEAT.md from workspace bootstrap files
+        isolatedSession: false, // default: false; true runs each heartbeat in a fresh session (no conversation history)
+        skipWhenBusy: false, // default: false; true also waits for this agent's subagent/nested lanes
+        target: "last", // default: none | options: last | none | <channel id> (core or plugin, e.g. "imessage")
+        to: "+15551234567", // optional channel-specific override
+        accountId: "ops-bot", // optional multi-account channel id
+        prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        ackMaxChars: 300, // max chars allowed after HEARTBEAT_OK
+      },
+    },
+  },
+}
+```
+
+### Scope and precedence
+
+- `agents.defaults.heartbeat` sets global heartbeat behavior.
+- `agents.list[].heartbeat` merges on top; if any agent has a `heartbeat` block, **only those agents** run heartbeats.
+- `channels.defaults.heartbeat` sets visibility defaults for all channels.
+- `channels.<channel>.heartbeat` overrides channel defaults.
+- `channels.<channel>.accounts.<id>.heartbeat` (multi-account channels) overrides per-channel settings.
+
+### Per-agent heartbeats
+
+If any `agents.list[]` entry includes a `heartbeat` block, **only those agents** run heartbeats. The per-agent block merges on top of `agents.defaults.heartbeat` (so you can set shared defaults once and override per agent).
+
+Example: two agents, only the second agent runs heartbeats.
+
+```json5
+{
+  agents: {
+    defaults: {
+      heartbeat: {
+        every: "30m",
+        target: "last", // explicit delivery to last contact (default is "none")
+      },
+    },
+    list: [
+      { id: "main", default: true },
+      {
+        id: "ops",
+        heartbeat: {
+          every: "1h",
+          target: "whatsapp",
+          to: "+15551234567",
+          timeoutSeconds: 45,
+          prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        },
+      },
+    ],
+  },
+}
+```
+
+### Active hours example
+
+Restrict heartbeats to business hours in a specific timezone:
+
+```json5
+{
+  agents: {
+    defaults: {
+      heartbeat: {
+        every: "30m",
+        target: "last", // explicit delivery to last contact (default is "none")
+        activeHours: {
+          start: "09:00",
+          end: "22:00",
+          timezone: "America/New_York", // optional; uses your userTimezone if set, otherwise host tz
+        },
+      },
+    },
+  },
+}
+```
+
+Outside this window (before 9am or after 10pm Eastern), heartbeats are skipped. The next scheduled tick inside the window will run normally.
+
+### 24/7 setup
+
+If you want heartbeats to run all day, use one of these patterns:
+
+- Omit `activeHours` entirely (no time-window restriction; this is the default behavior).
+- Set a full-day window: `activeHours: { start: "00:00", end: "24:00" }`.
+
+<Warning>
+Do not set the same `start` and `end` time (for example `08:00` to `08:00`). That is treated as a zero-width window, so heartbeats are always skipped.
+</Warning>
+
+### Multi-account example
+
+Use `accountId` to target a specific account on multi-account channels like Telegram:
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "ops",
+        heartbeat: {
+          every: "1h",
+          target: "telegram",
+          to: "12345678:topic:42", // optional: route to a specific topic/thread
+          accountId: "ops-bot",
+        },
+      },
+    ],
+  },
+  channels: {
+    telegram: {
+      accounts: {
+        "ops-bot": { botToken: "YOUR_TELEGRAM_BOT_TOKEN" },
+      },
+    },
+  },
+}
+```
+
+### Field notes
+
+<ParamField path="every" type="string">
+  Heartbeat interval (duration string; default unit = minutes).
+</ParamField>
+<ParamField path="model" type="string">
+  Optional model override for heartbeat runs (`provider/model`).
+</ParamField>
+<ParamField path="includeReasoning" type="boolean" default="false">
+  When enabled, also deliver the separate `Thinking` message when available (same shape as `/reasoning on`).
+</ParamField>
+<ParamField path="lightContext" type="boolean" default="false">
+  When true, heartbeat runs use lightweight bootstrap context and keep only `HEARTBEAT.md` from workspace bootstrap files.
+</ParamField>
+<ParamField path="isolatedSession" type="boolean" default="false">
+  When true, each heartbeat runs in a fresh session with no prior conversation history. Uses the same isolation pattern as cron `sessionTarget: "isolated"`. Dramatically reduces per-heartbeat token cost. Combine with `lightContext: true` for maximum savings. Delivery routing still uses the main session context.
+</ParamField>
+<ParamField path="skipWhenBusy" type="boolean" default="false">
+  When true, heartbeat runs defer on that agent's extra busy lanes: its own session-keyed subagent or nested command work. Cron lanes always defer heartbeats, even without this flag, so local-model hosts do not run cron and heartbeat prompts at the same time.
+</ParamField>
+<ParamField path="session" type="string">
+  Optional session key for heartbeat runs.
+
+- `main` (default): agent main session.
+- Explicit session key (copy from `openclaw sessions --json` or the [sessions CLI](/cli/sessions)).
+- Session key formats: see [Sessions](/concepts/session) and [Groups](/channels/groups).
+
+</ParamField>
+<ParamField path="target" type="string">
+- `last`: deliver to the last used external channel.
+- explicit channel: any configured channel or plugin id, for example `discord`, `matrix`, `telegram`, or `whatsapp`.
+- `none` (default): run the heartbeat but **do not deliver** externally.
+
+</ParamField>
+<ParamField path="directPolicy" type='"allow" | "block"' default="allow">
+  Controls direct/DM delivery behavior. `allow`: allow direct/DM heartbeat delivery. `block`: suppress direct/DM delivery (`reason=dm-blocked`).
+
+</ParamField>
+<ParamField path="to" type="string">
+  Optional recipient override (channel-specific id, e.g. E.164 for WhatsApp or a Telegram chat id). For Telegram topics/threads, use `<chatId>:topic:<messageThreadId>`.
+
+</ParamField>
+<ParamField path="accountId" type="string">
+  Optional account id for multi-account channels. When `target: "last"`, the account id applies to the resolved last channel if it supports accounts; otherwise it is ignored. If the account id does not match a configured account for the resolved channel, delivery is skipped.
+
+</ParamField>
+<ParamField path="prompt" type="string">
+  Overrides the default prompt body (not merged).
+
+</ParamField>
+<ParamField path="ackMaxChars" type="number" default="300">
+  Max chars allowed after `HEARTBEAT_OK` before delivery.
+
+</ParamField>
+<ParamField path="suppressToolErrorWarnings" type="boolean">
+  When true, suppresses tool error warning payloads during heartbeat runs.
+
+</ParamField>
+<ParamField path="activeHours" type="object">
+  Restricts heartbeat runs to a time window. Object with `start` (HH:MM, inclusive; use `00:00` for start-of-day), `end` (HH:MM exclusive; `24:00` allowed for end-of-day), and optional `timezone`.
+
+- Omitted or `"user"`: uses your `agents.defaults.userTimezone` if set, otherwise falls back to the host system timezone.
+- `"local"`: always uses the host system timezone.
+- Any IANA identifier (e.g. `America/New_York`): used directly; if invalid, falls back to the `"user"` behavior above.
+- `start` and `end` must not be equal for an active window; equal values are treated as zero-width (always outside the window).
+- Outside the active window, heartbeats are skipped until the next tick inside the window.
+
+</ParamField>
+
+## Delivery behavior
+
+<AccordionGroup>
+  <Accordion title="Session and target routing">
+    - Heartbeats run in the agent's main session by default (`agent:<id>:<mainKey>`), or `global` when `session.scope = "global"`. Set `session` to override to a specific channel session (Discord/WhatsApp/etc.).
+    - `session` only affects the run context; delivery is controlled by `target` and `to`.
+    - To deliver to a specific channel/recipient, set `target` + `to`. With `target: "last"`, delivery uses the last external channel for that session.
+    - Heartbeat deliveries allow direct/DM targets by default. Set `directPolicy: "block"` to suppress direct-target sends while still running the heartbeat turn.
+    - If the main queue, target session lane, cron lane, or an active cron job is busy, the heartbeat is skipped and retried later.
+    - If `skipWhenBusy: true`, this agent's session-keyed subagent and nested lanes also defer heartbeat runs. Other agents' busy lanes do not defer this agent.
+    - If `target` resolves to no external destination, the run still happens but no outbound message is sent.
+
+  </Accordion>
+  <Accordion title="Visibility and skip behavior">
+    - If `showOk`, `showAlerts`, and `useIndicator` are all disabled, the run is skipped up front as `reason=alerts-disabled`.
+    - If only alert delivery is disabled, OpenClaw can still run the heartbeat, update due-task timestamps, restore the session idle timestamp, and suppress the outward alert payload.
+    - If the resolved heartbeat target supports typing, OpenClaw shows typing while the heartbeat run is active. This uses the same target the heartbeat would send chat output to, and it is disabled by `typingMode: "never"`.
+
+  </Accordion>
+  <Accordion title="Session lifecycle and audit">
+    - Heartbeat-only replies do **not** keep the session alive. Heartbeat metadata may update the session row, but idle expiry uses `lastInteractionAt` from the last real user/channel message, and daily expiry uses `sessionStartedAt`.
+    - Control UI and WebChat history hide heartbeat prompts and OK-only acknowledgments. The underlying session transcript can still contain those turns for audit/replay.
+    - Detached [background tasks](/automation/tasks) can enqueue a system event and wake heartbeat when the main session should notice something quickly. That wake does not make the heartbeat run a background task.
+
+  </Accordion>
+</AccordionGroup>
+
+## Visibility controls
+
+By default, `HEARTBEAT_OK` acknowledgments are suppressed while alert content is delivered. You can adjust this per channel or per account:
+
+```yaml
+channels:
+  defaults:
+    heartbeat:
+      showOk: false # Hide HEARTBEAT_OK (default)
+      showAlerts: true # Show alert messages (default)
+      useIndicator: true # Emit indicator events (default)
+  telegram:
+    heartbeat:
+      showOk: true # Show OK acknowledgments on Telegram
+  whatsapp:
+    accounts:
+      work:
+        heartbeat:
+          showAlerts: false # Suppress alert delivery for this account
+```
+
+Precedence: per-account → per-channel → channel defaults → built-in defaults.
+
+### What each flag does
+
+- `showOk`: sends a `HEARTBEAT_OK` acknowledgment when the model returns an OK-only reply.
+- `showAlerts`: sends the alert content when the model returns a non-OK reply.
+- `useIndicator`: emits indicator events for UI status surfaces.
+
+If **all three** are false, OpenClaw skips the heartbeat run entirely (no model call).
+
+### Per-channel vs per-account examples
+
+```yaml
+channels:
+  defaults:
+    heartbeat:
+      showOk: false
+      showAlerts: true
+      useIndicator: true
+  slack:
+    heartbeat:
+      showOk: true # all Slack accounts
+    accounts:
+      ops:
+        heartbeat:
+          showAlerts: false # suppress alerts for the ops account only
+  telegram:
+    heartbeat:
+      showOk: true
+```
+
+### Common patterns
+
+| Goal                                     | Config                                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Default behavior (silent OKs, alerts on) | _(no config needed)_                                                                     |
+| Fully silent (no messages, no indicator) | `channels.defaults.heartbeat: { showOk: false, showAlerts: false, useIndicator: false }` |
+| Indicator-only (no messages)             | `channels.defaults.heartbeat: { showOk: false, showAlerts: false, useIndicator: true }`  |
+| OKs in one channel only                  | `channels.telegram.heartbeat: { showOk: true }`                                          |
+
+## HEARTBEAT.md (optional)
+
+If a `HEARTBEAT.md` file exists in the workspace, the default prompt tells the agent to read it. Think of it as your "heartbeat checklist": small, stable, and safe to consider every 30 minutes.
+
+On normal runs, `HEARTBEAT.md` is only injected when heartbeat guidance is enabled for the default agent. Disabling the heartbeat cadence with `0m` or setting `includeSystemPromptSection: false` omits it from normal bootstrap context.
+
+On the native Codex harness, `HEARTBEAT.md` content is not injected into the turn. If the file exists and has non-whitespace content, the heartbeat collaboration-mode instructions point Codex at the file and tell it to read before proceeding.
+
+If `HEARTBEAT.md` exists but is effectively empty (only blank lines and markdown headers like `# Heading`), OpenClaw skips the heartbeat run to save API calls. That skip is reported as `reason=empty-heartbeat-file`. If the file is missing, the heartbeat still runs and the model decides what to do.
+
+Keep it tiny (short checklist or reminders) to avoid prompt bloat.
+
+Example `HEARTBEAT.md`:
+
+```md
+# Heartbeat checklist
+
+- Quick scan: anything urgent in inboxes?
+- If it's daytime, do a lightweight check-in if nothing else is pending.
+- If a task is blocked, write down _what is missing_ and ask Peter next time.
+```
+
+### `tasks:` blocks
+
+`HEARTBEAT.md` also supports a small structured `tasks:` block for interval-based checks inside heartbeat itself.
+
+Example:
+
+```md
+tasks:
+
+- name: inbox-triage
+  interval: 30m
+  prompt: "Check for urgent unread emails and flag anything time sensitive."
+- name: calendar-scan
+  interval: 2h
+  prompt: "Check for upcoming meetings that need prep or follow-up."
+
+# Additional instructions
+
+- Keep alerts short.
+- If nothing needs attention after all due tasks, reply HEARTBEAT_OK.
+```
+
+<AccordionGroup>
+  <Accordion title="Behavior">
+    - OpenClaw parses the `tasks:` block and checks each task against its own `interval`.
+    - Only **due** tasks are included in the heartbeat prompt for that tick.
+    - If no tasks are due, the heartbeat is skipped entirely (`reason=no-tasks-due`) to avoid a wasted model call.
+    - Non-task content in `HEARTBEAT.md` is preserved and appended as additional context after the due-task list.
+    - Task last-run timestamps are stored in session state (`heartbeatTaskState`), so intervals survive normal restarts.
+    - Task timestamps are only advanced after a heartbeat run completes its normal reply path. Skipped `empty-heartbeat-file` / `no-tasks-due` runs do not mark tasks as completed.
+
+  </Accordion>
+</AccordionGroup>
+
+Task mode is useful when you want one heartbeat file to hold several periodic checks without paying for all of them every tick.
+
+### Can the agent update HEARTBEAT.md?
+
+Yes — if you ask it to.
+
+`HEARTBEAT.md` is just a normal file in the agent workspace, so you can tell the agent (in a normal chat) something like:
+
+- "Update `HEARTBEAT.md` to add a daily calendar check."
+- "Rewrite `HEARTBEAT.md` so it's shorter and focused on inbox follow-ups."
+
+If you want this to happen proactively, you can also include an explicit line in your heartbeat prompt like: "If the checklist becomes stale, update HEARTBEAT.md with a better one."
+
+<Warning>
+Don't put secrets (API keys, phone numbers, private tokens) into `HEARTBEAT.md` — it becomes part of the prompt context.
+</Warning>
+
+## Manual wake (on-demand)
+
+You can enqueue a system event and trigger an immediate heartbeat with:
+
+```bash
+openclaw system event --text "Check for urgent follow-ups" --mode now
+```
+
+If multiple agents have `heartbeat` configured, a manual wake runs each of those agent heartbeats immediately.
+
+Use `--mode next-heartbeat` to wait for the next scheduled tick.
+
+## Reasoning delivery (optional)
+
+By default, heartbeats deliver only the final "answer" payload.
+
+If you want transparency, enable:
+
+- `agents.defaults.heartbeat.includeReasoning: true`
+
+When enabled, heartbeats will also deliver a separate message prefixed `Thinking` (same shape as `/reasoning on`). This can be useful when the agent is managing multiple sessions/codexes and you want to see why it decided to ping you — but it can also leak more internal detail than you want. Prefer keeping it off in group chats.
+
+## Cost awareness
+
+Heartbeats run full agent turns. Shorter intervals burn more tokens. To reduce cost:
+
+- Use `isolatedSession: true` to avoid sending full conversation history (~100K tokens down to ~2-5K per run).
+- Use `lightContext: true` to limit bootstrap files to just `HEARTBEAT.md`.
+- Set a cheaper `model` (e.g. `ollama/llama3.2:1b`).
+- Keep `HEARTBEAT.md` small.
+- Use `target: "none"` if you only want internal state updates.
+
+## Context overflow after heartbeat
+
+If a heartbeat previously left an existing session on a smaller local model, for example an Ollama model with a 32k window, and the next main-session turn reports context overflow, reset the session runtime model back to the configured primary model. OpenClaw's reset message calls this out when the last runtime model matches configured `heartbeat.model`.
+
+Current heartbeats preserve the shared session's existing runtime model after the run completes. You can still use `isolatedSession: true` to run heartbeats in a fresh session, combine it with `lightContext: true` for the smallest prompt, or choose a heartbeat model with a context window large enough for the shared session.
+
+## Related
+
+- [Automation](/automation) — all automation mechanisms at a glance
+- [Background Tasks](/automation/tasks) — how detached work is tracked
+- [Timezone](/concepts/timezone) — how timezone affects heartbeat scheduling
+- [Troubleshooting](/automation/cron-jobs#troubleshooting) — debugging automation issues
+
+================
+===== SECTION:docs-reference-templates-heartbeat-md =====
+===== SECTION:heartbeat:template =====
+File: docs/reference/templates/HEARTBEAT.md
+================
+---
+summary: "Workspace template for HEARTBEAT.md"
+title: "HEARTBEAT.md template"
+read_when:
+  - Bootstrapping a workspace manually
+---
+
+```markdown
+# Keep this file empty (or with only comments) to skip heartbeat API calls.
+
+# Add tasks below when you want the agent to check something periodically.
+```
+
+## Related
+
+- [Heartbeat config](/gateway/config-agents)
+
+================
+===== SECTION:src-infra-heartbeat-active-hours-ts =====
+File: src/infra/heartbeat-active-hours.ts
+================
+import { resolveUserTimezone } from "../agents/date-time.js";
+import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+⋮----
+type HeartbeatConfig = AgentDefaultsConfig["heartbeat"];
+⋮----
+export function resolveActiveHoursTimezone(cfg: OpenClawConfig, raw?: string): string
+⋮----
+function parseActiveHoursTime(opts:
+⋮----
+function resolveMinutesInTimeZone(nowMs: number, timeZone: string): number | null
+⋮----
+export function isWithinActiveHours(
+  cfg: OpenClawConfig,
+  heartbeat?: HeartbeatConfig,
+  nowMs?: number,
+): boolean
+
+================
+===== SECTION:src-infra-heartbeat-cooldown-ts =====
+File: src/infra/heartbeat-cooldown.ts
+================
+// Centralized cooldown decision for heartbeat wakes.
+//
+// Background: a heartbeat run can be triggered by many wake sources — the
+// scheduler's interval tick, a manual user request, a backgrounded `process.start`
+// exit, a cron tick, an ACP spawn stream event, etc. Different sources used to
+// take different code paths through the dispatcher, and historically the
+// `nextDueMs` cooldown gate was only enforced on the `interval` branch. That let
+// event-driven wakes (especially `exec-event`) fire heartbeat runs back-to-back
+// when a heartbeat agent's tools triggered more wakes (#17797 → #75436).
+//
+// This module owns the single decision: "given this wake, should we run now or
+// defer it?" Both the targeted and broadcast dispatch branches must call
+// `shouldDeferWake` so the gate can never be forgotten on one path.
+⋮----
+import type { HeartbeatWakeIntent, HeartbeatWakeSource } from "./heartbeat-wake.js";
+⋮----
+// Default minimum spacing between heartbeat runs for the same agent, regardless
+// of configured `every`. Even when `nextDueMs` is enforced, two wakes arriving
+// within milliseconds can race the schedule update; this floor prevents that.
+⋮----
+// Flood guard: if more than this many wakes for the same agent fall within the
+// flood window, the dispatcher logs a warning and forces the wake to defer to
+// the next scheduled tick. Tuned so a normal heartbeat that legitimately uses
+// `manual` retry doesn't trip it but a feedback loop does.
+⋮----
+export type DeferDecision =
+  | { defer: false }
+  | { defer: true; reason: "not-due" | "min-spacing" | "flood" };
+⋮----
+export type ShouldDeferInput = {
+  /** Scheduler behavior requested by the wake producer. */
+  intent: HeartbeatWakeIntent;
+  /** Wake producer, used for diagnostics and future source-specific telemetry. */
+  source?: HeartbeatWakeSource;
+  /** Raw wake reason string for logs/model context. It does not drive scheduling policy. */
+  reason: string | undefined;
+  /** Current monotonic-ish wall clock. Pass `Date.now()`. */
+  now: number;
+  /** When this agent's next interval-tick run is due. */
+  nextDueMs: number;
+  /** When this agent last *started* a run, if known. */
+  lastRunStartedAtMs?: number;
+  /** Recent wake timestamps for flood detection. */
+  recentRunStarts?: readonly number[];
+  /** Override the minimum spacing floor. */
+  minSpacingMs?: number;
+  /** Override the flood-window length. */
+  floodWindowMs?: number;
+  /** Override the flood-window threshold. */
+  floodThreshold?: number;
+};
+⋮----
+/** Scheduler behavior requested by the wake producer. */
+⋮----
+/** Wake producer, used for diagnostics and future source-specific telemetry. */
+⋮----
+/** Raw wake reason string for logs/model context. It does not drive scheduling policy. */
+⋮----
+/** Current monotonic-ish wall clock. Pass `Date.now()`. */
+⋮----
+/** When this agent's next interval-tick run is due. */
+⋮----
+/** When this agent last *started* a run, if known. */
+⋮----
+/** Recent wake timestamps for flood detection. */
+⋮----
+/** Override the minimum spacing floor. */
+⋮----
+/** Override the flood-window length. */
+⋮----
+/** Override the flood-window threshold. */
+⋮----
+/**
+ * Decide whether an incoming wake should be deferred.
+ *
+ * The decision matrix:
+ *
+ * | Wake intent   | First wake (no prior run) | Subsequent wakes                       |
+ * |---------------|----------------------------|-----------------------------------------|
+ * | manual        | Run                        | Run (never deferred)                    |
+ * | immediate     | Run                        | Run (never deferred, except flood)      |
+ * | scheduled     | Defer if now < nextDueMs   | Defer if now < nextDueMs                |
+ * | event         | Run (bootstrap responsive) | Defer if now < nextDueMs OR within floor |
+ *
+ * Immediate is for documented wake-now delivery paths such as `openclaw system
+ * event --mode now`, task completion follow-ups, cron `--wake now`, and
+ * `/hooks/wake mode=now`. Event is for external/system notifications such as
+ * background exec exits, node notification changes, hook/cron next-heartbeat
+ * handoffs, ACP spawn stream updates, and retry wakes.
+ *
+ * Additional gates layered on top of the reason matrix:
+ *
+ *   1. **Minimum spacing floor** (`min-spacing`): even if `nextDueMs` has been
+ *      passed, defer if a run started within the last `minSpacingMs`. Catches
+ *      the race where a second wake arrives between `runOnce` returning and
+ *      `advanceAgentSchedule` updating `nextDueMs`.
+ *   2. **Flood guard** (`flood`): if `recentRunStarts` shows ≥ `floodThreshold`
+ *      runs within `floodWindowMs`, defer regardless of reason (except
+ *      `manual`-class immediate intent). Caller should also emit a single
+ *      warning log when this fires.
+ */
+export function shouldDeferWake(input: ShouldDeferInput): DeferDecision
+⋮----
+// Even immediate wakes get rate-limited if a real flood is happening — but
+// manual operator intent is fully exempt above. System-event, task, hook,
+// and cron wake-now paths come from external systems we trust but cannot
+// prove are loop-free, so the flood guard remains a backstop.
+⋮----
+// Flood guard applies to every non-immediate wake regardless of run history.
+// It is the last line of defense against feedback loops.
+⋮----
+// Event-driven wakes. First wake (no prior run) bypasses cooldown gates so
+// an idle agent can respond to an external event without waiting for the
+// first scheduled phase tick.
+⋮----
+function checkFloodGuard(input: ShouldDeferInput): DeferDecision | null
+⋮----
+/**
+ * Append a run-start timestamp to a bounded recent-runs buffer. Caller passes
+ * the previous buffer; this returns a new (mutated) buffer with the entry
+ * appended and trimmed to `floodThreshold + 1` entries (only the newest matter
+ * for flood detection).
+ */
+export function recordRunStart(
+  buffer: number[],
+  ts: number,
+  floodThreshold: number = DEFAULT_FLOOD_THRESHOLD,
+): number[]
+
+================
+===== SECTION:src-infra-heartbeat-events-filter-ts =====
+File: src/infra/heartbeat-events-filter.ts
+================
+import { HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS } from "../auto-reply/heartbeat.js";
+import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
+import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
+⋮----
+type StructuredExecCompletionEvent = {
+  raw: string;
+  action: string;
+  id: string;
+  result: string;
+  output: string;
+  succeeded: boolean;
+};
+⋮----
+function parseStructuredExecCompletionEvent(evt: string): StructuredExecCompletionEvent | null
+⋮----
+export function isRelayableExecCompletionEvent(evt: string): boolean
+⋮----
+function formatExecEventPromptText(pendingEvents: string[]):
+⋮----
+// Build a dynamic prompt for cron events by embedding the actual event content.
+// This ensures the model sees the reminder text directly instead of relying on
+// "shown in the system messages above" which may not be visible in context.
+export function buildCronEventPrompt(
+  pendingEvents: string[],
+  opts?: {
+    deliverToUser?: boolean;
+    useHeartbeatResponseTool?: boolean;
+  },
+): string
+⋮----
+export function buildExecEventPrompt(
+  pendingEvents: string[],
+  opts?: { deliverToUser?: boolean; useHeartbeatResponseTool?: boolean },
+): string
+⋮----
+// Detect heartbeat-specific noise so cron reminders don't trigger on non-reminder events.
+function isHeartbeatAckEvent(evt: string): boolean
+⋮----
+function isHeartbeatNoiseEvent(evt: string): boolean
+⋮----
+export function isExecCompletionEvent(evt: string): boolean
+⋮----
+// Returns true when a system event should be treated as real cron reminder content.
+export function isCronSystemEvent(evt: string)
+
+================
+===== SECTION:src-infra-heartbeat-events-ts =====
+File: src/infra/heartbeat-events.ts
+================
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { notifyListeners, registerListener } from "../shared/listeners.js";
+⋮----
+export type HeartbeatIndicatorType = "ok" | "alert" | "error";
+⋮----
+export type HeartbeatEventPayload = {
+  ts: number;
+  status: "sent" | "ok-empty" | "ok-token" | "skipped" | "failed";
+  to?: string;
+  accountId?: string;
+  preview?: string;
+  durationMs?: number;
+  hasMedia?: boolean;
+  reason?: string;
+  /** The channel this heartbeat was sent to. */
+  channel?: string;
+  /** Whether the message was silently suppressed (showOk: false). */
+  silent?: boolean;
+  /** Indicator type for UI status display. */
+  indicatorType?: HeartbeatIndicatorType;
+};
+⋮----
+/** The channel this heartbeat was sent to. */
+⋮----
+/** Whether the message was silently suppressed (showOk: false). */
+⋮----
+/** Indicator type for UI status display. */
+⋮----
+export function resolveIndicatorType(
+  status: HeartbeatEventPayload["status"],
+): HeartbeatIndicatorType | undefined
+⋮----
+type HeartbeatEventState = {
+  lastHeartbeat: HeartbeatEventPayload | null;
+  listeners: Set<(evt: HeartbeatEventPayload) => void>;
+};
+⋮----
+export function emitHeartbeatEvent(evt: Omit<HeartbeatEventPayload, "ts">)
+⋮----
+export function onHeartbeatEvent(listener: (evt: HeartbeatEventPayload) => void): () => void
+⋮----
+export function getLastHeartbeatEvent(): HeartbeatEventPayload | null
+⋮----
+export function resetHeartbeatEventsForTest(): void
+
+================
+===== SECTION:src-infra-heartbeat-reason-ts =====
+File: src/infra/heartbeat-reason.ts
+================
+import { normalizeOptionalString } from "../shared/string-coerce.js";
+⋮----
+export function normalizeHeartbeatWakeReason(reason?: string): string
+
+================
+===== SECTION:src-infra-heartbeat-runner-runtime-ts =====
+File: src/infra/heartbeat-runner.runtime.ts
+================
+
+
+================
+===== SECTION:src-infra-heartbeat-runner-test-harness-ts =====
+File: src/infra/heartbeat-runner.test-harness.ts
+================
+import { beforeEach } from "vitest";
+import {
+  heartbeatRunnerSlackPlugin,
+  heartbeatRunnerTelegramPlugin,
+  heartbeatRunnerWhatsAppPlugin,
+} from "../../test/helpers/infra/heartbeat-runner-channel-plugins.js";
+import { setActivePluginRegistry } from "../plugins/runtime.js";
+import { createTestRegistry } from "../test-utils/channel-plugins.js";
+⋮----
+export function installHeartbeatRunnerTestRuntime(params?:
+
+================
+===== SECTION:src-infra-heartbeat-runner-test-utils-ts =====
+File: src/infra/heartbeat-runner.test-utils.ts
+================
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { vi } from "vitest";
+import { heartbeatRunnerTelegramPlugin } from "../../test/helpers/infra/heartbeat-runner-channel-plugins.js";
+import { resolveMainSessionKey } from "../config/sessions.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { setActivePluginRegistry } from "../plugins/runtime.js";
+import { createTestRegistry } from "../test-utils/channel-plugins.js";
+import type { HeartbeatDeps } from "./heartbeat-runner.js";
+⋮----
+type HeartbeatSessionSeed = {
+  sessionId?: string;
+  updatedAt?: number;
+  lastChannel: string;
+  lastProvider: string;
+  lastTo: string;
+  pendingFinalDelivery?: boolean;
+  pendingFinalDeliveryText?: string;
+  agentHarnessId?: string;
+  agentRuntimeOverride?: string;
+  model?: string;
+  modelProvider?: string;
+};
+⋮----
+type HeartbeatReplyFn = NonNullable<HeartbeatDeps["getReplyFromConfig"]>;
+export type HeartbeatReplySpy = ReturnType<typeof vi.fn<HeartbeatReplyFn>>;
+⋮----
+function createHeartbeatReplySpy(): HeartbeatReplySpy
+⋮----
+export async function seedSessionStore(
+  storePath: string,
+  sessionKey: string,
+  session: HeartbeatSessionSeed,
+): Promise<void>
+⋮----
+export async function seedMainSessionStore(
+  storePath: string,
+  cfg: OpenClawConfig,
+  session: HeartbeatSessionSeed,
+): Promise<string>
+⋮----
+export async function withTempHeartbeatSandbox<T>(
+  fn: (ctx: { tmpDir: string; storePath: string; replySpy: HeartbeatReplySpy }) => Promise<T>,
+  options?: {
+    prefix?: string;
+    unsetEnvVars?: string[];
+  },
+): Promise<T>
+⋮----
+export async function withTempTelegramHeartbeatSandbox<T>(
+  fn: (ctx: { tmpDir: string; storePath: string; replySpy: HeartbeatReplySpy }) => Promise<T>,
+  options?: {
+    prefix?: string;
+  },
+): Promise<T>
+⋮----
+export function setupTelegramHeartbeatPluginRuntimeForTests()
+
+================
+===== SECTION:src-infra-heartbeat-runner-ts =====
+===== SECTION:heartbeat:runner-ts =====
+File: src/infra/heartbeat-runner.ts
+================
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import {
+  hasOutboundReplyContent,
+  resolveSendableOutboundReplyParts,
+} from "openclaw/plugin-sdk/reply-payload";
+import {
+  listAgentEntries,
+  listAgentIds,
+  resolveAgentConfig,
+  resolveAgentWorkspaceDir,
+  resolveDefaultAgentId,
+} from "../agents/agent-scope.js";
+import { appendCronStyleCurrentTimeLine } from "../agents/current-time.js";
+import { resolveAgentHarnessPolicy } from "../agents/harness/policy.js";
+import { resolveModelRefFromString, type ModelRef } from "../agents/model-selection.js";
+import { resolveEmbeddedSessionLane } from "../agents/pi-embedded-runner/lanes.js";
+import { formatReasoningMessage } from "../agents/pi-embedded-utils.js";
+import { DEFAULT_HEARTBEAT_FILENAME } from "../agents/workspace.js";
+import { resolveHeartbeatReplyPayload } from "../auto-reply/heartbeat-reply-payload.js";
+import {
+  getHeartbeatToolNotificationText,
+  resolveHeartbeatToolResponseFromReplyResult,
+  type HeartbeatToolResponse,
+} from "../auto-reply/heartbeat-tool-response.js";
+import {
+  DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+  isHeartbeatContentEffectivelyEmpty,
+  isTaskDue,
+  parseHeartbeatTasks,
+  resolveHeartbeatPrompt as resolveHeartbeatPromptText,
+  resolveHeartbeatPromptForResponseTool,
+  stripHeartbeatToken,
+  type HeartbeatTask,
+} from "../auto-reply/heartbeat.js";
+import { replaceGenericExternalRunFailureText } from "../auto-reply/reply/agent-runner-failure-copy.js";
+import { resolveDefaultModel } from "../auto-reply/reply/directive-handling.defaults.js";
+import { replyRunRegistry } from "../auto-reply/reply/reply-run-registry.js";
+import { resolveResponsePrefixTemplate } from "../auto-reply/reply/response-prefix-template.js";
+import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
+import type { ReplyPayload } from "../auto-reply/types.js";
+import { normalizeChatType, type ChatType } from "../channels/chat-type.js";
+import { sendDurableMessageBatch } from "../channels/message/runtime.js";
+import { getChannelPlugin } from "../channels/plugins/index.js";
+import type {
+  ChannelHeartbeatDeps,
+  ChannelId,
+  ChannelPlugin,
+} from "../channels/plugins/types.public.js";
+import { createReplyPrefixContext } from "../channels/reply-prefix.js";
+import {
+  listDueCommitmentsForSession,
+  listDueCommitmentSessionKeys,
+  markCommitmentsAttempted,
+  markCommitmentsStatus,
+} from "../commitments/store.js";
+import type { CommitmentRecord } from "../commitments/types.js";
+import { getRuntimeConfig } from "../config/config.js";
+import {
+  canonicalizeMainSessionAlias,
+  resolveAgentMainSessionKey,
+} from "../config/sessions/main-session.js";
+import { resolveStorePath } from "../config/sessions/paths.js";
+import { loadSessionStore } from "../config/sessions/store-load.js";
+import { archiveRemovedSessionTranscripts, updateSessionStore } from "../config/sessions/store.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { hasActiveCronJobs } from "../cron/active-jobs.js";
+import { resolveCronSession } from "../cron/isolated-agent/session.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { getActivePluginChannelRegistry } from "../plugins/runtime.js";
+import {
+  getCommandLaneSnapshots,
+  getQueueSize,
+  type CommandLaneSnapshot,
+} from "../process/command-queue.js";
+import { CommandLane } from "../process/lanes.js";
+import {
+  isSubagentSessionKey,
+  normalizeAgentId,
+  parseAgentSessionKey,
+  resolveAgentIdFromSessionKey,
+  toAgentStoreSessionKey,
+} from "../routing/session-key.js";
+import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
+import {
+  normalizeLowercaseStringOrEmpty,
+  normalizeOptionalString,
+} from "../shared/string-coerce.js";
+import { escapeRegExp } from "../utils.js";
+import { MAX_SAFE_TIMEOUT_DELAY_MS, resolveSafeTimeoutDelayMs } from "../utils/timer-delay.js";
+import { loadOrCreateDeviceIdentity } from "./device-identity.js";
+import { formatErrorMessage, hasErrnoCode } from "./errors.js";
+import { resolveMainScopedEventSessionKey } from "./event-session-routing.js";
+import { isWithinActiveHours, resolveActiveHoursTimezone } from "./heartbeat-active-hours.js";
+import { recordRunStart, shouldDeferWake, type DeferDecision } from "./heartbeat-cooldown.js";
+import {
+  buildCronEventPrompt,
+  buildExecEventPrompt,
+  isCronSystemEvent,
+  isExecCompletionEvent,
+  isRelayableExecCompletionEvent,
+} from "./heartbeat-events-filter.js";
+import { emitHeartbeatEvent, resolveIndicatorType } from "./heartbeat-events.js";
+import {
+  computeNextHeartbeatPhaseDueMs,
+  resolveHeartbeatPhaseMs,
+  resolveNextHeartbeatDueMs,
+  seekNextActivePhaseDueMs,
+} from "./heartbeat-schedule.js";
+import { isHeartbeatEnabledForAgent, resolveHeartbeatIntervalMs } from "./heartbeat-summary.js";
+import { createHeartbeatTypingCallbacks } from "./heartbeat-typing.js";
+import { resolveHeartbeatVisibility } from "./heartbeat-visibility.js";
+import {
+  areHeartbeatsEnabled,
+  HEARTBEAT_SKIP_CRON_IN_PROGRESS,
+  HEARTBEAT_SKIP_LANES_BUSY,
+  HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
+  type HeartbeatRunResult,
+  type HeartbeatWakeHandler,
+  type HeartbeatWakeIntent,
+  type HeartbeatWakeRequest,
+  type HeartbeatWakeSource,
+  isRetryableHeartbeatBusySkipReason,
+  requestHeartbeat,
+  setHeartbeatsEnabled,
+  setHeartbeatWakeHandler,
+} from "./heartbeat-wake.js";
+import type { OutboundSendDeps } from "./outbound/deliver.js";
+import { buildOutboundSessionContext } from "./outbound/session-context.js";
+import {
+  resolveHeartbeatDeliveryTarget,
+  resolveHeartbeatSenderContext,
+} from "./outbound/targets.js";
+import {
+  consumeSelectedSystemEventEntries,
+  peekSystemEventEntries,
+  resolveSystemEventDeliveryContext,
+  type SystemEvent,
+} from "./system-events.js";
+⋮----
+export type HeartbeatDeps = OutboundSendDeps &
+  ChannelHeartbeatDeps & {
+    getReplyFromConfig?: typeof import("./heartbeat-runner.runtime.js").getReplyFromConfig;
+    runtime?: RuntimeEnv;
+    getQueueSize?: (lane?: string) => number;
+    getCommandLaneSnapshots?: () => readonly CommandLaneSnapshot[];
+    isReplyRunActive?: (sessionKey: string) => boolean;
+    nowMs?: () => number;
+  };
+⋮----
+function loadHeartbeatRunnerRuntime()
+⋮----
+function hasQueuedWorkInLanes(
+  lanes: readonly string[],
+  getSize: (lane?: string) => number,
+): boolean
+⋮----
+function hasQueuedWorkInLaneSnapshots(
+  snapshots: readonly CommandLaneSnapshot[],
+  matchesLane: (lane: string) => boolean,
+): boolean
+⋮----
+/**
+ * Return true when `lane` carries a session-key suffix that parses to
+ * `agentId`. Lane name shapes covered:
+ *
+ * - `session:agent:<agentId>:...` — embedded-runner per-session lanes
+ *   (subagent runs, compaction, context maintenance).
+ * - `nested:agent:<agentId>:...` — per-session nested-agent lanes.
+ *
+ * The generic `subagent` and `nested` global lanes carry no agent identity,
+ * so they cannot be scoped here; rely on the session-keyed variants and the
+ * per-session `session-lane-busy` skip at the heartbeat dispatch site.
+ */
+function laneBelongsToAgent(lane: string, agentId: string): boolean
+⋮----
+/**
+ * Per-agent variant of the opt-in busy check. Previously the runner consulted
+ * a global `subagent` lane size, which meant a zombie subagent on any one
+ * agent silently disabled every other agent's heartbeat. Restrict the check
+ * to lanes attributable to `agentId` via session-key parsing so a stuck
+ * subagent on `main` no longer starves `tank`, `narcissus`, or `shiva`.
+ */
+function hasAgentOptInBusyLaneWork(
+  agentId: string,
+  getSnapshots: () => readonly CommandLaneSnapshot[],
+): boolean
+⋮----
+function resolveHeartbeatChannelPlugin(channel: string): ChannelPlugin | undefined
+⋮----
+type HeartbeatConfig = AgentDefaultsConfig["heartbeat"];
+type HeartbeatAgent = {
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+};
+⋮----
+function canHeartbeatDeliverCommitments(heartbeat?: HeartbeatConfig): boolean
+⋮----
+type HeartbeatAgentState = {
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+  activeHoursSchedule?: ActiveHoursSchedule;
+  intervalMs: number;
+  phaseMs: number;
+  nextDueMs: number;
+  /** Wall-clock start time of the most recent run for this agent. */
+  lastRunStartedAtMs?: number;
+  /** Bounded ring buffer of recent run-start timestamps for flood detection. */
+  recentRunStarts: number[];
+  /** Set true after a flood-defer is logged to avoid log spam. Reset when a run actually fires. */
+  floodLoggedSinceLastRun: boolean;
+};
+⋮----
+/** Wall-clock start time of the most recent run for this agent. */
+⋮----
+/** Bounded ring buffer of recent run-start timestamps for flood detection. */
+⋮----
+/** Set true after a flood-defer is logged to avoid log spam. Reset when a run actually fires. */
+⋮----
+type ActiveHoursSchedule = {
+  start?: string;
+  end?: string;
+  timezone: string;
+};
+⋮----
+function resolveActiveHoursSchedule(
+  cfg: OpenClawConfig,
+  heartbeat?: HeartbeatConfig,
+): ActiveHoursSchedule | undefined
+⋮----
+function activeHoursConfigMatch(a?: ActiveHoursSchedule, b?: ActiveHoursSchedule): boolean
+⋮----
+export type HeartbeatRunner = {
+  stop: () => void;
+  updateConfig: (cfg: OpenClawConfig) => void;
+};
+⋮----
+function resolveHeartbeatSchedulerSeed(explicitSeed?: string)
+⋮----
+function hasExplicitHeartbeatAgents(cfg: OpenClawConfig)
+⋮----
+function resolveHeartbeatConfig(
+  cfg: OpenClawConfig,
+  agentId?: string,
+): HeartbeatConfig | undefined
+⋮----
+function omitExplicitHeartbeatDestination(heartbeat: HeartbeatConfig | undefined)
+⋮----
+function resolveHeartbeatForWake(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  configuredHeartbeat?: HeartbeatConfig;
+  requestedHeartbeat?: HeartbeatConfig;
+  source?: HeartbeatWakeSource;
+  mergeRequestedHeartbeat: boolean;
+}): HeartbeatConfig | undefined
+⋮----
+function resolveHeartbeatAgents(cfg: OpenClawConfig): HeartbeatAgent[]
+⋮----
+function resolveHeartbeatPromptRaw(cfg: OpenClawConfig, heartbeat?: HeartbeatConfig)
+⋮----
+export function resolveHeartbeatPrompt(cfg: OpenClawConfig, heartbeat?: HeartbeatConfig)
+⋮----
+function resolveHeartbeatResponseToolPrompt(cfg: OpenClawConfig, heartbeat?: HeartbeatConfig)
+⋮----
+function resolveHeartbeatModelRef(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+  entry?: SessionEntry;
+}): ModelRef
+⋮----
+function normalizeHeartbeatRuntimeId(raw: string | undefined): string
+⋮----
+function resolvePinnedHeartbeatRuntimeId(entry: SessionEntry | undefined): string
+⋮----
+function usesCodexHarness(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+  entry?: SessionEntry;
+}): boolean
+⋮----
+function resolveConfiguredHeartbeatModelRuntimeId(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+  entry?: SessionEntry;
+}): string
+⋮----
+function shouldUseHeartbeatResponseToolPrompt(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+  entry?: SessionEntry;
+  chatType?: ChatType;
+}): boolean
+⋮----
+function resolveHeartbeatAckMaxChars(cfg: OpenClawConfig, heartbeat?: HeartbeatConfig)
+⋮----
+function isHeartbeatTypingEnabled(params:
+⋮----
+function resolveHeartbeatTypingIntervalSeconds(cfg: OpenClawConfig)
+⋮----
+function resolveHeartbeatSession(
+  cfg: OpenClawConfig,
+  agentId?: string,
+  heartbeat?: HeartbeatConfig,
+  forcedSessionKey?: string,
+)
+⋮----
+// Guard: never route heartbeats to subagent sessions, regardless of entry path.
+⋮----
+function resolveIsolatedHeartbeatSessionKey(params: {
+  sessionKey: string;
+  configuredSessionKey: string;
+  sessionEntry?: { heartbeatIsolatedBaseSessionKey?: string };
+})
+⋮----
+// Collapse repeated `:heartbeat` suffixes introduced by wake-triggered re-entry.
+// The guard on configuredSessionKey ensures we do not strip a legitimate single
+// `:heartbeat` suffix that is part of the user-configured base key itself
+// (e.g. heartbeat.session: "alerts:heartbeat"). When the configured key already
+// ends with `:heartbeat`, a forced wake passes `configuredKey:heartbeat` which
+// must be treated as a new base rather than an existing isolated key.
+⋮----
+function resolveStaleHeartbeatIsolatedSessionKey(params: {
+  sessionKey: string;
+  isolatedSessionKey: string;
+  isolatedBaseSessionKey: string;
+})
+⋮----
+function resolveHeartbeatReasoningPayloads(
+  replyResult: ReplyPayload | ReplyPayload[] | undefined,
+): ReplyPayload[]
+⋮----
+async function restoreHeartbeatUpdatedAt(params: {
+  storePath: string;
+  sessionKey: string;
+  updatedAt?: number;
+})
+⋮----
+function stripLeadingHeartbeatResponsePrefix(
+  text: string,
+  responsePrefix: string | undefined,
+): string
+⋮----
+// Require a boundary after the configured prefix so short prefixes like "Hi"
+// do not strip the beginning of normal words like "History".
+⋮----
+function normalizeHeartbeatReply(
+  payload: ReplyPayload,
+  responsePrefix: string | undefined,
+  ackMaxChars: number,
+)
+⋮----
+function normalizeHeartbeatToolNotification(
+  response: HeartbeatToolResponse,
+  responsePrefix: string | undefined,
+)
+⋮----
+type HeartbeatWakePayloadFlags = {
+  isExecEventWake: boolean;
+  isCronWake: boolean;
+  isWakePayload: boolean;
+};
+⋮----
+type HeartbeatSkipReason = "empty-heartbeat-file";
+⋮----
+function buildCommitmentDeliveryKey(commitment: CommitmentRecord): string
+⋮----
+function selectCommitmentDeliveryBatch(commitments: CommitmentRecord[]): CommitmentRecord[]
+⋮----
+function buildCommitmentHeartbeatPrompt(params: {
+  commitments: CommitmentRecord[];
+  useHeartbeatResponseTool: boolean;
+}): string | null
+⋮----
+type HeartbeatPreflight = HeartbeatWakePayloadFlags & {
+  session: ReturnType<typeof resolveHeartbeatSession>;
+  pendingEventEntries: ReturnType<typeof peekSystemEventEntries>;
+  turnSourceDeliveryContext: ReturnType<typeof resolveSystemEventDeliveryContext>;
+  dueCommitments: CommitmentRecord[];
+  hasTaggedCronEvents: boolean;
+  shouldInspectPendingEvents: boolean;
+  skipReason?: HeartbeatSkipReason;
+  tasks?: HeartbeatTask[];
+  heartbeatFileContent?: string;
+};
+⋮----
+function inferHeartbeatWakeSourceFromReason(reason?: string): HeartbeatWakeSource | undefined
+⋮----
+function resolveHeartbeatWakePayloadFlags(params: {
+  source?: HeartbeatWakeSource;
+  reason?: string;
+}): HeartbeatWakePayloadFlags
+⋮----
+async function resolveHeartbeatPreflight(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  heartbeat?: HeartbeatConfig;
+  forcedSessionKey?: string;
+  reason?: string;
+  source?: HeartbeatWakeSource;
+  nowMs?: number;
+}): Promise<HeartbeatPreflight>
+⋮----
+// Wake-triggered runs should only inspect pending events when preflight peeks
+// the same queue that the run itself will execute/drain.
+⋮----
+// Return tasks even if file has other content - backward compatible
+⋮----
+// Missing HEARTBEAT.md is intentional in some setups (for example, when
+// heartbeat instructions live outside the file), so keep the run active.
+// The heartbeat prompt already says "if it exists".
+⋮----
+// For other read errors, proceed with heartbeat as before.
+⋮----
+type HeartbeatPromptResolution = {
+  prompt: string | null;
+  hasExecCompletion: boolean;
+  hasRelayableExecCompletion: boolean;
+  hasCronEvents: boolean;
+  hasDueCommitments: boolean;
+  usesHeartbeatResponseTool: boolean;
+};
+⋮----
+function resolveDueHeartbeatTasks(
+  preflight: Pick<HeartbeatPreflight, "session" | "tasks">,
+  startedAt: number,
+): HeartbeatTask[]
+⋮----
+function appendHeartbeatWorkspacePathHint(prompt: string, workspaceDir: string): string
+⋮----
+function stripHeartbeatTasksBlock(content: string): string
+⋮----
+/**
+ * Append the workspace HEARTBEAT.md directives (everything outside the
+ * `tasks:` block) to the prompt. Runs on every heartbeat path that actually
+ * dispatches a model call, so prose-style runbooks (the common case in
+ * production setups) reach the model — not only files that happen to declare
+ * periodic tasks.
+ */
+function appendHeartbeatFileDirectives(prompt: string, heartbeatFileContent?: string): string
+⋮----
+function resolveHeartbeatRunPrompt(params: {
+  cfg: OpenClawConfig;
+  heartbeat?: HeartbeatConfig;
+  preflight: HeartbeatPreflight;
+  canRelayToUser: boolean;
+  workspaceDir: string;
+  startedAt: number;
+  dueTasks: HeartbeatTask[];
+  heartbeatFileContent?: string;
+  useHeartbeatResponseTool: boolean;
+}): HeartbeatPromptResolution
+⋮----
+function selectSystemEventsConsumedByHeartbeat(params: {
+  preflight: HeartbeatPreflight;
+  hasExecCompletion: boolean;
+  hasCronEvents: boolean;
+}): SystemEvent[]
+⋮----
+export async function runHeartbeatOnce(opts: {
+  cfg?: OpenClawConfig;
+  agentId?: string;
+  sessionKey?: string;
+  heartbeat?: HeartbeatConfig;
+  source?: HeartbeatWakeSource;
+  intent?: HeartbeatWakeIntent;
+  reason?: string;
+  deps?: HeartbeatDeps;
+}): Promise<HeartbeatRunResult>
+⋮----
+// Phase 2: Stronger heartbeat deferral while a final delivery replay is pending.
+// Plain `updatedAt` changes are normal for heartbeat sessions and should not
+// suppress heartbeat runs; only defer when final delivery recovery is active.
+⋮----
+// Preflight centralizes trigger classification, event inspection, and HEARTBEAT.md gating.
+⋮----
+// Check the resolved session lane — if it is busy, skip to avoid interrupting
+// an active streaming turn.  The wake-layer retry (heartbeat-wake.ts) will
+// re-schedule this wake automatically.  See #14396 (closed without merge).
+⋮----
+// When isolatedSession is enabled, create a fresh session via the same
+// pattern as cron sessionTarget: "isolated". This gives the heartbeat
+// a new session ID (empty transcript) each run, avoiding the cost of
+// sending the full conversation history (~100K tokens) to the LLM.
+// Delivery routing still uses the main session entry (lastChannel, lastTo).
+⋮----
+// Isolated heartbeat runs drain system events from their dedicated
+// `:heartbeat` session, not from the base session we peek during preflight.
+// Reusing base-session turnSource routing here can pin later isolated runs
+// to stale channels/threads because that base-session event context remains queued.
+⋮----
+// If no tasks are due, skip heartbeat entirely
+⋮----
+// Wake-triggered events should stay queued when the run short-circuits:
+// no reply turn ran, so there is nothing that actually consumed that wake payload.
+⋮----
+// Collapse only the repeated `:heartbeat` suffixes introduced by wake-triggered
+// re-entry for heartbeat-created isolated sessions. Real session keys that
+// happen to end with `:heartbeat` still get a distinct isolated sibling.
+⋮----
+// Update task last run times AFTER successful heartbeat completion
+const updateTaskTimestamps = async () =>
+⋮----
+// Initialize stub entry on first run when current doesn't exist.
+⋮----
+// Generate valid sessionId - derive from sessionKey without colons.
+⋮----
+const consumeInspectedSystemEvents = () =>
+⋮----
+const resolveHeartbeatResponsePrefix = ()
+const resolveHeartbeatOkText = () =>
+⋮----
+const maybeSendHeartbeatOk = async () =>
+⋮----
+// Heartbeat timeout is a per-run override so user turns keep the global default.
+⋮----
+// For exec completion events, don't skip even if the response looks like HEARTBEAT_OK.
+// The model should be responding with exec results, not ack tokens.
+// Also, if normalized.text is empty due to token stripping but we have exec completion,
+// fall back to the original reply text.
+⋮----
+// Suppress duplicate heartbeats (same payload) within a short window.
+// This prevents "nagging" when nothing changed but the model repeats the same items.
+⋮----
+// Reasoning payloads are text-only; any attachments stay on the main reply.
+⋮----
+// Record last delivered heartbeat payload for dedupe.
+⋮----
+export function startHeartbeatRunner(opts: {
+  cfg?: OpenClawConfig;
+  runtime?: RuntimeEnv;
+  abortSignal?: AbortSignal;
+  runOnce?: typeof runHeartbeatOnce;
+  stableSchedulerSeed?: string;
+}): HeartbeatRunner
+⋮----
+const resolveNextDue = (
+    now: number,
+    intervalMs: number,
+    phaseMs: number,
+    prevState?: HeartbeatAgentState,
+)
+⋮----
+const seekActiveSlotForAgent = (agent: HeartbeatAgentState, rawDueMs: number)
+⋮----
+const advanceAgentSchedule = (agent: HeartbeatAgentState, now: number, reason?: string) =>
+⋮----
+: // Targeted and action-driven wakes still count as a fresh heartbeat run
+// for cooldown purposes, so keep the existing now + interval behavior.
+⋮----
+// Centralized cooldown gate. Both targeted and broadcast dispatch branches
+// call this before invoking `runOnce`. Manual wakes are never deferred.
+// Everything else respects `nextDueMs`, the min-spacing floor, and the flood
+// guard — see `heartbeat-cooldown.ts` for rationale and #75436.
+const evaluateWakeDeferral = (
+    agent: HeartbeatAgentState,
+    now: number,
+    reason?: string,
+    intent: HeartbeatWakeIntent = "event",
+): DeferDecision =>
+⋮----
+// Called immediately before `runOnce` actually executes. Updates the
+// bookkeeping that the cooldown gate consults on the next wake.
+const recordRunBookkeeping = (agent: HeartbeatAgentState, now: number) =>
+⋮----
+const scheduleNext = () =>
+⋮----
+const updateConfig = (cfg: OpenClawConfig) =>
+⋮----
+// resolveNextDue only compares intervalMs/phaseMs, so discard
+// prevState when the effective activeHours window changed to avoid a stale far-future slot.
+⋮----
+const run: HeartbeatWakeHandler = async (params) =>
+⋮----
+// Track retryable busy skips so we can skip re-arm in finally — the wake
+// layer handles retry for this case (DEFAULT_RETRY_MS = 1 s).
+⋮----
+// Retryable busy — do NOT record run bookkeeping. The wake layer
+// retries the same reason shortly; if we recorded `lastRunStartedAtMs`
+// here, the retry would falsely defer with `not-due`/`min-spacing`
+// because the cooldown would treat this skipped attempt as a real run.
+⋮----
+// Non-retryable outcome (ran, disabled, failed-but-not-busy). Record
+// bookkeeping so subsequent wakes within the cooldown window defer.
+⋮----
+// Throw counts as a non-retryable terminal attempt for cooldown
+// purposes — record bookkeeping so the wake layer doesn't tight-loop
+// on the same reason.
+⋮----
+// Run each agent's wake concurrently. Heartbeat work is per-agent —
+// separate session stores, lanes, and delivery targets — so awaiting
+// one slow agent (e.g. one whose heartbeat spawns a multi-minute
+// subagent) must not starve the others. Bookkeeping mutations only
+// touch the owning agent's `HeartbeatAgentState`, so the per-agent
+// closures are safe to fan out under `Promise.all`.
+type AgentWakeOutcome = {
+        ran: boolean;
+        retryableBusySkip?: HeartbeatRunResult;
+      };
+const runOneAgent = async (agent: HeartbeatAgentState): Promise<AgentWakeOutcome> =>
+⋮----
+// Throw counts as a non-retryable terminal attempt for cooldown
+// purposes — record bookkeeping so the wake layer doesn't tight-loop
+// on the same reason.
+⋮----
+// Do not advance the schedule or record run bookkeeping for this
+// agent — its target runtime is busy and the wake layer retries.
+⋮----
+// Non-retryable outcome — record bookkeeping for cooldown gates.
+⋮----
+// At least one agent's runtime was busy. The wake layer schedules a
+// retry; on retry, agents that already advanced their schedule will
+// defer via cooldown, so only the still-busy agent actually re-runs.
+⋮----
+// Always re-arm the timer — except for retryable busy skips, where the
+// wake layer (heartbeat-wake.ts) handles retry via schedule(DEFAULT_RETRY_MS).
+⋮----
+const wakeHandler: HeartbeatWakeHandler = async (params: HeartbeatWakeRequest)
+⋮----
+const cleanup = () =>
+
+================
+===== SECTION:src-infra-heartbeat-schedule-ts =====
+File: src/infra/heartbeat-schedule.ts
+================
+import { createHash } from "node:crypto";
+⋮----
+function normalizeModulo(value: number, divisor: number)
+⋮----
+export function resolveHeartbeatPhaseMs(params: {
+  schedulerSeed: string;
+  agentId: string;
+  intervalMs: number;
+})
+⋮----
+export function computeNextHeartbeatPhaseDueMs(params: {
+  nowMs: number;
+  intervalMs: number;
+  phaseMs: number;
+})
+⋮----
+export function resolveNextHeartbeatDueMs(params: {
+  nowMs: number;
+  intervalMs: number;
+  phaseMs: number;
+  prev?: {
+    intervalMs: number;
+    phaseMs: number;
+    nextDueMs: number;
+  };
+})
+⋮----
+/**
+ * Seek forward through phase-aligned slots until one falls within the active
+ * hours window.  Falls back to the raw next slot when no predicate is provided
+ * or no in-window slot is found within the seek horizon.
+ *
+ * The caller binds config/heartbeat into `isActive` so this module stays
+ * config-agnostic.  `phaseMs` is unused — alignment is preserved because
+ * `startMs` is already phase-aligned and `intervalMs` addition maintains it.
+ */
+⋮----
+// Prevent pathological sub-minute intervals from blocking the event loop.
+const MAX_SEEK_ITERATIONS = 10_080; // 7 days at 1-minute steps
+⋮----
+export function seekNextActivePhaseDueMs(params: {
+  startMs: number;
+  intervalMs: number;
+  phaseMs: number;
+isActive?: (ms: number)
+⋮----
+// No in-window slot found; fall back so the runtime guard can gate it.
+
+================
+===== SECTION:src-infra-heartbeat-summary-ts =====
+File: src/infra/heartbeat-summary.ts
+================
+import { resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import {
+  DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+  DEFAULT_HEARTBEAT_EVERY,
+  resolveHeartbeatPrompt as resolveHeartbeatPromptText,
+} from "../auto-reply/heartbeat.js";
+import { parseDurationMs } from "../cli/parse-duration.js";
+import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { normalizeAgentId } from "../routing/session-key.js";
+import { normalizeOptionalString } from "../shared/string-coerce.js";
+⋮----
+type HeartbeatConfig = AgentDefaultsConfig["heartbeat"];
+⋮----
+export type HeartbeatSummary = {
+  enabled: boolean;
+  every: string;
+  everyMs: number | null;
+  prompt: string;
+  target: string;
+  model?: string;
+  ackMaxChars: number;
+};
+⋮----
+function hasExplicitHeartbeatAgents(cfg: OpenClawConfig)
+⋮----
+export function isHeartbeatEnabledForAgent(cfg: OpenClawConfig, agentId?: string): boolean
+⋮----
+export function resolveHeartbeatIntervalMs(
+  cfg: OpenClawConfig,
+  overrideEvery?: string,
+  heartbeat?: HeartbeatConfig,
+)
+⋮----
+export function resolveHeartbeatSummaryForAgent(
+  cfg: OpenClawConfig,
+  agentId?: string,
+): HeartbeatSummary
+
+================
+===== SECTION:src-infra-heartbeat-typing-ts =====
+File: src/infra/heartbeat-typing.ts
+================
+import type { ChannelHeartbeatDeps, ChannelPlugin } from "../channels/plugins/types.public.js";
+import { createTypingCallbacks, type TypingCallbacks } from "../channels/typing.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+⋮----
+type HeartbeatTypingLogger = {
+  debug?: (message: string, meta?: Record<string, unknown>) => void;
+};
+⋮----
+type HeartbeatTypingTarget = {
+  channel: string;
+  to?: string;
+  accountId?: string | null;
+  threadId?: string | number | null;
+};
+⋮----
+export function createHeartbeatTypingCallbacks(params: {
+  cfg: OpenClawConfig;
+  target: HeartbeatTypingTarget;
+  plugin?: Pick<ChannelPlugin, "heartbeat">;
+  deps?: ChannelHeartbeatDeps;
+  typingIntervalSeconds?: number;
+  log?: HeartbeatTypingLogger;
+}): TypingCallbacks | undefined
+
+================
+===== SECTION:src-infra-heartbeat-visibility-ts =====
+File: src/infra/heartbeat-visibility.ts
+================
+import type { ChannelHeartbeatVisibilityConfig } from "../config/types.channels.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { GatewayMessageChannel } from "../utils/message-channel.js";
+⋮----
+export type ResolvedHeartbeatVisibility = {
+  showOk: boolean;
+  showAlerts: boolean;
+  useIndicator: boolean;
+};
+⋮----
+showOk: false, // Silent by default
+showAlerts: true, // Show content messages
+useIndicator: true, // Emit indicator events
+⋮----
+/**
+ * Resolve heartbeat visibility settings for a channel.
+ * Supports both deliverable channels and webchat.
+ * For webchat, uses channels.defaults.heartbeat since webchat doesn't have per-channel config.
+ */
+export function resolveHeartbeatVisibility(params: {
+  cfg: OpenClawConfig;
+  channel: GatewayMessageChannel;
+  accountId?: string;
+}): ResolvedHeartbeatVisibility
+⋮----
+// Webchat uses channel defaults only (no per-channel or per-account config)
+⋮----
+// Layer 1: Global channel defaults
+⋮----
+// Layer 2: Per-channel config (at channel root level)
+⋮----
+// Layer 3: Per-account config (most specific)
+⋮----
+// Precedence: per-account > per-channel > channel-defaults > global defaults
+
+================
+===== SECTION:src-infra-heartbeat-wake-ts =====
+File: src/infra/heartbeat-wake.ts
+================
+import { normalizeOptionalString } from "../shared/string-coerce.js";
+import { normalizeHeartbeatWakeReason } from "./heartbeat-reason.js";
+⋮----
+export type HeartbeatRunResult =
+  | { status: "ran"; durationMs: number }
+  | { status: "skipped"; reason: string }
+  | { status: "failed"; reason: string };
+⋮----
+export type RetryableHeartbeatBusySkipReason =
+  | typeof HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT
+  | typeof HEARTBEAT_SKIP_CRON_IN_PROGRESS
+  | typeof HEARTBEAT_SKIP_LANES_BUSY;
+⋮----
+export function isRetryableHeartbeatBusySkipReason(reason: string): boolean
+⋮----
+export type HeartbeatWakeIntent = "scheduled" | "event" | "immediate" | "manual";
+⋮----
+export type HeartbeatWakeSource =
+  | "interval"
+  | "manual"
+  | "exec-event"
+  | "notifications-event"
+  | "cron"
+  | "hook"
+  | "background-task"
+  | "background-task-blocked"
+  | "acp-spawn"
+  | "cli-watchdog"
+  | "restart-sentinel"
+  | "retry"
+  | "other";
+⋮----
+export type HeartbeatWakeOverride = {
+  target?: string;
+  to?: string | undefined;
+  accountId?: string | undefined;
+};
+⋮----
+export type HeartbeatWakeRequest = {
+  source: HeartbeatWakeSource;
+  intent: HeartbeatWakeIntent;
+  reason?: string;
+  agentId?: string;
+  sessionKey?: string;
+  heartbeat?: HeartbeatWakeOverride;
+};
+⋮----
+export type HeartbeatWakeHandler = (opts: HeartbeatWakeRequest) => Promise<HeartbeatRunResult>;
+⋮----
+export function setHeartbeatsEnabled(enabled: boolean)
+⋮----
+export function areHeartbeatsEnabled(): boolean
+⋮----
+type WakeTimerKind = "normal" | "retry";
+type PendingWakeReason = {
+  source: HeartbeatWakeSource;
+  intent: HeartbeatWakeIntent;
+  reason: string;
+  priority: number;
+  requestedAt: number;
+  agentId?: string;
+  sessionKey?: string;
+  heartbeat?: HeartbeatWakeOverride;
+};
+⋮----
+function resolveWakePriority(params: {
+  source: HeartbeatWakeSource;
+  intent: HeartbeatWakeIntent;
+  reason: string;
+}): number
+⋮----
+function normalizeWakeReason(reason?: string): string
+⋮----
+function normalizeWakeTarget(value?: string): string | undefined
+⋮----
+function getWakeTargetKey(params:
+⋮----
+function queuePendingWakeReason(params: {
+  source: HeartbeatWakeSource;
+  intent: HeartbeatWakeIntent;
+  reason?: string;
+  requestedAt?: number;
+  agentId?: string;
+  sessionKey?: string;
+  heartbeat?: HeartbeatWakeOverride;
+})
+⋮----
+function schedule(coalesceMs: number, kind: WakeTimerKind = "normal")
+⋮----
+// Keep retry cooldown as a hard minimum delay. This prevents the
+// finally-path reschedule (often delay=0) from collapsing backoff.
+⋮----
+// If existing timer fires sooner or at the same time, keep it.
+⋮----
+// New request needs to fire sooner — preempt the existing timer.
+⋮----
+// The target runtime is busy; retry this wake target soon.
+⋮----
+// Error is already logged by the heartbeat runner; schedule a retry.
+⋮----
+/**
+ * Register (or clear) the heartbeat wake handler.
+ * Returns a disposer function that clears this specific registration.
+ * Stale disposers (from previous registrations) are no-ops, preventing
+ * a race where an old runner's cleanup clears a newer runner's handler.
+ */
+export function setHeartbeatWakeHandler(next: HeartbeatWakeHandler | null): () => void
+⋮----
+// New lifecycle starting (e.g. after SIGUSR1 in-process restart).
+// Clear any timer metadata from the previous lifecycle so stale retry
+// cooldowns do not delay a fresh handler.
+⋮----
+// Reset module-level execution state that may be stale from interrupted
+// runs in the previous lifecycle. Without this, `running === true` from
+// an interrupted heartbeat blocks all future schedule() attempts, and
+// `scheduled === true` can cause spurious immediate re-runs.
+⋮----
+export function requestHeartbeat(opts: {
+  source: HeartbeatWakeSource;
+  intent: HeartbeatWakeIntent;
+  reason?: string;
+  coalesceMs?: number;
+  agentId?: string;
+  sessionKey?: string;
+  heartbeat?: HeartbeatWakeOverride;
+})
+⋮----
+export function hasHeartbeatWakeHandler()
+⋮----
+export function hasPendingHeartbeatWake()
+⋮----
+export function resetHeartbeatWakeStateForTests()
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================

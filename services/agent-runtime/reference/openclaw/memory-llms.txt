@@ -1,0 +1,3155 @@
+# Reference pack: openclaw / memory
+# Generated: 2026-05-26T06:06:17.802Z
+# Source: https://github.com/openclaw/openclaw
+# Pack path: reference/openclaw/memory-llms.txt
+# Repomix: compressed plain text, tests excluded
+# Sections: rg -n "SECTION:" reference/openclaw/memory-llms.txt
+#
+# Build context: OpenClaw-like shell on LangChain DeepAgents (TypeScript).
+# DeepAgents owns: planning, tool loop, vfs, subagents, long-term memory.
+# This file covers: Long-term memory (DeepAgents parity reference).
+#
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where content has been formatted for parsing in plain style, content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/memory/**, packages/memory-host-sdk/**, docs/reference/memory-config.md
+- Files matching these patterns are excluded: **/*.test.ts, **/*.test.tsx, **/*.test.py, **/__tests__/**, **/test/**, **/tests/**, **/*.snap, **/ui/**, **/website/i18n/**, **/patches/**, **/changelog/**, **/.agents/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been formatted for parsing in plain style
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Files
+================================================================
+
+================
+===== SECTION:docs-reference-memory-config-md =====
+===== SECTION:memory:config-doc =====
+File: docs/reference/memory-config.md
+================
+---
+summary: "All configuration knobs for memory search, embedding providers, QMD, hybrid search, and multimodal indexing"
+title: "Memory configuration reference"
+sidebarTitle: "Memory config"
+read_when:
+  - You want to configure memory search providers or embedding models
+  - You want to set up the QMD backend
+  - You want to tune hybrid search, MMR, or temporal decay
+  - You want to enable multimodal memory indexing
+---
+
+This page lists every configuration knob for OpenClaw memory search. For conceptual overviews, see:
+
+<CardGroup cols={2}>
+  <Card title="Memory overview" href="/concepts/memory">
+    How memory works.
+  </Card>
+  <Card title="Builtin engine" href="/concepts/memory-builtin">
+    Default SQLite backend.
+  </Card>
+  <Card title="QMD engine" href="/concepts/memory-qmd">
+    Local-first sidecar.
+  </Card>
+  <Card title="Memory search" href="/concepts/memory-search">
+    Search pipeline and tuning.
+  </Card>
+  <Card title="Active memory" href="/concepts/active-memory">
+    Memory sub-agent for interactive sessions.
+  </Card>
+</CardGroup>
+
+All memory search settings live under `agents.defaults.memorySearch` in `openclaw.json` unless noted otherwise.
+
+<Note>
+If you are looking for the **active memory** feature toggle and sub-agent config, that lives under `plugins.entries.active-memory` instead of `memorySearch`.
+
+Active memory uses a two-gate model:
+
+1. the plugin must be enabled and target the current agent id
+2. the request must be an eligible interactive persistent chat session
+
+See [Active Memory](/concepts/active-memory) for the activation model, plugin-owned config, transcript persistence, and safe rollout pattern.
+</Note>
+
+---
+
+## Provider selection
+
+| Key        | Type      | Default          | Description                                                                                                                                                                                                                        |
+| ---------- | --------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider` | `string`  | auto-detected    | Embedding adapter ID such as `bedrock`, `deepinfra`, `gemini`, `github-copilot`, `local`, `mistral`, `ollama`, `openai`, or `voyage`; may also be a configured `models.providers.<id>` whose `api` points at one of those adapters |
+| `model`    | `string`  | provider default | Embedding model name                                                                                                                                                                                                               |
+| `fallback` | `string`  | `"none"`         | Fallback adapter ID when the primary fails                                                                                                                                                                                         |
+| `enabled`  | `boolean` | `true`           | Enable or disable memory search                                                                                                                                                                                                    |
+
+### Auto-detection order
+
+When `provider` is not set, OpenClaw selects the first available:
+
+<Steps>
+  <Step title="local">
+    Selected if `memorySearch.local.modelPath` is configured and the file exists.
+  </Step>
+  <Step title="github-copilot">
+    Selected if a GitHub Copilot token can be resolved (env var or auth profile).
+  </Step>
+  <Step title="openai">
+    Selected if an OpenAI key can be resolved.
+  </Step>
+  <Step title="gemini">
+    Selected if a Gemini key can be resolved.
+  </Step>
+  <Step title="voyage">
+    Selected if a Voyage key can be resolved.
+  </Step>
+  <Step title="mistral">
+    Selected if a Mistral key can be resolved.
+  </Step>
+  <Step title="deepinfra">
+    Selected if a DeepInfra key can be resolved.
+  </Step>
+  <Step title="bedrock">
+    Selected if the AWS SDK credential chain resolves (instance role, access keys, profile, SSO, web identity, or shared config).
+  </Step>
+</Steps>
+
+`ollama` is supported but not auto-detected (set it explicitly).
+
+### Custom provider ids
+
+`memorySearch.provider` can point at a custom `models.providers.<id>` entry. OpenClaw resolves that provider's `api` owner for the embedding adapter while preserving the custom provider id for endpoint, auth, and model-prefix handling. This lets multi-GPU or multi-host setups dedicate memory embeddings to a specific local endpoint:
+
+```json5
+{
+  models: {
+    providers: {
+      "ollama-5080": {
+        api: "ollama",
+        baseUrl: "http://gpu-box.local:11435",
+        apiKey: "ollama-local",
+        models: [{ id: "qwen3-embedding:0.6b" }],
+      },
+    },
+  },
+  agents: {
+    defaults: {
+      memorySearch: {
+        provider: "ollama-5080",
+        model: "qwen3-embedding:0.6b",
+      },
+    },
+  },
+}
+```
+
+### API key resolution
+
+Remote embeddings require an API key. Bedrock uses the AWS SDK default credential chain instead (instance roles, SSO, access keys).
+
+| Provider       | Env var                                            | Config key                          |
+| -------------- | -------------------------------------------------- | ----------------------------------- |
+| Bedrock        | AWS credential chain                               | No API key needed                   |
+| DeepInfra      | `DEEPINFRA_API_KEY`                                | `models.providers.deepinfra.apiKey` |
+| Gemini         | `GEMINI_API_KEY`                                   | `models.providers.google.apiKey`    |
+| GitHub Copilot | `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` | Auth profile via device login       |
+| Mistral        | `MISTRAL_API_KEY`                                  | `models.providers.mistral.apiKey`   |
+| Ollama         | `OLLAMA_API_KEY` (placeholder)                     | --                                  |
+| OpenAI         | `OPENAI_API_KEY`                                   | `models.providers.openai.apiKey`    |
+| Voyage         | `VOYAGE_API_KEY`                                   | `models.providers.voyage.apiKey`    |
+
+<Note>
+Codex OAuth covers chat/completions only and does not satisfy embedding requests.
+</Note>
+
+---
+
+## Remote endpoint config
+
+For custom OpenAI-compatible endpoints or overriding provider defaults:
+
+<ParamField path="remote.baseUrl" type="string">
+  Custom API base URL.
+</ParamField>
+<ParamField path="remote.apiKey" type="string">
+  Override API key.
+</ParamField>
+<ParamField path="remote.headers" type="object">
+  Extra HTTP headers (merged with provider defaults).
+</ParamField>
+
+```json5
+{
+  agents: {
+    defaults: {
+      memorySearch: {
+        provider: "openai",
+        model: "text-embedding-3-small",
+        remote: {
+          baseUrl: "https://api.example.com/v1/",
+          apiKey: "YOUR_KEY",
+        },
+      },
+    },
+  },
+}
+```
+
+---
+
+## Provider-specific config
+
+<AccordionGroup>
+  <Accordion title="Gemini">
+    | Key                    | Type     | Default                | Description                                |
+    | ---------------------- | -------- | ---------------------- | ------------------------------------------ |
+    | `model`                | `string` | `gemini-embedding-001` | Also supports `gemini-embedding-2-preview` |
+    | `outputDimensionality` | `number` | `3072`                 | For Embedding 2: 768, 1536, or 3072        |
+
+    <Warning>
+    Changing model or `outputDimensionality` triggers an automatic full reindex.
+    </Warning>
+
+  </Accordion>
+  <Accordion title="OpenAI-compatible input types">
+    OpenAI-compatible embedding endpoints can opt into provider-specific `input_type` request fields. This is useful for asymmetric embedding models that require different labels for query and document embeddings.
+
+    | Key                 | Type     | Default | Description                                             |
+    | ------------------- | -------- | ------- | ------------------------------------------------------- |
+    | `inputType`         | `string` | unset   | Shared `input_type` for query and document embeddings   |
+    | `queryInputType`    | `string` | unset   | Query-time `input_type`; overrides `inputType`          |
+    | `documentInputType` | `string` | unset   | Index/document `input_type`; overrides `inputType`      |
+
+    ```json5
+    {
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "openai",
+            remote: {
+              baseUrl: "https://embeddings.example/v1",
+              apiKey: "env:EMBEDDINGS_API_KEY",
+            },
+            model: "asymmetric-embedder",
+            queryInputType: "query",
+            documentInputType: "passage",
+          },
+        },
+      },
+    }
+    ```
+
+    Changing these values affects embedding cache identity for provider batch indexing and should be followed by a memory reindex when the upstream model treats the labels differently.
+
+  </Accordion>
+  <Accordion title="Bedrock">
+    ### Bedrock embedding config
+
+    Bedrock uses the AWS SDK default credential chain — no API keys needed. If OpenClaw runs on EC2 with a Bedrock-enabled instance role, just set the provider and model:
+
+    ```json5
+    {
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "bedrock",
+            model: "amazon.titan-embed-text-v2:0",
+          },
+        },
+      },
+    }
+    ```
+
+    | Key                    | Type     | Default                        | Description                     |
+    | ---------------------- | -------- | ------------------------------ | ------------------------------- |
+    | `model`                | `string` | `amazon.titan-embed-text-v2:0` | Any Bedrock embedding model ID  |
+    | `outputDimensionality` | `number` | model default                  | For Titan V2: 256, 512, or 1024 |
+
+    **Supported models** (with family detection and dimension defaults):
+
+    | Model ID                                   | Provider   | Default Dims | Configurable Dims    |
+    | ------------------------------------------ | ---------- | ------------ | -------------------- |
+    | `amazon.titan-embed-text-v2:0`             | Amazon     | 1024         | 256, 512, 1024       |
+    | `amazon.titan-embed-text-v1`               | Amazon     | 1536         | --                   |
+    | `amazon.titan-embed-g1-text-02`            | Amazon     | 1536         | --                   |
+    | `amazon.titan-embed-image-v1`              | Amazon     | 1024         | --                   |
+    | `amazon.nova-2-multimodal-embeddings-v1:0` | Amazon     | 1024         | 256, 384, 1024, 3072 |
+    | `cohere.embed-english-v3`                  | Cohere     | 1024         | --                   |
+    | `cohere.embed-multilingual-v3`             | Cohere     | 1024         | --                   |
+    | `cohere.embed-v4:0`                        | Cohere     | 1536         | 256-1536             |
+    | `twelvelabs.marengo-embed-3-0-v1:0`        | TwelveLabs | 512          | --                   |
+    | `twelvelabs.marengo-embed-2-7-v1:0`        | TwelveLabs | 1024         | --                   |
+
+    Throughput-suffixed variants (e.g., `amazon.titan-embed-text-v1:2:8k`) inherit the base model's configuration.
+
+    **Authentication:** Bedrock auth uses the standard AWS SDK credential resolution order:
+
+    1. Environment variables (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`)
+    2. SSO token cache
+    3. Web identity token credentials
+    4. Shared credentials and config files
+    5. ECS or EC2 metadata credentials
+
+    Region is resolved from `AWS_REGION`, `AWS_DEFAULT_REGION`, the `amazon-bedrock` provider `baseUrl`, or defaults to `us-east-1`.
+
+    **IAM permissions:** the IAM role or user needs:
+
+    ```json
+    {
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeModel",
+      "Resource": "*"
+    }
+    ```
+
+    For least-privilege, scope `InvokeModel` to the specific model:
+
+    ```
+    arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0
+    ```
+
+  </Accordion>
+  <Accordion title="Local (GGUF + node-llama-cpp)">
+    | Key                   | Type               | Default                | Description                                                                                                                                                                                                                                                                                                          |
+    | --------------------- | ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `local.modelPath`     | `string`           | auto-downloaded        | Path to GGUF model file                                                                                                                                                                                                                                                                                              |
+    | `local.modelCacheDir` | `string`           | node-llama-cpp default | Cache dir for downloaded models                                                                                                                                                                                                                                                                                      |
+    | `local.contextSize`   | `number \| "auto"` | `4096`                 | Context window size for the embedding context. 4096 covers typical chunks (128–512 tokens) while bounding non-weight VRAM. Lower to 1024–2048 on constrained hosts. `"auto"` uses the model's trained maximum — not recommended for 8B+ models (Qwen3-Embedding-8B: 40 960 tokens → ~32 GB VRAM vs ~8.8 GB at 4096). |
+
+    Default model: `embeddinggemma-300m-qat-Q8_0.gguf` (~0.6 GB, auto-downloaded). Source checkouts still require native build approval: `pnpm approve-builds` then `pnpm rebuild node-llama-cpp`.
+
+    Use the standalone CLI to verify the same provider path the Gateway uses:
+
+    ```bash
+    openclaw memory status --deep --agent main
+    openclaw memory index --force --agent main
+    ```
+
+    If `provider` is `auto`, `local` is selected only when `local.modelPath` points to an existing local file. `hf:` and HTTP(S) model references can still be used explicitly with `provider: "local"`, but they do not make `auto` select local before the model is available on disk.
+
+  </Accordion>
+</AccordionGroup>
+
+### Inline embedding timeout
+
+<ParamField path="sync.embeddingBatchTimeoutSeconds" type="number">
+  Override the timeout for inline embedding batches during memory indexing.
+
+Unset uses the provider default: 600 seconds for local/self-hosted providers such as `local`, `ollama`, and `lmstudio`, and 120 seconds for hosted providers. Increase this when local CPU-bound embedding batches are healthy but slow.
+</ParamField>
+
+---
+
+## Hybrid search config
+
+All under `memorySearch.query.hybrid`:
+
+| Key                   | Type      | Default | Description                        |
+| --------------------- | --------- | ------- | ---------------------------------- |
+| `enabled`             | `boolean` | `true`  | Enable hybrid BM25 + vector search |
+| `vectorWeight`        | `number`  | `0.7`   | Weight for vector scores (0-1)     |
+| `textWeight`          | `number`  | `0.3`   | Weight for BM25 scores (0-1)       |
+| `candidateMultiplier` | `number`  | `4`     | Candidate pool size multiplier     |
+
+<Tabs>
+  <Tab title="MMR (diversity)">
+    | Key           | Type      | Default | Description                          |
+    | ------------- | --------- | ------- | ------------------------------------ |
+    | `mmr.enabled` | `boolean` | `false` | Enable MMR re-ranking                |
+    | `mmr.lambda`  | `number`  | `0.7`   | 0 = max diversity, 1 = max relevance |
+  </Tab>
+  <Tab title="Temporal decay (recency)">
+    | Key                          | Type      | Default | Description               |
+    | ---------------------------- | --------- | ------- | ------------------------- |
+    | `temporalDecay.enabled`      | `boolean` | `false` | Enable recency boost      |
+    | `temporalDecay.halfLifeDays` | `number`  | `30`    | Score halves every N days |
+
+    Evergreen files (`MEMORY.md`, non-dated files in `memory/`) are never decayed.
+
+  </Tab>
+</Tabs>
+
+### Full example
+
+```json5
+{
+  agents: {
+    defaults: {
+      memorySearch: {
+        query: {
+          hybrid: {
+            vectorWeight: 0.7,
+            textWeight: 0.3,
+            mmr: { enabled: true, lambda: 0.7 },
+            temporalDecay: { enabled: true, halfLifeDays: 30 },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+---
+
+## Additional memory paths
+
+| Key          | Type       | Description                              |
+| ------------ | ---------- | ---------------------------------------- |
+| `extraPaths` | `string[]` | Additional directories or files to index |
+
+```json5
+{
+  agents: {
+    defaults: {
+      memorySearch: {
+        extraPaths: ["../team-docs", "/srv/shared-notes"],
+      },
+    },
+  },
+}
+```
+
+Paths can be absolute or workspace-relative. Directories are scanned recursively for `.md` files. Symlink handling depends on the active backend: the builtin engine ignores symlinks, while QMD follows the underlying QMD scanner behavior.
+
+For agent-scoped cross-agent transcript search, use `agents.list[].memorySearch.qmd.extraCollections` instead of `memory.qmd.paths`. Those extra collections follow the same `{ path, name, pattern? }` shape, but they are merged per agent and can preserve explicit shared names when the path points outside the current workspace. If the same resolved path appears in both `memory.qmd.paths` and `memorySearch.qmd.extraCollections`, QMD keeps the first entry and skips the duplicate.
+
+---
+
+## Multimodal memory (Gemini)
+
+Index images and audio alongside Markdown using Gemini Embedding 2:
+
+| Key                       | Type       | Default    | Description                            |
+| ------------------------- | ---------- | ---------- | -------------------------------------- |
+| `multimodal.enabled`      | `boolean`  | `false`    | Enable multimodal indexing             |
+| `multimodal.modalities`   | `string[]` | --         | `["image"]`, `["audio"]`, or `["all"]` |
+| `multimodal.maxFileBytes` | `number`   | `10000000` | Max file size for indexing             |
+
+<Note>
+Only applies to files in `extraPaths`. Default memory roots stay Markdown-only. Requires `gemini-embedding-2-preview`. `fallback` must be `"none"`.
+</Note>
+
+Supported formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.heic`, `.heif` (images); `.mp3`, `.wav`, `.ogg`, `.opus`, `.m4a`, `.aac`, `.flac` (audio).
+
+---
+
+## Embedding cache
+
+| Key                | Type      | Default | Description                      |
+| ------------------ | --------- | ------- | -------------------------------- |
+| `cache.enabled`    | `boolean` | `true`  | Cache chunk embeddings in SQLite |
+| `cache.maxEntries` | `number`  | `50000` | Max cached embeddings            |
+
+Prevents re-embedding unchanged text during reindex or transcript updates.
+
+---
+
+## Batch indexing
+
+| Key                           | Type      | Default | Description                |
+| ----------------------------- | --------- | ------- | -------------------------- |
+| `remote.nonBatchConcurrency`  | `number`  | `4`     | Parallel inline embeddings |
+| `remote.batch.enabled`        | `boolean` | `false` | Enable batch embedding API |
+| `remote.batch.concurrency`    | `number`  | `2`     | Parallel batch jobs        |
+| `remote.batch.wait`           | `boolean` | `true`  | Wait for batch completion  |
+| `remote.batch.pollIntervalMs` | `number`  | --      | Poll interval              |
+| `remote.batch.timeoutMinutes` | `number`  | --      | Batch timeout              |
+
+Available for `openai`, `gemini`, and `voyage`. OpenAI batch is typically fastest and cheapest for large backfills.
+
+`remote.nonBatchConcurrency` controls inline embedding calls used by local/self-hosted providers and hosted providers when provider batch APIs are not active. Ollama defaults to `1` for non-batch indexing to avoid overwhelming smaller local hosts; set a higher value on larger machines.
+
+This is separate from `sync.embeddingBatchTimeoutSeconds`, which controls the timeout for inline embedding calls.
+
+---
+
+## Session memory search (experimental)
+
+Index session transcripts and surface them via `memory_search`:
+
+| Key                           | Type       | Default      | Description                             |
+| ----------------------------- | ---------- | ------------ | --------------------------------------- |
+| `experimental.sessionMemory`  | `boolean`  | `false`      | Enable session indexing                 |
+| `sources`                     | `string[]` | `["memory"]` | Add `"sessions"` to include transcripts |
+| `sync.sessions.deltaBytes`    | `number`   | `100000`     | Byte threshold for reindex              |
+| `sync.sessions.deltaMessages` | `number`   | `50`         | Message threshold for reindex           |
+
+<Warning>
+Session indexing is opt-in and runs asynchronously. Results can be slightly stale. Session logs live on disk, so treat filesystem access as the trust boundary.
+</Warning>
+
+---
+
+## SQLite vector acceleration (sqlite-vec)
+
+| Key                          | Type      | Default | Description                       |
+| ---------------------------- | --------- | ------- | --------------------------------- |
+| `store.vector.enabled`       | `boolean` | `true`  | Use sqlite-vec for vector queries |
+| `store.vector.extensionPath` | `string`  | bundled | Override sqlite-vec path          |
+
+When sqlite-vec is unavailable, OpenClaw falls back to in-process cosine similarity automatically.
+
+---
+
+## Index storage
+
+| Key                   | Type     | Default                               | Description                                 |
+| --------------------- | -------- | ------------------------------------- | ------------------------------------------- |
+| `store.path`          | `string` | `~/.openclaw/memory/{agentId}.sqlite` | Index location (supports `{agentId}` token) |
+| `store.fts.tokenizer` | `string` | `unicode61`                           | FTS5 tokenizer (`unicode61` or `trigram`)   |
+
+---
+
+## QMD backend config
+
+Set `memory.backend = "qmd"` to enable. All QMD settings live under `memory.qmd`:
+
+| Key                      | Type      | Default  | Description                                                                           |
+| ------------------------ | --------- | -------- | ------------------------------------------------------------------------------------- |
+| `command`                | `string`  | `qmd`    | QMD executable path; set an absolute path when service `PATH` differs from your shell |
+| `searchMode`             | `string`  | `search` | Search command: `search`, `vsearch`, `query`                                          |
+| `includeDefaultMemory`   | `boolean` | `true`   | Auto-index `MEMORY.md` + `memory/**/*.md`                                             |
+| `paths[]`                | `array`   | --       | Extra paths: `{ name, path, pattern? }`                                               |
+| `sessions.enabled`       | `boolean` | `false`  | Index session transcripts                                                             |
+| `sessions.retentionDays` | `number`  | --       | Transcript retention                                                                  |
+| `sessions.exportDir`     | `string`  | --       | Export directory                                                                      |
+
+`searchMode: "search"` is lexical/BM25-only. OpenClaw does not run semantic vector readiness probes or QMD embedding maintenance for that mode, including during `memory status --deep`; `vsearch` and `query` continue to require QMD vector readiness and embeddings.
+
+OpenClaw prefers current QMD collection and MCP query shapes, but keeps older QMD releases working by trying compatible collection pattern flags and older MCP tool names when needed. When QMD advertises support for multiple collection filters, same-source collections are searched with one QMD process; older QMD builds keep the per-collection compatibility path. Same-source means durable memory collections are grouped together, while session transcript collections remain a separate group so source diversification still has both inputs.
+
+<Note>
+QMD model overrides stay on the QMD side, not OpenClaw config. If you need to override QMD's models globally, set environment variables such as `QMD_EMBED_MODEL`, `QMD_RERANK_MODEL`, and `QMD_GENERATE_MODEL` in the gateway runtime environment.
+</Note>
+
+<AccordionGroup>
+  <Accordion title="Update schedule">
+    | Key                       | Type      | Default | Description                           |
+    | ------------------------- | --------- | ------- | ------------------------------------- |
+    | `update.interval`         | `string`  | `5m`    | Refresh interval                      |
+    | `update.debounceMs`       | `number`  | `15000` | Debounce file changes                 |
+    | `update.onBoot`           | `boolean` | `true`  | Refresh when the long-lived QMD manager opens; also gates opt-in startup refresh |
+    | `update.startup`          | `string`  | `off`   | Optional gateway-start refresh: `off`, `idle`, or `immediate` |
+    | `update.startupDelayMs`   | `number`  | `120000` | Delay before `startup: "idle"` refresh runs |
+    | `update.waitForBootSync`  | `boolean` | `false` | Block manager opening until its initial refresh completes |
+    | `update.embedInterval`    | `string`  | --      | Separate embed cadence                |
+    | `update.commandTimeoutMs` | `number`  | --      | Timeout for QMD commands              |
+    | `update.updateTimeoutMs`  | `number`  | --      | Timeout for QMD update operations     |
+    | `update.embedTimeoutMs`   | `number`  | --      | Timeout for QMD embed operations      |
+  </Accordion>
+  <Accordion title="Limits">
+    | Key                       | Type     | Default | Description                |
+    | ------------------------- | -------- | ------- | -------------------------- |
+    | `limits.maxResults`       | `number` | `6`     | Max search results         |
+    | `limits.maxSnippetChars`  | `number` | --      | Clamp snippet length       |
+    | `limits.maxInjectedChars` | `number` | --      | Clamp total injected chars |
+    | `limits.timeoutMs`        | `number` | `4000`  | Search timeout             |
+  </Accordion>
+  <Accordion title="Scope">
+    Controls which sessions can receive QMD search results. Same schema as [`session.sendPolicy`](/gateway/config-agents#session):
+
+    ```json5
+    {
+      memory: {
+        qmd: {
+          scope: {
+            default: "deny",
+            rules: [{ action: "allow", match: { chatType: "direct" } }],
+          },
+        },
+      },
+    }
+    ```
+
+    The shipped default allows direct and channel sessions, while still denying groups.
+
+    Default is DM-only. `match.keyPrefix` matches the normalized session key; `match.rawKeyPrefix` matches the raw key including `agent:<id>:`.
+
+  </Accordion>
+  <Accordion title="Citations">
+    `memory.citations` applies to all backends:
+
+    | Value            | Behavior                                            |
+    | ---------------- | --------------------------------------------------- |
+    | `auto` (default) | Include `Source: <path#line>` footer in snippets    |
+    | `on`             | Always include footer                               |
+    | `off`            | Omit footer (path still passed to agent internally) |
+
+  </Accordion>
+</AccordionGroup>
+
+QMD boot refreshes use a one-shot subprocess path during gateway startup. The long-lived QMD manager still owns the regular file watcher and interval timers when memory search is opened for interactive use.
+
+### Full QMD example
+
+```json5
+{
+  memory: {
+    backend: "qmd",
+    citations: "auto",
+    qmd: {
+      includeDefaultMemory: true,
+      update: { interval: "5m", debounceMs: 15000 },
+      limits: { maxResults: 6, timeoutMs: 4000 },
+      scope: {
+        default: "deny",
+        rules: [{ action: "allow", match: { chatType: "direct" } }],
+      },
+      paths: [{ name: "docs", path: "~/notes", pattern: "**/*.md" }],
+    },
+  },
+}
+```
+
+---
+
+## Dreaming
+
+Dreaming is configured under `plugins.entries.memory-core.config.dreaming`, not under `agents.defaults.memorySearch`.
+
+Dreaming runs as one scheduled sweep and uses internal light/deep/REM phases as an implementation detail.
+
+For conceptual behavior and slash commands, see [Dreaming](/concepts/dreaming).
+
+### User settings
+
+| Key         | Type      | Default       | Description                                       |
+| ----------- | --------- | ------------- | ------------------------------------------------- |
+| `enabled`   | `boolean` | `false`       | Enable or disable dreaming entirely               |
+| `frequency` | `string`  | `0 3 * * *`   | Optional cron cadence for the full dreaming sweep |
+| `model`     | `string`  | default model | Optional Dream Diary subagent model override      |
+
+### Example
+
+```json5
+{
+  plugins: {
+    entries: {
+      "memory-core": {
+        subagent: {
+          allowModelOverride: true,
+          allowedModels: ["anthropic/claude-sonnet-4-6"],
+        },
+        config: {
+          dreaming: {
+            enabled: true,
+            frequency: "0 3 * * *",
+            model: "anthropic/claude-sonnet-4-6",
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+<Note>
+- Dreaming writes machine state to `memory/.dreams/`.
+- Dreaming writes human-readable narrative output to `DREAMS.md` (or existing `dreams.md`).
+- `dreaming.model` uses the existing plugin subagent trust gate; set `plugins.entries.memory-core.subagent.allowModelOverride: true` before enabling it.
+- Dream Diary retries once with the session default model when the configured model is unavailable. Trust or allowlist failures are logged and are not silently retried.
+- The light/deep/REM phase policy and thresholds are internal behavior, not user-facing config.
+
+</Note>
+
+## Related
+
+- [Configuration reference](/gateway/configuration-reference)
+- [Memory overview](/concepts/memory)
+- [Memory search](/concepts/memory-search)
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-backend-config-ts =====
+File: packages/memory-host-sdk/src/host/backend-config.ts
+================
+import fs from "node:fs";
+import path from "node:path";
+import {
+  CANONICAL_ROOT_MEMORY_FILENAME,
+  type MemoryBackend,
+  type MemoryCitationsMode,
+  type MemoryQmdConfig,
+  type MemoryQmdIndexPath,
+  type MemoryQmdMcporterConfig,
+  type MemoryQmdSearchMode,
+  type MemoryQmdStartupMode,
+  type OpenClawConfig,
+  parseDurationMs,
+  resolveAgentWorkspaceDir,
+  normalizeAgentId,
+  resolveUserPath,
+  type SessionSendPolicyConfig,
+  splitShellArgs,
+} from "./config-utils.js";
+import { isPathInside } from "./fs-utils.js";
+import { normalizeLowercaseStringOrEmpty } from "./string-utils.js";
+⋮----
+function escapeQmdExactFilePattern(fileName: string): string
+⋮----
+export type ResolvedMemoryBackendConfig = {
+  backend: MemoryBackend;
+  citations: MemoryCitationsMode;
+  qmd?: ResolvedQmdConfig;
+};
+⋮----
+export type ResolvedQmdCollection = {
+  name: string;
+  path: string;
+  pattern: string;
+  kind: "memory" | "custom" | "sessions";
+};
+⋮----
+export type ResolvedQmdUpdateConfig = {
+  intervalMs: number;
+  debounceMs: number;
+  onBoot: boolean;
+  startup: MemoryQmdStartupMode;
+  startupDelayMs: number;
+  waitForBootSync: boolean;
+  embedIntervalMs: number;
+  commandTimeoutMs: number;
+  updateTimeoutMs: number;
+  embedTimeoutMs: number;
+};
+⋮----
+export type ResolvedQmdLimitsConfig = {
+  maxResults: number;
+  maxSnippetChars: number;
+  maxInjectedChars: number;
+  timeoutMs: number;
+};
+⋮----
+export type ResolvedQmdSessionConfig = {
+  enabled: boolean;
+  exportDir?: string;
+  retentionDays?: number;
+};
+⋮----
+export type ResolvedQmdMcporterConfig = {
+  enabled: boolean;
+  serverName: string;
+  startDaemon: boolean;
+};
+⋮----
+export type ResolvedQmdConfig = {
+  command: string;
+  mcporter: ResolvedQmdMcporterConfig;
+  searchMode: MemoryQmdSearchMode;
+  searchTool?: string;
+  collections: ResolvedQmdCollection[];
+  sessions: ResolvedQmdSessionConfig;
+  update: ResolvedQmdUpdateConfig;
+  limits: ResolvedQmdLimitsConfig;
+  includeDefaultMemory: boolean;
+  scope?: SessionSendPolicyConfig;
+};
+⋮----
+// Defaulting to `query` can be extremely slow on CPU-only systems (query expansion + rerank).
+// Prefer a faster mode for interactive use; users can opt into `query` for best recall.
+⋮----
+function sanitizeName(input: string): string
+⋮----
+function scopeCollectionBase(base: string, agentId: string): string
+⋮----
+function canonicalizePathForContainment(rawPath: string): string
+⋮----
+function isPathInsideRoot(candidatePath: string, rootPath: string): boolean
+⋮----
+function ensureUniqueName(base: string, existing: Set<string>): string
+⋮----
+function resolvePath(raw: string, workspaceDir: string): string
+⋮----
+function resolveIntervalMs(raw: string | undefined): number
+⋮----
+function resolveEmbedIntervalMs(raw: string | undefined): number
+⋮----
+function resolveDebounceMs(raw: number | undefined): number
+⋮----
+function resolveTimeoutMs(raw: number | undefined, fallback: number): number
+⋮----
+function resolveStartupMode(raw: MemoryQmdConfig["update"]): MemoryQmdStartupMode
+⋮----
+function resolveStartupDelayMs(raw: number | undefined): number
+⋮----
+function resolveLimits(raw?: MemoryQmdConfig["limits"]): ResolvedQmdLimitsConfig
+⋮----
+function resolveSearchMode(raw?: MemoryQmdConfig["searchMode"]): MemoryQmdSearchMode
+⋮----
+function resolveSearchTool(raw?: MemoryQmdConfig["searchTool"]): string | undefined
+⋮----
+function resolveSessionConfig(
+  cfg: MemoryQmdConfig["sessions"],
+  workspaceDir: string,
+): ResolvedQmdSessionConfig
+⋮----
+function resolveCustomPaths(
+  rawPaths: MemoryQmdIndexPath[] | undefined,
+  workspaceDir: string,
+  existing: Set<string>,
+  agentId: string,
+): ResolvedQmdCollection[]
+⋮----
+// When the configured path points directly to a file, normalize into a
+// parent-directory collection with an exact-filename pattern, regardless
+// of any user-supplied glob (a glob does not apply to a single file).
+⋮----
+// not a file or can't stat, use as-is
+⋮----
+function resolveMcporterConfig(raw?: MemoryQmdMcporterConfig): ResolvedQmdMcporterConfig
+⋮----
+// When enabled, default startDaemon to true.
+⋮----
+function resolveDefaultCollections(
+  include: boolean,
+  workspaceDir: string,
+  existing: Set<string>,
+  agentId: string,
+): ResolvedQmdCollection[]
+⋮----
+export function resolveMemoryBackendConfig(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+}): ResolvedMemoryBackendConfig
+⋮----
+// Combine QMD-specific paths with extraPaths and per-agent cross-agent collections.
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-error-utils-ts =====
+File: packages/memory-host-sdk/src/host/batch-error-utils.ts
+================
+import { formatErrorMessage } from "./error-utils.js";
+⋮----
+type BatchOutputErrorLike = {
+  error?: { message?: string };
+  response?: {
+    body?:
+      | string
+      | {
+          error?: { message?: string };
+        };
+  };
+};
+⋮----
+function getResponseErrorMessage(line: BatchOutputErrorLike | undefined): string | undefined
+⋮----
+export function extractBatchErrorMessage(lines: BatchOutputErrorLike[]): string | undefined
+⋮----
+export function formatUnavailableBatchError(err: unknown): string | undefined
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-http-ts =====
+File: packages/memory-host-sdk/src/host/batch-http.ts
+================
+import { postJson } from "./post-json.js";
+import { retryAsync } from "./retry-utils.js";
+import type { SsrFPolicy } from "./ssrf-policy.js";
+⋮----
+export async function postJsonWithRetry<T>(params: {
+  url: string;
+  headers: Record<string, string>;
+  ssrfPolicy?: SsrFPolicy;
+  fetchImpl?: typeof fetch;
+  retryImpl?: typeof retryAsync;
+  body: unknown;
+  errorPrefix: string;
+}): Promise<T>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-output-ts =====
+File: packages/memory-host-sdk/src/host/batch-output.ts
+================
+export type EmbeddingBatchOutputLine = {
+  custom_id?: string;
+  error?: { message?: string };
+  response?: {
+    status_code?: number;
+    body?:
+      | {
+          data?: Array<{
+            embedding?: number[];
+          }>;
+          error?: { message?: string };
+        }
+      | string;
+  };
+};
+⋮----
+export function applyEmbeddingBatchOutputLine(params: {
+  line: EmbeddingBatchOutputLine;
+  remaining: Set<string>;
+  errors: string[];
+  byCustomId: Map<string, number[]>;
+})
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-provider-common-ts =====
+File: packages/memory-host-sdk/src/host/batch-provider-common.ts
+================
+import type { EmbeddingBatchOutputLine } from "./batch-output.js";
+⋮----
+export type EmbeddingBatchStatus = {
+  id?: string;
+  status?: string;
+  output_file_id?: string | null;
+  error_file_id?: string | null;
+};
+⋮----
+export type ProviderBatchOutputLine = EmbeddingBatchOutputLine;
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-runner-ts =====
+File: packages/memory-host-sdk/src/host/batch-runner.ts
+================
+import { splitBatchRequests } from "./batch-utils.js";
+import { runWithConcurrency } from "./internal.js";
+⋮----
+export type EmbeddingBatchExecutionParams = {
+  wait: boolean;
+  pollIntervalMs: number;
+  timeoutMs: number;
+  concurrency: number;
+  debug?: (message: string, data?: Record<string, unknown>) => void;
+};
+⋮----
+export async function runEmbeddingBatchGroups<TRequest>(params: {
+  requests: TRequest[];
+  maxRequests: number;
+  wait: EmbeddingBatchExecutionParams["wait"];
+  pollIntervalMs: EmbeddingBatchExecutionParams["pollIntervalMs"];
+  timeoutMs: EmbeddingBatchExecutionParams["timeoutMs"];
+  concurrency: EmbeddingBatchExecutionParams["concurrency"];
+  debugLabel: string;
+  debug?: EmbeddingBatchExecutionParams["debug"];
+  runGroup: (args: {
+    group: TRequest[];
+    groupIndex: number;
+    groups: number;
+    byCustomId: Map<string, number[]>;
+})
+⋮----
+export function buildEmbeddingBatchGroupOptions<TRequest>(
+  params: { requests: TRequest[] } & EmbeddingBatchExecutionParams,
+  options: { maxRequests: number; debugLabel: string },
+)
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-status-ts =====
+File: packages/memory-host-sdk/src/host/batch-status.ts
+================
+type BatchStatusLike = {
+  id?: string;
+  status?: string;
+  output_file_id?: string | null;
+  error_file_id?: string | null;
+};
+⋮----
+export type BatchCompletionResult = {
+  outputFileId: string;
+  errorFileId?: string;
+};
+⋮----
+export function resolveBatchCompletionFromStatus(params: {
+  provider: string;
+  batchId: string;
+  status: BatchStatusLike;
+}): BatchCompletionResult
+⋮----
+export async function throwIfBatchTerminalFailure(params: {
+  provider: string;
+  status: BatchStatusLike;
+readError: (errorFileId: string)
+⋮----
+export async function resolveCompletedBatchResult(params: {
+  provider: string;
+  status: BatchStatusLike;
+  wait: boolean;
+waitForBatch: ()
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-upload-ts =====
+File: packages/memory-host-sdk/src/host/batch-upload.ts
+================
+import {
+  buildBatchHeaders,
+  normalizeBatchBaseUrl,
+  type BatchHttpClientConfig,
+} from "./batch-utils.js";
+import { hashText } from "./hash.js";
+import { withRemoteHttpResponse } from "./remote-http.js";
+⋮----
+export async function uploadBatchJsonlFile(params: {
+  client: BatchHttpClientConfig;
+  requests: unknown[];
+  errorPrefix: string;
+}): Promise<string>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-batch-utils-ts =====
+File: packages/memory-host-sdk/src/host/batch-utils.ts
+================
+import type { SsrFPolicy } from "./ssrf-policy.js";
+⋮----
+export type BatchHttpClientConfig = {
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  ssrfPolicy?: SsrFPolicy;
+};
+⋮----
+export function normalizeBatchBaseUrl(client: BatchHttpClientConfig): string
+⋮----
+export function buildBatchHeaders(
+  client: Pick<BatchHttpClientConfig, "headers">,
+  params: { json: boolean },
+): Record<string, string>
+⋮----
+export function splitBatchRequests<T>(requests: T[], maxRequests: number): T[][]
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-config-utils-ts =====
+File: packages/memory-host-sdk/src/host/config-utils.ts
+================
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-utils.js";
+⋮----
+export type ChatType = "direct" | "group" | "channel";
+export type MemoryBackend = "builtin" | "qmd";
+export type MemoryCitationsMode = "auto" | "on" | "off";
+export type MemoryQmdSearchMode = "query" | "search" | "vsearch";
+export type MemoryQmdStartupMode = "off" | "idle" | "immediate";
+⋮----
+export type SessionSendPolicyAction = "allow" | "deny";
+export type SessionSendPolicyMatch = {
+  channel?: string;
+  chatType?: ChatType;
+  keyPrefix?: string;
+  rawKeyPrefix?: string;
+};
+export type SessionSendPolicyRule = {
+  action: SessionSendPolicyAction;
+  match?: SessionSendPolicyMatch;
+};
+export type SessionSendPolicyConfig = {
+  default?: SessionSendPolicyAction;
+  rules?: SessionSendPolicyRule[];
+};
+⋮----
+export type MemoryQmdIndexPath = {
+  path: string;
+  name?: string;
+  pattern?: string;
+};
+⋮----
+export type MemoryQmdMcporterConfig = {
+  enabled?: boolean;
+  serverName?: string;
+  startDaemon?: boolean;
+};
+⋮----
+export type MemoryQmdSessionConfig = {
+  enabled?: boolean;
+  exportDir?: string;
+  retentionDays?: number;
+};
+⋮----
+export type MemoryQmdUpdateConfig = {
+  interval?: string;
+  debounceMs?: number;
+  onBoot?: boolean;
+  startup?: MemoryQmdStartupMode;
+  startupDelayMs?: number;
+  waitForBootSync?: boolean;
+  embedInterval?: string;
+  commandTimeoutMs?: number;
+  updateTimeoutMs?: number;
+  embedTimeoutMs?: number;
+};
+⋮----
+export type MemoryQmdLimitsConfig = {
+  maxResults?: number;
+  maxSnippetChars?: number;
+  maxInjectedChars?: number;
+  timeoutMs?: number;
+};
+⋮----
+export type MemoryQmdConfig = {
+  command?: string;
+  mcporter?: MemoryQmdMcporterConfig;
+  searchMode?: MemoryQmdSearchMode;
+  searchTool?: string;
+  includeDefaultMemory?: boolean;
+  paths?: MemoryQmdIndexPath[];
+  sessions?: MemoryQmdSessionConfig;
+  update?: MemoryQmdUpdateConfig;
+  limits?: MemoryQmdLimitsConfig;
+  scope?: SessionSendPolicyConfig;
+};
+⋮----
+export type MemoryConfig = {
+  backend?: MemoryBackend;
+  citations?: MemoryCitationsMode;
+  qmd?: MemoryQmdConfig;
+};
+⋮----
+export type MemorySearchConfig = {
+  enabled?: boolean;
+  extraPaths?: string[];
+  qmd?: {
+    extraCollections?: MemoryQmdIndexPath[];
+  };
+};
+⋮----
+export type AgentContextLimitsConfig = {
+  memoryGetMaxChars?: number;
+  memoryGetDefaultLines?: number;
+};
+⋮----
+export type SecretInput =
+  | string
+  | {
+      source: string;
+      provider: string;
+      id: string;
+    };
+⋮----
+type AgentConfig = {
+  id?: string;
+  default?: boolean;
+  workspace?: string;
+  memorySearch?: MemorySearchConfig;
+  contextLimits?: AgentContextLimitsConfig;
+};
+⋮----
+export type OpenClawConfig = {
+  agents?: {
+    defaults?: {
+      workspace?: string;
+      memorySearch?: MemorySearchConfig;
+      contextLimits?: AgentContextLimitsConfig;
+    };
+    list?: AgentConfig[];
+  };
+  memory?: MemoryConfig;
+  models?: {
+    providers?: Record<
+      string,
+      {
+        api?: string;
+        baseUrl?: string;
+        headers?: Record<string, SecretInput>;
+      }
+    >;
+  };
+};
+⋮----
+export function normalizeAgentId(value: string | undefined | null): string
+⋮----
+function normalizeHomeValue(value: string | undefined): string | undefined
+⋮----
+function resolveRawOsHomeDir(env: NodeJS.ProcessEnv, homedir: () => string): string | undefined
+⋮----
+function resolveRequiredHomeDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homedir: () => string = os.homedir,
+): string
+⋮----
+export function resolveUserPath(
+  input: string,
+  env: NodeJS.ProcessEnv = process.env,
+  homedir: () => string = os.homedir,
+): string
+⋮----
+function legacyStateDirs(homedir: () => string): string[]
+⋮----
+export function resolveStateDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homedir: () => string = os.homedir,
+): string
+⋮----
+const effectiveHome = ()
+⋮----
+function resolveDefaultAgentWorkspaceDir(env: NodeJS.ProcessEnv = process.env): string
+⋮----
+function listAgentEntries(cfg: OpenClawConfig): AgentConfig[]
+⋮----
+function resolveDefaultAgentId(cfg: OpenClawConfig): string
+⋮----
+function resolveAgentConfig(cfg: OpenClawConfig, agentId: string): AgentConfig | undefined
+⋮----
+function stripNullBytes(value: string): string
+⋮----
+export function resolveAgentWorkspaceDir(
+  cfg: OpenClawConfig,
+  agentId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string
+⋮----
+export function resolveAgentContextLimits(
+  cfg: OpenClawConfig | undefined,
+  agentId?: string | null,
+): AgentContextLimitsConfig | undefined
+⋮----
+export function resolveMemorySearchConfig(
+  cfg: OpenClawConfig,
+  agentId: string,
+):
+⋮----
+export function parseDurationMs(
+  raw: string,
+  opts?: { defaultUnit?: "ms" | "s" | "m" | "h" | "d" },
+): number
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-chunk-limits-ts =====
+File: packages/memory-host-sdk/src/host/embedding-chunk-limits.ts
+================
+import { estimateUtf8Bytes, splitTextToUtf8ByteLimit } from "./embedding-input-limits.js";
+import { hasNonTextEmbeddingParts } from "./embedding-inputs.js";
+import { resolveEmbeddingMaxInputTokens } from "./embedding-model-limits.js";
+import type { EmbeddingProvider } from "./embeddings.js";
+import { hashText } from "./hash.js";
+import type { MemoryChunk } from "./internal.js";
+⋮----
+export function enforceEmbeddingMaxInputTokens(
+  provider: EmbeddingProvider,
+  chunks: MemoryChunk[],
+  hardMaxInputTokens?: number,
+): MemoryChunk[]
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-defaults-ts =====
+File: packages/memory-host-sdk/src/host/embedding-defaults.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-input-limits-ts =====
+File: packages/memory-host-sdk/src/host/embedding-input-limits.ts
+================
+import type { EmbeddingInput } from "./embedding-inputs.js";
+⋮----
+// Helpers for enforcing embedding model input size limits.
+//
+// We use UTF-8 byte length as a conservative upper bound for tokenizer output.
+// Tokenizers operate over bytes; a token must contain at least one byte, so
+// token_count <= utf8_byte_length.
+⋮----
+export function estimateUtf8Bytes(text: string): number
+⋮----
+export function estimateStructuredEmbeddingInputBytes(input: EmbeddingInput): number
+⋮----
+export function splitTextToUtf8ByteLimit(text: string, maxUtf8Bytes: number): string[]
+⋮----
+// The number of UTF-16 code units is always <= the number of UTF-8 bytes.
+// This makes `cursor + maxUtf8Bytes` a safe upper bound on the next split point.
+⋮----
+// Avoid splitting inside a surrogate pair.
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-inputs-ts =====
+File: packages/memory-host-sdk/src/host/embedding-inputs.ts
+================
+export type EmbeddingInputTextPart = {
+  type: "text";
+  text: string;
+};
+⋮----
+export type EmbeddingInputInlineDataPart = {
+  type: "inline-data";
+  mimeType: string;
+  data: string;
+};
+⋮----
+export type EmbeddingInputPart = EmbeddingInputTextPart | EmbeddingInputInlineDataPart;
+⋮----
+export type EmbeddingInput = {
+  text: string;
+  parts?: EmbeddingInputPart[];
+};
+⋮----
+export function buildTextEmbeddingInput(text: string): EmbeddingInput
+⋮----
+export function isInlineDataEmbeddingInputPart(
+  part: EmbeddingInputPart,
+): part is EmbeddingInputInlineDataPart
+⋮----
+export function hasNonTextEmbeddingParts(input: EmbeddingInput | undefined): boolean
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-model-limits-ts =====
+File: packages/memory-host-sdk/src/host/embedding-model-limits.ts
+================
+import type { EmbeddingProvider } from "./embeddings.js";
+⋮----
+export function resolveEmbeddingMaxInputTokens(provider: EmbeddingProvider): number
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-provider-adapter-utils-ts =====
+File: packages/memory-host-sdk/src/host/embedding-provider-adapter-utils.ts
+================
+import { normalizeLowercaseStringOrEmpty } from "./string-utils.js";
+⋮----
+export function isMissingEmbeddingApiKeyError(err: unknown): boolean
+⋮----
+export function sanitizeEmbeddingCacheHeaders(
+  headers: Record<string, string>,
+  excludedHeaderNames: string[],
+): Array<[string, string]>
+⋮----
+export function mapBatchEmbeddingsByIndex(
+  byCustomId: Map<string, number[]>,
+  count: number,
+): number[][]
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embedding-vectors-ts =====
+File: packages/memory-host-sdk/src/host/embedding-vectors.ts
+================
+export function sanitizeAndNormalizeEmbedding(vec: number[]): number[]
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-debug-ts =====
+File: packages/memory-host-sdk/src/host/embeddings-debug.ts
+================
+import { normalizeLowercaseStringOrEmpty } from "./string-utils.js";
+⋮----
+export function debugEmbeddingsLog(message: string, meta?: Record<string, unknown>): void
+⋮----
+function isTruthyEnvValue(value?: string): boolean
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-model-normalize-ts =====
+File: packages/memory-host-sdk/src/host/embeddings-model-normalize.ts
+================
+export function normalizeEmbeddingModelWithPrefixes(params: {
+  model: string;
+  defaultModel: string;
+  prefixes: string[];
+}): string
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-remote-client-ts =====
+File: packages/memory-host-sdk/src/host/embeddings-remote-client.ts
+================
+import type { EmbeddingProviderOptions } from "./embeddings.types.js";
+import { requireApiKey, resolveApiKeyForProvider } from "./openclaw-runtime-auth.js";
+import { buildRemoteBaseUrlPolicy } from "./remote-http.js";
+import { resolveMemorySecretInputString } from "./secret-input.js";
+import type { SsrFPolicy } from "./ssrf-policy.js";
+import { normalizeOptionalString } from "./string-utils.js";
+⋮----
+export type RemoteEmbeddingProviderId = string;
+⋮----
+function resolveOpenClawAttributionHeaders(): Record<string, string>
+⋮----
+function isNativeOpenAIEmbeddingRoute(provider: string, baseUrl: string): boolean
+⋮----
+export async function resolveRemoteEmbeddingBearerClient(params: {
+  provider: RemoteEmbeddingProviderId;
+  options: EmbeddingProviderOptions;
+  defaultBaseUrl: string;
+}): Promise<
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-remote-fetch-ts =====
+File: packages/memory-host-sdk/src/host/embeddings-remote-fetch.ts
+================
+import { postJson } from "./post-json.js";
+import type { SsrFPolicy } from "./ssrf-policy.js";
+⋮----
+function asRecord(value: unknown): Record<string, unknown> | undefined
+⋮----
+function malformedEmbeddingResponse(errorPrefix: string): Error
+⋮----
+function readEmbeddingVector(value: unknown, errorPrefix: string): number[]
+⋮----
+function resolveExpectedEmbeddingCount(body: unknown): number | undefined
+⋮----
+export async function fetchRemoteEmbeddingVectors(params: {
+  url: string;
+  headers: Record<string, string>;
+  ssrfPolicy?: SsrFPolicy;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  body: unknown;
+  errorPrefix: string;
+}): Promise<number[][]>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-remote-provider-ts =====
+File: packages/memory-host-sdk/src/host/embeddings-remote-provider.ts
+================
+import {
+  resolveRemoteEmbeddingBearerClient,
+  type RemoteEmbeddingProviderId,
+} from "./embeddings-remote-client.js";
+import { fetchRemoteEmbeddingVectors } from "./embeddings-remote-fetch.js";
+import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.types.js";
+import type { SsrFPolicy } from "./ssrf-policy.js";
+⋮----
+export type RemoteEmbeddingClient = {
+  baseUrl: string;
+  headers: Record<string, string>;
+  ssrfPolicy?: SsrFPolicy;
+  fetchImpl?: typeof fetch;
+  model: string;
+};
+⋮----
+export function createRemoteEmbeddingProvider(params: {
+  id: string;
+  client: RemoteEmbeddingClient;
+  errorPrefix: string;
+  maxInputTokens?: number;
+}): EmbeddingProvider
+⋮----
+const embed = async (input: string[], signal?: AbortSignal): Promise<number[][]> =>
+⋮----
+export async function resolveRemoteEmbeddingClient(params: {
+  provider: RemoteEmbeddingProviderId;
+  options: EmbeddingProviderOptions;
+  defaultBaseUrl: string;
+normalizeModel: (model: string)
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-ts =====
+File: packages/memory-host-sdk/src/host/embeddings.ts
+================
+import { DEFAULT_LOCAL_MODEL } from "./embedding-defaults.js";
+import { sanitizeAndNormalizeEmbedding } from "./embedding-vectors.js";
+import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.types.js";
+import {
+  importNodeLlamaCpp,
+  type Llama,
+  type LlamaEmbeddingContext,
+  type LlamaModel,
+} from "./node-llama.js";
+import { normalizeOptionalString } from "./string-utils.js";
+⋮----
+type DisposableResource = {
+  dispose?: () => Promise<void> | void;
+};
+⋮----
+async function disposeResources(
+  resources: Array<DisposableResource | null | undefined>,
+): Promise<void>
+⋮----
+export async function createLocalEmbeddingProvider(
+  options: EmbeddingProviderOptions,
+): Promise<EmbeddingProvider>
+⋮----
+// Lazy-load node-llama-cpp to keep startup light unless local is enabled.
+⋮----
+const throwIfClosed = () =>
+const disposeAndThrowIfClosed = async <T extends DisposableResource>(resource: T): Promise<T> =>
+⋮----
+const ensureContext = async (): Promise<LlamaEmbeddingContext> =>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-embeddings-types-ts =====
+File: packages/memory-host-sdk/src/host/embeddings.types.ts
+================
+import type { OpenClawConfig, SecretInput } from "../engine-foundation.js";
+import type { EmbeddingInput } from "./embedding-inputs.js";
+⋮----
+export type EmbeddingProvider = {
+  id: string;
+  model: string;
+  maxInputTokens?: number;
+  embedQuery: (text: string, options?: EmbeddingProviderCallOptions) => Promise<number[]>;
+  embedBatch: (texts: string[], options?: EmbeddingProviderCallOptions) => Promise<number[][]>;
+  embedBatchInputs?: (
+    inputs: EmbeddingInput[],
+    options?: EmbeddingProviderCallOptions,
+  ) => Promise<number[][]>;
+  close?: () => Promise<void> | void;
+};
+⋮----
+export type EmbeddingProviderCallOptions = {
+  signal?: AbortSignal;
+};
+⋮----
+export type EmbeddingProviderId = string;
+export type EmbeddingProviderRequest = string;
+export type EmbeddingProviderFallback = string;
+⋮----
+export type GeminiTaskType =
+  | "RETRIEVAL_QUERY"
+  | "RETRIEVAL_DOCUMENT"
+  | "SEMANTIC_SIMILARITY"
+  | "CLASSIFICATION"
+  | "CLUSTERING"
+  | "QUESTION_ANSWERING"
+  | "FACT_VERIFICATION";
+⋮----
+export type EmbeddingProviderOptions = {
+  config: OpenClawConfig;
+  agentDir?: string;
+  provider?: EmbeddingProviderRequest;
+  remote?: {
+    baseUrl?: string;
+    apiKey?: SecretInput;
+    headers?: Record<string, string>;
+  };
+  model: string;
+  inputType?: string;
+  queryInputType?: string;
+  documentInputType?: string;
+  fallback?: EmbeddingProviderFallback;
+  local?: {
+    modelPath?: string;
+    modelCacheDir?: string;
+    /**
+     * Context size passed to node-llama-cpp `createEmbeddingContext`.
+     * Default: 4096, chosen to cover typical memory-search chunks (128–512 tokens)
+     * while keeping non-weight VRAM bounded.
+     * Set `"auto"` to let node-llama-cpp use the model's trained maximum — not
+     * recommended for 8B+ models (e.g. Qwen3-Embedding-8B: up to 40 960 tokens → ~32 GB VRAM).
+     */
+    contextSize?: number | "auto";
+  };
+  /** Provider-specific output vector dimensions for supported embedding families. */
+  outputDimensionality?: number;
+  /** Gemini: override the default task type sent with embedding requests. */
+  taskType?: GeminiTaskType;
+};
+⋮----
+/**
+     * Context size passed to node-llama-cpp `createEmbeddingContext`.
+     * Default: 4096, chosen to cover typical memory-search chunks (128–512 tokens)
+     * while keeping non-weight VRAM bounded.
+     * Set `"auto"` to let node-llama-cpp use the model's trained maximum — not
+     * recommended for 8B+ models (e.g. Qwen3-Embedding-8B: up to 40 960 tokens → ~32 GB VRAM).
+     */
+⋮----
+/** Provider-specific output vector dimensions for supported embedding families. */
+⋮----
+/** Gemini: override the default task type sent with embedding requests. */
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-error-utils-ts =====
+File: packages/memory-host-sdk/src/host/error-utils.ts
+================
+function maskToken(token: string): string
+⋮----
+function redactPemBlock(block: string): string
+⋮----
+function redactMatch(match: string, groups: string[]): string
+⋮----
+function redactSensitiveText(text: string): string
+⋮----
+export function formatErrorMessage(err: unknown): string
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-fs-utils-ts =====
+File: packages/memory-host-sdk/src/host/fs-utils.ts
+================
+import { configureFsSafePython } from "@openclaw/fs-safe/config";
+⋮----
+export function isFileMissingError(
+  err: unknown,
+): err is NodeJS.ErrnoException &
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-hash-ts =====
+File: packages/memory-host-sdk/src/host/hash.ts
+================
+import crypto from "node:crypto";
+⋮----
+export function hashText(value: string): string
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-internal-ts =====
+File: packages/memory-host-sdk/src/host/internal.ts
+================
+import crypto from "node:crypto";
+import fsSync from "node:fs";
+import fs from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+import { CANONICAL_ROOT_MEMORY_FILENAME } from "./config-utils.js";
+import { estimateStructuredEmbeddingInputBytes } from "./embedding-input-limits.js";
+import { buildTextEmbeddingInput, type EmbeddingInput } from "./embedding-inputs.js";
+import {
+  isFileMissingError,
+  readRegularFile,
+  statRegularFile,
+  walkDirectory,
+  type WalkDirectoryEntry,
+} from "./fs-utils.js";
+import {
+  buildMemoryMultimodalLabel,
+  classifyMemoryMultimodalPath,
+  type MemoryMultimodalModality,
+  type MemoryMultimodalSettings,
+} from "./multimodal.js";
+import {
+  CHARS_PER_TOKEN_ESTIMATE,
+  detectMime,
+  estimateStringChars,
+  runTasksWithConcurrency,
+} from "./openclaw-runtime-io.js";
+import {
+  resolveCanonicalRootMemoryFile,
+  shouldSkipRootMemoryAuxiliaryPath,
+} from "./openclaw-runtime-memory.js";
+⋮----
+import { hashText } from "./hash.js";
+⋮----
+export type MemoryFileEntry = {
+  path: string;
+  absPath: string;
+  mtimeMs: number;
+  size: number;
+  hash: string;
+  dataHash?: string;
+  kind?: "markdown" | "multimodal";
+  contentText?: string;
+  modality?: MemoryMultimodalModality;
+  mimeType?: string;
+};
+⋮----
+export type MemoryChunk = {
+  startLine: number;
+  endLine: number;
+  text: string;
+  hash: string;
+  embeddingInput?: EmbeddingInput;
+};
+⋮----
+export type MultimodalMemoryChunk = {
+  chunk: MemoryChunk;
+  structuredInputBytes: number;
+};
+⋮----
+export function ensureDir(dir: string): string
+⋮----
+export function normalizeRelPath(value: string): string
+⋮----
+function expandHomePath(value: string): string
+⋮----
+export function normalizeExtraMemoryPaths(workspaceDir: string, extraPaths?: string[]): string[]
+⋮----
+export function isMemoryPath(relPath: string): boolean
+⋮----
+function isAllowedMemoryFilePath(filePath: string, multimodal?: MemoryMultimodalSettings): boolean
+⋮----
+function shouldDescendMemoryEntry(
+  entry: WalkDirectoryEntry,
+  shouldSkipPath?: (absPath: string) => boolean,
+): boolean
+⋮----
+async function collectMemoryFilesFromDir(
+  dir: string,
+  files: string[],
+  multimodal?: MemoryMultimodalSettings,
+  shouldSkipPath?: (absPath: string) => boolean,
+): Promise<void>
+⋮----
+export async function listMemoryFiles(
+  workspaceDir: string,
+  extraPaths?: string[],
+  multimodal?: MemoryMultimodalSettings,
+): Promise<string[]>
+⋮----
+const shouldSkipWorkspaceMemoryPath = (absPath: string): boolean
+⋮----
+const addMarkdownFile = async (absPath: string) =>
+⋮----
+export async function buildFileEntry(
+  absPath: string,
+  workspaceDir: string,
+  multimodal?: MemoryMultimodalSettings,
+): Promise<MemoryFileEntry | null>
+⋮----
+async function loadMultimodalEmbeddingInput(
+  entry: Pick<
+    MemoryFileEntry,
+    "absPath" | "contentText" | "mimeType" | "kind" | "size" | "dataHash"
+  >,
+): Promise<EmbeddingInput | null>
+⋮----
+export async function buildMultimodalChunkForIndexing(
+  entry: Pick<
+    MemoryFileEntry,
+    "absPath" | "contentText" | "mimeType" | "kind" | "hash" | "size" | "dataHash"
+  >,
+): Promise<MultimodalMemoryChunk | null>
+⋮----
+export function chunkMarkdown(
+  content: string,
+  chunking: { tokens: number; overlap: number },
+): MemoryChunk[]
+⋮----
+const flush = () =>
+⋮----
+const carryOverlap = () =>
+⋮----
+// First pass: slice at maxChars (preserves original behaviour for Latin).
+// Second pass: if a segment's *weighted* size still exceeds the budget
+// (happens for CJK-heavy text where 1 char ≈ 1 token), re-split it at
+// chunking.tokens so the chunk stays within the token budget.
+⋮----
+// Avoid splitting inside a UTF-16 surrogate pair (CJK Extension B+).
+⋮----
+end += 1; // include the low surrogate
+⋮----
+j = end; // advance cursor to the adjusted boundary
+⋮----
+/**
+ * Remap chunk startLine/endLine from content-relative positions to original
+ * source file positions using a lineMap.  Each entry in lineMap gives the
+ * 1-indexed source line for the corresponding 0-indexed content line.
+ *
+ * This is used for session JSONL files where buildSessionEntry() flattens
+ * messages into a plain-text string before chunking.  Without remapping the
+ * stored line numbers would reference positions in the flattened text rather
+ * than the original JSONL file.
+ */
+export function remapChunkLines(chunks: MemoryChunk[], lineMap: number[] | undefined): void
+⋮----
+// startLine/endLine are 1-indexed; lineMap is 0-indexed by content line
+⋮----
+export function parseEmbedding(raw: string): number[]
+⋮----
+export function cosineSimilarity(a: number[], b: number[]): number
+⋮----
+export async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+): Promise<T[]>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-memory-schema-ts =====
+File: packages/memory-host-sdk/src/host/memory-schema.ts
+================
+import type { DatabaseSync } from "node:sqlite";
+import { formatErrorMessage } from "./error-utils.js";
+⋮----
+export function ensureMemoryIndexSchema(params: {
+  db: DatabaseSync;
+  embeddingCacheTable: string;
+  cacheEnabled: boolean;
+  ftsTable: string;
+  ftsEnabled: boolean;
+  ftsTokenizer?: "unicode61" | "trigram";
+}):
+⋮----
+function ensureColumn(
+  db: DatabaseSync,
+  table: "files" | "chunks",
+  column: string,
+  definition: string,
+): void
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-multimodal-ts =====
+File: packages/memory-host-sdk/src/host/multimodal.ts
+================
+import { normalizeLowercaseStringOrEmpty } from "./string-utils.js";
+⋮----
+export type MemoryMultimodalModality = keyof typeof MEMORY_MULTIMODAL_SPECS;
+⋮----
+export type MemoryMultimodalSelection = MemoryMultimodalModality | "all";
+⋮----
+export type MemoryMultimodalSettings = {
+  enabled: boolean;
+  modalities: MemoryMultimodalModality[];
+  maxFileBytes: number;
+};
+⋮----
+export function normalizeMemoryMultimodalModalities(
+  raw: MemoryMultimodalSelection[] | undefined,
+): MemoryMultimodalModality[]
+⋮----
+export function normalizeMemoryMultimodalSettings(raw: {
+  enabled?: boolean;
+  modalities?: MemoryMultimodalSelection[];
+  maxFileBytes?: number;
+}): MemoryMultimodalSettings
+⋮----
+export function isMemoryMultimodalEnabled(settings: MemoryMultimodalSettings): boolean
+⋮----
+export function getMemoryMultimodalExtensions(
+  modality: MemoryMultimodalModality,
+): readonly string[]
+⋮----
+export function buildMemoryMultimodalLabel(
+  modality: MemoryMultimodalModality,
+  normalizedPath: string,
+): string
+⋮----
+export function buildCaseInsensitiveExtensionGlob(extension: string): string
+⋮----
+export function classifyMemoryMultimodalPath(
+  filePath: string,
+  settings: MemoryMultimodalSettings,
+): MemoryMultimodalModality | null
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-node-llama-ts =====
+File: packages/memory-host-sdk/src/host/node-llama.ts
+================
+export type LlamaEmbedding = {
+  vector: Float32Array | number[];
+};
+⋮----
+export type LlamaEmbeddingContext = {
+  getEmbeddingFor: (text: string) => Promise<LlamaEmbedding>;
+  dispose?: () => Promise<void> | void;
+};
+⋮----
+export type LlamaModel = {
+  createEmbeddingContext: (options?: {
+    contextSize?: number | "auto";
+    createSignal?: AbortSignal;
+  }) => Promise<LlamaEmbeddingContext>;
+  dispose?: () => Promise<void> | void;
+};
+⋮----
+export type ResolveModelFileOptions = {
+  directory?: string;
+  signal?: AbortSignal;
+};
+⋮----
+export type Llama = {
+  loadModel: (params: { modelPath: string; loadSignal?: AbortSignal }) => Promise<LlamaModel>;
+  dispose?: () => Promise<void> | void;
+};
+⋮----
+export type NodeLlamaCppModule = {
+  LlamaLogLevel: {
+    error: number;
+  };
+  getLlama: (params: { logLevel: number }) => Promise<Llama>;
+  resolveModelFile: (
+    modelPath: string,
+    optionsOrDirectory?: string | ResolveModelFileOptions,
+  ) => Promise<string>;
+};
+⋮----
+export async function importNodeLlamaCpp()
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-agent-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-agent.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-auth-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-auth.ts
+================
+import { requireApiKey } from "../../../../src/agents/model-auth-runtime-shared.js";
+import type { resolveApiKeyForProvider as ResolveApiKeyForProvider } from "../../../../src/agents/model-auth.js";
+⋮----
+export const resolveApiKeyForProvider: typeof ResolveApiKeyForProvider = async (...args) =>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-cli-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-cli.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-config-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-config.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-io-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-io.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-memory-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-memory.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-network-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-network.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-session-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime-session.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-openclaw-runtime-ts =====
+File: packages/memory-host-sdk/src/host/openclaw-runtime.ts
+================
+// Agent/runtime helpers.
+⋮----
+// Session and reply helpers.
+⋮----
+// CLI/runtime/config helpers.
+⋮----
+/** @deprecated Use getRuntimeConfig(), or pass the already loaded config through the call path. */
+⋮----
+// IO, network, and logging helpers.
+⋮----
+// Memory plugin helpers.
+⋮----
+// Shared session/text utilities.
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-post-json-ts =====
+File: packages/memory-host-sdk/src/host/post-json.ts
+================
+import { withRemoteHttpResponse } from "./remote-http.js";
+import type { SsrFPolicy } from "./ssrf-policy.js";
+⋮----
+export async function postJson<T>(params: {
+  url: string;
+  headers: Record<string, string>;
+  ssrfPolicy?: SsrFPolicy;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  body: unknown;
+  errorPrefix: string;
+  attachStatus?: boolean;
+parse: (payload: unknown)
+⋮----
+async function readJsonResponse(res: Response, errorPrefix: string): Promise<unknown>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-qmd-process-ts =====
+File: packages/memory-host-sdk/src/host/qmd-process.ts
+================
+import { spawn } from "node:child_process";
+import { statSync } from "node:fs";
+import { materializeWindowsSpawnProgram, resolveWindowsSpawnProgram } from "./windows-spawn.js";
+⋮----
+export type CliSpawnInvocation = {
+  command: string;
+  argv: string[];
+  shell?: boolean;
+  windowsHide?: boolean;
+};
+⋮----
+export type QmdBinaryUnavailableReason = "binary" | "workspace-cwd";
+⋮----
+export type QmdBinaryUnavailable = {
+  available: false;
+  /**
+   * Optional for source compatibility with older plugin SDK callers that
+   * returned only `{ available: false, error }`.
+   */
+  reason?: QmdBinaryUnavailableReason;
+  error: string;
+};
+⋮----
+/**
+   * Optional for source compatibility with older plugin SDK callers that
+   * returned only `{ available: false, error }`.
+   */
+⋮----
+export type QmdBinaryAvailability = { available: true } | QmdBinaryUnavailable;
+⋮----
+export function resolveQmdBinaryUnavailableReason(
+  result: QmdBinaryUnavailable,
+): QmdBinaryUnavailableReason
+⋮----
+export function resolveCliSpawnInvocation(params: {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  packageName: string;
+}): CliSpawnInvocation
+⋮----
+export async function checkQmdBinaryAvailability(params: {
+  command: string;
+  env: NodeJS.ProcessEnv;
+  cwd?: string;
+  timeoutMs?: number;
+}): Promise<QmdBinaryAvailability>
+⋮----
+const finish = (result: QmdBinaryAvailability) =>
+⋮----
+function validateQmdProbeCwd(cwd: string): QmdBinaryAvailability | null
+⋮----
+export async function runCliCommand(params: {
+  commandSummary: string;
+  spawnInvocation: CliSpawnInvocation;
+  env: NodeJS.ProcessEnv;
+  cwd: string;
+  timeoutMs?: number;
+  maxOutputChars: number;
+  discardStdout?: boolean;
+}): Promise<
+⋮----
+function appendOutputWithCap(
+  current: string,
+  chunk: string,
+  maxChars: number,
+):
+⋮----
+function formatQmdAvailabilityError(err: unknown): string
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-qmd-query-parser-ts =====
+File: packages/memory-host-sdk/src/host/qmd-query-parser.ts
+================
+import { formatErrorMessage } from "./error-utils.js";
+import { normalizeLowercaseStringOrEmpty } from "./string-utils.js";
+⋮----
+export type QmdQueryResult = {
+  docid?: string;
+  score?: number;
+  collection?: string;
+  file?: string;
+  snippet?: string;
+  body?: string;
+  startLine?: number;
+  endLine?: number;
+};
+⋮----
+export function parseQmdQueryJson(stdout: string, stderr: string): QmdQueryResult[]
+⋮----
+function warnQmdQueryParseError(message: string): void
+⋮----
+function isQmdNoResultsOutput(raw: string): boolean
+⋮----
+function isQmdNoResultsLine(line: string): boolean
+⋮----
+function summarizeQmdStderr(raw: string): string
+⋮----
+function parseQmdQueryResultArray(raw: string): QmdQueryResult[] | null
+⋮----
+function parseQmdLineNumber(value: unknown): number | undefined
+⋮----
+function extractFirstJsonArray(raw: string): string | null
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-qmd-scope-ts =====
+File: packages/memory-host-sdk/src/host/qmd-scope.ts
+================
+import type { ResolvedQmdConfig } from "./backend-config.js";
+import {
+  normalizeLowercaseStringOrEmpty,
+  normalizeOptionalLowercaseString,
+} from "./string-utils.js";
+⋮----
+type ParsedQmdSessionScope = {
+  channel?: string;
+  chatType?: "channel" | "group" | "direct";
+  normalizedKey?: string;
+};
+⋮----
+export function isQmdScopeAllowed(scope: ResolvedQmdConfig["scope"], sessionKey?: string): boolean
+⋮----
+// Backward compat: older configs used `keyPrefix: "agent:<id>:..."` to match raw keys.
+⋮----
+export function deriveQmdScopeChannel(key?: string): string | undefined
+⋮----
+export function deriveQmdScopeChatType(key?: string): "channel" | "group" | "direct" | undefined
+⋮----
+function parseQmdSessionScope(key?: string): ParsedQmdSessionScope
+⋮----
+function normalizeQmdSessionKey(key?: string): string | undefined
+⋮----
+function parseAgentSessionKey(sessionKey: string | undefined | null):
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-query-expansion-ts =====
+File: packages/memory-host-sdk/src/host/query-expansion.ts
+================
+import { normalizeLowercaseStringOrEmpty } from "./string-utils.js";
+⋮----
+/**
+ * Query expansion for FTS-only search mode.
+ *
+ * When no embedding provider is available, we fall back to FTS (full-text search).
+ * FTS works best with specific keywords, but users often ask conversational queries
+ * like "that thing we discussed yesterday" or "之前讨论的那个方案".
+ *
+ * This module extracts meaningful keywords from such queries to improve FTS results.
+ */
+⋮----
+// Common stop words that don't add search value
+⋮----
+// Articles and determiners
+⋮----
+// Pronouns
+⋮----
+// Common verbs
+⋮----
+// Prepositions
+⋮----
+// Conjunctions
+⋮----
+// Time references (vague, not useful for FTS)
+⋮----
+// Vague references
+⋮----
+// Question words
+⋮----
+// Articles and determiners
+⋮----
+// Pronouns
+⋮----
+// Prepositions and conjunctions
+⋮----
+// Common verbs / auxiliaries
+⋮----
+// Time references (vague)
+⋮----
+// Question/request words
+⋮----
+// Articles and determiners
+⋮----
+// Pronouns
+⋮----
+// Prepositions and conjunctions
+⋮----
+// Common verbs / auxiliaries
+⋮----
+// Time references (vague)
+⋮----
+// Question/request words
+⋮----
+// Articles and connectors
+⋮----
+// Pronouns / references
+⋮----
+// Common prepositions
+⋮----
+// Common auxiliaries / vague verbs
+⋮----
+// Time references (vague)
+⋮----
+// Question/request words
+⋮----
+// Particles (조사)
+⋮----
+// Pronouns (대명사)
+⋮----
+// Common verbs / auxiliaries (일반 동사/보조 동사)
+⋮----
+// Nouns (의존 명사 / vague)
+⋮----
+// Adverbs
+⋮----
+// Conjunctions
+⋮----
+// Question words
+⋮----
+// Time (vague)
+⋮----
+// Request words
+⋮----
+// Common Korean trailing particles to strip from words for tokenization
+// Sorted by descending length so longest-match-first is guaranteed.
+⋮----
+function stripKoreanTrailingParticle(token: string): string | null
+⋮----
+function isUsefulKoreanStem(stem: string): boolean
+⋮----
+// Prevent bogus one-syllable stems from words like "논의" -> "논".
+⋮----
+// Keep stripped ASCII stems for mixed tokens like "API를" -> "api".
+⋮----
+// Pronouns and references
+⋮----
+// Common auxiliaries / vague verbs
+⋮----
+// Particles / connectors
+⋮----
+// Question words
+⋮----
+// Time (vague)
+⋮----
+// Pronouns
+⋮----
+// Auxiliary words
+⋮----
+// Verbs (common, vague)
+⋮----
+// Prepositions and conjunctions
+⋮----
+// Time (vague)
+⋮----
+// Vague references
+⋮----
+// Question/request words
+⋮----
+export function isQueryStopWordToken(token: string): boolean
+⋮----
+/**
+ * Check if a token looks like a meaningful keyword.
+ * Returns false for short tokens, numbers-only, etc.
+ */
+function isValidKeyword(token: string): boolean
+⋮----
+// Skip very short English words (likely stop words or fragments)
+⋮----
+// Skip pure numbers (not useful for semantic search)
+⋮----
+// Skip tokens that are all punctuation
+⋮----
+/**
+ * Simple tokenizer that handles English, Chinese, Korean, and Japanese text.
+ * For Chinese, we do character-based splitting since we don't have a proper segmenter.
+ * For English, we split on whitespace and punctuation.
+ */
+function tokenize(text: string, opts?:
+⋮----
+// Split into segments (English words, Chinese character sequences, etc.)
+⋮----
+// Japanese text often mixes scripts (kanji/kana/ASCII) without spaces.
+// Extract script-specific chunks so technical terms like "API" / "バグ" are retained.
+⋮----
+// Check if segment contains CJK characters (Chinese)
+⋮----
+// In trigram mode, push the whole contiguous CJK block (mirroring the
+// Japanese kanji path). SQLite's trigram FTS requires at least 3 characters
+// per query term — individual characters silently return no results.
+⋮----
+// Default mode: unigrams + bigrams for phrase matching
+⋮----
+// For Korean (Hangul syllables and jamo), keep the word as-is unless it is
+// effectively a stop word once trailing particles are removed.
+⋮----
+// Also emit particle-stripped stems when they are useful keywords.
+⋮----
+// For non-CJK, keep as single token
+⋮----
+/**
+ * Extract keywords from a conversational query for FTS search.
+ *
+ * Examples:
+ * - "that thing we discussed about the API" → ["discussed", "API"]
+ * - "之前讨论的那个方案" → ["讨论", "方案"]
+ * - "what was the solution for the bug" → ["solution", "bug"]
+ */
+export function extractKeywords(
+  query: string,
+  opts?: { ftsTokenizer?: "unicode61" | "trigram" },
+): string[]
+⋮----
+// Skip stop words
+⋮----
+// Skip invalid keywords
+⋮----
+// Skip duplicates
+⋮----
+/**
+ * Expand a query for FTS search.
+ * Returns both the original query and extracted keywords for OR-matching.
+ *
+ * @param query - User's original query
+ * @returns Object with original query and extracted keywords
+ */
+export function expandQueryForFts(
+  query: string,
+  opts?: { ftsTokenizer?: "unicode61" | "trigram" },
+):
+⋮----
+// Build expanded query: original terms OR extracted keywords
+// This ensures both exact matches and keyword matches are found
+⋮----
+/**
+ * Type for an optional LLM-based query expander.
+ * Can be provided to enhance keyword extraction with semantic understanding.
+ */
+export type LlmQueryExpander = (query: string) => Promise<string[]>;
+⋮----
+/**
+ * Expand query with optional LLM assistance.
+ * Falls back to local extraction if LLM is unavailable or fails.
+ */
+export async function expandQueryWithLlm(
+  query: string,
+  llmExpander?: LlmQueryExpander,
+  opts?: { ftsTokenizer?: "unicode61" | "trigram" },
+): Promise<string[]>
+⋮----
+// If LLM expander is provided, try it first
+⋮----
+// LLM failed, fall back to local extraction
+⋮----
+// Fall back to local keyword extraction
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-read-file-shared-ts =====
+File: packages/memory-host-sdk/src/host/read-file-shared.ts
+================
+import type { MemoryReadResult } from "./types.js";
+⋮----
+function buildContinuationNotice(params: {
+  nextFrom: number | undefined;
+  suggestReadFallback?: boolean;
+}): string
+⋮----
+function fitLinesToCharBudget(params:
+⋮----
+export function buildMemoryReadResultFromSlice(params: {
+  selectedLines: string[];
+  relPath: string;
+  startLine: number;
+  moreSourceLinesRemain?: boolean;
+  maxChars?: number;
+  suggestReadFallback?: boolean;
+}): MemoryReadResult
+⋮----
+export function buildMemoryReadResult(params: {
+  content: string;
+  relPath: string;
+  from?: number;
+  lines?: number;
+  defaultLines?: number;
+  maxChars?: number;
+  suggestReadFallback?: boolean;
+}): MemoryReadResult
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-read-file-ts =====
+File: packages/memory-host-sdk/src/host/read-file.ts
+================
+import fs from "node:fs/promises";
+import path from "node:path";
+import {
+  resolveAgentContextLimits,
+  resolveAgentWorkspaceDir,
+  resolveMemorySearchConfig,
+  type OpenClawConfig,
+} from "./config-utils.js";
+import {
+  assertNoSymlinkParents,
+  isFileMissingError,
+  isPathInside,
+  isPathInsideWithRealpath,
+  readRegularFile,
+  root,
+  statRegularFile,
+} from "./fs-utils.js";
+import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
+import {
+  buildMemoryReadResult,
+  DEFAULT_MEMORY_READ_LINES,
+  type MemoryReadResult,
+} from "./read-file-shared.js";
+⋮----
+async function isAllowedAdditionalDirectoryPath(
+  additionalPath: string,
+  absPath: string,
+): Promise<boolean>
+⋮----
+export async function readMemoryFile(params: {
+  workspaceDir: string;
+  extraPaths?: string[];
+  relPath: string;
+  from?: number;
+  lines?: number;
+  defaultLines?: number;
+  maxChars?: number;
+}): Promise<MemoryReadResult>
+⋮----
+export async function readAgentMemoryFile(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  relPath: string;
+  from?: number;
+  lines?: number;
+}): Promise<MemoryReadResult>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-remote-http-ts =====
+File: packages/memory-host-sdk/src/host/remote-http.ts
+================
+import {
+  fetchWithSsrFGuard,
+  shouldUseEnvHttpProxyForUrl,
+  ssrfPolicyFromHttpBaseUrlAllowedHostname,
+} from "./openclaw-runtime-network.js";
+import type { SsrFPolicy } from "./ssrf-policy.js";
+⋮----
+export async function withRemoteHttpResponse<T>(params: {
+  url: string;
+  init?: RequestInit;
+  signal?: AbortSignal;
+  ssrfPolicy?: SsrFPolicy;
+  fetchImpl?: typeof fetch;
+  fetchWithSsrFGuardImpl?: typeof fetchWithSsrFGuard;
+  shouldUseEnvHttpProxyForUrlImpl?: typeof shouldUseEnvHttpProxyForUrl;
+  auditContext?: string;
+onResponse: (response: Response)
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-retry-utils-ts =====
+File: packages/memory-host-sdk/src/host/retry-utils.ts
+================
+export type RetryConfig = {
+  attempts?: number;
+  minDelayMs?: number;
+  maxDelayMs?: number;
+  jitter?: number;
+};
+⋮----
+export type RetryInfo = {
+  attempt: number;
+  maxAttempts: number;
+  delayMs: number;
+  err: unknown;
+  label?: string;
+};
+⋮----
+export type RetryOptions = RetryConfig & {
+  label?: string;
+  shouldRetry?: (err: unknown, attempt: number) => boolean;
+  retryAfterMs?: (err: unknown) => number | undefined;
+  onRetry?: (info: RetryInfo) => void;
+};
+⋮----
+function sleep(ms: number): Promise<void>
+⋮----
+function asFiniteNumber(value: unknown): number | undefined
+⋮----
+function clampNumber(value: unknown, fallback: number, min?: number, max?: number): number
+⋮----
+export function resolveRetryConfig(
+  defaults: Required<RetryConfig> = DEFAULT_RETRY_CONFIG,
+  overrides?: RetryConfig,
+): Required<RetryConfig>
+⋮----
+function applyJitter(delayMs: number, jitter: number): number
+⋮----
+export async function retryAsync<T>(
+  fn: () => Promise<T>,
+  attemptsOrOptions: number | RetryOptions = 3,
+  initialDelayMs = 300,
+): Promise<T>
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-secret-input-utils-ts =====
+File: packages/memory-host-sdk/src/host/secret-input-utils.ts
+================
+export type SecretRefSource = "env" | "file" | "exec";
+⋮----
+export type SecretRef = {
+  source: SecretRefSource;
+  provider: string;
+  id: string;
+};
+⋮----
+function isRecord(value: unknown): value is Record<string, unknown>
+⋮----
+function normalizeSecretInputString(value: unknown): string | undefined
+⋮----
+function hasSecretRefSource(value: unknown): value is SecretRefSource
+⋮----
+function hasNonEmptyString(value: unknown): value is string
+⋮----
+function isSecretRef(value: unknown): value is SecretRef
+⋮----
+function isLegacySecretRefWithoutProvider(
+  value: unknown,
+): value is
+⋮----
+function parseEnvTemplateSecretRef(value: unknown): SecretRef | null
+⋮----
+function parseLegacySecretRefEnvMarker(value: unknown): SecretRef | null
+⋮----
+function coerceSecretRef(value: unknown): SecretRef | null
+⋮----
+export function hasConfiguredSecretInput(value: unknown): boolean
+⋮----
+function formatSecretRefLabel(ref: SecretRef): string
+⋮----
+function createUnresolvedSecretInputError(params:
+⋮----
+export function resolveSecretInputRef(value: unknown): SecretRef | null
+⋮----
+export function normalizeResolvedSecretInputString(params: {
+  value: unknown;
+  path: string;
+}): string | undefined
+⋮----
+export function normalizeEnvSecretInputString(value: unknown): string | undefined
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-secret-input-ts =====
+File: packages/memory-host-sdk/src/host/secret-input.ts
+================
+import {
+  hasConfiguredSecretInput,
+  normalizeEnvSecretInputString,
+  normalizeResolvedSecretInputString,
+  resolveSecretInputRef,
+} from "./secret-input-utils.js";
+⋮----
+export function hasConfiguredMemorySecretInput(value: unknown): boolean
+⋮----
+export function resolveMemorySecretInputString(params: {
+  value: unknown;
+  path: string;
+}): string | undefined
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-session-files-ts =====
+File: packages/memory-host-sdk/src/host/session-files.ts
+================
+import fsSync from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { readRegularFile, statRegularFile } from "./fs-utils.js";
+import { hashText } from "./hash.js";
+import { createSubsystemLogger, redactSensitiveText } from "./openclaw-runtime-io.js";
+import {
+  HEARTBEAT_PROMPT,
+  HEARTBEAT_TOKEN,
+  hasInterSessionUserProvenance,
+  isCompactionCheckpointTranscriptFileName,
+  isCronRunSessionKey,
+  isExecCompletionEvent,
+  isHeartbeatUserMessage,
+  isSessionArchiveArtifactName,
+  isSilentReplyPayloadText,
+  isUsageCountedSessionTranscriptFileName,
+  parseUsageCountedSessionIdFromFileName,
+  resolveSessionTranscriptsDirForAgent,
+  stripInboundMetadata,
+  stripInternalRuntimeContext,
+} from "./openclaw-runtime-session.js";
+⋮----
+// Keep the historical one-line-per-message export shape for normal turns, but
+// wrap pathological long messages so downstream indexers never ingest a single
+// toxic line. Wrapped continuation lines still map back to the same JSONL line.
+// This limit applies to content only; the role label adds up to 11 chars.
+⋮----
+export type SessionFileEntry = {
+  path: string;
+  absPath: string;
+  mtimeMs: number;
+  size: number;
+  hash: string;
+  content: string;
+  /** Maps each content line (0-indexed) to its 1-indexed JSONL source line. */
+  lineMap: number[];
+  /** Maps each content line (0-indexed) to epoch ms; 0 means unknown timestamp. */
+  messageTimestampsMs: number[];
+  /** True when this transcript belongs to an internal dreaming narrative run. */
+  generatedByDreamingNarrative?: boolean;
+  /** True when this transcript belongs to an isolated cron run session. */
+  generatedByCronRun?: boolean;
+};
+⋮----
+/** Maps each content line (0-indexed) to its 1-indexed JSONL source line. */
+⋮----
+/** Maps each content line (0-indexed) to epoch ms; 0 means unknown timestamp. */
+⋮----
+/** True when this transcript belongs to an internal dreaming narrative run. */
+⋮----
+/** True when this transcript belongs to an isolated cron run session. */
+⋮----
+export type BuildSessionEntryOptions = {
+  /** Optional preclassification from a caller-managed dreaming transcript lookup. */
+  generatedByDreamingNarrative?: boolean;
+  /** Optional preclassification from a caller-managed cron transcript lookup. */
+  generatedByCronRun?: boolean;
+  /** Override for tests or specialized callers that need a tighter parse yield cadence. */
+  parseYieldEveryLines?: number;
+};
+⋮----
+/** Optional preclassification from a caller-managed dreaming transcript lookup. */
+⋮----
+/** Optional preclassification from a caller-managed cron transcript lookup. */
+⋮----
+/** Override for tests or specialized callers that need a tighter parse yield cadence. */
+⋮----
+export type SessionTranscriptClassification = {
+  dreamingNarrativeTranscriptPaths: ReadonlySet<string>;
+  cronRunTranscriptPaths: ReadonlySet<string>;
+};
+⋮----
+type SessionTranscriptStoreEntry = {
+  sessionFile?: unknown;
+  sessionId?: unknown;
+};
+⋮----
+function shouldSkipTranscriptFileForDreaming(absPath: string): boolean
+⋮----
+// Compaction checkpoints are always skipped: they are derived snapshots of an
+// active session and would double-index the same content.
+⋮----
+// Legacy backups and `.jsonl.bak.<iso>` rotations are opaque pre-archive
+// copies, not a user-facing session artifact; skip them too.
+⋮----
+// Usage-counted archives (`.jsonl.reset.<iso>` / `.jsonl.deleted.<iso>`) are
+// the rotated-but-retained copies of real sessions and must stay indexed so
+// `memory_search` can surface hits on post-reset / post-delete history.
+⋮----
+function isUsageCountedSessionArchiveTranscriptPath(absPath: string): boolean
+⋮----
+function isDreamingNarrativeBootstrapRecord(record: unknown): boolean
+⋮----
+function hasDreamingNarrativeRunId(value: unknown): boolean
+⋮----
+function isDreamingNarrativeGeneratedRecord(record: unknown): boolean
+⋮----
+function isDreamingNarrativeSessionStoreKey(sessionKey: string): boolean
+⋮----
+function hasCronRunSessionKey(value: unknown): boolean
+⋮----
+function isCronRunGeneratedRecord(record: unknown): boolean
+⋮----
+function normalizeComparablePath(pathname: string): string
+⋮----
+export function normalizeSessionTranscriptPathForComparison(pathname: string): string
+⋮----
+function resolveSessionStoreTranscriptPath(
+  sessionsDir: string,
+  entry: { sessionFile?: unknown; sessionId?: unknown } | undefined,
+): string | null
+⋮----
+export function loadDreamingNarrativeTranscriptPathSetForSessionsDir(
+  sessionsDir: string,
+): ReadonlySet<string>
+⋮----
+export function loadSessionTranscriptClassificationForSessionsDir(
+  sessionsDir: string,
+): SessionTranscriptClassification
+⋮----
+function readSessionTranscriptClassificationStore(
+  storePath: string,
+): Record<string, SessionTranscriptStoreEntry>
+⋮----
+export function loadDreamingNarrativeTranscriptPathSetForAgent(
+  agentId: string,
+): ReadonlySet<string>
+⋮----
+export function loadSessionTranscriptClassificationForAgent(
+  agentId: string,
+): SessionTranscriptClassification
+⋮----
+function classifySessionTranscriptFromSessionStore(absPath: string):
+⋮----
+const hasClassifiedPath = (paths: ReadonlySet<string>)
+⋮----
+export async function listSessionFilesForAgent(agentId: string): Promise<string[]>
+⋮----
+function extractAgentIdFromSessionPath(absPath: string): string | null
+⋮----
+export function sessionPathForFile(absPath: string): string
+⋮----
+async function logSessionFileReadFailure(absPath: string, err: unknown): Promise<void>
+⋮----
+function normalizeSessionText(value: string): string
+⋮----
+function collectRawSessionText(content: unknown): string | null
+⋮----
+function isHighSurrogate(code: number): boolean
+⋮----
+function isLowSurrogate(code: number): boolean
+⋮----
+function splitLongSessionLine(
+  text: string,
+  maxChars: number = SESSION_EXPORT_CONTENT_WRAP_CHARS,
+): string[]
+⋮----
+function renderSessionExportLines(label: string, text: string): string[]
+⋮----
+/**
+ * Strip OpenClaw-injected inbound metadata envelopes from a raw text block.
+ *
+ * User-role messages arriving from external channels (Telegram, Discord,
+ * Slack, …) are stored with a multi-line prefix containing Conversation info,
+ * Sender info, and other AI-facing metadata blocks. These envelopes must be
+ * removed BEFORE normalization, because `stripInboundMetadata` relies on
+ * newline structure and fenced `json` code fences to locate sentinels; once
+ * `normalizeSessionText` collapses newlines into spaces, stripping is
+ * impossible.
+ *
+ * See: https://github.com/openclaw/openclaw/issues/63921
+ */
+function stripInboundMetadataForUserRole(text: string, role: "user" | "assistant"): string
+⋮----
+function isGeneratedSystemWrapperMessage(text: string, role: "user" | "assistant"): boolean
+⋮----
+function isGeneratedCronPromptMessage(text: string, role: "user" | "assistant"): boolean
+⋮----
+function isGeneratedHeartbeatPromptMessage(text: string, role: "user" | "assistant"): boolean
+⋮----
+function sanitizeSessionText(text: string, role: "user" | "assistant"): string | null
+⋮----
+// Assistant-side machinery acks: HEARTBEAT_OK is the canonical "all clear,
+// nothing to do" reply to a heartbeat tick. Drop on the assistant side
+// directly so we do not have to rely on cross-message coupling with the
+// preceding user message (which a real user could spoof).
+⋮----
+export function extractSessionText(
+  content: unknown,
+  role: "user" | "assistant" = "assistant",
+): string | null
+⋮----
+function parseSessionTimestampMs(
+  record: { timestamp?: unknown },
+  message: { timestamp?: unknown },
+): number
+⋮----
+function resolveSessionEntryParseYieldLines(opts: BuildSessionEntryOptions): number
+⋮----
+async function yieldSessionEntryParseIfNeeded(
+  lineIndex: number,
+  everyLines: number,
+): Promise<void>
+⋮----
+export async function buildSessionEntry(
+  absPath: string,
+  opts: BuildSessionEntryOptions = {},
+): Promise<SessionFileEntry | null>
+⋮----
+// Assistant-side machinery (silent replies, system wrappers) is already
+// dropped by sanitizeSessionText. We deliberately do NOT use the prior
+// user message's pattern-match to drop the next assistant message:
+// user-typed text can match those same patterns (`[cron:...]`,
+// `System (untrusted): ...`) and a cross-message drop would let users
+// exfiltrate real assistant replies from the dreaming corpus by
+// prefixing their own prompt. See PR #70737 review (aisle-research-bot).
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-sqlite-vec-platform-variant-ts =====
+File: packages/memory-host-sdk/src/host/sqlite-vec-platform-variant.ts
+================
+import { createRequire } from "node:module";
+⋮----
+type PlatformVariant = { readonly pkg: string; readonly file: string };
+⋮----
+export function resolveSqliteVecPlatformVariant():
+  | { pkg: string; extensionPath: string }
+  | undefined {
+  const entry = PLATFORM_VARIANTS[`${process.platform}-${process.arch}`];
+if (!entry)
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-sqlite-vec-ts =====
+File: packages/memory-host-sdk/src/host/sqlite-vec.ts
+================
+import type { DatabaseSync } from "node:sqlite";
+import { formatErrorMessage } from "./error-utils.js";
+import { resolveSqliteVecPlatformVariant } from "./sqlite-vec-platform-variant.js";
+import { normalizeOptionalString } from "./string-utils.js";
+⋮----
+type SqliteVecModule = {
+  getLoadablePath: () => string;
+  load: (db: DatabaseSync) => void;
+};
+⋮----
+async function loadSqliteVecModule(): Promise<SqliteVecModule>
+⋮----
+function isMissingSqliteVecPackageError(err: unknown): boolean
+⋮----
+export async function loadSqliteVecExtension(params: {
+  db: DatabaseSync;
+  extensionPath?: string;
+}): Promise<
+⋮----
+// Optional-dep installs sometimes land only the platform-specific variant
+// (e.g. sqlite-vec-linux-x64) without the meta sqlite-vec package. Load
+// the loadable extension straight from the variant when we can find it.
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-sqlite-wal-ts =====
+File: packages/memory-host-sdk/src/host/sqlite-wal.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-sqlite-ts =====
+File: packages/memory-host-sdk/src/host/sqlite.ts
+================
+import { createRequire } from "node:module";
+import type { DatabaseSync } from "node:sqlite";
+import { formatErrorMessage } from "./error-utils.js";
+import {
+  configureSqliteWalMaintenance,
+  type SqliteWalMaintenance,
+  type SqliteWalMaintenanceOptions,
+} from "./sqlite-wal.js";
+import { installProcessWarningFilter } from "./warning-filter.js";
+⋮----
+export function requireNodeSqlite(): typeof import("node:sqlite")
+⋮----
+// Node distributions can ship without the experimental builtin SQLite module.
+// Surface an actionable error instead of the generic "unknown builtin module".
+⋮----
+export function configureMemorySqliteWalMaintenance(
+  db: DatabaseSync,
+  options?: SqliteWalMaintenanceOptions,
+): SqliteWalMaintenance
+⋮----
+export function closeMemorySqliteWalMaintenance(db: DatabaseSync): boolean
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-ssrf-policy-ts =====
+File: packages/memory-host-sdk/src/host/ssrf-policy.ts
+================
+export type SsrFPolicy = {
+  allowPrivateNetwork?: boolean;
+  dangerouslyAllowPrivateNetwork?: boolean;
+  allowRfc2544BenchmarkRange?: boolean;
+  allowIpv6UniqueLocalRange?: boolean;
+  allowedHostnames?: string[];
+  hostnameAllowlist?: string[];
+};
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-status-format-ts =====
+File: packages/memory-host-sdk/src/host/status-format.ts
+================
+export type Tone = "ok" | "warn" | "muted";
+⋮----
+export function resolveMemoryVectorState(vector:
+⋮----
+export function resolveMemoryFtsState(fts:
+⋮----
+export function resolveMemoryCacheSummary(cache:
+⋮----
+export function resolveMemoryCacheState(cache:
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-string-utils-ts =====
+File: packages/memory-host-sdk/src/host/string-utils.ts
+================
+export function normalizeNullableString(value: unknown): string | null
+⋮----
+export function normalizeOptionalString(value: unknown): string | undefined
+⋮----
+export function normalizeOptionalLowercaseString(value: unknown): string | undefined
+⋮----
+export function normalizeLowercaseStringOrEmpty(value: unknown): string
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-types-ts =====
+File: packages/memory-host-sdk/src/host/types.ts
+================
+export type MemorySource = "memory" | "sessions";
+⋮----
+export type MemorySearchResult = {
+  path: string;
+  startLine: number;
+  endLine: number;
+  score: number;
+  vectorScore?: number;
+  textScore?: number;
+  snippet: string;
+  source: MemorySource;
+  citation?: string;
+};
+⋮----
+export type MemoryEmbeddingProbeResult = {
+  ok: boolean;
+  error?: string;
+  checked?: boolean;
+  cached?: boolean;
+  checkedAtMs?: number;
+  cacheExpiresAtMs?: number;
+};
+⋮----
+export type MemorySyncProgressUpdate = {
+  completed: number;
+  total: number;
+  label?: string;
+};
+⋮----
+export type MemorySearchRuntimeDebug = {
+  backend: "builtin" | "qmd";
+  configuredMode?: string;
+  effectiveMode?: string;
+  fallback?: string;
+};
+⋮----
+export type MemoryReadResult = {
+  text: string;
+  path: string;
+  truncated?: boolean;
+  from?: number;
+  lines?: number;
+  nextFrom?: number;
+};
+⋮----
+export type MemoryProviderStatus = {
+  backend: "builtin" | "qmd";
+  provider: string;
+  model?: string;
+  requestedProvider?: string;
+  files?: number;
+  chunks?: number;
+  dirty?: boolean;
+  workspaceDir?: string;
+  dbPath?: string;
+  extraPaths?: string[];
+  sources?: MemorySource[];
+  sourceCounts?: Array<{ source: MemorySource; files: number; chunks: number }>;
+  cache?: { enabled: boolean; entries?: number; maxEntries?: number };
+  fts?: { enabled: boolean; available: boolean; error?: string };
+  fallback?: { from: string; reason?: string };
+  vector?: {
+    enabled: boolean;
+    storeAvailable?: boolean;
+    semanticAvailable?: boolean;
+    available?: boolean;
+    extensionPath?: string;
+    loadError?: string;
+    dims?: number;
+  };
+  batch?: {
+    enabled: boolean;
+    failures: number;
+    limit: number;
+    wait: boolean;
+    concurrency: number;
+    pollIntervalMs: number;
+    timeoutMs: number;
+    lastError?: string;
+    lastProvider?: string;
+  };
+  custom?: Record<string, unknown>;
+};
+⋮----
+export interface MemorySearchManager {
+  search(
+    query: string,
+    opts?: {
+      maxResults?: number;
+      minScore?: number;
+      sessionKey?: string;
+      qmdSearchModeOverride?: "query" | "search" | "vsearch";
+      onDebug?: (debug: MemorySearchRuntimeDebug) => void;
+      sources?: MemorySource[];
+    },
+  ): Promise<MemorySearchResult[]>;
+  readFile(params: { relPath: string; from?: number; lines?: number }): Promise<MemoryReadResult>;
+  status(): MemoryProviderStatus;
+  sync?(params?: {
+    reason?: string;
+    force?: boolean;
+    sessionFiles?: string[];
+    progress?: (update: MemorySyncProgressUpdate) => void;
+  }): Promise<void>;
+  getCachedEmbeddingAvailability?(): MemoryEmbeddingProbeResult | null;
+  probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult>;
+  probeVectorStoreAvailability?(): Promise<boolean>;
+  probeVectorAvailability(): Promise<boolean>;
+  close?(): Promise<void>;
+}
+⋮----
+search(
+    query: string,
+    opts?: {
+      maxResults?: number;
+      minScore?: number;
+      sessionKey?: string;
+      qmdSearchModeOverride?: "query" | "search" | "vsearch";
+onDebug?: (debug: MemorySearchRuntimeDebug)
+readFile(params:
+status(): MemoryProviderStatus;
+sync?(params?: {
+    reason?: string;
+    force?: boolean;
+    sessionFiles?: string[];
+progress?: (update: MemorySyncProgressUpdate)
+getCachedEmbeddingAvailability?(): MemoryEmbeddingProbeResult | null;
+probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult>;
+probeVectorStoreAvailability?(): Promise<boolean>;
+probeVectorAvailability(): Promise<boolean>;
+close?(): Promise<void>;
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-warning-filter-ts =====
+File: packages/memory-host-sdk/src/host/warning-filter.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-host-windows-spawn-ts =====
+File: packages/memory-host-sdk/src/host/windows-spawn.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-engine-embeddings-ts =====
+File: packages/memory-host-sdk/src/engine-embeddings.ts
+================
+// Real workspace contract for memory embedding providers and batch helpers.
+
+================
+===== SECTION:packages-memory-host-sdk-src-engine-foundation-ts =====
+File: packages/memory-host-sdk/src/engine-foundation.ts
+================
+// Real workspace contract for memory engine foundation concerns.
+
+================
+===== SECTION:packages-memory-host-sdk-src-engine-qmd-ts =====
+File: packages/memory-host-sdk/src/engine-qmd.ts
+================
+// Real workspace contract for QMD/session/query helpers used by the memory engine.
+
+================
+===== SECTION:packages-memory-host-sdk-src-engine-storage-ts =====
+File: packages/memory-host-sdk/src/engine-storage.ts
+================
+// Real workspace contract for memory engine storage/index helpers.
+
+================
+===== SECTION:packages-memory-host-sdk-src-engine-ts =====
+File: packages/memory-host-sdk/src/engine.ts
+================
+// Aggregate workspace contract for the memory engine surface.
+// Keep focused subpaths preferred for new code.
+
+================
+===== SECTION:packages-memory-host-sdk-src-multimodal-ts =====
+File: packages/memory-host-sdk/src/multimodal.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-query-ts =====
+File: packages/memory-host-sdk/src/query.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-runtime-cli-ts =====
+File: packages/memory-host-sdk/src/runtime-cli.ts
+================
+// Focused runtime contract for memory CLI/UI helpers.
+
+================
+===== SECTION:packages-memory-host-sdk-src-runtime-core-ts =====
+File: packages/memory-host-sdk/src/runtime-core.ts
+================
+// Focused runtime contract for memory plugin config/state/helpers.
+⋮----
+/** @deprecated Use getRuntimeConfig(), or pass the already loaded config through the call path. */
+
+================
+===== SECTION:packages-memory-host-sdk-src-runtime-files-ts =====
+File: packages/memory-host-sdk/src/runtime-files.ts
+================
+// Focused runtime contract for memory file/backend access.
+
+================
+===== SECTION:packages-memory-host-sdk-src-runtime-ts =====
+File: packages/memory-host-sdk/src/runtime.ts
+================
+// Aggregate workspace contract for memory runtime/helper seams.
+// Keep focused subpaths preferred for new code.
+
+================
+===== SECTION:packages-memory-host-sdk-src-secret-ts =====
+File: packages/memory-host-sdk/src/secret.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-src-status-ts =====
+File: packages/memory-host-sdk/src/status.ts
+================
+
+
+================
+===== SECTION:packages-memory-host-sdk-package-json =====
+File: packages/memory-host-sdk/package.json
+================
+{
+  "name": "@openclaw/memory-host-sdk",
+  "version": "0.0.0-private",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./runtime": "./src/runtime.ts",
+    "./runtime-core": "./src/runtime-core.ts",
+    "./runtime-cli": "./src/runtime-cli.ts",
+    "./runtime-files": "./src/runtime-files.ts",
+    "./engine": "./src/engine.ts",
+    "./engine-foundation": "./src/engine-foundation.ts",
+    "./engine-storage": "./src/engine-storage.ts",
+    "./engine-embeddings": "./src/engine-embeddings.ts",
+    "./engine-qmd": "./src/engine-qmd.ts",
+    "./multimodal": "./src/multimodal.ts",
+    "./query": "./src/query.ts",
+    "./secret": "./src/secret.ts",
+    "./status": "./src/status.ts"
+  }
+}
+
+================
+===== SECTION:src-memory-root-memory-files-ts =====
+File: src/memory/root-memory-files.ts
+================
+import fs from "node:fs/promises";
+import path from "node:path";
+⋮----
+export function resolveCanonicalRootMemoryPath(workspaceDir: string): string
+⋮----
+export function resolveLegacyRootMemoryPath(workspaceDir: string): string
+⋮----
+export function resolveRootMemoryRepairDir(workspaceDir: string): string
+⋮----
+function normalizeWorkspaceRelativePath(value: string): string
+⋮----
+export async function exactWorkspaceEntryExists(dir: string, name: string): Promise<boolean>
+⋮----
+export async function resolveCanonicalRootMemoryFile(workspaceDir: string): Promise<string | null>
+⋮----
+export function shouldSkipRootMemoryAuxiliaryPath(params: {
+  workspaceDir: string;
+  absPath: string;
+}): boolean
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================

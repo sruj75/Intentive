@@ -1,0 +1,5052 @@
+# Reference pack: openclaw / hooks
+# Generated: 2026-05-26T06:06:21.548Z
+# Source: https://github.com/openclaw/openclaw
+# Pack path: reference/openclaw/hooks-llms.txt
+# Repomix: compressed plain text, tests excluded
+# Sections: rg -n "SECTION:" reference/openclaw/hooks-llms.txt
+#
+# Build context: OpenClaw-like shell on LangChain DeepAgents (TypeScript).
+# DeepAgents owns: planning, tool loop, vfs, subagents, long-term memory.
+# This file covers: Event hooks and plugin host hooks.
+#
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where content has been formatted for parsing in plain style, content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/hooks/**, src/plugins/hooks.ts, src/plugins/host-hooks.ts, src/plugins/hook-types.ts
+- Files matching these patterns are excluded: **/*.test.ts, **/*.test.tsx, **/*.test.py, **/__tests__/**, **/test/**, **/tests/**, **/*.snap, **/ui/**, **/website/i18n/**, **/patches/**, **/changelog/**, **/.agents/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been formatted for parsing in plain style
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Files
+================================================================
+
+================
+===== SECTION:src-hooks-bundled-boot-md-handler-ts =====
+File: src/hooks/bundled/boot-md/handler.ts
+================
+import { listAgentIds, resolveAgentWorkspaceDir } from "../../../agents/agent-scope.js";
+import { createDefaultDeps } from "../../../cli/deps.js";
+import { runBootOnce } from "../../../gateway/boot.js";
+import { runStartupTasks, type StartupTask } from "../../../gateway/startup-tasks.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import type { HookHandler } from "../../hooks.js";
+import { isGatewayStartupEvent } from "../../internal-hooks.js";
+⋮----
+const runBootChecklist: HookHandler = async (event) =>
+
+================
+===== SECTION:src-hooks-bundled-boot-md-hook-md =====
+File: src/hooks/bundled/boot-md/HOOK.md
+================
+---
+name: boot-md
+description: "Run BOOT.md on gateway startup"
+homepage: https://docs.openclaw.ai/automation/hooks#boot-md
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🚀",
+        "events": ["gateway:startup"],
+        "requires": { "config": ["workspace.dir"] },
+        "install": [{ "id": "bundled", "kind": "bundled", "label": "Bundled with OpenClaw" }],
+      },
+  }
+---
+
+# Boot Checklist Hook
+
+Runs `BOOT.md` at gateway startup for each configured agent scope, if the file exists in that
+agent's resolved workspace.
+
+================
+===== SECTION:src-hooks-bundled-bootstrap-extra-files-handler-ts =====
+File: src/hooks/bundled/bootstrap-extra-files/handler.ts
+================
+import {
+  filterBootstrapFilesForSession,
+  loadExtraBootstrapFilesWithDiagnostics,
+} from "../../../agents/workspace.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { normalizeTrimmedStringList } from "../../../shared/string-normalization.js";
+import { resolveHookConfig } from "../../config.js";
+import { isAgentBootstrapEvent, type HookHandler } from "../../hooks.js";
+⋮----
+function resolveExtraBootstrapPatterns(hookConfig: Record<string, unknown>): string[]
+⋮----
+const bootstrapExtraFilesHook: HookHandler = async (event) =>
+
+================
+===== SECTION:src-hooks-bundled-bootstrap-extra-files-hook-md =====
+File: src/hooks/bundled/bootstrap-extra-files/HOOK.md
+================
+---
+name: bootstrap-extra-files
+description: "Inject additional workspace bootstrap files via glob/path patterns"
+homepage: https://docs.openclaw.ai/automation/hooks#bootstrap-extra-files
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "📎",
+        "events": ["agent:bootstrap"],
+        "requires": { "config": ["workspace.dir"] },
+        "install": [{ "id": "bundled", "kind": "bundled", "label": "Bundled with OpenClaw" }],
+      },
+  }
+---
+
+# Bootstrap Extra Files Hook
+
+Loads additional bootstrap files into `Project Context` during `agent:bootstrap`.
+
+## Why
+
+Use this when your workspace has multiple context roots (for example monorepos) and
+you want to include extra `AGENTS.md`/`TOOLS.md`-class files without changing the
+workspace root.
+
+## Configuration
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "bootstrap-extra-files": {
+          "enabled": true,
+          "paths": ["packages/*/AGENTS.md", "packages/*/TOOLS.md"]
+        }
+      }
+    }
+  }
+}
+```
+
+## Options
+
+- `paths` (string[]): preferred list of glob/path patterns.
+- `patterns` (string[]): alias of `paths`.
+- `files` (string[]): alias of `paths`.
+
+All paths are resolved from the workspace and must stay inside it (including realpath checks).
+Only recognized bootstrap basenames are loaded (`AGENTS.md`, `SOUL.md`, `TOOLS.md`,
+`IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `BOOTSTRAP.md`, `MEMORY.md`).
+
+================
+===== SECTION:src-hooks-bundled-command-logger-handler-ts =====
+File: src/hooks/bundled/command-logger/handler.ts
+================
+/**
+ * Example hook handler: Log all commands to a file
+ *
+ * This handler demonstrates how to create a hook that logs all command events
+ * to a centralized log file for audit/debugging purposes.
+ *
+ * To enable this handler, add it to your config:
+ *
+ * ```json
+ * {
+ *   "hooks": {
+ *     "internal": {
+ *       "enabled": true,
+ *       "handlers": [
+ *         {
+ *           "event": "command",
+ *           "module": "./hooks/handlers/command-logger.ts"
+ *         }
+ *       ]
+ *     }
+ *   }
+ * }
+ * ```
+ */
+⋮----
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { resolveStateDir } from "../../../config/paths.js";
+import { formatErrorMessage } from "../../../infra/errors.js";
+import { appendRegularFile } from "../../../infra/fs-safe.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import type { HookHandler } from "../../hooks.js";
+⋮----
+/**
+ * Log all command events to a file
+ */
+const logCommand: HookHandler = async (event) =>
+⋮----
+// Only trigger on command events
+⋮----
+// Create log directory
+⋮----
+// Append to command log file
+
+================
+===== SECTION:src-hooks-bundled-command-logger-hook-md =====
+File: src/hooks/bundled/command-logger/HOOK.md
+================
+---
+name: command-logger
+description: "Log all command events to a centralized audit file"
+homepage: https://docs.openclaw.ai/automation/hooks#command-logger
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "📝",
+        "events": ["command"],
+        "install": [{ "id": "bundled", "kind": "bundled", "label": "Bundled with OpenClaw" }],
+      },
+  }
+---
+
+# Command Logger Hook
+
+Logs all command events (`/new`, `/reset`, `/stop`, etc.) to a centralized audit log file for debugging and monitoring purposes.
+
+## What It Does
+
+Every time you issue a command to the agent:
+
+1. **Captures event details** - Command action, timestamp, session key, sender ID, source
+2. **Appends to log file** - Writes a JSON line to `~/.openclaw/logs/commands.log`
+3. **Silent operation** - Runs in the background without user notifications
+
+## Output Format
+
+Log entries are written in JSONL (JSON Lines) format:
+
+```json
+{"timestamp":"2026-01-16T14:30:00.000Z","action":"new","sessionKey":"agent:main:main","senderId":"+1234567890","source":"telegram"}
+{"timestamp":"2026-01-16T15:45:22.000Z","action":"stop","sessionKey":"agent:main:main","senderId":"user@example.com","source":"whatsapp"}
+```
+
+## Use Cases
+
+- **Debugging**: Track when commands were issued and from which source
+- **Auditing**: Monitor command usage across different channels
+- **Analytics**: Analyze command patterns and frequency
+- **Troubleshooting**: Investigate issues by reviewing command history
+
+## Log File Location
+
+`~/.openclaw/logs/commands.log`
+
+## Requirements
+
+No requirements - this hook works out of the box on all platforms.
+
+## Configuration
+
+No configuration needed. The hook automatically:
+
+- Creates the log directory if it doesn't exist
+- Appends to the log file (doesn't overwrite)
+- Handles errors silently without disrupting command execution
+
+## Disabling
+
+To disable this hook:
+
+```bash
+openclaw hooks disable command-logger
+```
+
+Or via config:
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "entries": {
+        "command-logger": { "enabled": false }
+      }
+    }
+  }
+}
+```
+
+## Log Rotation
+
+The hook does not automatically rotate logs. To manage log size, you can:
+
+1. **Manual rotation**:
+
+   ```bash
+   mv ~/.openclaw/logs/commands.log ~/.openclaw/logs/commands.log.old
+   ```
+
+2. **Use logrotate** (Linux):
+   Create `/etc/logrotate.d/openclaw`:
+   ```
+   /home/username/.openclaw/logs/commands.log {
+       weekly
+       rotate 4
+       compress
+       missingok
+       notifempty
+   }
+   ```
+
+## Viewing Logs
+
+View recent commands:
+
+```bash
+tail -n 20 ~/.openclaw/logs/commands.log
+```
+
+Pretty-print with jq:
+
+```bash
+cat ~/.openclaw/logs/commands.log | jq .
+```
+
+Filter by action:
+
+```bash
+grep '"action":"new"' ~/.openclaw/logs/commands.log | jq .
+```
+
+================
+===== SECTION:src-hooks-bundled-compaction-notifier-handler-ts =====
+File: src/hooks/bundled/compaction-notifier/handler.ts
+================
+import type { HookHandler } from "../../hooks.js";
+⋮----
+function readOptionalNumber(context: Record<string, unknown>, key: string): number | undefined
+⋮----
+const handler: HookHandler = async (event) =>
+
+================
+===== SECTION:src-hooks-bundled-compaction-notifier-hook-md =====
+File: src/hooks/bundled/compaction-notifier/HOOK.md
+================
+---
+name: compaction-notifier
+description: "Send visible chat notices when session compaction starts and finishes."
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🧹",
+        "events": ["session:compact:before", "session:compact:after"],
+        "always": true,
+      },
+  }
+---
+
+# Compaction Notifier
+
+Sends short user-visible status messages when OpenClaw compacts a session transcript. Enable with:
+
+```bash
+openclaw hooks enable compaction-notifier
+```
+
+This is useful on chat surfaces where a long turn can otherwise look stalled while context is being summarized.
+
+================
+===== SECTION:src-hooks-bundled-session-memory-handler-ts =====
+File: src/hooks/bundled/session-memory/handler.ts
+================
+/**
+ * Session memory hook handler
+ *
+ * Saves session context to memory when /new or /reset command is triggered
+ * Creates a new dated memory file with a timestamp slug by default
+ */
+⋮----
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import {
+  resolveAgentIdByWorkspacePath,
+  resolveAgentWorkspaceDir,
+} from "../../../agents/agent-scope.js";
+import { resolveStateDir } from "../../../config/paths.js";
+import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import { root } from "../../../infra/fs-safe.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import {
+  parseAgentSessionKey,
+  resolveAgentIdFromSessionKey,
+  toAgentStoreSessionKey,
+} from "../../../routing/session-key.js";
+import { resolveHookConfig } from "../../config.js";
+import type { HookHandler } from "../../hooks.js";
+import { generateSlugViaLLM } from "../../llm-slug-generator.js";
+import { findPreviousSessionFile, getRecentSessionContentWithResetFallback } from "./transcript.js";
+⋮----
+function pickDateTimePart(
+  parts: Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPartTypes,
+): string | undefined
+⋮----
+function resolveLocalTimeZone(): string | undefined
+⋮----
+function formatLocalSessionTimestamp(date: Date):
+⋮----
+async function resolveAvailableMemoryFilename(params: {
+  memoryDir: string;
+  dateStr: string;
+  slug: string;
+}): Promise<string>
+⋮----
+function resolveDisplaySessionKey(params: {
+  cfg?: OpenClawConfig;
+  workspaceDir?: string;
+  sessionKey: string;
+}): string
+⋮----
+/**
+ * Save session context to memory when /new or /reset command is triggered
+ */
+⋮----
+export async function flushSessionMemoryWritesForTest(): Promise<void>
+⋮----
+async function saveSessionMemoryNow(event: Parameters<HookHandler>[0]): Promise<void>
+⋮----
+// Use the user's local timezone for memory artifact names and headings.
+⋮----
+// Generate descriptive slug from session when explicitly enabled
+// Prefer previousSessionEntry (old session before /new) over current (which may be empty)
+⋮----
+// If sessionFile is empty or looks like a new/reset file, try to find the previous session file.
+⋮----
+// Read message count from hook config (default: 15)
+⋮----
+// Get recent conversation content, with fallback to rotated reset transcript.
+⋮----
+// Avoid calling the model provider in unit tests; keep hooks fast and deterministic.
+⋮----
+// Use LLM to generate a descriptive slug
+⋮----
+// If no slug, use timestamp
+⋮----
+// Create filename with date and slug
+⋮----
+// Extract context details
+⋮----
+// Build Markdown entry
+⋮----
+// Include conversation content if available
+⋮----
+// Write under memory root with alias-safe file validation.
+⋮----
+// Log completion (but don't send user-visible confirmation - it's internal housekeeping)
+⋮----
+const saveSessionToMemory: HookHandler = (event) =>
+⋮----
+// Only trigger on reset/new commands. This is silent housekeeping, so keep it
+// off the command reply path.
+
+================
+===== SECTION:src-hooks-bundled-session-memory-hook-md =====
+File: src/hooks/bundled/session-memory/HOOK.md
+================
+---
+name: session-memory
+description: "Save session context to memory when /new or /reset command is issued"
+homepage: https://docs.openclaw.ai/automation/hooks#session-memory
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "💾",
+        "events": ["command:new", "command:reset"],
+        "requires": { "config": ["workspace.dir"] },
+        "install": [{ "id": "bundled", "kind": "bundled", "label": "Bundled with OpenClaw" }],
+      },
+  }
+---
+
+# Session Memory Hook
+
+Automatically saves session context to your workspace memory when you issue `/new` or `/reset`.
+
+## What It Does
+
+When you run `/new` or `/reset` to start a fresh session:
+
+1. **Finds the previous session** - Uses the pre-reset session entry to locate the correct transcript
+2. **Extracts conversation** - Reads the last N user/assistant messages from the session (default: 15, configurable)
+3. **Chooses filename slug** - Uses a local timestamp by default, or an LLM-generated description when `llmSlug` is enabled
+4. **Saves to memory** - Creates a new file at `<workspace>/memory/YYYY-MM-DD-HHMM.md` by default without delaying the `/new` or `/reset` reply
+
+## Output Format
+
+Memory files are created with the following format:
+
+```markdown
+# Session: 2026-01-16 14:30:00 EST
+
+- **Session Key**: agent:main:main
+- **Session ID**: abc123def456
+- **Source**: telegram
+```
+
+## Filename Examples
+
+Timestamp slugs are the default so `/new` and `/reset` stay fast on message channels:
+
+- `2026-01-16-1430.md` - Default local timestamp slug
+
+With `llmSlug: true`, the configured model can generate descriptive slugs based on your conversation:
+
+- `2026-01-16-vendor-pitch.md` - Discussion about vendor evaluation
+- `2026-01-16-api-design.md` - API architecture planning
+- `2026-01-16-bug-fix.md` - Debugging session
+
+## Requirements
+
+- **Config**: `workspace.dir` must be set (automatically configured during setup)
+
+When `llmSlug` is enabled, the hook uses your configured LLM provider to generate slugs, so it works with any provider (Anthropic, OpenAI, etc.).
+
+## Configuration
+
+The hook supports optional configuration:
+
+| Option     | Type    | Default | Description                                                                                 |
+| ---------- | ------- | ------- | ------------------------------------------------------------------------------------------- |
+| `messages` | number  | 15      | Number of user/assistant messages to include in the memory file                             |
+| `llmSlug`  | boolean | false   | Use your configured model to generate descriptive filename slugs instead of timestamp slugs |
+
+Example configuration:
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "entries": {
+        "session-memory": {
+          "enabled": true,
+          "messages": 25,
+          "llmSlug": true
+        }
+      }
+    }
+  }
+}
+```
+
+The hook automatically:
+
+- Uses your workspace directory (`~/.openclaw/workspace` by default)
+- Uses timestamp slugs by default so `/new` and `/reset` stay fast on message channels
+- Runs memory capture in the background so reset acknowledgements can return immediately
+- Uses your configured LLM for slug generation only when `llmSlug` is `true`
+- Falls back to timestamp slugs if LLM slug generation is unavailable
+
+## Disabling
+
+To disable this hook:
+
+```bash
+openclaw hooks disable session-memory
+```
+
+Or remove it from your config:
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "entries": {
+        "session-memory": { "enabled": false }
+      }
+    }
+  }
+}
+```
+
+================
+===== SECTION:src-hooks-bundled-session-memory-transcript-ts =====
+File: src/hooks/bundled/session-memory/transcript.ts
+================
+import fs from "node:fs/promises";
+import path from "node:path";
+import { hasInterSessionUserProvenance } from "../../../sessions/input-provenance.js";
+⋮----
+function extractTextMessageContent(content: unknown): string | undefined
+⋮----
+export async function getRecentSessionContent(
+  sessionFilePath: string,
+  messageCount: number = 15,
+): Promise<string | null>
+⋮----
+// Skip invalid JSON lines.
+⋮----
+export async function getRecentSessionContentWithResetFallback(
+  sessionFilePath: string,
+  messageCount: number = 15,
+): Promise<string | null>
+⋮----
+function stripResetSuffix(fileName: string): string
+⋮----
+export async function findPreviousSessionFile(params: {
+  sessionsDir: string;
+  currentSessionFile?: string;
+  sessionId?: string;
+}): Promise<string | undefined>
+⋮----
+// Ignore directory read errors.
+
+================
+===== SECTION:src-hooks-bundled-readme-md =====
+File: src/hooks/bundled/README.md
+================
+# Bundled Hooks
+
+This directory contains hooks that ship with OpenClaw. These hooks are automatically discovered and can be enabled/disabled via CLI or configuration.
+
+## Available Hooks
+
+### 💾 session-memory
+
+Automatically saves session context to memory when you issue `/new` or `/reset`.
+
+**Events**: `command:new`, `command:reset`
+**What it does**: Creates a dated memory file with LLM-generated slug based on conversation content.
+**Output**: `<workspace>/memory/YYYY-MM-DD-slug.md` (defaults to `~/.openclaw/workspace`)
+
+**Enable**:
+
+```bash
+openclaw hooks enable session-memory
+```
+
+### 📎 bootstrap-extra-files
+
+Injects extra bootstrap files (for example monorepo `AGENTS.md`/`TOOLS.md`) during prompt assembly.
+
+**Events**: `agent:bootstrap`
+**What it does**: Expands configured workspace glob/path patterns and appends matching bootstrap files to injected context.
+**Output**: No files written; context is modified in-memory only.
+
+**Enable**:
+
+```bash
+openclaw hooks enable bootstrap-extra-files
+```
+
+### 📝 command-logger
+
+Logs all command events to a centralized audit file.
+
+**Events**: `command` (all commands)
+**What it does**: Appends JSONL entries to command log file.
+**Output**: `~/.openclaw/logs/commands.log`
+
+**Enable**:
+
+```bash
+openclaw hooks enable command-logger
+```
+
+### 🚀 boot-md
+
+Runs `BOOT.md` whenever the gateway starts (after channels start).
+
+**Events**: `gateway:startup`
+**What it does**: Executes BOOT.md instructions via the agent runner.
+**Output**: Whatever the instructions request (for example, outbound messages).
+
+**Enable**:
+
+```bash
+openclaw hooks enable boot-md
+```
+
+## Hook Structure
+
+Each hook is a directory containing:
+
+- **HOOK.md**: Metadata and documentation in YAML frontmatter + Markdown
+- **handler.ts**: The hook handler function (default export)
+
+Example structure:
+
+```
+session-memory/
+├── HOOK.md          # Metadata + docs
+└── handler.ts       # Handler implementation
+```
+
+## HOOK.md Format
+
+```yaml
+---
+name: my-hook
+description: "Short description"
+homepage: https://docs.openclaw.ai/automation/hooks#my-hook
+metadata:
+  { "openclaw": { "emoji": "🔗", "events": ["command:new"], "requires": { "bins": ["node"] } } }
+---
+# Hook Title
+
+Documentation goes here...
+```
+
+### Metadata Fields
+
+- **emoji**: Display emoji for CLI
+- **events**: Array of events to listen for (e.g., `["command:new", "session:start"]`)
+- **requires**: Optional requirements
+  - **bins**: Required binaries on PATH
+  - **anyBins**: At least one of these binaries must be present
+  - **env**: Required environment variables
+  - **config**: Required config paths (e.g., `["workspace.dir"]`)
+  - **os**: Required platforms (e.g., `["darwin", "linux"]`)
+- **install**: Installation methods (for bundled hooks: `[{"id":"bundled","kind":"bundled"}]`)
+
+## Creating Custom Hooks
+
+To create your own hooks, place them in:
+
+- **Workspace hooks**: `<workspace>/hooks/` (highest precedence)
+- **Managed hooks**: `~/.openclaw/hooks/` (shared across workspaces)
+
+Custom hooks follow the same structure as bundled hooks.
+
+## Managing Hooks
+
+List all hooks:
+
+```bash
+openclaw hooks list
+```
+
+Show hook details:
+
+```bash
+openclaw hooks info session-memory
+```
+
+Check hook status:
+
+```bash
+openclaw hooks check
+```
+
+Enable/disable:
+
+```bash
+openclaw hooks enable session-memory
+openclaw hooks disable command-logger
+```
+
+## Configuration
+
+Hooks can be configured in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        },
+        "command-logger": {
+          "enabled": false
+        }
+      }
+    }
+  }
+}
+```
+
+## Event Types
+
+Currently supported events:
+
+- **command**: All command events
+- **command:new**: `/new` command specifically
+- **command:reset**: `/reset` command
+- **command:stop**: `/stop` command
+- **agent:bootstrap**: Before workspace bootstrap files are injected
+- **gateway:startup**: Gateway startup (after channels start)
+- **session:compact:before**: Pre-compaction snapshot before the embedded runner rewrites session context
+- **session:compact:after**: Post-compaction snapshot after the runner replaces session context
+- **message:received**: Inbound channel message accepted for dispatch
+- **message:sent**: Outbound channel message delivered (canonical payload only)
+
+## Handler API
+
+Hook handlers receive an `InternalHookEvent` object:
+
+```typescript
+interface InternalHookEvent {
+  type: "command" | "session" | "agent" | "gateway" | "message";
+  action: string; // e.g., 'new', 'reset', 'stop', 'compact:before', 'received', 'sent'
+  sessionKey: string;
+  context: Record<string, unknown>;
+  timestamp: Date;
+  messages: string[]; // Push messages here to send to user
+}
+```
+
+Example handler:
+
+```typescript
+import type { HookHandler } from "../../src/hooks/hooks.js";
+
+const myHandler: HookHandler = async (event) => {
+  if (event.type !== "command" || event.action !== "new") {
+    return;
+  }
+
+  // Your logic here
+  console.log("New command triggered!");
+
+  // Optionally send message to user
+  event.messages.push("✨ Hook executed!");
+};
+
+export default myHandler;
+```
+
+## Testing
+
+Test your hooks by:
+
+1. Place hook in workspace hooks directory
+2. Restart gateway: `pkill -9 -f 'openclaw.*gateway' && pnpm openclaw gateway`
+3. Enable the hook: `openclaw hooks enable my-hook`
+4. Trigger the event (e.g., send `/new` command)
+5. Check gateway logs for hook execution
+
+## Documentation
+
+Full documentation: https://docs.openclaw.ai/automation/hooks
+
+================
+===== SECTION:src-hooks-bundled-dir-ts =====
+File: src/hooks/bundled-dir.ts
+================
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+⋮----
+export function resolveBundledHooksDir(): string | undefined
+⋮----
+// bun --compile: ship a sibling `hooks/bundled/` next to the executable.
+⋮----
+// ignore
+⋮----
+// npm: resolve `<packageRoot>/dist/hooks/bundled` relative to this module (compiled hooks).
+// This path works when installed via npm: node_modules/openclaw/dist/hooks/bundled-dir.js
+⋮----
+// ignore
+⋮----
+// dev: resolve `<packageRoot>/src/hooks/bundled` relative to dist/hooks/bundled-dir.js
+// This path works in dev: dist/hooks/bundled-dir.js -> ../../src/hooks/bundled
+⋮----
+// ignore
+
+================
+===== SECTION:src-hooks-config-ts =====
+File: src/hooks/config.ts
+================
+import type { OpenClawConfig, HookConfig } from "../config/config.js";
+import {
+  evaluateRuntimeEligibility,
+  hasBinary,
+  isConfigPathTruthyWithDefaults,
+} from "../shared/config-eval.js";
+import { resolveHookConfig, resolveHookEnableState } from "./policy.js";
+import type { HookEligibilityContext, HookEntry } from "./types.js";
+⋮----
+export function isConfigPathTruthy(config: OpenClawConfig | undefined, pathStr: string): boolean
+⋮----
+function evaluateHookRuntimeEligibility(params: {
+  entry: HookEntry;
+  config?: OpenClawConfig;
+  hookConfig?: HookConfig;
+  eligibility?: HookEligibilityContext;
+}): boolean
+⋮----
+export function shouldIncludeHook(params: {
+  entry: HookEntry;
+  config?: OpenClawConfig;
+  eligibility?: HookEligibilityContext;
+}): boolean
+
+================
+===== SECTION:src-hooks-configured-ts =====
+File: src/hooks/configured.ts
+================
+import type { HookConfig, HookInstallRecord } from "../config/types.hooks.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { getLegacyInternalHookHandlers } from "./legacy-config.js";
+⋮----
+function hasEnabledFlag(entry: HookConfig | undefined): boolean
+⋮----
+function hasEnabledEntry(entries: Record<string, HookConfig> | undefined): boolean
+⋮----
+function hasConfiguredInstalls(installs: Record<string, HookInstallRecord> | undefined): boolean
+⋮----
+export function hasConfiguredInternalHooks(config: OpenClawConfig): boolean
+⋮----
+export function resolveConfiguredInternalHookNames(config: OpenClawConfig): Set<string> | null
+
+================
+===== SECTION:src-hooks-fire-and-forget-ts =====
+File: src/hooks/fire-and-forget.ts
+================
+import { logVerbose } from "../globals.js";
+import { formatErrorMessage } from "../infra/errors.js";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+⋮----
+type FireAndForgetHookJob = {
+  task: () => Promise<unknown>;
+  label: string;
+  logger: (message: string) => void;
+  timeoutMs: number;
+};
+⋮----
+type FireAndForgetHookState = {
+  active: number;
+  queue: FireAndForgetHookJob[];
+};
+⋮----
+export type FireAndForgetBoundedHookOptions = {
+  maxConcurrency?: number;
+  maxQueue?: number;
+  timeoutMs?: number;
+};
+⋮----
+const getFireAndForgetHookState = ()
+⋮----
+function positiveIntegerOrDefault(value: number | undefined, fallback: number): number
+⋮----
+function replaceLogControlCharacters(value: string): string
+⋮----
+export function formatHookErrorForLog(err: unknown): string
+⋮----
+export function fireAndForgetHook(
+  task: Promise<unknown>,
+  label: string,
+  logger: (message: string) => void = logVerbose,
+): void
+⋮----
+function runFireAndForgetHookJob(
+  state: FireAndForgetHookState,
+  job: FireAndForgetHookJob,
+  limits: { maxConcurrency: number },
+): void
+⋮----
+function drainFireAndForgetHookQueue(
+  state: FireAndForgetHookState,
+  limits: { maxConcurrency: number },
+): void
+⋮----
+export function fireAndForgetBoundedHook(
+  task: () => Promise<unknown>,
+  label: string,
+  logger: (message: string) => void = logVerbose,
+  options: FireAndForgetBoundedHookOptions = {},
+): void
+
+================
+===== SECTION:src-hooks-frontmatter-ts =====
+File: src/hooks/frontmatter.ts
+================
+import { parseFrontmatterBlock } from "../markdown/frontmatter.js";
+import {
+  applyOpenClawManifestInstallCommonFields,
+  getFrontmatterString,
+  normalizeStringList,
+  parseOpenClawManifestInstallBase,
+  parseFrontmatterBool,
+  resolveOpenClawManifestBlock,
+  resolveOpenClawManifestInstall,
+  resolveOpenClawManifestOs,
+  resolveOpenClawManifestRequires,
+} from "../shared/frontmatter.js";
+import { readStringValue } from "../shared/string-coerce.js";
+import type {
+  OpenClawHookMetadata,
+  HookEntry,
+  HookInstallSpec,
+  HookInvocationPolicy,
+  ParsedHookFrontmatter,
+} from "./types.js";
+⋮----
+export function parseFrontmatter(content: string): ParsedHookFrontmatter
+⋮----
+function parseInstallSpec(input: unknown): HookInstallSpec | undefined
+⋮----
+export function resolveOpenClawMetadata(
+  frontmatter: ParsedHookFrontmatter,
+): OpenClawHookMetadata | undefined
+⋮----
+export function resolveHookInvocationPolicy(
+  frontmatter: ParsedHookFrontmatter,
+): HookInvocationPolicy
+⋮----
+export function resolveHookKey(hookName: string, entry?: HookEntry): string
+
+================
+===== SECTION:src-hooks-gmail-ops-ts =====
+File: src/hooks/gmail-ops.ts
+================
+import { spawn } from "node:child_process";
+import { formatCliCommand } from "../cli/command-format.js";
+import {
+  getRuntimeConfig,
+  type OpenClawConfig,
+  CONFIG_PATH,
+  readConfigFileSnapshot,
+  replaceConfigFile,
+  resolveGatewayPort,
+  validateConfigObjectWithPlugins,
+} from "../config/config.js";
+import { runCommandWithTimeout } from "../process/exec.js";
+import { defaultRuntime } from "../runtime.js";
+import { displayPath } from "../utils.js";
+import {
+  ensureDependency,
+  ensureGcloudAuth,
+  ensureSubscription,
+  ensureTailscaleEndpoint,
+  ensureTopic,
+  resolveProjectIdFromGogCredentials,
+  runGcloud,
+} from "./gmail-setup-utils.js";
+import {
+  buildDefaultHookUrl,
+  buildGogWatchServeLogArgs,
+  buildGogWatchServeArgs,
+  buildGogWatchStartArgs,
+  buildTopicPath,
+  DEFAULT_GMAIL_LABEL,
+  DEFAULT_GMAIL_MAX_BYTES,
+  DEFAULT_GMAIL_RENEW_MINUTES,
+  DEFAULT_GMAIL_SERVE_BIND,
+  DEFAULT_GMAIL_SERVE_PATH,
+  DEFAULT_GMAIL_SERVE_PORT,
+  DEFAULT_GMAIL_SUBSCRIPTION,
+  DEFAULT_GMAIL_TOPIC,
+  type GmailHookOverrides,
+  type GmailHookRuntimeConfig,
+  generateHookToken,
+  mergeHookPresets,
+  normalizeHooksPath,
+  normalizeServePath,
+  parseTopicPath,
+  resolveGogExecutable,
+  resolveGogServeInvocation,
+  resolveGmailHookRuntimeConfig,
+} from "./gmail.js";
+⋮----
+type GmailCommonOptions = {
+  topic?: string;
+  subscription?: string;
+  label?: string;
+  hookToken?: string;
+  pushToken?: string;
+  hookUrl?: string;
+  bind?: string;
+  port?: number;
+  path?: string;
+  includeBody?: boolean;
+  maxBytes?: number;
+  renewEveryMinutes?: number;
+  tailscale?: "off" | "serve" | "funnel";
+  tailscalePath?: string;
+  tailscaleTarget?: string;
+};
+⋮----
+export type GmailSetupOptions = GmailCommonOptions & {
+  account: string;
+  project?: string;
+  pushEndpoint?: string;
+  json?: boolean;
+};
+⋮----
+export type GmailRunOptions = GmailCommonOptions & {
+  account?: string;
+};
+⋮----
+export async function runGmailSetup(opts: GmailSetupOptions)
+⋮----
+// Gmail watch requires the Pub/Sub topic to live in the OAuth client project.
+⋮----
+// Tailscale strips the path before proxying; keep a public path while gog
+// listens on "/" whenever Tailscale is enabled.
+⋮----
+export async function runGmailService(opts: GmailRunOptions)
+⋮----
+const detachSignals = () =>
+⋮----
+const shutdown = () =>
+⋮----
+function spawnGogServe(cfg: GmailHookRuntimeConfig)
+⋮----
+async function startGmailWatch(
+  cfg: Pick<GmailHookRuntimeConfig, "account" | "label" | "topic">,
+  fatal = false,
+)
+
+================
+===== SECTION:src-hooks-gmail-setup-utils-ts =====
+File: src/hooks/gmail-setup-utils.ts
+================
+import fs from "node:fs";
+import path from "node:path";
+import { hasBinary } from "../agents/skills.js";
+import { formatErrorMessage } from "../infra/errors.js";
+import { resolveExecutable } from "../infra/executable-path.js";
+import { runCommandWithTimeout, type SpawnResult } from "../process/exec.js";
+import { resolveUserPath } from "../utils.js";
+import { normalizeServePath } from "./gmail.js";
+⋮----
+export function resetGmailSetupUtilsCachesForTest(): void
+⋮----
+function trimOutput(value: string): string
+⋮----
+function formatCommandResultInternal(
+  command: string,
+  result: SpawnResult,
+  statusLabel: "failed" | "exited",
+): string
+⋮----
+function formatCommandFailure(command: string, result: SpawnResult): string
+⋮----
+function formatCommandResult(command: string, result: SpawnResult): string
+⋮----
+function formatJsonParseFailure(command: string, result: SpawnResult, err: unknown): string
+⋮----
+function formatCommand(command: string, args: string[]): string
+⋮----
+function findExecutablesOnPath(bins: string[]): string[]
+⋮----
+// keep scanning
+⋮----
+function ensurePathIncludes(dirPath: string, position: "append" | "prepend")
+⋮----
+function ensureGcloudOnPath(): boolean
+⋮----
+// keep scanning
+⋮----
+export async function resolvePythonExecutablePath(): Promise<string | undefined>
+⋮----
+// keep scanning
+⋮----
+async function gcloudEnv(): Promise<NodeJS.ProcessEnv>
+⋮----
+// Always override inherited CLOUDSDK_PYTHON so gcloud cannot select a
+// workspace-controlled interpreter.
+⋮----
+async function runGcloudCommand(
+  args: string[],
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<typeof runCommandWithTimeout>>>
+⋮----
+export async function ensureDependency(bin: string, brewArgs: string[])
+⋮----
+export async function ensureGcloudAuth()
+⋮----
+export async function runGcloud(args: string[])
+⋮----
+export async function ensureTopic(projectId: string, topicName: string)
+⋮----
+export async function ensureSubscription(
+  projectId: string,
+  subscription: string,
+  topicName: string,
+  pushEndpoint: string,
+)
+⋮----
+export async function ensureTailscaleEndpoint(params: {
+  mode: "off" | "serve" | "funnel";
+  path: string;
+  port?: number;
+  signal?: AbortSignal;
+  target?: string;
+  token?: string;
+}): Promise<string>
+⋮----
+// Funnel/serve strips pathArg before proxying; keep it only in the public URL.
+⋮----
+export async function resolveProjectIdFromGogCredentials(): Promise<string | null>
+⋮----
+// keep scanning
+⋮----
+function gogCredentialsPaths(): string[]
+⋮----
+function extractGogClientId(parsed: Record<string, unknown>): string | null
+⋮----
+function extractProjectNumber(clientId: string | null): string | null
+
+================
+===== SECTION:src-hooks-gmail-watcher-errors-ts =====
+File: src/hooks/gmail-watcher-errors.ts
+================
+export function isAddressInUseError(line: string): boolean
+
+================
+===== SECTION:src-hooks-gmail-watcher-lifecycle-ts =====
+File: src/hooks/gmail-watcher-lifecycle.ts
+================
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { isTruthyEnvValue } from "../infra/env.js";
+import { startGmailWatcher } from "./gmail-watcher.js";
+⋮----
+export type GMailWatcherLog = {
+  info: (msg: string) => void;
+  warn: (msg: string) => void;
+  error: (msg: string) => void;
+};
+⋮----
+export async function startGmailWatcherWithLogs(params: {
+  cfg: OpenClawConfig;
+  log: GMailWatcherLog;
+onSkipped?: ()
+
+================
+===== SECTION:src-hooks-gmail-watcher-ts =====
+File: src/hooks/gmail-watcher.ts
+================
+/**
+ * Gmail Watcher Service
+ *
+ * Automatically starts `gog gmail watch serve` when the gateway starts,
+ * if hooks.gmail is configured with an account.
+ */
+⋮----
+import { type ChildProcess, spawn } from "node:child_process";
+import { hasBinary } from "../agents/skills.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { runCommandWithTimeout } from "../process/exec.js";
+import { ensureTailscaleEndpoint } from "./gmail-setup-utils.js";
+import { isAddressInUseError } from "./gmail-watcher-errors.js";
+import {
+  buildGogWatchServeLogArgs,
+  buildGogWatchServeArgs,
+  buildGogWatchStartArgs,
+  type GmailHookRuntimeConfig,
+  resolveGogExecutable,
+  resolveGogServeInvocation,
+  resolveGmailHookRuntimeConfig,
+} from "./gmail.js";
+⋮----
+/**
+ * Check if gog binary is available
+ */
+function isGogAvailable(): boolean
+⋮----
+/**
+ * Start the Gmail watch (registers with Gmail API)
+ */
+async function startGmailWatch(
+  cfg: Pick<GmailHookRuntimeConfig, "account" | "label" | "topic">,
+  options: { signal?: AbortSignal } = {},
+): Promise<boolean>
+⋮----
+/**
+ * Spawn the gog gmail watch serve process
+ */
+function spawnGogServe(cfg: GmailHookRuntimeConfig): ChildProcess
+⋮----
+export type GmailWatcherStartResult = {
+  started: boolean;
+  reason?: string;
+};
+⋮----
+type GmailWatcherCancellation = {
+  dispose: () => void;
+  isCancelled: () => boolean;
+  signal?: AbortSignal;
+};
+⋮----
+type GmailWatcherStartOptions = {
+  isCancelled?: () => boolean;
+  signal?: AbortSignal;
+};
+⋮----
+function cancelledGmailWatcherStart(
+  expectedConfig: GmailHookRuntimeConfig,
+): GmailWatcherStartResult
+⋮----
+function isGmailWatcherStartCancelled(options: GmailWatcherStartOptions): boolean
+⋮----
+function createGmailWatcherCancellation(
+  options: GmailWatcherStartOptions,
+): GmailWatcherCancellation
+⋮----
+const abort = () =>
+const onAbort = ()
+⋮----
+/**
+ * Start the Gmail watcher service.
+ * Called automatically by the gateway if hooks.gmail is configured.
+ */
+export async function startGmailWatcher(
+  cfg: OpenClawConfig,
+  options: GmailWatcherStartOptions = {},
+): Promise<GmailWatcherStartResult>
+⋮----
+// Check if gmail hooks are configured
+⋮----
+// Check if gog is available
+⋮----
+// Resolve the full runtime config
+⋮----
+// Set up Tailscale endpoint if needed
+⋮----
+// Start the Gmail watch (register with Gmail API)
+⋮----
+// Spawn the gog serve process
+⋮----
+// Set up renewal interval
+⋮----
+/**
+ * Stop the Gmail watcher service.
+ */
+export async function stopGmailWatcher(): Promise<void>
+⋮----
+// Wait a bit for graceful shutdown
+
+================
+===== SECTION:src-hooks-gmail-ts =====
+File: src/hooks/gmail.ts
+================
+import { randomBytes } from "node:crypto";
+import path from "node:path";
+import {
+  type OpenClawConfig,
+  DEFAULT_GATEWAY_PORT,
+  type HooksGmailTailscaleMode,
+  resolveGatewayPort,
+} from "../config/config.js";
+import { resolveExecutable } from "../infra/executable-path.js";
+import { getWindowsInstallRoots } from "../infra/windows-install-roots.js";
+import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
+⋮----
+export type GmailHookOverrides = {
+  account?: string;
+  label?: string;
+  topic?: string;
+  subscription?: string;
+  pushToken?: string;
+  hookToken?: string;
+  hookUrl?: string;
+  includeBody?: boolean;
+  maxBytes?: number;
+  renewEveryMinutes?: number;
+  serveBind?: string;
+  servePort?: number;
+  servePath?: string;
+  tailscaleMode?: HooksGmailTailscaleMode;
+  tailscalePath?: string;
+  tailscaleTarget?: string;
+};
+⋮----
+export type GmailHookRuntimeConfig = {
+  account: string;
+  label: string;
+  topic: string;
+  subscription: string;
+  pushToken: string;
+  hookToken: string;
+  hookUrl: string;
+  includeBody: boolean;
+  maxBytes: number;
+  renewEveryMinutes: number;
+  serve: {
+    bind: string;
+    port: number;
+    path: string;
+  };
+  tailscale: {
+    mode: HooksGmailTailscaleMode;
+    path: string;
+    target?: string;
+  };
+};
+⋮----
+export function generateHookToken(bytes = 24): string
+⋮----
+export function mergeHookPresets(existing: string[] | undefined, preset: string): string[]
+⋮----
+export function normalizeHooksPath(raw?: string): string
+⋮----
+export function normalizeServePath(raw?: string): string
+⋮----
+// Tailscale funnel/serve strips the set-path prefix before proxying.
+// To accept requests at /<path> externally, gog must listen on "/".
+⋮----
+export function buildDefaultHookUrl(
+  hooksPath?: string,
+  port: number = DEFAULT_GATEWAY_PORT,
+): string
+⋮----
+export function resolveGmailHookRuntimeConfig(
+  cfg: OpenClawConfig,
+  overrides: GmailHookOverrides,
+):
+⋮----
+// Tailscale strips the public path before proxying, so listen on "/" when on.
+⋮----
+export function buildGogWatchStartArgs(
+  cfg: Pick<GmailHookRuntimeConfig, "account" | "label" | "topic">,
+): string[]
+⋮----
+export function buildGogWatchServeArgs(cfg: GmailHookRuntimeConfig): string[]
+⋮----
+export function buildGogWatchServeLogArgs(cfg: GmailHookRuntimeConfig): string[]
+⋮----
+export function resolveGogExecutable(): string
+⋮----
+function escapeForCmdExe(arg: string): string
+⋮----
+export function resolveGogServeInvocation(args: string[]):
+⋮----
+export function buildTopicPath(projectId: string, topicName: string): string
+⋮----
+export function parseTopicPath(topic: string):
+⋮----
+function joinUrl(base: string, path: string): string
+
+================
+===== SECTION:src-hooks-hooks-status-ts =====
+File: src/hooks/hooks-status.ts
+================
+import path from "node:path";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { evaluateEntryRequirementsForCurrentPlatform } from "../shared/entry-status.js";
+import type { RequirementConfigCheck, Requirements } from "../shared/requirements.js";
+import { CONFIG_DIR } from "../utils.js";
+import { hasBinary, isConfigPathTruthy } from "./config.js";
+import {
+  resolveHookConfig,
+  resolveHookEnableState,
+  resolveHookEntries,
+  type HookEnableStateReason,
+} from "./policy.js";
+import type { HookEligibilityContext, HookEntry, HookInstallSpec } from "./types.js";
+import { loadWorkspaceHookEntries } from "./workspace.js";
+⋮----
+export type HookStatusConfigCheck = RequirementConfigCheck;
+⋮----
+export type HookInstallOption = {
+  id: string;
+  kind: HookInstallSpec["kind"];
+  label: string;
+  bins: string[];
+};
+⋮----
+export type HookStatusEntry = {
+  name: string;
+  description: string;
+  source: string;
+  pluginId?: string;
+  filePath: string;
+  baseDir: string;
+  handlerPath: string;
+  hookKey: string;
+  emoji?: string;
+  homepage?: string;
+  events: string[];
+  always: boolean;
+  enabledByConfig: boolean;
+  requirementsSatisfied: boolean;
+  loadable: boolean;
+  blockedReason?: HookEnableStateReason | "missing requirements";
+  managedByPlugin: boolean;
+  requirements: Requirements;
+  missing: Requirements;
+  configChecks: HookStatusConfigCheck[];
+  install: HookInstallOption[];
+};
+⋮----
+export type HookStatusReport = {
+  workspaceDir: string;
+  managedHooksDir: string;
+  hooks: HookStatusEntry[];
+};
+⋮----
+function resolveHookKey(entry: HookEntry): string
+⋮----
+function normalizeInstallOptions(entry: HookEntry): HookInstallOption[]
+⋮----
+// For hooks, we just list all install options
+⋮----
+function buildHookStatus(
+  entry: HookEntry,
+  config?: OpenClawConfig,
+  eligibility?: HookEligibilityContext,
+): HookStatusEntry
+⋮----
+const isEnvSatisfied = (envName: string)
+const isConfigSatisfied = (pathStr: string)
+⋮----
+export function buildWorkspaceHookStatus(
+  workspaceDir: string,
+  opts?: {
+    config?: OpenClawConfig;
+    managedHooksDir?: string;
+    entries?: HookEntry[];
+    eligibility?: HookEligibilityContext;
+  },
+): HookStatusReport
+
+================
+===== SECTION:src-hooks-hooks-ts =====
+File: src/hooks/hooks.ts
+================
+export type HookHandler = import("./internal-hook-types.js").InternalHookHandler;
+
+================
+===== SECTION:src-hooks-import-url-ts =====
+File: src/hooks/import-url.ts
+================
+/**
+ * Build an import URL for a hook handler module.
+ *
+ * Bundled hooks (shipped in dist/) are immutable between installs, so they
+ * can be imported without a cache-busting suffix — letting V8 reuse its
+ * module cache across gateway restarts.
+ *
+ * Workspace, managed, and plugin hooks may be edited by the user between
+ * restarts. For those we append `?t=<mtime>&s=<size>` so the module key
+ * reflects on-disk changes while staying stable for unchanged files.
+ */
+⋮----
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+import type { HookSource } from "./types.js";
+⋮----
+/**
+ * Sources whose handler files never change between `npm install` runs.
+ * Imports from these sources skip cache busting entirely.
+ */
+⋮----
+export function buildImportUrl(handlerPath: string, source: HookSource): string
+⋮----
+// Use file metadata so the cache key only changes when the file changes
+⋮----
+// If stat fails (unlikely), fall back to Date.now() to guarantee freshness
+
+================
+===== SECTION:src-hooks-install-runtime-ts =====
+File: src/hooks/install.runtime.ts
+================
+import { resolveArchiveKind } from "../infra/archive.js";
+import { pathExists } from "../infra/fs-safe.js";
+import { resolveExistingInstallPath, withExtractedArchiveRoot } from "../infra/install-flow.js";
+import { installFromValidatedNpmSpecArchive } from "../infra/install-from-npm-spec.js";
+import {
+  resolveInstallModeOptions,
+  resolveTimedInstallModeOptions,
+} from "../infra/install-mode-options.js";
+import {
+  installPackageDir,
+  installPackageDirWithManifestDeps,
+} from "../infra/install-package-dir.js";
+import {
+  type NpmIntegrityDrift,
+  type NpmSpecResolution,
+  resolveArchiveSourcePath,
+} from "../infra/install-source-utils.js";
+import {
+  ensureInstallTargetAvailable,
+  resolveCanonicalInstallTarget,
+} from "../infra/install-target.js";
+import { readJson } from "../infra/json-files.js";
+import { isPathInside, isPathInsideWithRealpath } from "../security/scan-paths.js";
+
+================
+===== SECTION:src-hooks-install-ts =====
+File: src/hooks/install.ts
+================
+import fs from "node:fs/promises";
+import path from "node:path";
+import { MANIFEST_KEY } from "../compat/legacy-names.js";
+import { resolveSafeInstallDir, unscopedPackageName } from "../infra/install-safe-path.js";
+import { type NpmIntegrityDrift, type NpmSpecResolution } from "../infra/install-source-utils.js";
+import type { InstallSafetyOverrides } from "../plugins/install-security-scan.js";
+import { CONFIG_DIR, resolveUserPath } from "../utils.js";
+import { parseFrontmatter } from "./frontmatter.js";
+⋮----
+async function loadHookInstallRuntime()
+⋮----
+export type HookInstallLogger = {
+  info?: (message: string) => void;
+  warn?: (message: string) => void;
+};
+⋮----
+type HookPackageManifest = {
+  name?: string;
+  version?: string;
+  dependencies?: Record<string, string>;
+} & Partial<Record<typeof MANIFEST_KEY, { hooks?: string[] }>>;
+⋮----
+export type InstallHooksResult =
+  | {
+      ok: true;
+      hookPackId: string;
+      hooks: string[];
+      targetDir: string;
+      version?: string;
+      npmResolution?: NpmSpecResolution;
+      integrityDrift?: NpmIntegrityDrift;
+    }
+  | { ok: false; error: string };
+⋮----
+export type HookNpmIntegrityDriftParams = {
+  spec: string;
+  expectedIntegrity: string;
+  actualIntegrity: string;
+  resolution: NpmSpecResolution;
+};
+⋮----
+type HookInstallForwardParams = InstallSafetyOverrides & {
+  hooksDir?: string;
+  timeoutMs?: number;
+  logger?: HookInstallLogger;
+  mode?: "install" | "update";
+  dryRun?: boolean;
+  expectedHookPackId?: string;
+};
+⋮----
+type HookPackageInstallParams = { packageDir: string } & HookInstallForwardParams;
+type HookArchiveInstallParams = { archivePath: string } & HookInstallForwardParams;
+type HookPathInstallParams = { path: string } & HookInstallForwardParams;
+⋮----
+function buildHookInstallForwardParams(params: HookInstallForwardParams): HookInstallForwardParams
+⋮----
+function validateHookId(hookId: string): string | null
+⋮----
+export function resolveHookInstallDir(hookId: string, hooksDir?: string): string
+⋮----
+async function ensureOpenClawHooks(manifest: HookPackageManifest)
+⋮----
+async function resolveInstallTargetDir(
+  id: string,
+  hooksDir?: string,
+): Promise<
+⋮----
+async function resolveAvailableHookInstallTarget(params: {
+  id: string;
+  hooksDir?: string;
+  mode: "install" | "update";
+alreadyExistsError: (targetDir: string)
+⋮----
+async function installFromResolvedHookDir(
+  resolvedDir: string,
+  params: HookInstallForwardParams,
+): Promise<InstallHooksResult>
+⋮----
+async function resolveHookNameFromDir(hookDir: string): Promise<string>
+⋮----
+async function validateHookDir(hookDir: string): Promise<void>
+⋮----
+async function installHookPackageFromDir(
+  params: HookPackageInstallParams,
+): Promise<InstallHooksResult>
+⋮----
+async function installHookFromDir(params: {
+  hookDir: string;
+  hooksDir?: string;
+  logger?: HookInstallLogger;
+  mode?: "install" | "update";
+  dryRun?: boolean;
+  expectedHookPackId?: string;
+}): Promise<InstallHooksResult>
+⋮----
+export async function installHooksFromArchive(
+  params: HookArchiveInstallParams,
+): Promise<InstallHooksResult>
+⋮----
+export async function installHooksFromNpmSpec(params: {
+  spec: string;
+  dangerouslyForceUnsafeInstall?: boolean;
+  hooksDir?: string;
+  timeoutMs?: number;
+  logger?: HookInstallLogger;
+  mode?: "install" | "update";
+  dryRun?: boolean;
+  expectedHookPackId?: string;
+  expectedIntegrity?: string;
+onIntegrityDrift?: (params: HookNpmIntegrityDriftParams)
+⋮----
+export async function installHooksFromPath(
+  params: HookPathInstallParams,
+): Promise<InstallHooksResult>
+
+================
+===== SECTION:src-hooks-installs-ts =====
+File: src/hooks/installs.ts
+================
+import type { HookInstallRecord } from "../config/types.hooks.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+⋮----
+export type HookInstallUpdate = HookInstallRecord & { hookId: string };
+⋮----
+export function recordHookInstall(cfg: OpenClawConfig, update: HookInstallUpdate): OpenClawConfig
+
+================
+===== SECTION:src-hooks-internal-hook-types-ts =====
+File: src/hooks/internal-hook-types.ts
+================
+export type InternalHookEventType = "command" | "session" | "agent" | "gateway" | "message";
+⋮----
+export interface InternalHookEvent {
+  /** The type of event (command, session, agent, gateway, etc.) */
+  type: InternalHookEventType;
+  /** The specific action within the type (e.g., 'new', 'reset', 'stop') */
+  action: string;
+  /** The session key this event relates to */
+  sessionKey: string;
+  /** Additional context specific to the event */
+  context: Record<string, unknown>;
+  /** Timestamp when the event occurred */
+  timestamp: Date;
+  /** Messages to send back to the user (hooks can push to this array) */
+  messages: string[];
+}
+⋮----
+/** The type of event (command, session, agent, gateway, etc.) */
+⋮----
+/** The specific action within the type (e.g., 'new', 'reset', 'stop') */
+⋮----
+/** The session key this event relates to */
+⋮----
+/** Additional context specific to the event */
+⋮----
+/** Timestamp when the event occurred */
+⋮----
+/** Messages to send back to the user (hooks can push to this array) */
+⋮----
+export type InternalHookHandler = (event: InternalHookEvent) => Promise<void> | void;
+
+================
+===== SECTION:src-hooks-internal-hooks-ts =====
+File: src/hooks/internal-hooks.ts
+================
+/**
+ * Hook system for OpenClaw agent events
+ *
+ * Provides an extensible event-driven hook system for agent events
+ * like command processing, session lifecycle, etc.
+ */
+⋮----
+import type { WorkspaceBootstrapFile } from "../agents/workspace.js";
+import type { CliDeps } from "../cli/outbound-send-deps.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { SessionsPatchParams } from "../gateway/protocol/schema/types.js";
+import { formatErrorMessage } from "../infra/errors.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import type {
+  InternalHookEvent,
+  InternalHookEventType,
+  InternalHookHandler,
+} from "./internal-hook-types.js";
+⋮----
+export type AgentBootstrapHookContext = {
+  workspaceDir: string;
+  bootstrapFiles: WorkspaceBootstrapFile[];
+  cfg?: OpenClawConfig;
+  sessionKey?: string;
+  sessionId?: string;
+  agentId?: string;
+};
+⋮----
+export type AgentBootstrapHookEvent = InternalHookEvent & {
+  type: "agent";
+  action: "bootstrap";
+  context: AgentBootstrapHookContext;
+};
+⋮----
+export type GatewayStartupHookContext = {
+  cfg?: OpenClawConfig;
+  deps?: CliDeps;
+  workspaceDir?: string;
+};
+⋮----
+export type GatewayStartupHookEvent = InternalHookEvent & {
+  type: "gateway";
+  action: "startup";
+  context: GatewayStartupHookContext;
+};
+⋮----
+// ============================================================================
+// Message Hook Events
+// ============================================================================
+⋮----
+export type MessageReceivedHookContext = {
+  /** Sender identifier (e.g., phone number, user ID) */
+  from: string;
+  /** Message content */
+  content: string;
+  /** Unix timestamp when the message was received */
+  timestamp?: number;
+  /** Channel identifier (for example "chat" or "support-chat") */
+  channelId: string;
+  /** Provider account ID for multi-account setups */
+  accountId?: string;
+  /** Conversation/chat ID */
+  conversationId?: string;
+  /** Message ID from the provider */
+  messageId?: string;
+  /** Additional provider-specific metadata */
+  metadata?: Record<string, unknown>;
+};
+⋮----
+/** Sender identifier (e.g., phone number, user ID) */
+⋮----
+/** Message content */
+⋮----
+/** Unix timestamp when the message was received */
+⋮----
+/** Channel identifier (for example "chat" or "support-chat") */
+⋮----
+/** Provider account ID for multi-account setups */
+⋮----
+/** Conversation/chat ID */
+⋮----
+/** Message ID from the provider */
+⋮----
+/** Additional provider-specific metadata */
+⋮----
+export type MessageReceivedHookEvent = InternalHookEvent & {
+  type: "message";
+  action: "received";
+  context: MessageReceivedHookContext;
+};
+⋮----
+export type MessageSentHookContext = {
+  /** Recipient identifier */
+  to: string;
+  /** Message content */
+  content: string;
+  /** Whether the message was sent successfully */
+  success: boolean;
+  /** Error message if sending failed */
+  error?: string;
+  /** Channel identifier (for example "chat" or "support-chat") */
+  channelId: string;
+  /** Provider account ID for multi-account setups */
+  accountId?: string;
+  /** Conversation/chat ID */
+  conversationId?: string;
+  /** Message ID returned by the provider */
+  messageId?: string;
+  /** Whether this message was sent in a group/channel context */
+  isGroup?: boolean;
+  /** Group or channel identifier, if applicable */
+  groupId?: string;
+};
+⋮----
+/** Recipient identifier */
+⋮----
+/** Message content */
+⋮----
+/** Whether the message was sent successfully */
+⋮----
+/** Error message if sending failed */
+⋮----
+/** Channel identifier (for example "chat" or "support-chat") */
+⋮----
+/** Provider account ID for multi-account setups */
+⋮----
+/** Conversation/chat ID */
+⋮----
+/** Message ID returned by the provider */
+⋮----
+/** Whether this message was sent in a group/channel context */
+⋮----
+/** Group or channel identifier, if applicable */
+⋮----
+export type MessageSentHookEvent = InternalHookEvent & {
+  type: "message";
+  action: "sent";
+  context: MessageSentHookContext;
+};
+⋮----
+type MessageEnrichedBodyHookContext = {
+  /** Sender identifier (e.g., phone number, user ID) */
+  from?: string;
+  /** Recipient identifier */
+  to?: string;
+  /** Original raw message body (e.g., "🎤 [Audio]") */
+  body?: string;
+  /** Enriched body shown to the agent, including transcript */
+  bodyForAgent?: string;
+  /** Unix timestamp when the message was received */
+  timestamp?: number;
+  /** Channel identifier (for example "chat" or "support-chat") */
+  channelId: string;
+  /** Conversation/chat ID */
+  conversationId?: string;
+  /** Message ID from the provider */
+  messageId?: string;
+  /** Sender user ID */
+  senderId?: string;
+  /** Sender display name */
+  senderName?: string;
+  /** Sender username */
+  senderUsername?: string;
+  /** Provider name */
+  provider?: string;
+  /** Surface name */
+  surface?: string;
+  /** Path to the media file that was transcribed */
+  mediaPath?: string;
+  /** MIME type of the media */
+  mediaType?: string;
+};
+⋮----
+/** Sender identifier (e.g., phone number, user ID) */
+⋮----
+/** Recipient identifier */
+⋮----
+/** Original raw message body (e.g., "🎤 [Audio]") */
+⋮----
+/** Enriched body shown to the agent, including transcript */
+⋮----
+/** Unix timestamp when the message was received */
+⋮----
+/** Channel identifier (for example "chat" or "support-chat") */
+⋮----
+/** Conversation/chat ID */
+⋮----
+/** Message ID from the provider */
+⋮----
+/** Sender user ID */
+⋮----
+/** Sender display name */
+⋮----
+/** Sender username */
+⋮----
+/** Provider name */
+⋮----
+/** Surface name */
+⋮----
+/** Path to the media file that was transcribed */
+⋮----
+/** MIME type of the media */
+⋮----
+export type MessageTranscribedHookContext = MessageEnrichedBodyHookContext & {
+  /** The transcribed text from audio */
+  transcript: string;
+};
+⋮----
+/** The transcribed text from audio */
+⋮----
+export type MessageTranscribedHookEvent = InternalHookEvent & {
+  type: "message";
+  action: "transcribed";
+  context: MessageTranscribedHookContext;
+};
+⋮----
+export type MessagePreprocessedHookContext = MessageEnrichedBodyHookContext & {
+  /** Transcribed audio text, if the message contained audio */
+  transcript?: string;
+  /** Whether this message was sent in a group/channel context */
+  isGroup?: boolean;
+  /** Group or channel identifier, if applicable */
+  groupId?: string;
+};
+⋮----
+/** Transcribed audio text, if the message contained audio */
+⋮----
+/** Whether this message was sent in a group/channel context */
+⋮----
+/** Group or channel identifier, if applicable */
+⋮----
+export type MessagePreprocessedHookEvent = InternalHookEvent & {
+  type: "message";
+  action: "preprocessed";
+  context: MessagePreprocessedHookContext;
+};
+⋮----
+export type SessionPatchHookContext = {
+  sessionEntry: SessionEntry;
+  patch: SessionsPatchParams;
+  cfg: OpenClawConfig;
+};
+⋮----
+export type SessionPatchHookEvent = InternalHookEvent & {
+  type: "session";
+  action: "patch";
+  context: SessionPatchHookContext;
+};
+⋮----
+/**
+ * Registry of hook handlers by event key.
+ *
+ * Uses a globalThis singleton so that registerInternalHook and
+ * triggerInternalHook always share the same Map even when the bundler
+ * emits multiple copies of this module into separate chunks (bundle
+ * splitting). Without the singleton, handlers registered in one chunk
+ * are invisible to triggerInternalHook in another chunk, causing hooks
+ * to silently fire with zero handlers.
+ */
+⋮----
+/**
+ * Register a hook handler for a specific event type or event:action combination
+ *
+ * @param eventKey - Event type (e.g., 'command') or specific action (e.g., 'command:new')
+ * @param handler - Function to call when the event is triggered
+ *
+ * @example
+ * ```ts
+ * // Listen to all command events
+ * registerInternalHook('command', async (event) => {
+ *   console.log('Command:', event.action);
+ * });
+ *
+ * // Listen only to /new commands
+ * registerInternalHook('command:new', async (event) => {
+ *   await saveSessionToMemory(event);
+ * });
+ * ```
+ */
+export function registerInternalHook(eventKey: string, handler: InternalHookHandler): void
+⋮----
+/**
+ * Unregister a specific hook handler
+ *
+ * @param eventKey - Event key the handler was registered for
+ * @param handler - The handler function to remove
+ */
+export function unregisterInternalHook(eventKey: string, handler: InternalHookHandler): void
+⋮----
+// Clean up empty handler arrays
+⋮----
+/**
+ * Clear all registered hooks (useful for testing)
+ */
+export function clearInternalHooks(): void
+⋮----
+export function setInternalHooksEnabled(enabled: boolean): void
+⋮----
+/**
+ * Get all registered event keys (useful for debugging)
+ */
+export function getRegisteredEventKeys(): string[]
+⋮----
+export function hasInternalHookListeners(type: InternalHookEventType, action: string): boolean
+⋮----
+/**
+ * Trigger a hook event
+ *
+ * Calls all handlers registered for:
+ * 1. The general event type (e.g., 'command')
+ * 2. The specific event:action combination (e.g., 'command:new')
+ *
+ * Handlers are called in registration order. Errors are caught and logged
+ * but don't prevent other handlers from running.
+ *
+ * @param event - The event to trigger
+ */
+export async function triggerInternalHook(event: InternalHookEvent): Promise<void>
+⋮----
+/**
+ * Create a hook event with common fields filled in
+ *
+ * @param type - The event type
+ * @param action - The action within that type
+ * @param sessionKey - The session key
+ * @param context - Additional context
+ */
+export function createInternalHookEvent(
+  type: InternalHookEventType,
+  action: string,
+  sessionKey: string,
+  context: Record<string, unknown> = {},
+): InternalHookEvent
+⋮----
+function isHookEventTypeAndAction(
+  event: InternalHookEvent,
+  type: InternalHookEventType,
+  action: string,
+): boolean
+⋮----
+function getHookContext<T extends Record<string, unknown>>(
+  event: InternalHookEvent,
+): Partial<T> | null
+⋮----
+function hasStringContextField<T extends Record<string, unknown>>(
+  context: Partial<T>,
+  key: keyof T,
+): boolean
+⋮----
+function hasBooleanContextField<T extends Record<string, unknown>>(
+  context: Partial<T>,
+  key: keyof T,
+): boolean
+⋮----
+export function isAgentBootstrapEvent(event: InternalHookEvent): event is AgentBootstrapHookEvent
+⋮----
+export function isGatewayStartupEvent(event: InternalHookEvent): event is GatewayStartupHookEvent
+⋮----
+export function isMessageReceivedEvent(
+  event: InternalHookEvent,
+): event is MessageReceivedHookEvent
+⋮----
+export function isMessageSentEvent(event: InternalHookEvent): event is MessageSentHookEvent
+⋮----
+export function isMessageTranscribedEvent(
+  event: InternalHookEvent,
+): event is MessageTranscribedHookEvent
+⋮----
+export function isMessagePreprocessedEvent(
+  event: InternalHookEvent,
+): event is MessagePreprocessedHookEvent
+⋮----
+export function isSessionPatchEvent(event: InternalHookEvent): event is SessionPatchHookEvent
+
+================
+===== SECTION:src-hooks-legacy-config-ts =====
+File: src/hooks/legacy-config.ts
+================
+type LegacyInternalHookHandler = {
+  event: string;
+  module: string;
+  export?: string;
+};
+⋮----
+type LegacyInternalHooksCarrier = {
+  hooks?: {
+    internal?: {
+      handlers?: LegacyInternalHookHandler[];
+    };
+  };
+};
+⋮----
+export function getLegacyInternalHookHandlers(config: unknown): LegacyInternalHookHandler[]
+
+================
+===== SECTION:src-hooks-llm-slug-generator-ts =====
+File: src/hooks/llm-slug-generator.ts
+================
+/**
+ * LLM-based slug generator for session memory filenames
+ */
+⋮----
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import {
+  resolveDefaultAgentId,
+  resolveAgentWorkspaceDir,
+  resolveAgentDir,
+} from "../agents/agent-scope.js";
+import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
+import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { resolveAgentTimeoutMs } from "../agents/timeout.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
+⋮----
+function resolveSlugGeneratorTimeoutMs(cfg: OpenClawConfig): number
+⋮----
+/**
+ * Generate a short 1-2 word filename slug from session content using LLM
+ */
+export async function generateSlugViaLLM(params: {
+  sessionContent: string;
+  cfg: OpenClawConfig;
+}): Promise<string | null>
+⋮----
+// Create a temporary session file for this one-off LLM call
+⋮----
+// Extract text from payloads
+⋮----
+// Clean up the response - extract just the slug
+⋮----
+.slice(0, 30); // Max 30 chars
+⋮----
+// Clean up temporary session file
+⋮----
+// Ignore cleanup errors
+
+================
+===== SECTION:src-hooks-loader-ts =====
+File: src/hooks/loader.ts
+================
+/**
+ * Dynamic loader for hook handlers
+ *
+ * Loads hook handlers from external modules based on configuration
+ * and from directory-based discovery (bundled, managed, workspace)
+ */
+⋮----
+import fs from "node:fs";
+import path from "node:path";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { openRootFile } from "../infra/boundary-file-read.js";
+import { formatErrorMessage } from "../infra/errors.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { sanitizeForLog } from "../terminal/ansi.js";
+import { shouldIncludeHook } from "./config.js";
+import { hasConfiguredInternalHooks, resolveConfiguredInternalHookNames } from "./configured.js";
+import { buildImportUrl } from "./import-url.js";
+import type { InternalHookHandler } from "./internal-hooks.js";
+import { registerInternalHook, unregisterInternalHook } from "./internal-hooks.js";
+import { getLegacyInternalHookHandlers } from "./legacy-config.js";
+import { resolveFunctionModuleExport } from "./module-loader.js";
+import { loadWorkspaceHookEntries } from "./workspace.js";
+⋮----
+function safeLogValue(value: string): string
+⋮----
+function isNonEmptyRelativePathInsideRoot(relativePath: string): boolean
+⋮----
+function maybeWarnTrustedHookSource(source: string): void
+⋮----
+function resetLoadedInternalHooks(): void
+⋮----
+/**
+ * Load and register all hook handlers
+ *
+ * Loads hooks from both:
+ * 1. Directory-based discovery (bundled, managed, workspace)
+ * 2. Legacy config handlers (backwards compatibility)
+ *
+ * @param cfg - OpenClaw configuration
+ * @param workspaceDir - Workspace directory for hook discovery
+ * @returns Number of handlers successfully loaded
+ *
+ * @example
+ * ```ts
+ * const config = await getRuntimeConfig();
+ * const workspaceDir = resolveAgentWorkspaceDir(config, agentId);
+ * const count = await loadInternalHooks(config, workspaceDir);
+ * console.log(`Loaded ${count} hook handlers`);
+ * ```
+ */
+export async function loadInternalHooks(
+  cfg: OpenClawConfig,
+  workspaceDir: string,
+  opts?: {
+    managedHooksDir?: string;
+    bundledHooksDir?: string;
+  },
+): Promise<number>
+⋮----
+// 1. Load hooks from directories (new system)
+⋮----
+// Filter by eligibility
+⋮----
+// Import handler module — only cache-bust mutable (workspace/managed) hooks
+⋮----
+// Get handler function (default or named export)
+⋮----
+// Register for all events listed in metadata
+⋮----
+// 2. Load legacy config handlers (backwards compatibility)
+⋮----
+// Legacy handler paths: keep them workspace-relative.
+⋮----
+// Legacy handlers are always workspace-relative, so use mtime-based cache busting
+⋮----
+// Get the handler function
+⋮----
+function resolveExistingRealpath(value: string): string | null
+
+================
+===== SECTION:src-hooks-message-hook-mappers-ts =====
+File: src/hooks/message-hook-mappers.ts
+================
+import type { FinalizedMsgContext } from "../auto-reply/templating.js";
+import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import {
+  freezeDiagnosticTraceContext,
+  type DiagnosticTraceContext,
+} from "../infra/diagnostic-trace-context.js";
+import type {
+  PluginHookInboundClaimContext,
+  PluginHookInboundClaimEvent,
+  PluginHookMessageContext,
+  PluginHookMessageReceivedEvent,
+  PluginHookMessageSentEvent,
+} from "../plugins/hook-message.types.js";
+import {
+  normalizeLowercaseStringOrEmpty,
+  normalizeOptionalString,
+} from "../shared/string-coerce.js";
+import type {
+  MessagePreprocessedHookContext,
+  MessageReceivedHookContext,
+  MessageSentHookContext,
+  MessageTranscribedHookContext,
+} from "./internal-hooks.js";
+⋮----
+export type CanonicalInboundMessageHookContext = {
+  from: string;
+  to?: string;
+  content: string;
+  body?: string;
+  bodyForAgent?: string;
+  transcript?: string;
+  timestamp?: number;
+  channelId: string;
+  accountId?: string;
+  conversationId?: string;
+  sessionKey?: string;
+  runId?: string;
+  messageId?: string;
+  senderId?: string;
+  senderName?: string;
+  senderUsername?: string;
+  senderE164?: string;
+  provider?: string;
+  surface?: string;
+  threadId?: string | number;
+  // `mediaPath(s)` are files OpenClaw has already staged locally. `mediaUrl(s)`
+  // are provider/media-server references that may not exist on this host.
+  mediaPath?: string;
+  mediaUrl?: string;
+  mediaType?: string;
+  mediaPaths?: string[];
+  mediaUrls?: string[];
+  mediaTypes?: string[];
+  originatingChannel?: string;
+  originatingTo?: string;
+  guildId?: string;
+  channelName?: string;
+  isGroup: boolean;
+  groupId?: string;
+  topicName?: string;
+  trace?: DiagnosticTraceContext;
+  callDepth?: number;
+};
+⋮----
+// `mediaPath(s)` are files OpenClaw has already staged locally. `mediaUrl(s)`
+// are provider/media-server references that may not exist on this host.
+⋮----
+export type CanonicalSentMessageHookContext = {
+  to: string;
+  content: string;
+  success: boolean;
+  error?: string;
+  channelId: string;
+  accountId?: string;
+  conversationId?: string;
+  sessionKey?: string;
+  runId?: string;
+  messageId?: string;
+  trace?: DiagnosticTraceContext;
+  callDepth?: number;
+  isGroup?: boolean;
+  groupId?: string;
+};
+⋮----
+function readNonBlankString(value: unknown): string | undefined
+⋮----
+export function deriveInboundMessageHookContext(
+  ctx: FinalizedMsgContext,
+  overrides?: {
+    content?: string;
+    messageId?: string;
+  },
+): CanonicalInboundMessageHookContext
+⋮----
+export function buildCanonicalSentMessageHookContext(params: {
+  to: string;
+  content: string;
+  success: boolean;
+  error?: string;
+  channelId: string;
+  accountId?: string;
+  conversationId?: string;
+  sessionKey?: string;
+  runId?: string;
+  messageId?: string;
+  trace?: DiagnosticTraceContext;
+  callDepth?: number;
+  isGroup?: boolean;
+  groupId?: string;
+}): CanonicalSentMessageHookContext
+⋮----
+type DiagnosticTraceHookFields = Pick<
+  PluginHookMessageContext,
+  "trace" | "traceId" | "spanId" | "parentSpanId"
+>;
+⋮----
+function assignTraceFields(
+  target: DiagnosticTraceHookFields,
+  trace?: DiagnosticTraceContext,
+): void
+⋮----
+export function toPluginMessageContext(
+  canonical: CanonicalInboundMessageHookContext | CanonicalSentMessageHookContext,
+): PluginHookMessageContext
+⋮----
+function stripChannelPrefix(value: string | undefined, channelId: string): string | undefined
+⋮----
+function resolveInboundConversation(canonical: CanonicalInboundMessageHookContext):
+⋮----
+export function toPluginInboundClaimContext(
+  canonical: CanonicalInboundMessageHookContext,
+): PluginHookInboundClaimContext
+⋮----
+export function toPluginInboundClaimEvent(
+  canonical: CanonicalInboundMessageHookContext,
+  extras?: {
+    commandAuthorized?: boolean;
+    wasMentioned?: boolean;
+  },
+): PluginHookInboundClaimEvent
+⋮----
+export function toPluginMessageReceivedEvent(
+  canonical: CanonicalInboundMessageHookContext,
+): PluginHookMessageReceivedEvent
+⋮----
+export function toPluginMessageSentEvent(
+  canonical: CanonicalSentMessageHookContext,
+): PluginHookMessageSentEvent
+⋮----
+export function toInternalMessageReceivedContext(
+  canonical: CanonicalInboundMessageHookContext,
+): MessageReceivedHookContext
+⋮----
+export function toInternalMessageTranscribedContext(
+  canonical: CanonicalInboundMessageHookContext,
+  cfg: OpenClawConfig,
+): MessageTranscribedHookContext &
+⋮----
+export function toInternalMessagePreprocessedContext(
+  canonical: CanonicalInboundMessageHookContext,
+  cfg: OpenClawConfig,
+): MessagePreprocessedHookContext &
+⋮----
+function toInternalInboundMessageHookContextBase(canonical: CanonicalInboundMessageHookContext)
+⋮----
+export function toInternalMessageSentContext(
+  canonical: CanonicalSentMessageHookContext,
+): MessageSentHookContext
+
+================
+===== SECTION:src-hooks-module-loader-ts =====
+File: src/hooks/module-loader.ts
+================
+import { pathToFileURL } from "node:url";
+⋮----
+type ModuleNamespace = Record<string, unknown>;
+type GenericFunction = (...args: never[]) => unknown;
+⋮----
+export function resolveFileModuleUrl(params: {
+  modulePath: string;
+  cacheBust?: boolean;
+  nowMs?: number;
+}): string
+⋮----
+export async function importFileModule(params: {
+  modulePath: string;
+  cacheBust?: boolean;
+  nowMs?: number;
+}): Promise<ModuleNamespace>
+⋮----
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Dynamic module exports are typed by the caller.
+export function resolveFunctionModuleExport<T extends GenericFunction>(params: {
+  mod: ModuleNamespace;
+  exportName?: string;
+  fallbackExportNames?: string[];
+}): T | undefined
+
+================
+===== SECTION:src-hooks-plugin-hooks-ts =====
+File: src/hooks/plugin-hooks.ts
+================
+import fs from "node:fs";
+import path from "node:path";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  normalizePluginsConfigWithResolver,
+  resolveEffectivePluginActivationState,
+  resolveMemorySlotDecision,
+} from "../plugins/config-policy.js";
+import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import { hasKind } from "../plugins/slots.js";
+import { isPathInsideWithRealpath } from "../security/scan-paths.js";
+⋮----
+type PluginHookDirEntry = {
+  dir: string;
+  pluginId: string;
+};
+⋮----
+export function resolvePluginHookDirs(params: {
+  workspaceDir: string | undefined;
+  config?: OpenClawConfig;
+}): PluginHookDirEntry[]
+
+================
+===== SECTION:src-hooks-policy-ts =====
+File: src/hooks/policy.ts
+================
+import type { OpenClawConfig, HookConfig } from "../config/config.js";
+import { resolveHookKey } from "./frontmatter.js";
+import type { HookEntry, HookSource } from "./types.js";
+⋮----
+export type HookEnableStateReason = "disabled in config" | "workspace hook (disabled by default)";
+⋮----
+type HookEnableState = {
+  enabled: boolean;
+  reason?: HookEnableStateReason;
+};
+⋮----
+type HookSourcePolicy = {
+  precedence: number;
+  trustedLocalCode: boolean;
+  defaultEnableMode: "default-on" | "explicit-opt-in";
+  canOverride: HookSource[];
+  canBeOverriddenBy: HookSource[];
+};
+⋮----
+type HookResolutionCollision = {
+  name: string;
+  kept: HookEntry;
+  ignored: HookEntry;
+};
+⋮----
+function getHookSourcePolicy(source: HookSource): HookSourcePolicy
+⋮----
+export function resolveHookConfig(
+  config: OpenClawConfig | undefined,
+  hookKey: string,
+): HookConfig | undefined
+⋮----
+export function resolveHookEnableState(params: {
+  entry: HookEntry;
+  config?: OpenClawConfig;
+  hookConfig?: HookConfig;
+}): HookEnableState
+⋮----
+function canOverrideHook(candidate: HookEntry, existing: HookEntry): boolean
+⋮----
+export function resolveHookEntries(
+  entries: HookEntry[],
+  opts?: {
+onCollisionIgnored?: (collision: HookResolutionCollision)
+
+================
+===== SECTION:src-hooks-types-ts =====
+File: src/hooks/types.ts
+================
+export type HookInstallSpec = {
+  id?: string;
+  kind: "bundled" | "npm" | "git";
+  label?: string;
+  package?: string;
+  repository?: string;
+  bins?: string[];
+};
+⋮----
+export type OpenClawHookMetadata = {
+  always?: boolean;
+  hookKey?: string;
+  emoji?: string;
+  homepage?: string;
+  /** Events this hook handles (e.g., ["command:new", "session:start"]) */
+  events: string[];
+  /** Optional export name (default: "default") */
+  export?: string;
+  os?: string[];
+  requires?: {
+    bins?: string[];
+    anyBins?: string[];
+    env?: string[];
+    config?: string[];
+  };
+  install?: HookInstallSpec[];
+};
+⋮----
+/** Events this hook handles (e.g., ["command:new", "session:start"]) */
+⋮----
+/** Optional export name (default: "default") */
+⋮----
+export type HookInvocationPolicy = {
+  enabled: boolean;
+};
+⋮----
+export type ParsedHookFrontmatter = Record<string, string>;
+⋮----
+export type Hook = {
+  name: string;
+  description: string;
+  source: "openclaw-bundled" | "openclaw-managed" | "openclaw-workspace" | "openclaw-plugin";
+  pluginId?: string;
+  filePath: string; // Path to HOOK.md
+  baseDir: string; // Directory containing hook
+  handlerPath: string; // Path to handler module (handler.ts/js)
+};
+⋮----
+filePath: string; // Path to HOOK.md
+baseDir: string; // Directory containing hook
+handlerPath: string; // Path to handler module (handler.ts/js)
+⋮----
+export type HookSource = Hook["source"];
+⋮----
+export type HookEntry = {
+  hook: Hook;
+  frontmatter: ParsedHookFrontmatter;
+  metadata?: OpenClawHookMetadata;
+  invocation?: HookInvocationPolicy;
+};
+⋮----
+export type HookEligibilityContext = {
+  remote?: {
+    platforms: string[];
+    hasBin: (bin: string) => boolean;
+    hasAnyBin: (bins: string[]) => boolean;
+    note?: string;
+  };
+};
+
+================
+===== SECTION:src-hooks-update-ts =====
+File: src/hooks/update.ts
+================
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import {
+  expectedIntegrityForUpdate,
+  readInstalledPackageVersion,
+} from "../infra/package-update-utils.js";
+import {
+  installHooksFromNpmSpec,
+  type HookNpmIntegrityDriftParams,
+  resolveHookInstallDir,
+} from "./install.js";
+import { recordHookInstall } from "./installs.js";
+⋮----
+export type HookPackUpdateLogger = {
+  info?: (message: string) => void;
+  warn?: (message: string) => void;
+};
+⋮----
+export type HookPackUpdateStatus = "updated" | "unchanged" | "skipped" | "error";
+⋮----
+export type HookPackUpdateOutcome = {
+  hookId: string;
+  status: HookPackUpdateStatus;
+  message: string;
+  currentVersion?: string;
+  nextVersion?: string;
+};
+⋮----
+export type HookPackUpdateSummary = {
+  config: OpenClawConfig;
+  changed: boolean;
+  outcomes: HookPackUpdateOutcome[];
+};
+⋮----
+export type HookPackUpdateIntegrityDriftParams = HookNpmIntegrityDriftParams & {
+  hookId: string;
+  resolvedSpec?: string;
+  resolvedVersion?: string;
+  dryRun: boolean;
+};
+⋮----
+function createHookPackUpdateIntegrityDriftHandler(params: {
+  hookId: string;
+  dryRun: boolean;
+  logger: HookPackUpdateLogger;
+onIntegrityDrift?: (params: HookPackUpdateIntegrityDriftParams)
+⋮----
+export async function updateNpmInstalledHookPacks(params: {
+  config: OpenClawConfig;
+  logger?: HookPackUpdateLogger;
+  hookIds?: string[];
+  dryRun?: boolean;
+  specOverrides?: Record<string, string>;
+onIntegrityDrift?: (params: HookPackUpdateIntegrityDriftParams)
+
+================
+===== SECTION:src-hooks-workspace-ts =====
+File: src/hooks/workspace.ts
+================
+import fs from "node:fs";
+import path from "node:path";
+import { MANIFEST_KEY } from "../compat/legacy-names.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { openRootFileSync } from "../infra/boundary-file-read.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isPathInsideWithRealpath } from "../security/scan-paths.js";
+import { CONFIG_DIR, resolveUserPath } from "../utils.js";
+import { resolveBundledHooksDir } from "./bundled-dir.js";
+import {
+  parseFrontmatter,
+  resolveHookInvocationPolicy,
+  resolveOpenClawMetadata,
+} from "./frontmatter.js";
+import { resolvePluginHookDirs } from "./plugin-hooks.js";
+import { resolveHookEntries } from "./policy.js";
+import type { Hook, HookEntry, HookSource, ParsedHookFrontmatter } from "./types.js";
+⋮----
+type HookPackageManifest = {
+  name?: string;
+} & Partial<Record<typeof MANIFEST_KEY, { hooks?: string[] }>>;
+⋮----
+type LoadedHook = {
+  hook: Hook;
+  frontmatter: ParsedHookFrontmatter;
+};
+⋮----
+function readHookPackageManifest(dir: string): HookPackageManifest | null
+⋮----
+function resolvePackageHooks(manifest: HookPackageManifest): string[]
+⋮----
+function resolveContainedDir(baseDir: string, targetDir: string): string | null
+⋮----
+function loadHookFromDir(params: {
+  hookDir: string;
+  source: HookSource;
+  pluginId?: string;
+  nameHint?: string;
+}): LoadedHook | null
+⋮----
+// keep the discovered path when realpath is unavailable
+⋮----
+/**
+ * Scan a directory for hooks (subdirectories containing HOOK.md)
+ */
+function loadHooksFromDir(params: {
+  dir: string;
+  source: HookSource;
+  pluginId?: string;
+}): LoadedHook[]
+⋮----
+export function loadHookEntriesFromDir(params: {
+  dir: string;
+  source: HookSource;
+  pluginId?: string;
+}): HookEntry[]
+⋮----
+function discoverWorkspaceHookEntries(
+  workspaceDir: string,
+  opts?: {
+    config?: OpenClawConfig;
+    managedHooksDir?: string;
+    bundledHooksDir?: string;
+  },
+): HookEntry[]
+⋮----
+export function loadWorkspaceHookEntries(
+  workspaceDir: string,
+  opts?: {
+    config?: OpenClawConfig;
+    managedHooksDir?: string;
+    bundledHooksDir?: string;
+    entries?: HookEntry[];
+  },
+): HookEntry[]
+⋮----
+function readRootFileUtf8(params: {
+  absolutePath: string;
+  rootPath: string;
+  boundaryLabel: string;
+}): string | null
+⋮----
+function withOpenedRootFileSync<T>(
+  params: {
+    absolutePath: string;
+    rootPath: string;
+    boundaryLabel: string;
+  },
+  read: (opened: { fd: number; path: string }) => T,
+): T | null
+⋮----
+function resolveRootFilePath(params: {
+  absolutePath: string;
+  rootPath: string;
+  boundaryLabel: string;
+}): string | null
+
+================
+===== SECTION:src-plugins-hook-types-ts =====
+===== SECTION:hooks:hook-types-ts =====
+File: src/plugins/hook-types.ts
+================
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
+import type { ReplyPayload } from "../auto-reply/reply-payload.js";
+import type {
+  ReplyDispatchKind,
+  ReplyDispatcher,
+} from "../auto-reply/reply/reply-dispatcher.types.js";
+import type { FinalizedMsgContext } from "../auto-reply/templating.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { TtsAutoMode } from "../config/types.tts.js";
+import type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
+import type {
+  PluginHookBeforeAgentStartEvent,
+  PluginHookBeforeAgentStartResult,
+  PluginHookBeforeModelResolveEvent,
+  PluginHookBeforeModelResolveResult,
+  PluginHookBeforePromptBuildEvent,
+  PluginHookBeforePromptBuildResult,
+} from "./hook-before-agent-start.types.js";
+import type { InputGateDecision } from "./hook-decision-types.js";
+import type {
+  PluginHookInboundClaimContext,
+  PluginHookInboundClaimEvent,
+  PluginHookMessageContext,
+  PluginHookMessageReceivedEvent,
+  PluginHookMessageSendingEvent,
+  PluginHookMessageSendingResult,
+  PluginHookMessageSentEvent,
+} from "./hook-message.types.js";
+import type { PluginJsonValue } from "./host-hook-json.js";
+import type {
+  PluginAgentTurnPrepareEvent,
+  PluginAgentTurnPrepareResult,
+  PluginHeartbeatPromptContributionEvent,
+  PluginHeartbeatPromptContributionResult,
+} from "./host-hook-turn-types.js";
+⋮----
+export type PluginHookName =
+  | "before_model_resolve"
+  | "agent_turn_prepare"
+  | "before_prompt_build"
+  | "before_agent_start"
+  | "before_agent_reply"
+  | "model_call_started"
+  | "model_call_ended"
+  | "llm_input"
+  | "llm_output"
+  | "before_agent_finalize"
+  | "agent_end"
+  | "before_compaction"
+  | "after_compaction"
+  | "before_reset"
+  | "inbound_claim"
+  | "message_received"
+  | "message_sending"
+  | "message_sent"
+  | "before_tool_call"
+  | "after_tool_call"
+  | "tool_result_persist"
+  | "before_message_write"
+  | "session_start"
+  | "session_end"
+  | "subagent_spawning"
+  | "subagent_delivery_target"
+  | "subagent_spawned"
+  | "subagent_ended"
+  /** @deprecated Use gateway_stop. */
+  | "deactivate"
+  | "gateway_start"
+  | "gateway_stop"
+  | "heartbeat_prompt_contribution"
+  | "cron_changed"
+  | "before_dispatch"
+  | "reply_dispatch"
+  | "before_install"
+  | "before_agent_run";
+⋮----
+/** @deprecated Use gateway_stop. */
+⋮----
+type MissingPluginHookNames = Exclude<PluginHookName, (typeof PLUGIN_HOOK_NAMES)[number]>;
+type AssertAllPluginHookNamesListed = MissingPluginHookNames extends never ? true : never;
+⋮----
+export const isPluginHookName = (hookName: unknown): hookName is PluginHookName
+⋮----
+export type PromptInjectionHookName = (typeof PROMPT_INJECTION_HOOK_NAMES)[number];
+⋮----
+export const isPromptInjectionHookName = (hookName: PluginHookName): boolean
+⋮----
+export type ConversationHookName = (typeof CONVERSATION_HOOK_NAMES)[number];
+⋮----
+export const isConversationHookName = (hookName: PluginHookName): boolean
+⋮----
+export type PluginHookAgentContext = {
+  runId?: string;
+  jobId?: string;
+  trace?: DiagnosticTraceContext;
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  workspaceDir?: string;
+  modelProviderId?: string;
+  modelId?: string;
+  messageProvider?: string;
+  trigger?: string;
+  channelId?: string;
+  /** Resolved effective context-token budget after model/config/agent caps. */
+  contextTokenBudget?: number;
+  /** Source that supplied the resolved context-token budget. */
+  contextWindowSource?: PluginHookContextWindowSource;
+  /** Native/configured reference window when a lower cap wins. */
+  contextWindowReferenceTokens?: number;
+};
+⋮----
+/** Resolved effective context-token budget after model/config/agent caps. */
+⋮----
+/** Source that supplied the resolved context-token budget. */
+⋮----
+/** Native/configured reference window when a lower cap wins. */
+⋮----
+export type PluginHookContextWindowSource =
+  | "model"
+  | "modelsConfig"
+  | "agentContextTokens"
+  | "default";
+⋮----
+export type PluginHookBeforeAgentReplyEvent = {
+  cleanedBody: string;
+};
+⋮----
+export type PluginHookBeforeAgentReplyResult = {
+  handled: boolean;
+  reply?: ReplyPayload;
+  reason?: string;
+};
+⋮----
+export type PluginHookLlmInputEvent = {
+  runId: string;
+  sessionId: string;
+  provider: string;
+  model: string;
+  systemPrompt?: string;
+  prompt: string;
+  historyMessages: unknown[];
+  imagesCount: number;
+  tools?: unknown[];
+};
+⋮----
+export type PluginHookModelCallBaseEvent = {
+  runId: string;
+  callId: string;
+  sessionKey?: string;
+  sessionId?: string;
+  provider: string;
+  model: string;
+  api?: string;
+  transport?: string;
+  /** Resolved effective context-token budget after model/config/agent caps. */
+  contextTokenBudget?: number;
+  /** Source that supplied the resolved context-token budget. */
+  contextWindowSource?: PluginHookContextWindowSource;
+  /** Native/configured reference window when a lower cap wins. */
+  contextWindowReferenceTokens?: number;
+};
+⋮----
+/** Resolved effective context-token budget after model/config/agent caps. */
+⋮----
+/** Source that supplied the resolved context-token budget. */
+⋮----
+/** Native/configured reference window when a lower cap wins. */
+⋮----
+export type PluginHookModelCallStartedEvent = PluginHookModelCallBaseEvent;
+⋮----
+export type PluginHookModelCallEndedEvent = PluginHookModelCallBaseEvent & {
+  durationMs: number;
+  outcome: "completed" | "error";
+  errorCategory?: string;
+  failureKind?: "aborted" | "connection_closed" | "connection_reset" | "terminated" | "timeout";
+  requestPayloadBytes?: number;
+  responseStreamBytes?: number;
+  timeToFirstByteMs?: number;
+  upstreamRequestIdHash?: string;
+};
+⋮----
+export type PluginHookLlmOutputEvent = {
+  runId: string;
+  sessionId: string;
+  provider: string;
+  model: string;
+  /** Resolved effective context-token budget after model/config/agent caps. */
+  contextTokenBudget?: number;
+  /** Source that supplied the resolved context-token budget. */
+  contextWindowSource?: PluginHookContextWindowSource;
+  /** Native/configured reference window when a lower cap wins. */
+  contextWindowReferenceTokens?: number;
+  /**
+   * Fully resolved provider/model ref used for the call.
+   *
+   * This intentionally keeps the provider prefix so operator tooling can
+   * distinguish e.g. openai-codex/gpt-5.4 from codex/gpt-5.4 even when display
+   * names collapse to just the model id.
+   */
+  resolvedRef?: string;
+  /**
+   * Harness/backend responsible for the model loop. Kept separate from
+   * `resolvedRef` so provider/model consumers keep a stable parse contract.
+   */
+  harnessId?: string;
+  /** The original user prompt that produced this output. */
+  prompt?: string;
+  assistantTexts: string[];
+  lastAssistant?: unknown;
+  usage?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+};
+⋮----
+/** Resolved effective context-token budget after model/config/agent caps. */
+⋮----
+/** Source that supplied the resolved context-token budget. */
+⋮----
+/** Native/configured reference window when a lower cap wins. */
+⋮----
+/**
+   * Fully resolved provider/model ref used for the call.
+   *
+   * This intentionally keeps the provider prefix so operator tooling can
+   * distinguish e.g. openai-codex/gpt-5.4 from codex/gpt-5.4 even when display
+   * names collapse to just the model id.
+   */
+⋮----
+/**
+   * Harness/backend responsible for the model loop. Kept separate from
+   * `resolvedRef` so provider/model consumers keep a stable parse contract.
+   */
+⋮----
+/** The original user prompt that produced this output. */
+⋮----
+export type PluginHookAgentEndEvent = {
+  runId?: string;
+  messages: unknown[];
+  success: boolean;
+  error?: string;
+  durationMs?: number;
+};
+⋮----
+export type PluginHookBeforeAgentFinalizeEvent = {
+  runId?: string;
+  sessionId: string;
+  sessionKey?: string;
+  turnId?: string;
+  provider?: string;
+  model?: string;
+  cwd?: string;
+  transcriptPath?: string;
+  stopHookActive: boolean;
+  lastAssistantMessage?: string;
+  messages?: unknown[];
+};
+⋮----
+export type PluginHookBeforeAgentFinalizeResult = {
+  /**
+   * continue: accept normal finalization.
+   * revise: block finalization and ask the harness for another model pass.
+   * finalize: force finalization even if another hook requested revision.
+   */
+  action?: "continue" | "revise" | "finalize";
+  reason?: string;
+  retry?: {
+    instruction: string;
+    idempotencyKey?: string;
+    maxAttempts?: number;
+  };
+};
+⋮----
+/**
+   * continue: accept normal finalization.
+   * revise: block finalization and ask the harness for another model pass.
+   * finalize: force finalization even if another hook requested revision.
+   */
+⋮----
+export type PluginHookBeforeCompactionEvent = {
+  messageCount: number;
+  compactingCount?: number;
+  tokenCount?: number;
+  messages?: unknown[];
+  sessionFile?: string;
+};
+⋮----
+export type PluginHookBeforeResetEvent = {
+  sessionFile?: string;
+  messages?: unknown[];
+  reason?: string;
+};
+⋮----
+export type PluginHookAfterCompactionEvent = {
+  messageCount: number;
+  tokenCount?: number;
+  compactedCount: number;
+  sessionFile?: string;
+};
+⋮----
+export type PluginHookInboundClaimResult = {
+  handled: boolean;
+  reply?: ReplyPayload;
+};
+⋮----
+export type PluginHookBeforeDispatchEvent = {
+  content: string;
+  body?: string;
+  channel?: string;
+  sessionKey?: string;
+  senderId?: string;
+  isGroup?: boolean;
+  timestamp?: number;
+};
+⋮----
+export type PluginHookBeforeDispatchContext = {
+  channelId?: string;
+  accountId?: string;
+  conversationId?: string;
+  sessionKey?: string;
+  senderId?: string;
+};
+⋮----
+export type PluginHookBeforeDispatchResult = {
+  handled: boolean;
+  text?: string;
+};
+⋮----
+export type PluginHookReplyDispatchEvent = {
+  ctx: FinalizedMsgContext;
+  runId?: string;
+  sessionKey?: string;
+  images?: Array<{ data: string; mimeType: string }>;
+  inboundAudio: boolean;
+  sessionTtsAuto?: TtsAutoMode;
+  ttsChannel?: string;
+  suppressUserDelivery?: boolean;
+  suppressReplyLifecycle?: boolean;
+  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
+  shouldRouteToOriginating: boolean;
+  originatingChannel?: string;
+  originatingTo?: string;
+  shouldSendToolSummaries: boolean;
+  sendPolicy: "allow" | "deny";
+  isTailDispatch?: boolean;
+};
+⋮----
+export type PluginHookReplyDispatchContext = {
+  cfg: OpenClawConfig;
+  dispatcher: ReplyDispatcher;
+  abortSignal?: AbortSignal;
+  onReplyStart?: () => Promise<void> | void;
+  recordProcessed: (
+    outcome: "completed" | "skipped" | "error",
+    opts?: {
+      reason?: string;
+      error?: string;
+    },
+  ) => void;
+  markIdle: (reason: string) => void;
+};
+⋮----
+export type PluginHookReplyDispatchResult = {
+  handled: boolean;
+  queuedFinal: boolean;
+  counts: Record<ReplyDispatchKind, number>;
+};
+⋮----
+export type PluginHookToolKind = "code_mode_exec";
+export type PluginHookToolInputKind = "javascript" | "typescript";
+⋮----
+export type PluginHookToolContext = {
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  runId?: string;
+  trace?: DiagnosticTraceContext;
+  toolName: string;
+  /** Host-authoritative discriminator for tools that intentionally share names. */
+  toolKind?: PluginHookToolKind;
+  /** Host-authoritative input/runtime family for tools whose payloads need policy distinction. */
+  toolInputKind?: PluginHookToolInputKind;
+  toolCallId?: string;
+  getSessionExtension?: (namespace: string) => PluginJsonValue | undefined;
+  channelId?: string;
+};
+⋮----
+/** Host-authoritative discriminator for tools that intentionally share names. */
+⋮----
+/** Host-authoritative input/runtime family for tools whose payloads need policy distinction. */
+⋮----
+export type PluginHookBeforeToolCallEvent = {
+  toolName: string;
+  params: Record<string, unknown>;
+  /** Host-authoritative discriminator for tools that intentionally share names. */
+  toolKind?: PluginHookToolKind;
+  /** Host-authoritative input/runtime family for tools whose payloads need policy distinction. */
+  toolInputKind?: PluginHookToolInputKind;
+  runId?: string;
+  toolCallId?: string;
+  /**
+   * Optional best-effort destination path hints the host derived from `params`
+   * for well-known tool envelopes (e.g. `apply_patch`).
+   *
+   * This is a convenience hint, not an authoritative parse result: the host's
+   * extractor may be intentionally lenient and can return paths for malformed
+   * or partial envelopes. Plugins may use `derivedPaths` as a fast path, but
+   * should parse and validate `params` themselves when correctness or policy
+   * decisions depend on the exact set of affected paths. Absent for tools the
+   * host does not know how to derive paths for.
+   */
+  derivedPaths?: readonly string[];
+};
+⋮----
+/** Host-authoritative discriminator for tools that intentionally share names. */
+⋮----
+/** Host-authoritative input/runtime family for tools whose payloads need policy distinction. */
+⋮----
+/**
+   * Optional best-effort destination path hints the host derived from `params`
+   * for well-known tool envelopes (e.g. `apply_patch`).
+   *
+   * This is a convenience hint, not an authoritative parse result: the host's
+   * extractor may be intentionally lenient and can return paths for malformed
+   * or partial envelopes. Plugins may use `derivedPaths` as a fast path, but
+   * should parse and validate `params` themselves when correctness or policy
+   * decisions depend on the exact set of affected paths. Absent for tools the
+   * host does not know how to derive paths for.
+   */
+⋮----
+export type PluginApprovalResolution =
+  (typeof PluginApprovalResolutions)[keyof typeof PluginApprovalResolutions];
+⋮----
+export type PluginHookBeforeToolCallResult = {
+  params?: Record<string, unknown>;
+  block?: boolean;
+  blockReason?: string;
+  requireApproval?: {
+    title: string;
+    description: string;
+    severity?: "info" | "warning" | "critical";
+    timeoutMs?: number;
+    timeoutBehavior?: "allow" | "deny";
+    allowedDecisions?: Array<"allow-once" | "allow-always" | "deny">;
+    pluginId?: string;
+    onResolution?: (decision: PluginApprovalResolution) => Promise<void> | void;
+  };
+};
+⋮----
+export type PluginHookAfterToolCallEvent = {
+  toolName: string;
+  params: Record<string, unknown>;
+  runId?: string;
+  toolCallId?: string;
+  result?: unknown;
+  error?: string;
+  durationMs?: number;
+};
+⋮----
+export type PluginHookToolResultPersistContext = {
+  agentId?: string;
+  sessionKey?: string;
+  toolName?: string;
+  toolCallId?: string;
+};
+⋮----
+export type PluginHookToolResultPersistEvent = {
+  toolName?: string;
+  toolCallId?: string;
+  message: AgentMessage;
+  isSynthetic?: boolean;
+};
+⋮----
+export type PluginHookToolResultPersistResult = {
+  message?: AgentMessage;
+};
+⋮----
+export type PluginHookBeforeMessageWriteEvent = {
+  message: AgentMessage;
+  sessionKey?: string;
+  agentId?: string;
+};
+⋮----
+export type PluginHookBeforeMessageWriteResult = {
+  block?: boolean;
+  message?: AgentMessage;
+};
+⋮----
+export type PluginHookSessionContext = {
+  agentId?: string;
+  sessionId: string;
+  sessionKey?: string;
+};
+⋮----
+export type PluginHookSessionStartEvent = {
+  sessionId: string;
+  sessionKey?: string;
+  resumedFrom?: string;
+};
+⋮----
+export type PluginHookSessionEndReason =
+  | "new"
+  | "reset"
+  | "idle"
+  | "daily"
+  | "compaction"
+  | "deleted"
+  | "shutdown"
+  | "restart"
+  | "unknown";
+⋮----
+export type PluginHookSessionEndEvent = {
+  sessionId: string;
+  sessionKey?: string;
+  messageCount: number;
+  durationMs?: number;
+  reason?: PluginHookSessionEndReason;
+  sessionFile?: string;
+  transcriptArchived?: boolean;
+  nextSessionId?: string;
+  nextSessionKey?: string;
+};
+⋮----
+export type PluginHookSubagentContext = {
+  runId?: string;
+  childSessionKey?: string;
+  requesterSessionKey?: string;
+};
+⋮----
+export type PluginHookSubagentTargetKind = "subagent" | "acp";
+⋮----
+type PluginHookSubagentSpawnBase = {
+  childSessionKey: string;
+  agentId: string;
+  label?: string;
+  mode: "run" | "session";
+  requester?: {
+    channel?: string;
+    accountId?: string;
+    to?: string;
+    threadId?: string | number;
+  };
+  threadRequested: boolean;
+};
+⋮----
+export type PluginHookSubagentSpawningEvent = PluginHookSubagentSpawnBase;
+⋮----
+export type PluginHookSubagentSpawningResult =
+  | {
+      status: "ok";
+      /**
+       * @deprecated Core now resolves thread-bound spawn routing from session
+       * bindings and channel route projection. Keep returning this only for
+       * compatibility with older OpenClaw runtimes.
+       */
+      threadBindingReady?: boolean;
+      /**
+       * @deprecated Use channel `resolveDeliveryTarget` plus core
+       * `SessionBindingRecord` projection instead of returning an ad hoc
+       * delivery route from this hook.
+       */
+      deliveryOrigin?: {
+        channel?: string;
+        accountId?: string;
+        to?: string;
+        threadId?: string | number;
+      };
+    }
+  | {
+      status: "error";
+      error: string;
+    };
+⋮----
+/**
+       * @deprecated Core now resolves thread-bound spawn routing from session
+       * bindings and channel route projection. Keep returning this only for
+       * compatibility with older OpenClaw runtimes.
+       */
+⋮----
+/**
+       * @deprecated Use channel `resolveDeliveryTarget` plus core
+       * `SessionBindingRecord` projection instead of returning an ad hoc
+       * delivery route from this hook.
+       */
+⋮----
+export type PluginHookSubagentDeliveryTargetEvent = {
+  childSessionKey: string;
+  requesterSessionKey: string;
+  requesterOrigin?: {
+    channel?: string;
+    accountId?: string;
+    to?: string;
+    threadId?: string | number;
+  };
+  childRunId?: string;
+  spawnMode?: "run" | "session";
+  expectsCompletionMessage: boolean;
+};
+⋮----
+/**
+ * @deprecated Core route projection resolves subagent delivery targets from
+ * `SessionBindingRecord` and channel `resolveDeliveryTarget`. This hook result
+ * remains for plugin compatibility during the transition.
+ */
+export type PluginHookSubagentDeliveryTargetResult = {
+  origin?: {
+    channel?: string;
+    accountId?: string;
+    to?: string;
+    threadId?: string | number;
+  };
+};
+⋮----
+export type PluginHookSubagentSpawnedEvent = PluginHookSubagentSpawnBase & {
+  runId: string;
+};
+⋮----
+export type PluginHookSubagentEndedEvent = {
+  targetSessionKey: string;
+  targetKind: PluginHookSubagentTargetKind;
+  reason: string;
+  sendFarewell?: boolean;
+  accountId?: string;
+  runId?: string;
+  endedAt?: number;
+  outcome?: "ok" | "error" | "timeout" | "killed" | "reset" | "deleted";
+  error?: string;
+};
+⋮----
+export type PluginHookGatewayContext = {
+  port?: number;
+  config?: OpenClawConfig;
+  workspaceDir?: string;
+  getCron?: () => PluginHookGatewayCronService | undefined;
+};
+⋮----
+export type PluginHookGatewayStartEvent = {
+  port: number;
+};
+⋮----
+export type PluginHookGatewayStopEvent = {
+  reason?: string;
+};
+⋮----
+export type PluginHookGatewayCronRunStatus = "ok" | "error" | "skipped";
+⋮----
+export type PluginHookGatewayCronDeliveryStatus =
+  | "not-requested"
+  | "delivered"
+  | "not-delivered"
+  | "unknown";
+⋮----
+export type PluginHookGatewayCronJobState = {
+  nextRunAtMs?: number;
+  runningAtMs?: number;
+  lastRunAtMs?: number;
+  lastRunStatus?: PluginHookGatewayCronRunStatus;
+  lastError?: string;
+  lastDurationMs?: number;
+  lastDelivered?: boolean;
+  lastDeliveryStatus?: PluginHookGatewayCronDeliveryStatus;
+  lastDeliveryError?: string;
+  lastFailureNotificationDelivered?: boolean;
+  lastFailureNotificationDeliveryStatus?: PluginHookGatewayCronDeliveryStatus;
+  lastFailureNotificationDeliveryError?: string;
+};
+⋮----
+export type PluginHookGatewayCronJob = {
+  id: string;
+  /** Agent id that owns this cron job. */
+  agentId?: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  schedule?:
+    | {
+        kind: "cron";
+        expr?: string;
+        tz?: string;
+        staggerMs?: number;
+      }
+    | {
+        kind: "at";
+        at?: string;
+      }
+    | {
+        kind: "every";
+        everyMs?: number;
+        anchorMs?: number;
+      };
+  sessionTarget?: string;
+  wakeMode?: string;
+  payload?: {
+    kind?: string;
+    text?: string;
+  };
+  state?: PluginHookGatewayCronJobState;
+  createdAtMs?: number;
+  updatedAtMs?: number;
+};
+⋮----
+/** Agent id that owns this cron job. */
+⋮----
+export type PluginHookCronChangedEvent = {
+  action: "added" | "updated" | "removed" | "started" | "finished";
+  jobId: string;
+  job?: PluginHookGatewayCronJob;
+  /** Top-level session target for downstream routing (mirrors job.sessionTarget). */
+  sessionTarget?: string;
+  /** Agent id that owns this cron job (mirrors job.agentId). */
+  agentId?: string;
+  runAtMs?: number;
+  durationMs?: number;
+  status?: PluginHookGatewayCronRunStatus;
+  error?: string;
+  summary?: string;
+  delivered?: boolean;
+  deliveryStatus?: PluginHookGatewayCronDeliveryStatus;
+  deliveryError?: string;
+  sessionId?: string;
+  sessionKey?: string;
+  runId?: string;
+  nextRunAtMs?: number;
+  model?: string;
+  provider?: string;
+};
+⋮----
+/** Top-level session target for downstream routing (mirrors job.sessionTarget). */
+⋮----
+/** Agent id that owns this cron job (mirrors job.agentId). */
+⋮----
+export type PluginHookGatewayCronCreateInput = {
+  name: string;
+  description: string;
+  enabled: boolean;
+  schedule: {
+    kind: string;
+    expr: string;
+    tz?: string;
+  };
+  sessionTarget: string;
+  wakeMode: string;
+  payload: {
+    kind: string;
+    text?: string;
+  };
+};
+⋮----
+export type PluginHookGatewayCronUpdateInput = Partial<PluginHookGatewayCronCreateInput>;
+⋮----
+export type PluginHookGatewayCronRemoveResult = {
+  removed?: boolean;
+};
+⋮----
+export type PluginHookGatewayCronService = {
+  list: (opts?: { includeDisabled?: boolean }) => Promise<PluginHookGatewayCronJob[]>;
+  add: (input: PluginHookGatewayCronCreateInput) => Promise<unknown>;
+  update: (id: string, patch: PluginHookGatewayCronUpdateInput) => Promise<unknown>;
+  remove: (id: string) => Promise<PluginHookGatewayCronRemoveResult>;
+};
+⋮----
+export type PluginInstallTargetType = "skill" | "plugin";
+export type PluginInstallRequestKind =
+  | "skill-install"
+  | "plugin-dir"
+  | "plugin-archive"
+  | "plugin-file"
+  | "plugin-npm"
+  | "plugin-git";
+export type PluginInstallSourcePathKind = "file" | "directory";
+⋮----
+export type PluginInstallFinding = {
+  ruleId: string;
+  severity: "info" | "warn" | "critical";
+  file: string;
+  line: number;
+  message: string;
+};
+⋮----
+export type PluginHookBeforeInstallRequest = {
+  kind: PluginInstallRequestKind;
+  mode: "install" | "update";
+  requestedSpecifier?: string;
+};
+⋮----
+export type PluginHookBeforeInstallBuiltinScan = {
+  status: "ok" | "error";
+  scannedFiles: number;
+  critical: number;
+  warn: number;
+  info: number;
+  findings: PluginInstallFinding[];
+  error?: string;
+};
+⋮----
+export type PluginHookBeforeInstallSkillInstallSpec = {
+  id?: string;
+  kind: "brew" | "node" | "go" | "uv" | "download";
+  label?: string;
+  bins?: string[];
+  os?: string[];
+  formula?: string;
+  package?: string;
+  module?: string;
+  url?: string;
+  archive?: string;
+  extract?: boolean;
+  stripComponents?: number;
+  targetDir?: string;
+};
+⋮----
+export type PluginHookBeforeInstallSkill = {
+  installId: string;
+  installSpec?: PluginHookBeforeInstallSkillInstallSpec;
+};
+⋮----
+export type PluginHookBeforeInstallPlugin = {
+  pluginId: string;
+  contentType: "bundle" | "package" | "file";
+  packageName?: string;
+  manifestId?: string;
+  version?: string;
+  extensions?: string[];
+};
+⋮----
+export type PluginHookBeforeInstallContext = {
+  targetType: PluginInstallTargetType;
+  requestKind: PluginInstallRequestKind;
+  origin?: string;
+};
+⋮----
+export type PluginHookBeforeInstallEvent = {
+  targetType: PluginInstallTargetType;
+  targetName: string;
+  sourcePath: string;
+  sourcePathKind: PluginInstallSourcePathKind;
+  origin?: string;
+  request: PluginHookBeforeInstallRequest;
+  builtinScan: PluginHookBeforeInstallBuiltinScan;
+  skill?: PluginHookBeforeInstallSkill;
+  plugin?: PluginHookBeforeInstallPlugin;
+};
+⋮----
+export type PluginHookBeforeInstallResult = {
+  findings?: PluginInstallFinding[];
+  block?: boolean;
+  blockReason?: string;
+};
+⋮----
+// ---------------------------------------------------------------------------
+// before_agent_run — Lifecycle Gate Hook
+// ---------------------------------------------------------------------------
+⋮----
+/** Event payload for the before_agent_run gate hook. */
+export type PluginHookBeforeAgentRunEvent = {
+  /** The user's message that triggered this run. */
+  prompt: string;
+  /** Loaded session history before the current prompt is submitted. */
+  messages: unknown[];
+  /** Active system prompt prepared for this run. */
+  systemPrompt?: string;
+  /** Account identity when available. */
+  accountId?: string;
+  /** Channel the message came from. */
+  channelId?: string;
+  /** Sender identity when available. */
+  senderId?: string;
+  /** Trusted sender identity bit when available. */
+  senderIsOwner?: boolean;
+};
+⋮----
+/** The user's message that triggered this run. */
+⋮----
+/** Loaded session history before the current prompt is submitted. */
+⋮----
+/** Active system prompt prepared for this run. */
+⋮----
+/** Account identity when available. */
+⋮----
+/** Channel the message came from. */
+⋮----
+/** Sender identity when available. */
+⋮----
+/** Trusted sender identity bit when available. */
+⋮----
+/** Result type for before_agent_run. Returns pass/block or void (= pass). */
+export type PluginHookBeforeAgentRunResult = InputGateDecision | void;
+⋮----
+export type PluginHookHandlerMap = {
+  agent_turn_prepare: (
+    event: PluginAgentTurnPrepareEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<PluginAgentTurnPrepareResult | void> | PluginAgentTurnPrepareResult | void;
+  before_model_resolve: (
+    event: PluginHookBeforeModelResolveEvent,
+    ctx: PluginHookAgentContext,
+  ) =>
+    | Promise<PluginHookBeforeModelResolveResult | void>
+    | PluginHookBeforeModelResolveResult
+    | void;
+  before_prompt_build: (
+    event: PluginHookBeforePromptBuildEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<PluginHookBeforePromptBuildResult | void> | PluginHookBeforePromptBuildResult | void;
+  /** @deprecated Use before_model_resolve and before_prompt_build. */
+  before_agent_start: (
+    event: PluginHookBeforeAgentStartEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<PluginHookBeforeAgentStartResult | void> | PluginHookBeforeAgentStartResult | void;
+  before_agent_reply: (
+    event: PluginHookBeforeAgentReplyEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<PluginHookBeforeAgentReplyResult | void> | PluginHookBeforeAgentReplyResult | void;
+  model_call_started: (
+    event: PluginHookModelCallStartedEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
+  model_call_ended: (
+    event: PluginHookModelCallEndedEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
+  llm_input: (event: PluginHookLlmInputEvent, ctx: PluginHookAgentContext) => Promise<void> | void;
+  llm_output: (
+    event: PluginHookLlmOutputEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
+  before_agent_finalize: (
+    event: PluginHookBeforeAgentFinalizeEvent,
+    ctx: PluginHookAgentContext,
+  ) =>
+    | Promise<PluginHookBeforeAgentFinalizeResult | void>
+    | PluginHookBeforeAgentFinalizeResult
+    | void;
+  agent_end: (event: PluginHookAgentEndEvent, ctx: PluginHookAgentContext) => Promise<void> | void;
+  before_compaction: (
+    event: PluginHookBeforeCompactionEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
+  after_compaction: (
+    event: PluginHookAfterCompactionEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
+  before_reset: (
+    event: PluginHookBeforeResetEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
+  inbound_claim: (
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+  ) => Promise<PluginHookInboundClaimResult | void> | PluginHookInboundClaimResult | void;
+  before_dispatch: (
+    event: PluginHookBeforeDispatchEvent,
+    ctx: PluginHookBeforeDispatchContext,
+  ) => Promise<PluginHookBeforeDispatchResult | void> | PluginHookBeforeDispatchResult | void;
+  reply_dispatch: (
+    event: PluginHookReplyDispatchEvent,
+    ctx: PluginHookReplyDispatchContext,
+  ) => Promise<PluginHookReplyDispatchResult | void> | PluginHookReplyDispatchResult | void;
+  message_received: (
+    event: PluginHookMessageReceivedEvent,
+    ctx: PluginHookMessageContext,
+  ) => Promise<void> | void;
+  message_sending: (
+    event: PluginHookMessageSendingEvent,
+    ctx: PluginHookMessageContext,
+  ) => Promise<PluginHookMessageSendingResult | void> | PluginHookMessageSendingResult | void;
+  message_sent: (
+    event: PluginHookMessageSentEvent,
+    ctx: PluginHookMessageContext,
+  ) => Promise<void> | void;
+  before_tool_call: (
+    event: PluginHookBeforeToolCallEvent,
+    ctx: PluginHookToolContext,
+  ) => Promise<PluginHookBeforeToolCallResult | void> | PluginHookBeforeToolCallResult | void;
+  after_tool_call: (
+    event: PluginHookAfterToolCallEvent,
+    ctx: PluginHookToolContext,
+  ) => Promise<void> | void;
+  tool_result_persist: (
+    event: PluginHookToolResultPersistEvent,
+    ctx: PluginHookToolResultPersistContext,
+  ) => PluginHookToolResultPersistResult | void;
+  before_message_write: (
+    event: PluginHookBeforeMessageWriteEvent,
+    ctx: { agentId?: string; sessionKey?: string },
+  ) => PluginHookBeforeMessageWriteResult | void;
+  session_start: (
+    event: PluginHookSessionStartEvent,
+    ctx: PluginHookSessionContext,
+  ) => Promise<void> | void;
+  session_end: (
+    event: PluginHookSessionEndEvent,
+    ctx: PluginHookSessionContext,
+  ) => Promise<void> | void;
+  subagent_spawning: (
+    event: PluginHookSubagentSpawningEvent,
+    ctx: PluginHookSubagentContext,
+  ) => Promise<PluginHookSubagentSpawningResult | void> | PluginHookSubagentSpawningResult | void;
+  subagent_delivery_target: (
+    event: PluginHookSubagentDeliveryTargetEvent,
+    ctx: PluginHookSubagentContext,
+  ) =>
+    | Promise<PluginHookSubagentDeliveryTargetResult | void>
+    | PluginHookSubagentDeliveryTargetResult
+    | void;
+  subagent_spawned: (
+    event: PluginHookSubagentSpawnedEvent,
+    ctx: PluginHookSubagentContext,
+  ) => Promise<void> | void;
+  subagent_ended: (
+    event: PluginHookSubagentEndedEvent,
+    ctx: PluginHookSubagentContext,
+  ) => Promise<void> | void;
+  /**
+   * Deprecated compatibility alias for gateway_stop.
+   *
+   * New plugins should register gateway_stop directly; the loader normalizes
+   * deactivate registrations onto gateway_stop so cleanup handlers still run
+   * during Gateway shutdown.
+   *
+   * @deprecated Use gateway_stop.
+   */
+  deactivate: (
+    event: PluginHookGatewayStopEvent,
+    ctx: PluginHookGatewayContext,
+  ) => Promise<void> | void;
+  gateway_start: (
+    event: PluginHookGatewayStartEvent,
+    ctx: PluginHookGatewayContext,
+  ) => Promise<void> | void;
+  gateway_stop: (
+    event: PluginHookGatewayStopEvent,
+    ctx: PluginHookGatewayContext,
+  ) => Promise<void> | void;
+  heartbeat_prompt_contribution: (
+    event: PluginHeartbeatPromptContributionEvent,
+    ctx: PluginHookAgentContext,
+  ) =>
+    | Promise<PluginHeartbeatPromptContributionResult | void>
+    | PluginHeartbeatPromptContributionResult
+    | void;
+  cron_changed: (
+    event: PluginHookCronChangedEvent,
+    ctx: PluginHookGatewayContext,
+  ) => Promise<void> | void;
+  before_install: (
+    event: PluginHookBeforeInstallEvent,
+    ctx: PluginHookBeforeInstallContext,
+  ) => Promise<PluginHookBeforeInstallResult | void> | PluginHookBeforeInstallResult | void;
+  before_agent_run: (
+    event: PluginHookBeforeAgentRunEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<PluginHookBeforeAgentRunResult> | PluginHookBeforeAgentRunResult;
+};
+⋮----
+/** @deprecated Use before_model_resolve and before_prompt_build. */
+⋮----
+/**
+   * Deprecated compatibility alias for gateway_stop.
+   *
+   * New plugins should register gateway_stop directly; the loader normalizes
+   * deactivate registrations onto gateway_stop so cleanup handlers still run
+   * during Gateway shutdown.
+   *
+   * @deprecated Use gateway_stop.
+   */
+⋮----
+export type PluginHookRegistration<K extends PluginHookName = PluginHookName> = {
+  pluginId: string;
+  hookName: K;
+  handler: PluginHookHandlerMap[K];
+  priority?: number;
+  timeoutMs?: number;
+  source: string;
+};
+
+================
+===== SECTION:src-plugins-hooks-ts =====
+File: src/plugins/hooks.ts
+================
+/**
+ * Plugin Hook Runner
+ *
+ * Provides utilities for executing plugin lifecycle hooks with proper
+ * error handling and priority ordering.
+ */
+⋮----
+import { formatHookErrorForLog } from "../hooks/fire-and-forget.js";
+import { formatErrorMessage } from "../infra/errors.js";
+import { concatOptionalTextSegments } from "../shared/text/join-segments.js";
+import {
+  type GateHookResult,
+  type InputGateDecision,
+  isHookDecision,
+} from "./hook-decision-types.js";
+import type { GlobalHookRunnerRegistry, HookRunnerRegistry } from "./hook-registry.types.js";
+import type {
+  PluginHookAfterCompactionEvent,
+  PluginHookAfterToolCallEvent,
+  PluginHookAgentContext,
+  PluginHookAgentEndEvent,
+  PluginHookBeforeAgentFinalizeEvent,
+  PluginHookBeforeAgentFinalizeResult,
+  PluginHookBeforeAgentReplyEvent,
+  PluginHookBeforeAgentReplyResult,
+  PluginHookBeforeAgentStartEvent,
+  PluginHookBeforeAgentStartResult,
+  PluginHookBeforeDispatchContext,
+  PluginHookBeforeDispatchEvent,
+  PluginHookBeforeDispatchResult,
+  PluginHookReplyDispatchContext,
+  PluginHookReplyDispatchEvent,
+  PluginHookReplyDispatchResult,
+  PluginHookBeforeModelResolveEvent,
+  PluginHookBeforeModelResolveResult,
+  PluginHookBeforePromptBuildEvent,
+  PluginHookBeforePromptBuildResult,
+  PluginHookBeforeCompactionEvent,
+  PluginHookModelCallEndedEvent,
+  PluginHookModelCallStartedEvent,
+  PluginHookInboundClaimContext,
+  PluginHookInboundClaimEvent,
+  PluginHookInboundClaimResult,
+  PluginHookLlmInputEvent,
+  PluginHookLlmOutputEvent,
+  PluginHookBeforeResetEvent,
+  PluginHookBeforeToolCallEvent,
+  PluginHookBeforeToolCallResult,
+  PluginAgentTurnPrepareEvent,
+  PluginAgentTurnPrepareResult,
+  PluginHeartbeatPromptContributionEvent,
+  PluginHeartbeatPromptContributionResult,
+  PluginHookBeforeAgentRunEvent,
+  PluginHookCronChangedEvent,
+  PluginHookGatewayCronDeliveryStatus,
+  PluginHookGatewayCronJobState,
+  PluginHookGatewayCronRunStatus,
+  PluginHookGatewayContext,
+  PluginHookGatewayStartEvent,
+  PluginHookGatewayStopEvent,
+  PluginHookMessageContext,
+  PluginHookMessageReceivedEvent,
+  PluginHookMessageSendingEvent,
+  PluginHookMessageSendingResult,
+  PluginHookMessageSentEvent,
+  PluginHookName,
+  PluginHookRegistration,
+  PluginHookSessionContext,
+  PluginHookSessionEndEvent,
+  PluginHookSessionStartEvent,
+  PluginHookSubagentContext,
+  PluginHookSubagentDeliveryTargetEvent,
+  PluginHookSubagentDeliveryTargetResult,
+  PluginHookSubagentSpawningEvent,
+  PluginHookSubagentSpawningResult,
+  PluginHookSubagentEndedEvent,
+  PluginHookSubagentSpawnedEvent,
+  PluginHookToolContext,
+  PluginHookToolResultPersistContext,
+  PluginHookToolResultPersistEvent,
+  PluginHookToolResultPersistResult,
+  PluginHookBeforeMessageWriteEvent,
+  PluginHookBeforeMessageWriteResult,
+  PluginHookBeforeInstallContext,
+  PluginHookBeforeInstallEvent,
+  PluginHookBeforeInstallResult,
+} from "./hook-types.js";
+⋮----
+// Re-export types for consumers
+⋮----
+export type HookRunnerLogger = {
+  debug?: (message: string) => void;
+  warn: (message: string) => void;
+  error: (message: string) => void;
+};
+⋮----
+export type HookFailurePolicy = "fail-open" | "fail-closed";
+export type VoidHookRunOptions = {
+  unrefTimeout?: boolean;
+};
+⋮----
+type BeforeAgentFinalizeRetry = NonNullable<PluginHookBeforeAgentFinalizeResult["retry"]>;
+type BeforeAgentFinalizeResultWithRetryCandidates = PluginHookBeforeAgentFinalizeResult & {
+  retryCandidates?: BeforeAgentFinalizeRetry[];
+};
+⋮----
+export type HookRunnerOptions = {
+  logger?: HookRunnerLogger;
+  /** If true, errors in hooks will be caught and logged instead of thrown */
+  catchErrors?: boolean;
+  /**
+   * Optional per-hook failure policy.
+   * Defaults to fail-open unless explicitly overridden for a hook name.
+   */
+  failurePolicyByHook?: Partial<Record<PluginHookName, HookFailurePolicy>>;
+  /**
+   * Optional timeout for void/observation hooks. A timed-out hook is logged and
+   * the runner continues, but the plugin's underlying work is not cancelled.
+   */
+  voidHookTimeoutMsByHook?: Partial<Record<PluginHookName, number>>;
+  /**
+   * Optional timeout for modifying hooks. A timed-out hook is logged and skipped,
+   * but the plugin's underlying work is not cancelled.
+   */
+  modifyingHookTimeoutMsByHook?: Partial<Record<PluginHookName, number>>;
+};
+⋮----
+/** If true, errors in hooks will be caught and logged instead of thrown */
+⋮----
+/**
+   * Optional per-hook failure policy.
+   * Defaults to fail-open unless explicitly overridden for a hook name.
+   */
+⋮----
+/**
+   * Optional timeout for void/observation hooks. A timed-out hook is logged and
+   * the runner continues, but the plugin's underlying work is not cancelled.
+   */
+⋮----
+/**
+   * Optional timeout for modifying hooks. A timed-out hook is logged and skipped,
+   * but the plugin's underlying work is not cancelled.
+   */
+⋮----
+// Defensive default for the compaction lifecycle hooks. Without a budget an
+// unresponsive handler runs fully unbounded, and in the codex agent harness
+// these hooks fire on the serialized notification queue
+// (event-projector handleItemStarted awaits before_compaction / after_compaction
+// for a contextCompaction item), so a hung handler freezes every later codex
+// notification — including turn/completed — and the whole turn hangs. These
+// hooks can legitimately do real work (e.g. a memory flush), so the budget
+// matches agent_end's 30s rather than the tighter modifying-hook defaults.
+// The runner is fail-open for void hooks, so a timed-out handler is logged
+// and compaction proceeds.
+⋮----
+// Defensive default for the legacy compatibility hook (#48534). With
+// before_agent_start unbudgeted, an unresponsive handler (e.g. a memory
+// plugin waiting on a hung subprocess) blocked the entire agent pipeline
+// because both the embedded setup and prompt-build paths await this hook.
+// The runner is fail-open for this hook name, so a timed-out handler is
+// logged and the run proceeds without its modifications.
+⋮----
+type ModifyingHookPolicy<K extends PluginHookName, TResult> = {
+  mergeResults?: (
+    accumulated: TResult | undefined,
+    next: TResult,
+    registration: PluginHookRegistration<K>,
+  ) => TResult;
+  mergeNullResults?: boolean;
+  shouldStop?: (result: TResult) => boolean;
+  terminalLabel?: string;
+  onTerminal?: (params: { hookName: K; pluginId: string; result: TResult }) => void;
+};
+⋮----
+export type PluginTargetedInboundClaimOutcome =
+  | {
+      status: "handled";
+      result: PluginHookInboundClaimResult;
+    }
+  | {
+      status: "missing_plugin";
+    }
+  | {
+      status: "no_handler";
+    }
+  | {
+      status: "declined";
+    }
+  | {
+      status: "error";
+      error: string;
+    };
+⋮----
+type SyncHookName = "tool_result_persist" | "before_message_write";
+type SyncHookHandler<K extends SyncHookName> = NonNullable<PluginHookRegistration<K>["handler"]>;
+type SyncHookEvent<K extends SyncHookName> = Parameters<SyncHookHandler<K>>[0];
+type SyncHookContext<K extends SyncHookName> = Parameters<SyncHookHandler<K>>[1];
+type SyncHookResult<K extends SyncHookName> = ReturnType<SyncHookHandler<K>>;
+⋮----
+/**
+ * Get hooks for a specific hook name, sorted by priority (higher first).
+ */
+function getHooksForName<K extends PluginHookName>(
+  registry: HookRunnerRegistry,
+  hookName: K,
+): PluginHookRegistration<K>[]
+⋮----
+function getHooksForNameAndPlugin<K extends PluginHookName>(
+  registry: HookRunnerRegistry,
+  hookName: K,
+  pluginId: string,
+): PluginHookRegistration<K>[]
+⋮----
+/**
+ * Create a hook runner for a specific registry.
+ */
+export function createHookRunner(
+  registry: GlobalHookRunnerRegistry,
+  options: HookRunnerOptions = {},
+)
+⋮----
+const shouldCatchHookErrors = (hookName: PluginHookName): boolean
+⋮----
+const firstDefined = <T>(prev: T | undefined, next: T | undefined): T | undefined
+const lastDefined = <T>(prev: T | undefined, next: T | undefined): T | undefined
+const stickyTrue = (prev?: boolean, next?: boolean): true | undefined
+⋮----
+const mergeBeforeModelResolve = (
+    acc: PluginHookBeforeModelResolveResult | undefined,
+    next: PluginHookBeforeModelResolveResult,
+): PluginHookBeforeModelResolveResult => (
+⋮----
+// Keep the first defined override so higher-priority hooks win.
+⋮----
+const mergeBeforePromptBuild = (
+    acc: PluginHookBeforePromptBuildResult | undefined,
+    next: PluginHookBeforePromptBuildResult,
+): PluginHookBeforePromptBuildResult => (
+⋮----
+// Keep the first defined system prompt so higher-priority hooks win.
+⋮----
+const mergeAgentTurnPrepare = <
+    TResult extends { prependContext?: string; appendContext?: string },
+  >(
+    acc: TResult | undefined,
+    next: TResult,
+): TResult
+⋮----
+const mergeBeforeAgentFinalize = (
+    acc: PluginHookBeforeAgentFinalizeResult | undefined,
+    next: PluginHookBeforeAgentFinalizeResult,
+): PluginHookBeforeAgentFinalizeResult =>
+⋮----
+const normalizeRetry = (
+      retry: PluginHookBeforeAgentFinalizeResult["retry"] | undefined,
+): BeforeAgentFinalizeRetry | undefined =>
+const readRetryCandidates = (
+      result: PluginHookBeforeAgentFinalizeResult | undefined,
+): BeforeAgentFinalizeRetry[] =>
+const attachRetryCandidates = (
+      result: PluginHookBeforeAgentFinalizeResult,
+      candidates: BeforeAgentFinalizeRetry[],
+): PluginHookBeforeAgentFinalizeResult =>
+⋮----
+const mergeSubagentSpawningResult = (
+    acc: PluginHookSubagentSpawningResult | undefined,
+    next: PluginHookSubagentSpawningResult,
+): PluginHookSubagentSpawningResult =>
+⋮----
+const mergeSubagentDeliveryTargetResult = (
+    acc: PluginHookSubagentDeliveryTargetResult | undefined,
+    next: PluginHookSubagentDeliveryTargetResult,
+): PluginHookSubagentDeliveryTargetResult =>
+⋮----
+const handleHookError = (params: {
+    hookName: PluginHookName;
+    pluginId: string;
+    error: unknown;
+}): never | void =>
+⋮----
+const sanitizeHookError = (error: unknown): string =>
+⋮----
+const isPromiseLike = (value: unknown): value is PromiseLike<unknown> =>
+⋮----
+const normalizePositiveTimeoutMs = (timeoutMs: number | undefined): number | undefined =>
+⋮----
+const getVoidHookTimeoutMs = (
+    hookName: PluginHookName,
+    hook: PluginHookRegistration,
+): number | undefined
+⋮----
+const getModifyingHookTimeoutMs = (
+    hookName: PluginHookName,
+    hook: PluginHookRegistration,
+): number | undefined
+⋮----
+const getClaimingHookTimeoutMs = (
+    hookName: PluginHookName,
+    hook: PluginHookRegistration,
+): number | undefined
+⋮----
+const withHookTimeout = async <T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    options: { unref?: boolean } = {},
+): Promise<T> =>
+⋮----
+const runSyncHookHandler = <K extends SyncHookName>(
+    hook: PluginHookRegistration<K>,
+    event: SyncHookEvent<K>,
+    ctx: SyncHookContext<K>,
+): SyncHookResult<K> | PromiseLike<unknown> =>
+⋮----
+/**
+   * Run a hook that doesn't return a value (fire-and-forget style).
+   * All handlers are executed in parallel for performance.
+   */
+async function runVoidHook<K extends PluginHookName>(
+    hookName: K,
+    event: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[0],
+    ctx: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[1],
+    options: VoidHookRunOptions = {},
+): Promise<void>
+⋮----
+/**
+   * Run a hook that can return a modifying result.
+   * Handlers are executed sequentially in priority order, and results are merged.
+   */
+async function runModifyingHook<K extends PluginHookName, TResult>(
+    hookName: K,
+    event: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[0],
+    ctx: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[1],
+    policy: ModifyingHookPolicy<K, TResult> = {},
+): Promise<TResult | undefined>
+⋮----
+/**
+   * Run a sequential claim hook where the first `{ handled: true }` result wins.
+   */
+async function runClaimingHook<K extends PluginHookName, TResult extends { handled: boolean }>(
+    hookName: K,
+    event: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[0],
+    ctx: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[1],
+): Promise<TResult | undefined>
+⋮----
+async function runClaimingHookForPlugin<
+    K extends PluginHookName,
+    TResult extends { handled: boolean },
+  >(
+    hookName: K,
+    pluginId: string,
+    event: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[0],
+    ctx: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[1],
+): Promise<TResult | undefined>
+⋮----
+async function runClaimingHooksList<
+    K extends PluginHookName,
+    TResult extends { handled: boolean },
+  >(
+    hooks: Array<PluginHookRegistration<K> & { pluginId: string }>,
+    hookName: K,
+    event: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[0],
+    ctx: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[1],
+): Promise<TResult | undefined>
+⋮----
+async function runClaimingHookForPluginOutcome<
+    K extends PluginHookName,
+    // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Targeted hook outcomes preserve caller-specific handled result types.
+    TResult extends { handled: boolean },
+  >(
+    hookName: K,
+    pluginId: string,
+    event: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[0],
+    ctx: Parameters<NonNullable<PluginHookRegistration<K>["handler"]>>[1],
+  ): Promise<
+    | { status: "handled"; result: TResult }
+    | { status: "missing_plugin" }
+    | { status: "no_handler" }
+    | { status: "declined" }
+    | { status: "error"; error: string }
+  > {
+    const pluginLoaded = registry.plugins.some(
+      (plugin) => plugin.id === pluginId && plugin.status === "loaded",
+    );
+⋮----
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Targeted hook outcomes preserve caller-specific handled result types.
+⋮----
+// =========================================================================
+// Agent Hooks
+// =========================================================================
+⋮----
+function withAgentRunId<TEvent extends { runId?: string }>(
+    event: TEvent,
+    ctx: PluginHookAgentContext,
+): TEvent
+⋮----
+/**
+   * Run before_model_resolve hook.
+   * Allows plugins to override provider/model before model resolution.
+   */
+async function runBeforeModelResolve(
+    event: PluginHookBeforeModelResolveEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginHookBeforeModelResolveResult | undefined>
+⋮----
+/**
+   * Run before_prompt_build hook.
+   * Allows plugins to inject context and system prompt before prompt submission.
+   */
+async function runBeforePromptBuild(
+    event: PluginHookBeforePromptBuildEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginHookBeforePromptBuildResult | undefined>
+⋮----
+async function runAgentTurnPrepare(
+    event: PluginAgentTurnPrepareEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginAgentTurnPrepareResult | undefined>
+⋮----
+/**
+   * @deprecated Use runBeforeModelResolve and runBeforePromptBuild.
+   *
+   * Run before_agent_start hook.
+   * Legacy compatibility hook that combines model resolve + prompt build phases.
+   */
+async function runBeforeAgentStart(
+    event: PluginHookBeforeAgentStartEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginHookBeforeAgentStartResult | undefined>
+⋮----
+/**
+   * Run before_agent_reply hook.
+   * Allows plugins to intercept messages and return a synthetic reply,
+   * short-circuiting the LLM agent. First handler to return { handled: true } wins.
+   */
+async function runBeforeAgentReply(
+    event: PluginHookBeforeAgentReplyEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginHookBeforeAgentReplyResult | undefined>
+⋮----
+/**
+   * Run model_call_started hook.
+   * Allows plugins to observe sanitized model-call metadata.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runModelCallStarted(
+    event: PluginHookModelCallStartedEvent,
+    ctx: PluginHookAgentContext,
+): Promise<void>
+⋮----
+/**
+   * Run model_call_ended hook.
+   * Allows plugins to observe sanitized terminal model-call metadata.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runModelCallEnded(
+    event: PluginHookModelCallEndedEvent,
+    ctx: PluginHookAgentContext,
+): Promise<void>
+⋮----
+/**
+   * Run agent_end hook.
+   * Allows plugins to analyze completed conversations.
+   * Runs handlers in parallel.
+   */
+async function runAgentEnd(
+    event: PluginHookAgentEndEvent,
+    ctx: PluginHookAgentContext,
+    options?: VoidHookRunOptions,
+): Promise<void>
+⋮----
+/**
+   * Run llm_input hook.
+   * Allows plugins to observe the exact input payload sent to the LLM.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runLlmInput(event: PluginHookLlmInputEvent, ctx: PluginHookAgentContext)
+⋮----
+/**
+   * Run llm_output hook.
+   * Allows plugins to observe the exact output payload returned by the LLM.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runLlmOutput(event: PluginHookLlmOutputEvent, ctx: PluginHookAgentContext)
+⋮----
+/**
+   * Run before_agent_finalize hook.
+   * Allows plugins to request one more model pass before a natural final reply
+   * is accepted. This is not the user-facing /stop cancellation path.
+   */
+async function runBeforeAgentFinalize(
+    event: PluginHookBeforeAgentFinalizeEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginHookBeforeAgentFinalizeResult | undefined>
+⋮----
+/**
+   * Run before_compaction hook.
+   */
+async function runBeforeCompaction(
+    event: PluginHookBeforeCompactionEvent,
+    ctx: PluginHookAgentContext,
+): Promise<void>
+⋮----
+/**
+   * Run after_compaction hook.
+   */
+async function runAfterCompaction(
+    event: PluginHookAfterCompactionEvent,
+    ctx: PluginHookAgentContext,
+): Promise<void>
+⋮----
+/**
+   * Run before_reset hook.
+   * Fired when /new or /reset clears a session, before messages are lost.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runBeforeReset(
+    event: PluginHookBeforeResetEvent,
+    ctx: PluginHookAgentContext,
+): Promise<void>
+⋮----
+// =========================================================================
+// Message Hooks
+// =========================================================================
+⋮----
+/**
+   * Run inbound_claim hook.
+   * Allows plugins to claim an inbound event before commands/agent dispatch.
+   */
+async function runInboundClaim(
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+): Promise<PluginHookInboundClaimResult | undefined>
+⋮----
+async function runInboundClaimForPlugin(
+    pluginId: string,
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+): Promise<PluginHookInboundClaimResult | undefined>
+⋮----
+async function runInboundClaimForPluginOutcome(
+    pluginId: string,
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+): Promise<PluginTargetedInboundClaimOutcome>
+⋮----
+/**
+   * Run message_received hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runMessageReceived(
+    event: PluginHookMessageReceivedEvent,
+    ctx: PluginHookMessageContext,
+): Promise<void>
+⋮----
+/**
+   * Run before_dispatch hook.
+   * Allows plugins to inspect or handle a message before model dispatch.
+   * First handler returning { handled: true } wins.
+   */
+async function runBeforeDispatch(
+    event: PluginHookBeforeDispatchEvent,
+    ctx: PluginHookBeforeDispatchContext,
+): Promise<PluginHookBeforeDispatchResult | undefined>
+⋮----
+/**
+   * Run reply_dispatch hook.
+   * Allows plugins to own reply dispatch before the default model path runs.
+   * First handler returning { handled: true } wins.
+   */
+async function runReplyDispatch(
+    event: PluginHookReplyDispatchEvent,
+    ctx: PluginHookReplyDispatchContext,
+): Promise<PluginHookReplyDispatchResult | undefined>
+⋮----
+/**
+   * Run message_sending hook.
+   * Allows plugins to modify or cancel outgoing messages.
+   * Runs sequentially.
+   */
+async function runMessageSending(
+    event: PluginHookMessageSendingEvent,
+    ctx: PluginHookMessageContext,
+): Promise<PluginHookMessageSendingResult | undefined>
+⋮----
+/**
+   * Run message_sent hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runMessageSent(
+    event: PluginHookMessageSentEvent,
+    ctx: PluginHookMessageContext,
+): Promise<void>
+⋮----
+/**
+   * Run before_agent_run gate hook.
+   * Fires after session resolution and workspace preparation, before model inference.
+   * Returns the most-restrictive pass/block decision from all handlers.
+   * Handlers that return void are treated as pass.
+   */
+async function runBeforeAgentRun(
+    event: PluginHookBeforeAgentRunEvent,
+    ctx: PluginHookAgentContext,
+): Promise<GateHookResult<InputGateDecision> | undefined>
+⋮----
+// Tool Hooks
+// =========================================================================
+⋮----
+/**
+   * Run before_tool_call hook.
+   * Allows plugins to modify or block tool calls.
+   * Runs sequentially.
+   */
+async function runBeforeToolCall(
+    event: PluginHookBeforeToolCallEvent,
+    ctx: PluginHookToolContext,
+): Promise<PluginHookBeforeToolCallResult | undefined>
+⋮----
+/**
+   * Run after_tool_call hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runAfterToolCall(
+    event: PluginHookAfterToolCallEvent,
+    ctx: PluginHookToolContext,
+): Promise<void>
+⋮----
+/**
+   * Run tool_result_persist hook.
+   *
+   * This hook is intentionally synchronous: it runs in hot paths where session
+   * transcripts are appended synchronously.
+   *
+   * Handlers are executed sequentially in priority order (higher first). Each
+   * handler may return `{ message }` to replace the message passed to the next
+   * handler.
+   */
+function runToolResultPersist(
+    event: PluginHookToolResultPersistEvent,
+    ctx: PluginHookToolResultPersistContext,
+): PluginHookToolResultPersistResult | undefined
+⋮----
+// Guard against accidental async handlers (this hook is sync-only).
+⋮----
+// =========================================================================
+// Message Write Hooks
+// =========================================================================
+⋮----
+/**
+   * Run before_message_write hook.
+   *
+   * This hook is intentionally synchronous: it runs on the hot path where
+   * session transcripts are appended synchronously.
+   *
+   * Handlers are executed sequentially in priority order (higher first).
+   * If any handler returns { block: true }, the message is NOT written
+   * to the session JSONL and we return immediately.
+   * If a handler returns { message }, the modified message replaces the
+   * original for subsequent handlers and the final write.
+   */
+function runBeforeMessageWrite(
+    event: PluginHookBeforeMessageWriteEvent,
+    ctx: { agentId?: string; sessionKey?: string },
+): PluginHookBeforeMessageWriteResult | undefined
+⋮----
+// Guard against accidental async handlers (this hook is sync-only).
+⋮----
+// If any handler blocks, return immediately.
+⋮----
+// If handler provided a modified message, use it for subsequent handlers.
+⋮----
+// If message was modified by any handler, return it.
+⋮----
+// =========================================================================
+// Session Hooks
+// =========================================================================
+⋮----
+/**
+   * Run session_start hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runSessionStart(
+    event: PluginHookSessionStartEvent,
+    ctx: PluginHookSessionContext,
+): Promise<void>
+⋮----
+/**
+   * Run session_end hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runSessionEnd(
+    event: PluginHookSessionEndEvent,
+    ctx: PluginHookSessionContext,
+): Promise<void>
+⋮----
+/**
+   * Run subagent_spawning hook.
+   * Runs sequentially so channel plugins can deterministically provision session bindings.
+   */
+async function runSubagentSpawning(
+    event: PluginHookSubagentSpawningEvent,
+    ctx: PluginHookSubagentContext,
+): Promise<PluginHookSubagentSpawningResult | undefined>
+⋮----
+/**
+   * Run subagent_delivery_target hook.
+   * Runs sequentially so channel plugins can deterministically resolve routing.
+   */
+async function runSubagentDeliveryTarget(
+    event: PluginHookSubagentDeliveryTargetEvent,
+    ctx: PluginHookSubagentContext,
+): Promise<PluginHookSubagentDeliveryTargetResult | undefined>
+⋮----
+/**
+   * Run subagent_spawned hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runSubagentSpawned(
+    event: PluginHookSubagentSpawnedEvent,
+    ctx: PluginHookSubagentContext,
+): Promise<void>
+⋮----
+/**
+   * Run subagent_ended hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runSubagentEnded(
+    event: PluginHookSubagentEndedEvent,
+    ctx: PluginHookSubagentContext,
+): Promise<void>
+⋮----
+// =========================================================================
+// Gateway Hooks
+// =========================================================================
+⋮----
+/**
+   * Run gateway_start hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runGatewayStart(
+    event: PluginHookGatewayStartEvent,
+    ctx: PluginHookGatewayContext,
+): Promise<void>
+⋮----
+/**
+   * Run gateway_stop hook.
+   * Runs in parallel (fire-and-forget).
+   */
+async function runGatewayStop(
+    event: PluginHookGatewayStopEvent,
+    ctx: PluginHookGatewayContext,
+): Promise<void>
+⋮----
+async function runHeartbeatPromptContribution(
+    event: PluginHeartbeatPromptContributionEvent,
+    ctx: PluginHookAgentContext,
+): Promise<PluginHeartbeatPromptContributionResult | undefined>
+⋮----
+/**
+   * Run cron_changed hook for gateway-owned cron lifecycle changes.
+   */
+async function runCronChanged(
+    event: PluginHookCronChangedEvent,
+    ctx: PluginHookGatewayContext,
+): Promise<void>
+⋮----
+// =========================================================================
+// Skill Install Hooks
+// =========================================================================
+⋮----
+/**
+   * Run before_install hook.
+   * Allows plugins to augment scan findings or block installs.
+   * Runs sequentially so higher-priority hooks can block before lower ones run.
+   */
+async function runBeforeInstall(
+    event: PluginHookBeforeInstallEvent,
+    ctx: PluginHookBeforeInstallContext,
+): Promise<PluginHookBeforeInstallResult | undefined>
+⋮----
+// =========================================================================
+// Utility
+// =========================================================================
+⋮----
+function hasHooks(hookName: PluginHookName): boolean
+⋮----
+/**
+   * Get count of registered hooks for a given hook name.
+   */
+function getHookCount(hookName: PluginHookName): number
+⋮----
+// Agent hooks
+⋮----
+// Lifecycle gate hooks
+⋮----
+// Message hooks
+⋮----
+// Tool hooks
+⋮----
+// Message write hooks
+⋮----
+// Session hooks
+⋮----
+// Gateway hooks
+⋮----
+// Install hooks
+⋮----
+// Utility
+⋮----
+export type HookRunner = ReturnType<typeof createHookRunner>;
+⋮----
+export type SubagentLifecycleHookRunner = Pick<
+  HookRunner,
+  "hasHooks" | "runSubagentSpawning" | "runSubagentSpawned" | "runSubagentEnded"
+>;
+
+================
+===== SECTION:src-plugins-host-hooks-ts =====
+File: src/plugins/host-hooks.ts
+================
+import type { OperatorScope } from "../gateway/operator-scopes.js";
+import type { AgentEventPayload, AgentEventStream } from "../infra/agent-events.js";
+import type {
+  PluginHookAgentContext,
+  PluginHookBeforeToolCallEvent,
+  PluginHookBeforeToolCallResult,
+  PluginHookToolContext,
+} from "./hook-types.js";
+import type { PluginJsonValue } from "./host-hook-json.js";
+import type {
+  PluginAgentTurnPrepareResult,
+  PluginNextTurnInjectionPlacement,
+  PluginNextTurnInjectionRecord,
+} from "./host-hook-turn-types.js";
+⋮----
+export type PluginHostCleanupReason = "disable" | "reset" | "delete" | "restart";
+⋮----
+export type PluginSessionExtensionProjectionContext = {
+  sessionKey: string;
+  sessionId?: string;
+  state: PluginJsonValue | undefined;
+};
+⋮----
+export type PluginSessionExtensionRegistration = {
+  namespace: string;
+  description: string;
+  project?: (ctx: PluginSessionExtensionProjectionContext) => PluginJsonValue | undefined;
+  cleanup?: (ctx: { reason: PluginHostCleanupReason; sessionKey?: string }) => void | Promise<void>;
+  /**
+   * When set, after every successful `patchSessionExtension` the projected
+   * value is mirrored to `SessionEntry[<slotKey>]` so non-plugin readers
+   * can consume the typed slot without reaching into
+   * `pluginExtensions[pluginId][namespace]`.
+   *
+   * The slot is a read-only mirror: writes always go through
+   * `patchSessionExtension`; the host overwrites the slot value on every
+   * subsequent patch.
+   */
+  sessionEntrySlotKey?: string;
+  /**
+   * Optional JSON-compatible schema describing the projected slot value.
+   * Purely informational at this layer; clients may use it to validate the
+   * mirrored slot against a contract.
+   */
+  sessionEntrySlotSchema?: PluginJsonValue;
+};
+⋮----
+/**
+   * When set, after every successful `patchSessionExtension` the projected
+   * value is mirrored to `SessionEntry[<slotKey>]` so non-plugin readers
+   * can consume the typed slot without reaching into
+   * `pluginExtensions[pluginId][namespace]`.
+   *
+   * The slot is a read-only mirror: writes always go through
+   * `patchSessionExtension`; the host overwrites the slot value on every
+   * subsequent patch.
+   */
+⋮----
+/**
+   * Optional JSON-compatible schema describing the projected slot value.
+   * Purely informational at this layer; clients may use it to validate the
+   * mirrored slot against a contract.
+   */
+⋮----
+export type PluginSessionExtensionProjection = {
+  pluginId: string;
+  namespace: string;
+  value: PluginJsonValue;
+};
+⋮----
+export type PluginSessionExtensionPatchParams = {
+  key: string;
+  pluginId: string;
+  namespace: string;
+  value?: PluginJsonValue;
+  unset?: boolean;
+};
+⋮----
+export type PluginToolPolicyDecision =
+  | PluginHookBeforeToolCallResult
+  | {
+      allow?: boolean;
+      reason?: string;
+    };
+⋮----
+export type PluginTrustedToolPolicyRegistration = {
+  id: string;
+  description: string;
+  evaluate: (
+    event: PluginHookBeforeToolCallEvent,
+    ctx: PluginHookToolContext,
+  ) => PluginToolPolicyDecision | void | Promise<PluginToolPolicyDecision | void>;
+};
+⋮----
+export type PluginToolMetadataRegistration = {
+  toolName: string;
+  displayName?: string;
+  description?: string;
+  risk?: "low" | "medium" | "high";
+  tags?: string[];
+};
+⋮----
+export type PluginCommandContinuation = {
+  continueAgent?: boolean;
+};
+⋮----
+export type PluginControlUiDescriptor = {
+  id: string;
+  surface: "session" | "tool" | "run" | "settings";
+  label: string;
+  description?: string;
+  placement?: string;
+  schema?: PluginJsonValue;
+  requiredScopes?: OperatorScope[];
+};
+⋮----
+export type PluginSessionActionContext = {
+  pluginId: string;
+  actionId: string;
+  sessionKey?: string;
+  payload?: PluginJsonValue;
+  client?: {
+    connId?: string;
+    scopes: string[];
+  };
+};
+⋮----
+export type PluginSessionActionResult =
+  | {
+      ok?: true;
+      result?: PluginJsonValue;
+      reply?: PluginJsonValue;
+      continueAgent?: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      code?: string;
+      details?: PluginJsonValue;
+    };
+⋮----
+export type PluginSessionActionRegistration = {
+  id: string;
+  description?: string;
+  schema?: PluginJsonValue;
+  requiredScopes?: OperatorScope[];
+  handler: (
+    ctx: PluginSessionActionContext,
+  ) => PluginSessionActionResult | void | Promise<PluginSessionActionResult | void>;
+};
+⋮----
+export type PluginRuntimeLifecycleRegistration = {
+  id: string;
+  description?: string;
+  cleanup?: (ctx: {
+    reason: PluginHostCleanupReason;
+    sessionKey?: string;
+    runId?: string;
+  }) => void | Promise<void>;
+};
+⋮----
+export type PluginAgentEventSubscriptionRegistration = {
+  id: string;
+  description?: string;
+  streams?: AgentEventStream[];
+  handle: (
+    event: AgentEventPayload,
+    ctx: {
+      // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Run-context JSON reads are caller-typed by namespace.
+      getRunContext: <T extends PluginJsonValue = PluginJsonValue>(
+        namespace: string,
+      ) => T | undefined;
+      setRunContext: (namespace: string, value: PluginJsonValue) => void;
+      clearRunContext: (namespace?: string) => void;
+    },
+  ) => void | Promise<void>;
+};
+⋮----
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Run-context JSON reads are caller-typed by namespace.
+⋮----
+export type PluginAgentEventEmitParams = {
+  runId: string;
+  stream: AgentEventStream;
+  data: PluginJsonValue;
+  sessionKey?: string;
+};
+⋮----
+export type PluginAgentEventEmitResult =
+  | { emitted: true; stream: AgentEventStream }
+  | { emitted: false; reason: string };
+⋮----
+export type PluginRunContextPatch = {
+  runId: string;
+  namespace: string;
+  value?: PluginJsonValue;
+  unset?: boolean;
+};
+⋮----
+export type PluginRunContextGetParams = {
+  runId: string;
+  namespace: string;
+};
+⋮----
+export type PluginSessionSchedulerJobRegistration = {
+  id: string;
+  sessionKey: string;
+  kind: string;
+  description?: string;
+  cleanup?: (ctx: {
+    reason: PluginHostCleanupReason;
+    sessionKey: string;
+    jobId: string;
+  }) => void | Promise<void>;
+};
+⋮----
+export type PluginSessionSchedulerJobHandle = {
+  id: string;
+  pluginId: string;
+  sessionKey: string;
+  kind: string;
+};
+⋮----
+export type PluginSessionAttachmentFile = {
+  path: string;
+};
+⋮----
+export type PluginAttachmentChannelHints = {
+  telegram?: {
+    parseMode?: "HTML";
+    disableNotification?: boolean;
+    /**
+     * Require host-side detection to match this MIME before forcing document delivery.
+     * Mismatched files are rejected before the outbound adapter is called.
+     */
+    forceDocumentMime?: string;
+  };
+  slack?: {
+    threadTs?: string;
+  };
+};
+⋮----
+/**
+     * Require host-side detection to match this MIME before forcing document delivery.
+     * Mismatched files are rejected before the outbound adapter is called.
+     */
+⋮----
+export type PluginSessionAttachmentCaptionFormat = "plain" | "html" | "markdown";
+⋮----
+export type PluginSessionAttachmentParams = {
+  sessionKey: string;
+  files: PluginSessionAttachmentFile[];
+  text?: string;
+  threadId?: string | number;
+  forceDocument?: boolean;
+  maxBytes?: number;
+  captionFormat?: PluginSessionAttachmentCaptionFormat;
+  channelHints?: PluginAttachmentChannelHints;
+};
+⋮----
+export type PluginSessionAttachmentResult =
+  | {
+      ok: true;
+      channel: string;
+      deliveredTo: string;
+      count: number;
+    }
+  | { ok: false; error: string };
+⋮----
+export type PluginSessionTurnSchedule =
+  | { at: string | number | Date }
+  | { delayMs: number }
+  | { cron: string; tz?: string };
+⋮----
+type PluginSessionTurnScheduleCommonParams = {
+  sessionKey: string;
+  message: string;
+  agentId?: string;
+  deliveryMode?: "none" | "announce";
+  name?: string;
+  /** Optional cleanup tag. Reserved cron-name delimiters like `:` are rejected. */
+  tag?: string;
+};
+⋮----
+/** Optional cleanup tag. Reserved cron-name delimiters like `:` are rejected. */
+⋮----
+export type PluginSessionTurnScheduleParams =
+  | ({
+      at: string | number | Date;
+      deleteAfterRun?: boolean;
+    } & PluginSessionTurnScheduleCommonParams)
+  | ({
+      delayMs: number;
+      deleteAfterRun?: boolean;
+    } & PluginSessionTurnScheduleCommonParams)
+  | ({
+      cron: string;
+      tz?: string;
+      deleteAfterRun?: false;
+    } & PluginSessionTurnScheduleCommonParams);
+⋮----
+export type PluginSessionTurnUnscheduleByTagParams = {
+  sessionKey: string;
+  tag: string;
+};
+⋮----
+export type PluginSessionTurnUnscheduleByTagResult = {
+  removed: number;
+  failed: number;
+};
+⋮----
+export function normalizePluginHostHookId(value: string | undefined): string
+⋮----
+function normalizeQueuedInjectionText(
+  entry: PluginNextTurnInjectionRecord,
+  placement: PluginNextTurnInjectionPlacement,
+): string | undefined
+⋮----
+export function buildPluginAgentTurnPrepareContext(params: {
+  queuedInjections: PluginNextTurnInjectionRecord[];
+}): PluginAgentTurnPrepareResult
+⋮----
+export type PluginHostHookRunContext = PluginHookAgentContext;
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================
