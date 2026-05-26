@@ -1,0 +1,17 @@
+{
+  "name": "@intentive/eslint-plugin-architecture",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Mechanical enforcement of Intentive's layered domain architecture. See docs/ARCHITECTURE.md.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "files": [
+    "index.js",
+    "lib/"
+  ],
+  "peerDependencies": {
+    "eslint": ">=8.0.0"
+  }
+}
