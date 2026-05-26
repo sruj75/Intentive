@@ -85,6 +85,96 @@ test('unknown layers do not trip the rule (benefit of the doubt)', () => {
   assert.strictEqual(canImport('unknown', 'service'), true);
 });
 
+// ── ESLint integration tests via RuleTester ─────────────────────────────────
+// Verify the rules actually fire end-to-end when ESLint runs them against
+// real TypeScript source with domain-shaped filenames.
+
+const { RuleTester } = require('eslint');
+const tsParser = require('@typescript-eslint/parser');
+const plugin = require('./index.js');
+
+// RuleTester normally uses Mocha-style globals. Adapt it to the simple
+// pass/fail runner this file already uses.
+RuleTester.describe = (name, fn) => fn();
+RuleTester.it = (name, fn) => tests.push([`integration: ${name}`, fn]);
+RuleTester.itOnly = RuleTester.it;
+
+const ruleTester = new RuleTester({
+  languageOptions: {
+    parser: tsParser,
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  },
+});
+
+const MOBILE_CHAT_SERVICE = '/repo/apps/mobile/src/domains/chat/service/sendMessage.ts';
+const MOBILE_CHAT_TYPES = '/repo/apps/mobile/src/domains/chat/types/index.ts';
+
+ruleTester.run(
+  'layer-direction',
+  plugin.rules['layer-direction'],
+  {
+    valid: [
+      {
+        name: 'service may import repo (forward, same domain)',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { db } from '../repo/db';",
+      },
+      {
+        name: 'workspace-name import (packages/) is never flagged',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { userMessage } from '@intentive/protocol';",
+      },
+      {
+        name: 'types may import providers (cross-cutting allowed)',
+        filename: MOBILE_CHAT_TYPES,
+        code: "import { auth } from '../providers/auth';",
+      },
+    ],
+    invalid: [
+      {
+        name: 'service importing runtime is a backwardImport',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { handler } from '../runtime/handler';",
+        errors: [{ messageId: 'backwardImport' }],
+      },
+      {
+        name: 'service reaching into another domain is a crossDomainImport',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { token } from '../../auth/repo/token';",
+        errors: [{ messageId: 'crossDomainImport' }],
+      },
+    ],
+  },
+);
+
+ruleTester.run(
+  'no-cross-deployable',
+  plugin.rules['no-cross-deployable'],
+  {
+    valid: [
+      {
+        name: 'workspace-name import does not trip the rule',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { x } from '@intentive/protocol';",
+      },
+      {
+        name: 'same-deployable relative import is fine',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { db } from '../repo/db';",
+      },
+    ],
+    invalid: [
+      {
+        name: 'mobile reaching into desktop by relative path is a crossDeployable',
+        filename: MOBILE_CHAT_SERVICE,
+        code: "import { foo } from '../../../../../desktop/src/domains/capture/service/foo';",
+        errors: [{ messageId: 'crossDeployable' }],
+      },
+    ],
+  },
+);
+
 // ── run ─────────────────────────────────────────────────────────────────────
 
 let pass = 0;

@@ -1,0 +1,61 @@
+name: mobile-deploy
+
+# Mobile Client → Expo EAS Build / Submit.
+# Triggers a preview build on push to main when apps/mobile/** or shared
+# protocol/contract/types/providers packages change.
+#
+# Required GitHub secret:
+#   EXPO_TOKEN — personal access token from https://expo.dev/accounts/<you>/settings/access-tokens
+#
+# Required Expo configuration (in apps/mobile/eas.json):
+#   "preview" and "production" build profiles. Run `eas build:configure` once
+#   inside apps/mobile/ to generate eas.json before this workflow runs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - "packages/protocol/**"
+      - "packages/api-contract/**"
+      - "packages/domain-types/**"
+      - "packages/providers/**"
+      - ".github/workflows/mobile-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile (preview | production)"
+        required: true
+        default: "preview"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with: { version: 9 }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck mobile
+        run: pnpm --filter ./apps/mobile typecheck
+
+      - name: EAS build
+        working-directory: apps/mobile
+        run: eas build --non-interactive --profile ${{ github.event.inputs.profile || 'preview' }} --platform ios
