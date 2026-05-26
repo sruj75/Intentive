@@ -36,4 +36,15 @@ Intentive Expo is the mobile relationship surface for the Intentive Execution Co
 
 - Keep root instructions short. Put durable product and architecture detail in `CONTEXT.md`, `PRD.md`, `DESIGN.md`, and `docs/adr/`.
 - Add or update an ADR when changing a boundary, dependency stance, runtime assumption, persistence model, or major product-scope decision.
-- When `AGENTS.md` changes, make the same change to `CLAUDE.md` so both files remain identical.
+- Keep `AGENTS.md` canonical and keep `CLAUDE.md` as a shim pointer to `AGENTS.md`.
+
+
+<!-- V1_META_SHARED_ALIGNMENT:START -->
+## Shared Alignment Layer
+
+- This repo's role: Mobile client surface for authentication, setup, conversation UX, and account presentation.
+- Depends on: v1-controlplane APIs and policies; v1-deepagent outcomes via control-plane contracts.
+- Must obey: Client is UI/state only: no direct runtime authority and no control-plane business ownership.
+- Shared contracts live at: ../v1-meta (or the canonical v1-meta checkout in your workspace)
+- Do not duplicate logic from: control-plane auth/provisioning logic and deepagent runtime internals.
+<!-- V1_META_SHARED_ALIGNMENT:END -->

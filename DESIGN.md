@@ -346,12 +346,15 @@ The home experience is a **single continuous thread**.
 - **User bubble:** `message-user` (light) or `message-user-dark`; align trailing (end).
 - **Assistant bubble:** `message-assistant` or `message-assistant-dark`; align leading; use `border-subtle` / `dark-border-subtle` stroke only if contrast audit requires.
 - **Continuity event:** Centered or inset `continuity-event` — short copy (“Remembered …”) — never modal-sized.
-- **Thinking indicator:** Inline, below last assistant message or in header trailing; use `thinking` color; no blocking full-screen loader.
+- **Composing indicator:** Render as an assistant-side bubble with an animated ellipsis only while a real assistant message is in flight, including the first runtime-generated onboarding opening. During the protected onboarding opening, allow drafting but disable send until the opening arrives.
+- **Opening recovery:** If the protected onboarding opening fails, replace the composing bubble inline with quiet error copy and one `Try again` action; keep draft text and the deferred-send state intact.
 
 ### Composer
 
 - Multi-line text field using `composer-field` or `composer-field-dark` tokens
 - Send enabled only when input non-empty; haptic on send (iOS, `expo-haptics`)
+- During the protected onboarding opening, preserve editable draft text while the send affordance is temporarily unavailable.
+- During opening recovery, retain the same draft and unavailable send affordance until retry succeeds or a later explicit exit path exists.
 - Keep composer **fixed above safe area**; keyboard avoidance via native behavior
 - Do not add attachment grids or formatting toolbars in V1
 
@@ -360,7 +363,8 @@ The home experience is a **single continuous thread**.
 Visible states: **Available**, **Thinking**, **Following up**, **Paused**.
 
 - Render as `agent-state-chip` in header trailing or subtle inline strip
-- Copy is short and honest — no fake “typing” theatrics when idle
+- Copy is short and honest. The assistant composing bubble is separate from general state and appears only for a real in-flight response; never animate it while idle.
+- Whether day-to-day companion-initiated messages allow concurrent sending is TBD; do not apply the onboarding send rule by default.
 - Color hints: `thinking`, `follow-up`, `paused` — never pulse or bounce by default
 
 ### Navigation & secondary flows
