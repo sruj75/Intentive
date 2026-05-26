@@ -1,14 +1,11 @@
 .DS_Store
+node_modules/
 .env
 .env.*
-!.env.example
-node_modules/
-dist/
-build/
-__pycache__/
-*.pyc
-.venv/
-venv/
-.idea/
-.vscode/
-*.log
+
+# Cursor project skills (use personal ~/.cursor/skills/reference-txt-manager)
+.cursor/
+
+# Regenerate with scripts/generate-reference-llms.mjs (large; optional to commit)
+# reference/openclaw/
+# reference/hermes/

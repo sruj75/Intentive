@@ -1,0 +1,772 @@
+# Reference pack: openclaw / tools
+# Generated: 2026-05-26T06:06:18.712Z
+# Source: https://github.com/openclaw/openclaw
+# Pack path: reference/openclaw/tools-llms.txt
+# Repomix: compressed plain text, tests excluded
+# Sections: rg -n "SECTION:" reference/openclaw/tools-llms.txt
+#
+# Build context: OpenClaw-like shell on LangChain DeepAgents (TypeScript).
+# DeepAgents owns: planning, tool loop, vfs, subagents, long-term memory.
+# This file covers: Tool surface (DeepAgents parity reference).
+#
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where content has been formatted for parsing in plain style, content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/tools/**, docs/tools/index.md, docs/tools/exec.md
+- Files matching these patterns are excluded: **/*.test.ts, **/*.test.tsx, **/*.test.py, **/__tests__/**, **/test/**, **/tests/**, **/*.snap, **/ui/**, **/website/i18n/**, **/patches/**, **/changelog/**, **/.agents/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been formatted for parsing in plain style
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Files
+================================================================
+
+================
+===== SECTION:docs-tools-exec-md =====
+===== SECTION:tools:exec-doc =====
+File: docs/tools/exec.md
+================
+---
+summary: "Exec tool usage, stdin modes, and TTY support"
+read_when:
+  - Using or modifying the exec tool
+  - Debugging stdin or TTY behavior
+title: "Exec tool"
+---
+
+Run shell commands in the workspace. `exec` is a mutating shell surface: commands can create, edit, or delete files wherever the selected host or sandbox filesystem permits. Disabling OpenClaw filesystem tools such as `write`, `edit`, or `apply_patch` does not make `exec` read-only.
+
+Supports foreground + background execution via `process`. If `process` is disallowed, `exec` runs synchronously and ignores `yieldMs`/`background`.
+Background sessions are scoped per agent; `process` only sees sessions from the same agent.
+
+## Parameters
+
+<ParamField path="command" type="string" required>
+Shell command to run.
+</ParamField>
+
+<ParamField path="workdir" type="string" default="cwd">
+Working directory for the command.
+</ParamField>
+
+<ParamField path="env" type="object">
+Key/value environment overrides merged on top of the inherited environment.
+</ParamField>
+
+<ParamField path="yieldMs" type="number" default="10000">
+Auto-background the command after this delay (ms).
+</ParamField>
+
+<ParamField path="background" type="boolean" default="false">
+Background the command immediately instead of waiting for `yieldMs`.
+</ParamField>
+
+<ParamField path="timeout" type="number" default="tools.exec.timeoutSec">
+Override the configured exec timeout for this call. Set `timeout: 0` only when the command should run without the exec process timeout.
+</ParamField>
+
+<ParamField path="pty" type="boolean" default="false">
+Run in a pseudo-terminal when available. Use for TTY-only CLIs, coding agents, and terminal UIs.
+</ParamField>
+
+<ParamField path="host" type="'auto' | 'sandbox' | 'gateway' | 'node'" default="auto">
+Where to execute. `auto` resolves to `sandbox` when a sandbox runtime is active and `gateway` otherwise.
+</ParamField>
+
+<ParamField path="security" type="'deny' | 'allowlist' | 'full'">
+Ignored for normal tool calls. `gateway` / `node` security is controlled by
+`tools.exec.security` and `~/.openclaw/exec-approvals.json`; elevated mode can
+force `security=full` only when the operator explicitly grants elevated access.
+</ParamField>
+
+<ParamField path="ask" type="'off' | 'on-miss' | 'always'">
+Approval prompt behavior for `gateway` / `node` execution.
+</ParamField>
+
+<ParamField path="node" type="string">
+Node id/name when `host=node`.
+</ParamField>
+
+<ParamField path="elevated" type="boolean" default="false">
+Request elevated mode — escape the sandbox onto the configured host path. `security=full` is forced only when elevated resolves to `full`.
+</ParamField>
+
+Notes:
+
+- `host` defaults to `auto`: sandbox when sandbox runtime is active for the session, otherwise gateway.
+- `host` only accepts `auto`, `sandbox`, `gateway`, or `node`. It is not a hostname selector; hostname-like values are rejected before the command runs.
+- `auto` is the default routing strategy, not a wildcard. Per-call `host=node` is allowed from `auto`; per-call `host=gateway` is only allowed when no sandbox runtime is active.
+- With no extra config, `host=auto` still "just works": no sandbox means it resolves to `gateway`; a live sandbox means it stays in the sandbox.
+- `elevated` escapes the sandbox onto the configured host path: `gateway` by default, or `node` when `tools.exec.host=node` (or the session default is `host=node`). It is only available when elevated access is enabled for the current session/provider.
+- `gateway`/`node` approvals are controlled by `~/.openclaw/exec-approvals.json`.
+- `node` requires a paired node (companion app or headless node host).
+- If multiple nodes are available, set `exec.node` or `tools.exec.node` to select one.
+- `exec host=node` is the only shell-execution path for nodes; the legacy `nodes.run` wrapper has been removed.
+- `timeout` applies to foreground, background, `yieldMs`, gateway, sandbox, and node `system.run` execution. If omitted, OpenClaw uses `tools.exec.timeoutSec`; explicit `timeout: 0` disables the exec process timeout for that call.
+- On non-Windows hosts, exec uses `SHELL` when set; if `SHELL` is `fish`, it prefers `bash` (or `sh`)
+  from `PATH` to avoid fish-incompatible scripts, then falls back to `SHELL` if neither exists.
+- On Windows hosts, exec prefers PowerShell 7 (`pwsh`) discovery (Program Files, ProgramW6432, then PATH),
+  then falls back to Windows PowerShell 5.1.
+- Host execution (`gateway`/`node`) rejects `env.PATH` and loader overrides (`LD_*`/`DYLD_*`) to
+  prevent binary hijacking or injected code.
+- OpenClaw sets `OPENCLAW_SHELL=exec` in the spawned command environment (including PTY and sandbox execution) so shell/profile rules can detect exec-tool context.
+- `openclaw channels login` is blocked from `exec` because it is an interactive channel-auth flow; run it in a terminal on the gateway host, or use the channel-native login tool from chat when one exists.
+- Important: sandboxing is **off by default**. If sandboxing is off, implicit `host=auto`
+  resolves to `gateway`. Explicit `host=sandbox` still fails closed instead of silently
+  running on the gateway host. Enable sandboxing or use `host=gateway` with approvals.
+- Script preflight checks (for common Python/Node shell-syntax mistakes) only inspect files inside the
+  effective `workdir` boundary. If a script path resolves outside `workdir`, preflight is skipped for
+  that file.
+- For long-running work that starts now, start it once and rely on automatic
+  completion wake when it is enabled and the command emits output or fails.
+  Use `process` for logs, status, input, or intervention; do not emulate
+  scheduling with sleep loops, timeout loops, or repeated polling.
+- For work that should happen later or on a schedule, use cron instead of
+  `exec` sleep/delay patterns.
+
+## Config
+
+- `tools.exec.notifyOnExit` (default: true): when true, backgrounded exec sessions enqueue a system event and request a heartbeat on exit.
+- `tools.exec.approvalRunningNoticeMs` (default: 10000): emit a single "running" notice when an approval-gated exec runs longer than this (0 disables).
+- `tools.exec.timeoutSec` (default: 1800): default per-command exec timeout in seconds. Per-call `timeout` overrides it; per-call `timeout: 0` disables the exec process timeout.
+- `tools.exec.host` (default: `auto`; resolves to `sandbox` when sandbox runtime is active, `gateway` otherwise)
+- `tools.exec.security` (default: `deny` for sandbox, `full` for gateway + node when unset)
+- `tools.exec.ask` (default: `off`)
+- No-approval host exec is the default for gateway + node. If you want approvals/allowlist behavior, tighten both `tools.exec.*` and the host `~/.openclaw/exec-approvals.json`; see [Exec approvals](/tools/exec-approvals#yolo-mode-no-approval).
+- YOLO comes from the host-policy defaults (`security=full`, `ask=off`), not from `host=auto`. If you want to force gateway or node routing, set `tools.exec.host` or use `/exec host=...`.
+- In `security=full` plus `ask=off` mode, host exec follows the configured policy directly; there is no extra heuristic command-obfuscation prefilter or script-preflight rejection layer.
+- `tools.exec.node` (default: unset)
+- `tools.exec.strictInlineEval` (default: false): when true, inline interpreter eval forms such as `python -c`, `node -e`, `ruby -e`, `perl -e`, `php -r`, `lua -e`, and `osascript -e` always require explicit approval. `allow-always` can still persist benign interpreter/script invocations, but inline-eval forms still prompt each time.
+- `tools.exec.commandHighlighting` (default: false): when true, approval prompts can highlight parser-derived command spans in the command text. Set to `true` globally or per agent to enable command text highlighting without changing exec approval policy.
+- `tools.exec.pathPrepend`: list of directories to prepend to `PATH` for exec runs (gateway + sandbox only).
+- `tools.exec.safeBins`: stdin-only safe binaries that can run without explicit allowlist entries. For behavior details, see [Safe bins](/tools/exec-approvals-advanced#safe-bins-stdin-only).
+- `tools.exec.safeBinTrustedDirs`: additional explicit directories trusted for `safeBins` path checks. `PATH` entries are never auto-trusted. Built-in defaults are `/bin` and `/usr/bin`.
+- `tools.exec.safeBinProfiles`: optional custom argv policy per safe bin (`minPositional`, `maxPositional`, `allowedValueFlags`, `deniedFlags`).
+
+Example:
+
+```json5
+{
+  tools: {
+    exec: {
+      pathPrepend: ["~/bin", "/opt/oss/bin"],
+    },
+  },
+}
+```
+
+### PATH handling
+
+- `host=gateway`: merges your login-shell `PATH` into the exec environment. `env.PATH` overrides are
+  rejected for host execution. The daemon itself still runs with a minimal `PATH`:
+  - macOS: `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`
+  - Linux: `/usr/local/bin`, `/usr/bin`, `/bin`
+    - To prevent user shell configuration (like `~/.zshenv` or `/etc/zshenv`) from overriding priority paths during startup, `tools.exec.pathPrepend` entries are securely prepended to the final `PATH` inside the shell command right before execution.
+- `host=sandbox`: runs `sh -lc` (login shell) inside the container, so `/etc/profile` may reset `PATH`.
+  OpenClaw prepends `env.PATH` after profile sourcing via an internal env var (no shell interpolation);
+  `tools.exec.pathPrepend` applies here too.
+- `host=node`: only non-blocked env overrides you pass are sent to the node. `env.PATH` overrides are
+  rejected for host execution and ignored by node hosts. If you need additional PATH entries on a node,
+  configure the node host service environment (systemd/launchd) or install tools in standard locations.
+
+Per-agent node binding (use the agent list index in config):
+
+```bash
+openclaw config get agents.list
+openclaw config set 'agents.list[0].tools.exec.node' "node-id-or-name"
+```
+
+Control UI: the Nodes tab includes a small "Exec node binding" panel for the same settings.
+
+## Session overrides (`/exec`)
+
+Use `/exec` to set **per-session** defaults for `host`, `security`, `ask`, and `node`.
+Send `/exec` with no arguments to show the current values.
+
+Example:
+
+```
+/exec host=auto security=allowlist ask=on-miss node=mac-1
+```
+
+## Authorization model
+
+`/exec` is only honored for **authorized senders** (channel allowlists/pairing plus `commands.useAccessGroups`).
+It updates **session state only** and does not write config. To hard-disable exec, deny it via tool
+policy (`tools.deny: ["exec"]` or per-agent). Host approvals still apply unless you explicitly set
+`security=full` and `ask=off`.
+
+## Exec approvals (companion app / node host)
+
+Sandboxed agents can require per-request approval before `exec` runs on the gateway or node host.
+See [Exec approvals](/tools/exec-approvals) for the policy, allowlist, and UI flow.
+
+When approvals are required, the exec tool returns immediately with
+`status: "approval-pending"` and an approval id. Once approved (or denied / timed out),
+the Gateway emits command progress and completion system events only for approved runs
+(`Exec running` / `Exec finished`). Denied or timed-out approvals are terminal and do not
+wake the agent session with a denial system event.
+On channels with native approval cards/buttons, the agent should rely on that
+native UI first and only include a manual `/approve` command when the tool
+result explicitly says chat approvals are unavailable or manual approval is the
+only path.
+
+## Allowlist + safe bins
+
+Manual allowlist enforcement matches resolved binary path globs and bare command-name
+globs. Bare names match only commands invoked through PATH, so `rg` can match
+`/opt/homebrew/bin/rg` when the command is `rg`, but not `./rg` or `/tmp/rg`.
+When `security=allowlist`, shell commands are auto-allowed only if every pipeline
+segment is allowlisted or a safe bin. Chaining (`;`, `&&`, `||`) and redirections
+are rejected in allowlist mode unless every top-level segment satisfies the
+allowlist (including safe bins). Redirections remain unsupported.
+Durable `allow-always` trust does not bypass that rule: a chained command still requires every
+top-level segment to match.
+
+`autoAllowSkills` is a separate convenience path in exec approvals. It is not the same as
+manual path allowlist entries. For strict explicit trust, keep `autoAllowSkills` disabled.
+
+Use the two controls for different jobs:
+
+- `tools.exec.safeBins`: small, stdin-only stream filters.
+- `tools.exec.safeBinTrustedDirs`: explicit extra trusted directories for safe-bin executable paths.
+- `tools.exec.safeBinProfiles`: explicit argv policy for custom safe bins.
+- allowlist: explicit trust for executable paths.
+
+Do not treat `safeBins` as a generic allowlist, and do not add interpreter/runtime binaries (for example `python3`, `node`, `ruby`, `bash`). If you need those, use explicit allowlist entries and keep approval prompts enabled.
+`openclaw security audit` warns when interpreter/runtime `safeBins` entries are missing explicit profiles, and `openclaw doctor --fix` can scaffold missing custom `safeBinProfiles` entries.
+`openclaw security audit` and `openclaw doctor` also warn when you explicitly add broad-behavior bins such as `jq` back into `safeBins`.
+If you explicitly allowlist interpreters, enable `tools.exec.strictInlineEval` so inline code-eval forms still require a fresh approval.
+
+For full policy details and examples, see [Exec approvals](/tools/exec-approvals-advanced#safe-bins-stdin-only) and [Safe bins versus allowlist](/tools/exec-approvals-advanced#safe-bins-versus-allowlist).
+
+## Examples
+
+Foreground:
+
+```json
+{ "tool": "exec", "command": "ls -la" }
+```
+
+Background + poll:
+
+```json
+{"tool":"exec","command":"npm run build","yieldMs":1000}
+{"tool":"process","action":"poll","sessionId":"<id>"}
+```
+
+Polling is for on-demand status, not waiting loops. If automatic completion wake
+is enabled, the command can wake the session when it emits output or fails.
+
+Send keys (tmux-style):
+
+```json
+{"tool":"process","action":"send-keys","sessionId":"<id>","keys":["Enter"]}
+{"tool":"process","action":"send-keys","sessionId":"<id>","keys":["C-c"]}
+{"tool":"process","action":"send-keys","sessionId":"<id>","keys":["Up","Up","Enter"]}
+```
+
+Submit (send CR only):
+
+```json
+{ "tool": "process", "action": "submit", "sessionId": "<id>" }
+```
+
+Paste (bracketed by default):
+
+```json
+{ "tool": "process", "action": "paste", "sessionId": "<id>", "text": "line1\nline2\n" }
+```
+
+## apply_patch
+
+`apply_patch` is a subtool of `exec` for structured multi-file edits.
+It is enabled by default for OpenAI and OpenAI Codex models. Use config only
+when you want to disable it or restrict it to specific models:
+
+```json5
+{
+  tools: {
+    exec: {
+      applyPatch: { workspaceOnly: true, allowModels: ["gpt-5.5"] },
+    },
+  },
+}
+```
+
+Notes:
+
+- Only available for OpenAI/OpenAI Codex models.
+- Tool policy still applies; `allow: ["write"]` implicitly allows `apply_patch`.
+- `deny: ["write"]` does not deny `apply_patch`; deny `apply_patch` explicitly or use `deny: ["group:fs"]` when patch writes should also be blocked.
+- Config lives under `tools.exec.applyPatch`.
+- `tools.exec.applyPatch.enabled` defaults to `true`; set it to `false` to disable the tool for OpenAI models.
+- `tools.exec.applyPatch.workspaceOnly` defaults to `true` (workspace-contained). Set it to `false` only if you intentionally want `apply_patch` to write/delete outside the workspace directory.
+
+## Related
+
+- [Exec Approvals](/tools/exec-approvals) — approval gates for shell commands
+- [Sandboxing](/gateway/sandboxing) — running commands in sandboxed environments
+- [Background Process](/gateway/background-process) — long-running exec and process tool
+- [Security](/gateway/security) — tool policy and elevated access
+
+================
+===== SECTION:docs-tools-index-md =====
+===== SECTION:tools:index-doc =====
+File: docs/tools/index.md
+================
+---
+doc-schema-version: 1
+summary: "OpenClaw tools, skills, and plugins overview: what agents can call and how to extend them"
+read_when:
+  - You want to understand what tools OpenClaw provides
+  - You are deciding between built-in tools, skills, and plugins
+  - You need the right docs entry point for tool policy, automation, or agent coordination
+title: "Overview"
+---
+
+Use this page to choose the right Capabilities surface. **Tools** are callable
+actions, **skills** teach agents how to work, and **plugins** add runtime
+capabilities such as tools, providers, channels, hooks, and packaged skills.
+
+This is an overview and routing page. For exhaustive tool policy, defaults,
+group membership, provider restrictions, and configuration fields, use
+[Tools and custom providers](/gateway/config-tools).
+
+## Start here
+
+For most agents, start with the built-in tool categories, then adjust policy
+only when the agent should see fewer tools or needs explicit host access.
+
+| If you need to...                           | Use this first                                 | Then read                                                               |
+| ------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------- |
+| Let an agent act with existing capabilities | [Built-in tools](#built-in-tool-categories)    | [Tool categories](#built-in-tool-categories)                            |
+| Control what an agent can call              | [Tool policy](#configure-access-and-approvals) | [Tools and custom providers](/gateway/config-tools)                     |
+| Teach an agent a workflow                   | [Skills](#choose-tools-skills-or-plugins)      | [Skills](/tools/skills) and [Creating skills](/tools/creating-skills)   |
+| Add a new integration or runtime surface    | [Plugins](#extend-capabilities)                | [Plugins](/tools/plugin) and [Build plugins](/plugins/building-plugins) |
+| Run work later or in the background         | [Automation](/automation)                      | [Automation overview](/automation)                                      |
+| Coordinate multiple agents or harnesses     | [Sub-agents](/tools/subagents)                 | [ACP agents](/tools/acp-agents) and [Agent send](/tools/agent-send)     |
+| Search a large PI tool catalog              | [Tool Search](/tools/tool-search)              | [Tool Search](/tools/tool-search)                                       |
+
+## Choose tools, skills, or plugins
+
+<Steps>
+  <Step title="Use a tool when the agent needs to act">
+    A tool is a typed function the agent can call, such as `exec`, `browser`,
+    `web_search`, `message`, or `image_generate`. Use tools when the agent
+    needs to read data, change files, send messages, call a provider, or operate
+    another system. Visible tools are sent to the model as structured function
+    definitions.
+
+    The model only sees tools that survive the active profile, allow/deny
+    policy, provider restrictions, sandbox state, channel permissions, and
+    plugin availability.
+
+  </Step>
+
+  <Step title="Use a skill when the agent needs instructions">
+    A skill is a `SKILL.md` instruction pack loaded into the agent prompt. Use a
+    skill when the agent already has the tools it needs, but needs a repeatable
+    workflow, review rubric, command sequence, or operating constraint.
+
+    Skills can live in a workspace, shared skill directory, managed OpenClaw
+    skill root, or plugin package.
+
+    [Skills](/tools/skills) | [Creating skills](/tools/creating-skills) | [Skills config](/tools/skills-config)
+
+  </Step>
+
+  <Step title="Use a plugin when OpenClaw needs a new capability">
+    A plugin can add tools, skills, channels, model providers, speech, realtime
+    voice, media generation, web search, web fetch, hooks, and other runtime
+    capabilities. Use a plugin when the capability has code, credentials,
+    lifecycle hooks, manifest metadata, or installable packaging. Existing
+    plugins can be installed from ClawHub, npm, git, local directories, or
+    archives.
+
+    [Install and configure plugins](/tools/plugin) | [Build plugins](/plugins/building-plugins) | [Plugin SDK](/plugins/sdk-overview)
+
+  </Step>
+</Steps>
+
+## Built-in tool categories
+
+The table lists representative tools so you can recognize the surface. It is
+not the full policy reference. For exact groups, defaults, and allow/deny
+semantics, use [Tools and custom providers](/gateway/config-tools).
+
+| Category               | Use when the agent needs to...                                                | Representative tools                                                 | Read next                                                              |
+| ---------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Runtime                | Run commands, manage processes, or use provider-backed Python analysis        | `exec`, `process`, `code_execution`                                  | [Exec](/tools/exec), [Code execution](/tools/code-execution)           |
+| Files                  | Read and change workspace files                                               | `read`, `write`, `edit`, `apply_patch`                               | [Apply patch](/tools/apply-patch)                                      |
+| Web                    | Search the web, search X posts, or fetch readable page content                | `web_search`, `x_search`, `web_fetch`                                | [Web tools](/tools/web), [Web fetch](/tools/web-fetch)                 |
+| Browser                | Operate a browser session                                                     | `browser`                                                            | [Browser](/tools/browser)                                              |
+| Messaging and channels | Send replies or channel actions                                               | `message`                                                            | [Agent send](/tools/agent-send)                                        |
+| Sessions and agents    | Inspect sessions, delegate work, steer another run, or report status          | `sessions_*`, `subagents`, `agents_list`, `session_status`           | [Sub-agents](/tools/subagents), [Session tool](/concepts/session-tool) |
+| Automation             | Schedule work or respond to background events                                 | `cron`, `heartbeat_respond`                                          | [Automation](/automation)                                              |
+| Gateway and nodes      | Inspect Gateway state or paired target devices                                | `gateway`, `nodes`                                                   | [Gateway configuration](/gateway/configuration), [Nodes](/nodes)       |
+| Media                  | Analyze, generate, or speak media                                             | `image`, `image_generate`, `music_generate`, `video_generate`, `tts` | [Media overview](/tools/media-overview)                                |
+| Large PI catalogs      | Search and call many eligible tools without sending every schema to the model | `tool_search_code`, `tool_search`, `tool_describe`                   | [Tool Search](/tools/tool-search)                                      |
+
+<Note>
+Tool Search is an experimental PI-agent surface. Codex harness runs use
+Codex-native code mode, native tool search, deferred dynamic tools, and nested
+tool calls instead of `tools.toolSearch`.
+</Note>
+
+## Plugin-provided tools
+
+Plugins can register additional tools. Plugin authors wire tools through
+`api.registerTool(...)` and the manifest's `contracts.tools`; use
+[Plugin SDK](/plugins/sdk-overview) and [Plugin manifest](/plugins/manifest)
+for contract details.
+
+Common plugin-provided tools include:
+
+- [Diffs](/tools/diffs) for rendering file and markdown diffs
+- [LLM Task](/tools/llm-task) for JSON-only workflow steps
+- [Lobster](/tools/lobster) for typed workflows with resumable approvals
+- [Tokenjuice](/tools/tokenjuice) for compacting noisy `exec` and `bash` tool
+  output
+- [Tool Search](/tools/tool-search) for discovering and calling large tool
+  catalogs without putting every schema in the prompt
+- [Canvas](/plugins/reference/canvas) for node Canvas control and A2UI
+  rendering
+
+## Configure access and approvals
+
+Tool policy is enforced before the model call. If policy removes a tool, the
+model does not receive that tool's schema for the turn. A run can lose tools
+because of global config, per-agent config, channel policy, provider
+restrictions, sandbox rules, channel/runtime policy, or plugin availability.
+
+- [Tools and custom providers](/gateway/config-tools) documents tool profiles,
+  allow/deny lists, provider-specific restrictions, loop detection, and
+  provider-backed tool settings.
+- [Exec approvals](/tools/exec-approvals) documents host command approval
+  policy.
+- [Elevated exec](/tools/elevated) documents controlled execution outside the
+  sandbox.
+- [Sandbox vs tool policy vs elevated](/gateway/sandbox-vs-tool-policy-vs-elevated) explains which layer controls file and process access.
+- [Per-agent sandbox and tool restrictions](/tools/multi-agent-sandbox-tools)
+  documents agent-specific restrictions for delegated runs.
+
+## Extend capabilities
+
+Choose the extension path by the job you need OpenClaw to do:
+
+- Install or manage an existing plugin with [Plugins](/tools/plugin).
+- Build a new integration, provider, channel, tool, or hook with
+  [Build plugins](/plugins/building-plugins).
+- Add or tune reusable agent instructions with [Skills](/tools/skills) and
+  [Creating skills](/tools/creating-skills).
+- Package reusable workflow material with
+  [Skill workshop](/plugins/skill-workshop) when the workflow belongs in a
+  plugin-distributed skill bundle.
+- Use [Plugin SDK](/plugins/sdk-overview) and [Plugin manifest](/plugins/manifest) when you need implementation contracts.
+
+## Troubleshoot missing tools
+
+If the model cannot see or call a tool, start with the effective policy for the
+current turn:
+
+1. Check the active profile, `tools.allow`, and `tools.deny` in
+   [Tools and custom providers](/gateway/config-tools).
+2. Check provider-specific restrictions in
+   [Tools and custom providers](/gateway/config-tools) and confirm the selected
+   [model provider](/concepts/model-providers) supports the tool shape.
+3. Check channel permissions, sandbox state, and elevated access with
+   [Sandbox vs tool policy vs elevated](/gateway/sandbox-vs-tool-policy-vs-elevated) and [Elevated exec](/tools/elevated).
+4. Check whether the owning plugin is installed and enabled in
+   [Plugins](/tools/plugin).
+5. For delegated runs, check per-agent restrictions in
+   [Per-agent sandbox and tool restrictions](/tools/multi-agent-sandbox-tools).
+6. For large PI catalogs, confirm whether the run uses direct tool exposure or
+   [Tool Search](/tools/tool-search).
+
+## Related
+
+- [Automation](/automation) for cron, tasks, heartbeat, commitments, hooks, standing orders, and Task Flow
+- [Agents](/concepts/agent) for the agent model, sessions, memory, and multi-agent coordination
+- [Tools and custom providers](/gateway/config-tools) for the canonical tool policy reference
+- [Plugins](/tools/plugin) for plugin installation and management
+- [Plugin SDK](/plugins/sdk-overview) for plugin author reference
+- [Skills](/tools/skills) for skill load order, gating, and config
+- [Tool Search](/tools/tool-search) for compact PI tool catalog discovery
+
+================
+===== SECTION:src-tools-availability-ts =====
+File: src/tools/availability.ts
+================
+import type {
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  ToolAvailabilityContext,
+  ToolAvailabilityDiagnostic,
+  ToolAvailabilityExpression,
+  ToolAvailabilitySignal,
+  ToolDescriptor,
+} from "./types.js";
+⋮----
+function isRecord(value: JsonValue | undefined): value is JsonObject
+⋮----
+function resolveConfigPath(
+  config: JsonObject | undefined,
+  path: readonly string[],
+): JsonValue | undefined
+⋮----
+function hasConfiguredValue(params: {
+  value: JsonValue | undefined;
+  signal: Extract<ToolAvailabilitySignal, { readonly kind: "config" }>;
+  context: ToolAvailabilityContext;
+}): boolean
+⋮----
+function hasAvailabilityExpressionShape(value: ToolAvailabilityExpression): boolean
+⋮----
+function diagnostic(
+  reason: ToolAvailabilityDiagnostic["reason"],
+  signal: ToolAvailabilitySignal,
+  message: string,
+): ToolAvailabilityDiagnostic
+⋮----
+function evaluateSignal(
+  signal: ToolAvailabilitySignal,
+  context: ToolAvailabilityContext,
+): ToolAvailabilityDiagnostic | null
+⋮----
+function evaluateExpression(
+  expression: ToolAvailabilityExpression,
+  context: ToolAvailabilityContext,
+): readonly ToolAvailabilityDiagnostic[]
+⋮----
+export function evaluateToolAvailability(params: {
+  descriptor: ToolDescriptor;
+  context?: ToolAvailabilityContext;
+}): readonly ToolAvailabilityDiagnostic[]
+
+================
+===== SECTION:src-tools-descriptors-ts =====
+File: src/tools/descriptors.ts
+================
+import type { ToolDescriptor } from "./types.js";
+⋮----
+export function defineToolDescriptor(descriptor: ToolDescriptor): ToolDescriptor
+⋮----
+export function defineToolDescriptors(
+  descriptors: readonly ToolDescriptor[],
+): readonly ToolDescriptor[]
+
+================
+===== SECTION:src-tools-diagnostics-ts =====
+File: src/tools/diagnostics.ts
+================
+export type ToolPlanContractErrorCode = "duplicate-tool-name" | "missing-executor";
+⋮----
+export class ToolPlanContractError extends Error
+⋮----
+constructor(params:
+
+================
+===== SECTION:src-tools-execution-ts =====
+File: src/tools/execution.ts
+================
+import type { ToolExecutorRef } from "./types.js";
+⋮----
+export function formatToolExecutorRef(ref: ToolExecutorRef): string
+
+================
+===== SECTION:src-tools-index-ts =====
+File: src/tools/index.ts
+================
+
+
+================
+===== SECTION:src-tools-planner-ts =====
+File: src/tools/planner.ts
+================
+import { evaluateToolAvailability } from "./availability.js";
+import { ToolPlanContractError } from "./diagnostics.js";
+import type {
+  BuildToolPlanOptions,
+  HiddenToolPlanEntry,
+  ToolDescriptor,
+  ToolPlan,
+  ToolPlanEntry,
+} from "./types.js";
+⋮----
+function compareDescriptors(left: ToolDescriptor, right: ToolDescriptor): number
+⋮----
+function assertUniqueNames(descriptors: readonly ToolDescriptor[]): void
+⋮----
+export function buildToolPlan(options: BuildToolPlanOptions): ToolPlan
+
+================
+===== SECTION:src-tools-protocol-ts =====
+File: src/tools/protocol.ts
+================
+import type { JsonObject, ToolPlanEntry } from "./types.js";
+⋮----
+export type ToolProtocolDescriptor = {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: JsonObject;
+};
+⋮----
+// Shared descriptor shape only. Model/provider adapters still own schema normalization.
+export function toToolProtocolDescriptor(entry: ToolPlanEntry): ToolProtocolDescriptor
+⋮----
+export function toToolProtocolDescriptors(
+  entries: readonly ToolPlanEntry[],
+): readonly ToolProtocolDescriptor[]
+
+================
+===== SECTION:src-tools-types-ts =====
+File: src/tools/types.ts
+================
+export type JsonPrimitive = string | number | boolean | null;
+⋮----
+export type JsonValue =
+  | JsonPrimitive
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+⋮----
+export type JsonObject = { readonly [key: string]: JsonValue };
+⋮----
+export type ToolOwnerRef =
+  | { readonly kind: "core" }
+  | { readonly kind: "plugin"; readonly pluginId: string }
+  | { readonly kind: "channel"; readonly channelId: string; readonly pluginId?: string }
+  | { readonly kind: "mcp"; readonly serverId: string };
+⋮----
+export type ToolExecutorRef =
+  | { readonly kind: "core"; readonly executorId: string }
+  | { readonly kind: "plugin"; readonly pluginId: string; readonly toolName: string }
+  | { readonly kind: "channel"; readonly channelId: string; readonly actionId: string }
+  | { readonly kind: "mcp"; readonly serverId: string; readonly toolName: string };
+⋮----
+export type ToolAvailabilitySignal =
+  | { readonly kind: "always" }
+  | { readonly kind: "auth"; readonly providerId: string }
+  | {
+      readonly kind: "config";
+      readonly path: readonly string[];
+      readonly check?: "exists" | "non-empty" | "available";
+    }
+  | { readonly kind: "env"; readonly name: string }
+  | { readonly kind: "plugin-enabled"; readonly pluginId: string }
+  | { readonly kind: "context"; readonly key: string; readonly equals?: JsonPrimitive };
+⋮----
+export type ToolAvailabilityExpression =
+  | ToolAvailabilitySignal
+  | { readonly allOf: readonly ToolAvailabilityExpression[] }
+  | { readonly anyOf: readonly ToolAvailabilityExpression[] };
+⋮----
+export type ToolDescriptor = {
+  readonly name: string;
+  readonly title?: string;
+  readonly description: string;
+  readonly inputSchema: JsonObject;
+  readonly outputSchema?: JsonObject;
+  readonly owner: ToolOwnerRef;
+  readonly executor?: ToolExecutorRef;
+  readonly availability?: ToolAvailabilityExpression;
+  readonly annotations?: JsonObject;
+  readonly sortKey?: string;
+};
+⋮----
+export type ToolAvailabilityContext = {
+  readonly authProviderIds?: ReadonlySet<string>;
+  readonly config?: JsonObject;
+  readonly isConfigValueAvailable?: (params: {
+    readonly value: JsonValue;
+    readonly path: readonly string[];
+    readonly signal: Extract<ToolAvailabilitySignal, { readonly kind: "config" }>;
+  }) => boolean;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly enabledPluginIds?: ReadonlySet<string>;
+  readonly values?: Readonly<Record<string, JsonPrimitive | undefined>>;
+};
+⋮----
+export type ToolUnavailableReason =
+  | "auth-missing"
+  | "config-missing"
+  | "context-mismatch"
+  | "env-missing"
+  | "plugin-disabled"
+  | "unsupported-signal";
+⋮----
+export type ToolAvailabilityDiagnostic = {
+  readonly reason: ToolUnavailableReason;
+  readonly signal?: ToolAvailabilitySignal;
+  readonly message: string;
+};
+⋮----
+export type ToolPlanEntry = {
+  readonly descriptor: ToolDescriptor;
+  readonly executor: ToolExecutorRef;
+};
+⋮----
+export type HiddenToolPlanEntry = {
+  readonly descriptor: ToolDescriptor;
+  readonly diagnostics: readonly ToolAvailabilityDiagnostic[];
+};
+⋮----
+export type ToolPlan = {
+  readonly visible: readonly ToolPlanEntry[];
+  readonly hidden: readonly HiddenToolPlanEntry[];
+};
+⋮----
+export type BuildToolPlanOptions = {
+  readonly descriptors: readonly ToolDescriptor[];
+  readonly availability?: ToolAvailabilityContext;
+};
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================
