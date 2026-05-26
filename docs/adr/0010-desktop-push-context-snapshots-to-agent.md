@@ -1,3 +1,6 @@
+> **Status: Superseded by [ADR-0001](0001-unified-monorepo-foundation.md).**
+> The delivery mechanism (HTTPS POST to a per-user agent webhook) is replaced by `context_snapshot` events sent over the unified WebSocket Protocol. The principle of *push, not pull* still holds. The naming of "OpenClaw Agent" is retired in favor of **Agent Runtime** per the unified vocabulary.
+
 # Push Context Snapshots to the OpenClaw Agent
 
 The OpenClaw Agent is event-driven — it wakes up when a snapshot arrives rather than deciding on its own when to ask for context. Intentive therefore pushes each Context Snapshot to the agent as it is produced by the Context Heartbeat. Pull was rejected because it requires the agent to maintain its own polling cadence, which couples the agent's reasoning loop to a timer rather than to actual activity.
