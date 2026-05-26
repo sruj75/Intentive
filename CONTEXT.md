@@ -41,7 +41,7 @@ Which macOS binary Intentive must run on this machine: Apple Silicon (`aarch64`,
 _Avoid_: personalized, user-specific binary
 
 **Capture Session**:
-The period during which ScreenPipe is actively recording — starts automatically when a signed-in user launches Intentive, ends when the user stops it from the menu bar, quits, or ScreenPipe exits unexpectedly. Requires a signed-in user; Intentive does not capture without auth.
+The period during which ScreenPipe is actively recording — starts automatically when the Control Plane confirms this Mac is desktop capture-ready for the signed-in user, and ends when the user stops it from the menu bar, quits, or ScreenPipe exits unexpectedly.
 _Avoid_: recording session, active session
 
 **Capture Error**:
@@ -85,12 +85,16 @@ The only acceptable user-visible fallback identity for an Intentive-owned captur
 _Avoid_: ScreenPipe, screenpipe, helper, recorder
 
 **Capture Permission Setup**:
-The first-run product step that guides the user through required macOS Privacy Settings grants with curated instructional screenshots, one permission at a time, opening the relevant Apple panel when possible, and waiting for each live OS grant before Auth is considered capture-ready.
+The Mac-specific product step that collects desktop capture consent and guides the user through required macOS Privacy Settings grants with curated instructional screenshots, opening the relevant Apple panel when possible and waiting for each live OS grant.
 _Avoid_: permissions wizard, ScreenPipe setup, diagnostics
 
 **Auth**:
 The shared product capability that signs a user into any Intentive client and lets the Control Plane resolve onboarding state, registered devices, and the user's agent runtime. Intentive clients do not capture or connect to an agent runtime without a signed-in user.
 _Avoid_: login, account (use "sign in" / "signed-in user")
+
+**Desktop Capture Readiness**:
+The Control Plane-authoritative state that permits one registered Mac to auto-start Capture Sessions after that Mac has completed Capture Permission Setup; sign-in or onboarding completed on another client cannot grant it.
+_Avoid_: signed in, mobile consent, local ready flag
 
 **Sibling Client Invitation**:
 An optional prompt from the client a user currently uses to connect the other Intentive client later, without making either platform primary or changing where identity and onboarding progress live.
@@ -111,6 +115,8 @@ _Avoid_: content filtering, runtime validation, data scrubbing (the boundary is 
 - **Mobile Client** and **Desktop Client** display lifecycle state from the **Control Plane** rather than deciding onboarding or agent lifecycle locally
 - A user may authenticate and complete onboarding from either client; the **Control Plane** preserves the same identity and onboarding progress across both
 - Either client may offer a **Sibling Client Invitation** later; the invitation does not make that platform the owner of identity or onboarding progress
+- The **Desktop Client** may start a **Capture Session** only when the **Control Plane** confirms **Desktop Capture Readiness** for that registered Mac
+- Completing onboarding in the **Mobile Client** does not grant **Desktop Capture Readiness**; **Capture Permission Setup** must occur on the Mac that records the screen
 - The **Desktop Client** bundles and manages one **ScreenPipe** process per **Capture Session**, using the **Bundled Native Artifact** for the host **Mac CPU variant**
 - A **Capture Session** produces a stream of **Context Snapshots** via the **Context Heartbeat** on a fixed 10-minute cadence
 - A **Capture Session** always ends with a **Session End Marker** pushed via the **Agent Interface**
@@ -123,7 +129,7 @@ _Avoid_: content filtering, runtime validation, data scrubbing (the boundary is 
 - **macOS Privacy Settings** controls OS-level capture permissions separately from Intentive **Settings**
 - **macOS Privacy Settings** should present **Intentive** as the user-facing permission owner, even when ScreenPipe remains the technical capture component
 - **Intentive Capture** may appear in **macOS Privacy Settings** only as a fallback to **Intentive**
-- **Capture Permission Setup** completes before Auth becomes capture-ready and before a Capture Session can auto-start
+- **Capture Permission Setup** completes on the recording Mac before the **Control Plane** can mark that Mac's **Desktop Capture Readiness** and before a Capture Session can auto-start
 - **Capture Permission Setup** requires Screen & System Audio Recording, Microphone, and Accessibility grants for v1
 
 ## Schema Evolution Rule
@@ -168,7 +174,7 @@ When a ScreenPipe pattern exists for a problem, adopt it unless there is a speci
 - "intentive" appeared as a lowercase dev/product surface — resolved: user-visible product surfaces use **Intentive**.
 - "ScreenPipe" appearing in **macOS Privacy Settings** would expose an implementation detail — resolved: release smoke must accept only **Intentive** or fallback **Intentive Capture**.
 - v1 packaging should expose only **Intentive** as the product app name; no lowercase product name, alternate app name, or visible ScreenPipe identity belongs in the release artifact.
-- "signed in" alone was not precise enough once OS capture grants entered the flow — resolved: completed Auth for auto-start means signed in, consented, and finished **Capture Permission Setup**.
+- "signed in" alone was not precise enough once shared cross-client identity and OS capture grants entered the flow — resolved: auto-start requires **Desktop Capture Readiness** confirmed by the **Control Plane** for the recording Mac.
 - "permissions onboarding" was too vague — resolved: **Capture Permission Setup** is a guided, step-by-step flow with clear screenshots and waits for each required macOS grant.
 - "clear photos" means static bundled instructional screenshots in the style of Opal, paired with live OS permission checks — not live screenshots of the user's macOS Privacy Settings.
 - **Capture Permission Setup** should open the exact macOS Privacy Settings pane when possible, fall back to Privacy & Security when needed, and offer a manual recheck for already-granted permissions.
@@ -176,7 +182,7 @@ When a ScreenPipe pattern exists for a problem, adopt it unless there is a speci
 - "port conflicts for bundled binaries" — resolved: **unique ports with a single fallback**. Bundled ScreenPipe: `44380`, fallback `44382`. Bundled Ollama: `44381`, fallback `44383`. The subprocess manager probes the primary port; if occupied, tries the fallback; if that is also occupied, surfaces an error. Ports are determined at spawn time (not compile-time constants): `screenpipe_supervisor` records the active ScreenPipe endpoint, and the bundled LLM Provider updates its effective Ollama URL. See ADR-0013.
 - "activity-gated heartbeat vs fixed interval" — resolved: **fixed 10-minute interval**. Activity-gating created an ambiguity between "user is idle" and "user quit." Fixed interval keeps the agent consistently informed and makes the Session End Marker the unambiguous signal for session termination. See ADR-0008.
 - "Session End Marker payload shape and agent handling" — **deliberately deferred**. Whether the OpenClaw Agent treats it differently from a regular Context Snapshot, and what fields it needs, depends on the agent-side contract not yet defined.
-- "auto-start capture vs explicit toggle" — resolved: **auto-start after auth**. Capture starts automatically when a signed-in user launches Intentive. The menu bar toggle is stop-only (or restart after manual stop). Consent is baked into the sign-in flow — completing sign-in grants permission for auto-start. See ADR-0009.
+- "auto-start capture vs explicit toggle" — resolved: **auto-start after desktop capture readiness**. Capture starts automatically on a registered Mac once the signed-in user has completed Mac-specific **Capture Permission Setup** and the **Control Plane** confirms **Desktop Capture Readiness**. Sign-in or onboarding on mobile cannot authorize screen capture on that Mac. See ADR-0009.
 - "unauthenticated menu bar state" — resolved: no icon signal (same dot treatment as stopped). Menu opens with all items grayed out except a clickable "Unauthenticated" item that opens the sign-in and consent flow.
 - "Start/Stop menu items vs toggle" — resolved: **single toggle**. Menu bar shows one item that changes label based on state ("Start Capturing" / "Stop Capturing"). Removes the grayed-out item UX problem and matches the Option A mental model (barely-noticed background utility).
 - "personalized ScreenPipe binary" — resolved: means **Mac CPU variant** (device type), not per signed-in user. See ADR-0014.

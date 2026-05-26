@@ -11,5 +11,5 @@ Intentive v1 ships as a direct-download, Developer ID signed and notarized Apple
 ## Consequences
 
 - `tauri dev` is not sufficient release evidence for permission identity; final smoke must install the notarized DMG into `/Applications/Intentive.app`.
-- Capture Permission Setup is a v1 product requirement: it guides users through Screen & System Audio Recording, Microphone, and Accessibility with curated instructional screenshots, opens the relevant macOS Privacy Settings pane when possible, and waits for live OS grants before capture-ready Auth can auto-start a Capture Session.
+- Capture Permission Setup is a v1 product requirement: it collects desktop capture consent on the recording Mac, guides users through Screen & System Audio Recording, Microphone, and Accessibility with curated instructional screenshots, opens the relevant macOS Privacy Settings pane when possible, and waits for live OS grants before the Control Plane may confirm Desktop Capture Readiness and allow auto-start.
 - Release smoke must verify the menu bar item, macOS Privacy Settings, Login Items when enabled, ScreenPipe health on `127.0.0.1:44380`, frame/audio writes, stop cleanup, quit cleanup, and absence of debug or ScreenPipe-facing identity.

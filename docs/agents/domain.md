@@ -6,7 +6,7 @@ domain and architecture documents before planning or editing.
 ## Before exploring, read these
 
 - `CONTEXT.md` for Intentive glossary and source-of-truth product language.
-- `AGENTS.md` and `CLAUDE.md` (mirrored) for repo-local agent instructions.
+- `AGENTS.md` for repo-local agent instructions (`CLAUDE.md` points here).
 - `ARCHITECTURE.md` for the current mechanical architecture, codemap, and invariants.
 - `docs/adr/` for architectural decisions that touch the area being changed.
 

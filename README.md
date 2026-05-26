@@ -94,7 +94,7 @@ Full codemap and invariants: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 | [`DESIGN.md`](DESIGN.md) | Brand and UX design system |
 | [`PRD.md`](PRD.md) | Product requirements |
 | [`docs/adr/`](docs/adr/) | ADRs |
-| [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) | Agent/coding-assistant instructions |
+| [`AGENTS.md`](AGENTS.md) | Agent/coding-assistant instructions ([`CLAUDE.md`](CLAUDE.md) points here) |
 
 ## CI and releases
 

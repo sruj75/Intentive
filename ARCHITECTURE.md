@@ -1,6 +1,6 @@
 # Architecture
 
-Contract for v1: a macOS Tauri background service that manages ScreenPipe capture for a signed-in user, runs on-device summarization, logs Context Snapshots locally, pushes them to the OpenClaw Agent, and sends a Session End Marker when a Capture Session ends. Domain terms live in `CONTEXT.md`; acceptance criteria in `SPEC.md`; decisions in `docs/adr/`.
+Contract for v1: the Intentive Desktop Client manages ScreenPipe capture for a signed-in user only after the shared Control Plane confirms Desktop Capture Readiness for that Mac, runs on-device summarization, logs Context Snapshots locally, pushes them to the OpenClaw Agent, and sends a Session End Marker when a Capture Session ends. Domain terms live in `CONTEXT.md`; acceptance criteria in `SPEC.md`; decisions in `docs/adr/`.
 
 ## Bird's-eye Overview
 
@@ -27,7 +27,7 @@ Intentive sits between four external systems and one user:
                                    └───────────────-─┘
 ```
 
-**Capture Session** — Capture starts automatically when a signed-in, capture-ready user launches Intentive. Intentive spawns ScreenPipe and runs the **Context Heartbeat** on a fixed 10-minute cadence. Each cycle: query ScreenPipe for the preceding activity window → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface**. Stop, quit, or ScreenPipe crash ends the Capture Session and sends a **Session End Marker** before teardown. Intentive does not capture without Auth and completed Capture Permission Setup.
+**Capture Session** — Capture starts automatically when a signed-in user launches the Desktop Client and the Control Plane confirms **Desktop Capture Readiness** for that registered Mac. The Desktop Client spawns ScreenPipe and runs the **Context Heartbeat** on a fixed 10-minute cadence. Each cycle: query ScreenPipe for the preceding activity window → summarize via **LLM Provider** → write **Context Snapshot** to local SQLite → **push** via **Agent Interface**. Stop, quit, or ScreenPipe crash ends the Capture Session and sends a **Session End Marker** before teardown. Mobile onboarding never authorizes Mac screen capture.
 
 **Current implementation state** — The repo is past starter scaffold for Rust domains (`capture_session`, `capture_state`, `context_heartbeat`, `screenpipe_supervisor`, `menu_bar`, `llm_provider`, `agent_interface`, `snapshot`, `snapshot_store`). `lib.rs` constructs the ScreenPipe supervisor and Capture Session coordinator, spawns the coordinator event loop, installs the menu bar shell as a state observer, wires the Snapshot Store (`BaseDirectory::AppLocalData/intentive.db`), and installs Context Heartbeat into coordinator lifecycle hooks. Heartbeat ticks persist snapshots before delivery attempts and stamp `pushed_at` only on successful delivery. Session End Marker transport is wired at the call site with a currently stubbed Agent Interface receiver pending the agent-side contract. `src/` renders a Neon Auth Settings surface; fully Auth-resolved Agent Interface endpoint/credential configuration remains planned.
 
@@ -77,7 +77,7 @@ Intentive sits between four external systems and one user:
 8. **Write locally, then push** — Every snapshot is persisted before delivery attempt; `pushed_at` records success (ADR-0007). Push failure does not delete the local row (ADR-0005).
 9. **Drop failed pushes** — No retry queue in v1; heartbeat continues on the next cycle (ADR-0005).
 10. **Fixed Context Heartbeat cadence** — During a Capture Session, the Context Heartbeat fires every 10 minutes regardless of activity level. There is no activity-gated skip path (ADR-0008).
-11. **Auth gates capture** — Intentive does not capture without a signed-in, capture-ready user. Completing sign-in includes explicit consent for future auto-start, and Capture Permission Setup must complete before Auth can auto-start a Capture Session (ADR-0009, ADR-0015).
+11. **Control Plane gates desktop capture** — The Desktop Client does not capture without a signed-in user and Control Plane-confirmed **Desktop Capture Readiness** for that registered Mac. **Capture Permission Setup** is completed on the recording Mac; mobile sign-in or onboarding cannot grant desktop capture consent (ADR-0009, ADR-0015).
 12. **Settings is not a developer config panel** — Endpoint URLs, API keys, ScreenPipe readiness, and capture diagnostics stay out of user-facing Settings. The signed-in Neon user resolves Agent Interface configuration behind Auth (ADR-0010).
 13. **On-device summarization** — Raw ScreenPipe content is input to the LLM Provider only; only sanitized prose leaves the machine (plus metadata in the snapshot).
 14. **Push, not pull** — Intentive POSTs to the OpenClaw Agent; the agent does not poll the Mac (ADR-0004).
@@ -125,8 +125,9 @@ Intentive sits between four external systems and one user:
 - `src/auth.ts` owns frontend Auth client setup and `VITE_NEON_AUTH_URL` validation.
 - Auth links the user's Intentive installation to an OpenClaw Agent endpoint and API key without exposing those values in Settings.
 - Neon Data API reads for endpoint/credential resolution are deferred to the Auth-resolved config slice; `src/auth.ts` must not become the Data API client.
-- Completing sign-in includes explicit consent for Intentive to auto-start a Capture Session on future launches. The user cannot complete sign-in without consenting.
-- Until Auth is complete, Intentive remains unauthenticated and must not start ScreenPipe or a Context Heartbeat.
+- Shared sign-in and onboarding may begin in either client; the Control Plane owns that cross-client state.
+- Desktop capture consent is collected through Capture Permission Setup on the recording Mac and becomes Control Plane-confirmed Desktop Capture Readiness for that device.
+- Until Auth and Desktop Capture Readiness are confirmed, the Desktop Client must not start ScreenPipe or a Context Heartbeat.
 
 ### CI / release
 
