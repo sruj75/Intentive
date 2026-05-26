@@ -7,12 +7,16 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:architecture:test": "node tools/linters/eslint-plugin-intentive-architecture/test.js",
     "test": "turbo run test",
     "dev": "turbo run dev",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@intentive/eslint-plugin-architecture": "workspace:*",
+    "eslint": "^9.0.0",
     "turbo": "^2.0.0"
   },
   "engines": {
