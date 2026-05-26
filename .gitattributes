@@ -1,2 +1,4 @@
+apps/desktop/src-tauri/resources/ollama filter=lfs diff=lfs merge=lfs -text
+apps/desktop/src-tauri/resources/screenpipe filter=lfs diff=lfs merge=lfs -text
 *ollama filter=lfs diff=lfs merge=lfs -text
 *screenpipe filter=lfs diff=lfs merge=lfs -text
