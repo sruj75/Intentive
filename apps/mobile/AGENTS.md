@@ -27,8 +27,8 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 ## Working docs
 
-- [`PRD.md`](PRD.md) — Mobile product requirements. ⚠️ Predates unified `docs/CONTEXT.md`; review against current vocabulary before relying on it.
-- [`DESIGN.md`](DESIGN.md) — Liquid Glass visual system. ⚠️ Predates unified `docs/CONTEXT.md`.
+- [`.scratch/v1-backlog/PRD.md`](.scratch/v1-backlog/PRD.md) — active Mobile backlog parent PRD, aligned with root `docs/CONTEXT.md`
+- [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Mobile-specific design and architecture
 - [`docs/adr/`](docs/adr/) — Mobile-specific ADRs (to be merged into root `docs/adr/` later).
 
 ## Stack & deploy

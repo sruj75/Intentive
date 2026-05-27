@@ -1,0 +1,81 @@
+name: desktop-release
+
+# Desktop Client → signed + notarized .dmg, attached to a GitHub Release.
+# Triggered by pushing a tag like `desktop-v0.1.0`.
+#
+# Required GitHub secrets:
+#   APPLE_DEVELOPER_ID_CERT             — base64 of the .p12 export of the Developer ID Application cert
+#   APPLE_DEVELOPER_ID_CERT_PASSWORD    — password for that .p12
+#   KEYCHAIN_PASSWORD                   — any random string; used to unlock the runner keychain
+#   APPLE_ID                            — your Apple ID email
+#   APPLE_APP_SPECIFIC_PASSWORD         — app-specific password from appleid.apple.com
+#   APPLE_TEAM_ID                       — 10-char Team ID from developer.apple.com/account
+#   TAURI_SIGNING_PRIVATE_KEY           — Tauri updater signing key (run `tauri signer generate`)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — passphrase for that key
+#
+# After release: the landing page links to the .dmg; in-app updates use
+# Tauri's built-in updater pointing at a JSON manifest URL you maintain.
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_DEVELOPER_ID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$APPLE_DEVELOPER_ID_CERT" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$APPLE_DEVELOPER_ID_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm /tmp/cert.p12
+
+      - name: Build, sign, and notarize
+        working-directory: apps/desktop
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --target aarch64-apple-darwin
+
+      - name: Upload .dmg to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          generate_release_notes: true

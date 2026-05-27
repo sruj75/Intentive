@@ -4,17 +4,17 @@
 
 ## Problem Statement
 
-AI agents that act on behalf of a user need to know what that user is actually doing — but today there is no standard, privacy-respecting way to deliver that context from a user's machine to a remote agent. Intentive solves the context delivery problem: it captures what is happening on the user's computer, compresses it into a clean, token-efficient summary on-device, and pushes it to OpenClaw Agent so the agent can reason about the user's current activity. Without this infrastructure layer, the agent is operating blind.
+AI agents that act on behalf of a user need to know what that user is actually doing — but today there is no standard, privacy-respecting way to deliver that context from a user's machine to a remote agent. Intentive solves the context delivery problem: it captures what is happening on the user's computer, compresses it into a clean, token-efficient summary on-device, and emits it to the Agent Runtime as a `context_snapshot` event on the shared WebSocket Protocol, so the agent can reason about the user's current activity. Without this infrastructure layer, the agent is operating blind.
 
 ---
 
 ## Goals
 
 1. **Reliable capture**: ScreenPipe runs without crashing for the full duration of a Capture Session — screen, audio, and UI events are recorded continuously.
-2. **Clean context**: Every Context Snapshot delivered to OpenClaw is a coherent prose summary that accurately represents the user's activity in the preceding 10-minute window, with no raw screen data or sensitive information leaked.
+2. **Clean context**: Every Context Snapshot delivered to the Agent Runtime is a coherent prose summary that accurately represents the user's activity in the preceding 10-minute window, with no raw screen data or sensitive information leaked.
 3. **Silent operation**: The Desktop Client runs in the background with zero user interruption during a Capture Session. Launch starts capture automatically only after the Control Plane confirms Desktop Capture Readiness for that Mac; users interact with it only to stop, restart, sign in, or complete setup.
-4. **Privacy by default**: No user data leaves the device except the sanitized Context Snapshot summary sent to OpenClaw Agent over HTTPS.
-5. **Compatibility**: The snapshot format and push mechanism work with OpenClaw Agent's GCP-hosted receiver from day one.
+4. **Privacy by default**: No user data leaves the device except the sanitized Context Snapshot summary emitted to the Agent Runtime over the WebSocket Protocol.
+5. **Compatibility**: The `context_snapshot` event payload conforms to the schema in `packages/protocol/` and is accepted by the Agent Runtime's WebSocket gateway from day one.
 6. **Finished macOS product packaging**: v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`, and macOS Privacy Settings shows **Intentive** or fallback **Intentive Capture** as the capture permission owner.
 
 ---
@@ -23,13 +23,13 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 | Non-Goal | Why out of scope |
 |---|---|
-| Behavioral analysis or goal comparison | That is OpenClaw Agent's job. Intentive delivers context, the agent reasons about it. |
-| Transparency / history UI | The SQLite log is ready for it, but the UI is a future phase. |
+| Behavioral analysis or goal comparison | That is the Agent Runtime's job. Intentive delivers context, the runtime reasons about it. |
+| Transparency / history UI | The Snapshot Store is ready for it, but the UI is a future phase. |
 | Windows or Linux support | macOS-only for v1. ScreenPipe and Ollama both support cross-platform but broadening the target adds QA scope we do not have. |
 | Intel Mac support | v1 targets **Apple Silicon (M-series) Macs only**. Intentive bundles `@screenpipe/cli-darwin-arm64` only (ADR-0014). Intel (`cli-darwin-x64`) and packaging strategy (separate builds vs dual-binary app) are future decisions. |
-| Push retry / persist-and-retry | Adds meaningful complexity. Acceptable to drop failed snapshots in v1. |
-| AI chat UI inside the app | Future. A separate window for talking to OpenClaw directly is v2+. |
-| Multiple agent endpoints | One endpoint per user in v1. Fan-out to multiple agents is a future concern. |
+| Client-side retry queue | Adds meaningful complexity. Delivery is at-most-once in v1; reconnect-snapshot semantics in the Protocol handle recovery. |
+| Chat UI inside the Desktop Client | Out of scope for v1 by design — Desktop is **capture-only**. Chat lives on the Mobile Client (and future Android Client). |
+| Multiple Agent Instances per user | One Agent Instance per user in v1. Fan-out is a future concern. |
 
 ---
 
@@ -46,9 +46,9 @@ AI agents that act on behalf of a user need to know what that user is actually d
 - As an end user, I want Capture Permission Setup to guide me through macOS Privacy Settings step by step with clear screenshots so that I can grant capture permissions without guessing where to click.
 - As an end user, I want macOS Privacy Settings to show Intentive, not ScreenPipe or a debug path, so that I can trust the product requesting capture permissions.
 
-### Developer / agent builder (person integrating OpenClaw Agent)
+### Developer / agent builder (person integrating Agent Runtime)
 
-- As an agent builder, I want Intentive to push a Context Snapshot to a configured HTTPS endpoint every 10 minutes during a Capture Session so that my agent can wake up and reason about what the user is doing.
+- As an agent builder, I want Intentive to emit a `context_snapshot` event on the WebSocket Protocol every 10 minutes during a Capture Session so that the Agent Runtime processes new activity through the same unified channel every client uses.
 - As an agent builder, I want Intentive to send a Session End Marker when a Capture Session ends so that my agent can distinguish an active quiet period from the user stopping or quitting.
 - As an agent builder, I want each snapshot to contain a unique ID and timestamps so that I can deduplicate and order snapshots correctly in the agent's context window.
 - As an agent builder, I want the snapshot payload to be a compact prose summary (not raw screen data) so that I can append it directly to the agent's context window without further processing.
@@ -110,15 +110,15 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] `pushed_at` is null if the push fails or is not yet attempted
   - [ ] Records older than 7 days are absent after the purge runs
 
-**Context Snapshot — HTTPS push**
-- POSTs each snapshot as JSON to the configured OpenClaw Agent endpoint immediately after local write
-- Includes API key in request header for auth
-- On failure (network error, non-2xx response, timeout): drops the snapshot, `pushed_at` remains null
+**Context Snapshot — Protocol delivery**
+- Emits each snapshot as a `context_snapshot` event on the open WebSocket immediately after local write
+- The WebSocket connection is authenticated once at `connect` using the Control Plane-issued JWT; no per-event auth header
+- On a dropped connection, timeout, or rejected event: the snapshot stays in the Snapshot Store with `pushed_at = null`; no client-side retry queue in v1
 - Acceptance:
-  - [ ] Snapshot JSON matches the schema: `id`, `captured_at`, `period_start`, `period_end`, `summary`
-  - [ ] Request includes `Authorization` header with API key
-  - [ ] Failed pushes do not crash or stall the heartbeat; next cycle runs on schedule
-  - [ ] Session End Marker delivery is supported without adding fields to the v1 Context Snapshot payload
+  - [ ] `context_snapshot` event payload matches the schema in `packages/protocol/`: `id`, `captured_at`, `period_start`, `period_end`, `summary`
+  - [ ] WebSocket `connect` handshake includes `client_kind: "tauri"` and the Control Plane-issued JWT
+  - [ ] Connection drops do not crash or stall the heartbeat; the next cycle runs on schedule and reconnect uses the Protocol's reconnect-snapshot semantics
+  - [ ] `session_end_marker` event is a separate Protocol event type, not a flag on `context_snapshot`
 
 **Menu bar UI**
 - Menu bar icon with status: capturing (active), stopped (idle), error
@@ -135,10 +135,10 @@ AI agents that act on behalf of a user need to know what that user is actually d
 - Triggered from menu bar
 - Auth/account surface uses Neon Auth UI with Google as the intended OAuth provider
 - Settings may mirror user-facing Intentive status, but it is not a ScreenPipe diagnostics panel
-- Agent Interface endpoint and credential details are resolved behind Auth, not entered by the user
+- Routing details (Agent Runtime URL and JWT) are resolved internally by Control Plane's `GET /agent`, not entered by the user
 - Acceptance:
   - [ ] Settings renders Neon Auth sign-in/account controls
-  - [ ] Settings does not expose endpoint URL or API key fields
+  - [ ] Settings does not expose endpoint URL or token fields
   - [ ] Settings does not expose ScreenPipe readiness or diagnostics
   - [ ] Settings window can be closed without affecting an active Capture Session
   - [ ] Opening the sign-in surface alone does not start capture; only completed Auth plus Control Plane-confirmed Desktop Capture Readiness for this Mac can do that
@@ -185,10 +185,10 @@ AI agents that act on behalf of a user need to know what that user is actually d
 ### Future Considerations (P2)
 
 - **Transparency / history UI**: A window that shows recent Context Snapshots — what was captured, what was sent. The local SQLite log is already structured for this.
-- **Persist-and-retry**: Queue failed pushes to SQLite, replay when connectivity restores. Schema already has `pushed_at` for this.
-- **Auth-resolved Agent Interface configuration**: Map the signed-in Neon user to one OpenClaw Agent endpoint and credential without exposing those values in Settings.
-- **AI chat UI**: A window for the user to talk to OpenClaw Agent directly inside Intentive.
-- **Multiple agent endpoints**: Fan-out to more than one agent per user.
+- **Persist-and-retry**: Queue snapshots with `pushed_at = null` and re-emit on reconnect once at-most-once becomes insufficient. Schema already has `pushed_at` for this.
+- **Routing-derived Protocol config**: Map the signed-in user to one Agent Runtime URL + JWT via Control Plane (already the v1 path; making it observable in Settings is a future nice-to-have).
+- **Chat UI on Desktop**: Currently rejected — Desktop is capture-only. May revisit only if a desktop-specific chat need emerges.
+- **Multiple Agent Instances per user**: Fan-out to more than one Agent Instance per user.
 - **Approach 2 (embed screenpipe-engine)**: If the ScreenPipe HTTP API cannot serve a specific need, embed `screenpipe-engine` as a Rust library for in-process control.
 
 ---
@@ -201,7 +201,7 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 
 | Metric | Target |
 |---|---|
-| Snapshot delivery rate | ≥ 95% of generated snapshots successfully pushed (non-error sessions) |
+| Snapshot delivery rate | ≥ 95% of generated snapshots `delivery_ack`'d by the Agent Runtime (non-error sessions) |
 | Heartbeat cadence accuracy | Heartbeat fires every 10 minutes during Capture Sessions with no activity-gated skips |
 | Summarization latency | Ollama generates summary in < 5 seconds on M-series hardware |
 | First-run completion | User reaches "ready" state (Ollama model downloaded, settings configured) without manual intervention |
@@ -212,7 +212,7 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 |---|---|
 | ScreenPipe crash rate | < 1 crash per 8-hour Capture Session |
 | Privacy incident rate | Zero snapshots containing raw passwords, credentials, or financial data (verified via manual audit of local log) |
-| OpenClaw Agent compatibility | Agent receives and processes snapshots without format errors from day one |
+| Agent Runtime compatibility | Agent Runtime gateway accepts and processes `context_snapshot` events without protocol-version mismatches or schema errors from day one |
 
 ---
 
@@ -223,8 +223,8 @@ No open blocking questions remain for the currently documented v1 contracts.
 **Resolved:**
 - Auth provider: Neon Auth, built on Better Auth. Google is the intended v1 OAuth provider.
 - Model tag: `qwen3.5:0.8b` — confirmed in Ollama registry. Tier 3 bundled model. Tier 2 uses existing models ≤ 5GB on disk, falls through to Tier 3 if none qualify.
-- Agent Interface headers: `Authorization` only. OpenClaw receiver will be built to conform to this contract. No `X-Intentive-Version` in v1.
-- Push timeout: **10 seconds**. On timeout or any non-2xx response, drop the snapshot per ADR-0005.
+- Transport: WebSocket Protocol (`packages/protocol/`); JWT once at `connect`; no per-event auth header.
+- Failure handling: at-most-once delivery in v1. On dropped connection, timeout, or rejected event, the snapshot stays in the Snapshot Store with `pushed_at = null`; reconnect-snapshot semantics in the Protocol handle recovery. See ADR-0011.
 
 ---
 
@@ -237,9 +237,9 @@ Intentive is built incrementally. Each phase is shippable on its own.
 | **1. Subprocess shell** | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator | Rust + Tauri CLI installed |
 | **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call | Phase 1 |
 | **3. Context Heartbeat** | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash | Phase 2 |
-| **4. Settings window** | Neon Auth UI account surface; no manual endpoint/API key fields | Phase 1 |
-| **5. Auth-resolved config** | Signed-in Neon user resolves one OpenClaw endpoint and credential internally | Settings window, Neon Data API/RLS |
-| **6. Push pipeline** | HTTPS POST to OpenClaw endpoint, API key header, failure drop, `pushed_at` tracking | Phase 3, Auth-resolved config, OpenClaw receiver ready |
+| **4. Settings window** | Neon Auth UI account surface; no manual endpoint or token fields | Phase 1 |
+| **5. Routing** | Signed-in user calls Control Plane's `GET /agent`, receives Agent Runtime URL + JWT | Settings window, Neon Auth, Control Plane online |
+| **6. Protocol pipeline** | WebSocket `connect` to Agent Runtime, `context_snapshot` + `session_end_marker` emission, `delivery_ack` stamps `pushed_at`, dropped connection leaves `pushed_at = null` | Phase 3, Routing, Agent Runtime gateway ready |
 
 ---
 
@@ -253,7 +253,7 @@ macOS (user's machine)
 │   ├── Manages Ollama subprocess (summarization)
 │   ├── Context Heartbeat service (10-minute fixed cadence)
 │   ├── Local SQLite log (snapshots, 7-day retention)
-│   └── HTTPS push → OpenClaw Agent (GCP VM)
+│   └── WebSocket Protocol (`context_snapshot`, `session_end_marker`) → Agent Runtime (always-alive GCE VM)
 │
 ├── ScreenPipe CLI binary (bundled)
 │   └── HTTP API on localhost:44380
@@ -273,7 +273,7 @@ macOS (user's machine)
 | Capture engine | ScreenPipe CLI binary (bundled) | Wraps, not reimplements; HTTP API is the boundary |
 | On-device LLM | Apple Intelligence → existing Ollama (≤ 5GB on disk) → bundled Ollama + `qwen3.5:0.8b` | Tiered: zero-download when possible, bundled fallback, always on-device |
 | Local storage | SQLite (via Tauri plugin) | Snapshot log + future transparency UI |
-| Agent transport | HTTPS POST (JSON) | OpenClaw Agent lives on GCP VM |
+| Agent transport | WebSocket Protocol (Zod-validated events from `packages/protocol/`) | Agent Runtime is always-alive on a GCE VM; same Protocol every client uses |
 
 ---
 
@@ -298,7 +298,7 @@ Raw ScreenPipe data (OCR text, audio transcript, app/window fields) is consumed 
 - All capture and summarization is on-device
 - LLM prompt includes explicit constraints: do not include passwords, credentials, financial data, or personal identifiers
 - Local SQLite log stores only the sanitized summary — never raw screen or audio data
-- HTTPS push to OpenClaw Agent is the only network egress during normal operation
+- The WebSocket connection to the Agent Runtime is the only network egress during normal operation
 - No telemetry in v1
 
 ---
@@ -307,6 +307,6 @@ Raw ScreenPipe data (OCR text, audio transcript, app/window fields) is consumed 
 
 | Decision | Why deferred |
 |---|---|
-| Snapshot history / transparency UI | SQLite log is ready; UI is a future phase |
-| Push retry / persist-and-retry | v1 drops on failure; revisit when reliability matters |
+| Snapshot history / transparency UI | Snapshot Store is ready; UI is a future phase |
+| Client-side retry queue | v1 is at-most-once with reconnect-snapshot recovery; revisit when reliability data shows it matters |
 | Approach 2 (embed screenpipe-engine as Rust library) | Only if ScreenPipe HTTP API proves insufficient for a specific gap |

@@ -18,4 +18,4 @@ Settings/Auth uses Neon Auth UI. Keep endpoint URLs, API keys, and ScreenPipe di
 | --- | --- |
 | UI or menu bar | `docs/agents/ui.md` |
 | ScreenPipe or Ollama | `docs/agents/integrations.md` |
-| GitHub issues | `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md` |
+| Issue tracker (local markdown) | `../../../../docs/agents/issue-tracker.md`, `../../../../docs/agents/triage-labels.md` |

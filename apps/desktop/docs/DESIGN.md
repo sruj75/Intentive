@@ -274,7 +274,7 @@ Background `{colors.surface-strong}` · Font `{typography.caption-uppercase}` ·
 
 **`{component.top-nav}`** — Marketing and onboarding navigation bar.  
 Background `{colors.canvas}` · Text `{colors.ink}` · Height 64px · Wordmark left · Primary nav center · Sign In + CTA right  
-> **HIG Fix #6 — scope and macOS app navigation — Gap #5:** `{component.top-nav}` is for **marketing pages and onboarding flows only** — not the core Intentive macOS workspace. The ScreenPipe capture workspace, Context Snapshot view, Context Heartbeat dashboard, and OpenClaw Agent interface must use **macOS-native navigation patterns**: a CSS sidebar panel (leading, `width: clamp(225px, 280px, 400px)`, drag-resizable via a `<div>` resize handle) for section switching, a Tauri `toolbar`-style button row beneath the title bar for primary actions, and an optional inspector panel trailing. In Tauri this is all web layout — a flex/grid split inside the `<body>` with `backdrop-filter` on the sidebar. A horizontal top-nav bar has no place in the core app window — macOS users expect sidebar-driven navigation, and a top nav would compete with the native menu bar. `{component.top-nav}` must never replace the native macOS title bar — keep Tauri's `decorations: true` and do not set `titleBarStyle: "overlay"` on the main window.
+> **HIG Fix #6 — scope and macOS app navigation — Gap #5:** `{component.top-nav}` is for **marketing pages and onboarding flows only** — not the Desktop Client's runtime surface. The Desktop Client in v1 is capture-only and exposes itself through three surfaces: the **menu bar tray** (primary control), the **Settings window** (Neon Auth sign-in/account + capture state mirror), and the **Capture Permission Setup** onboarding flow. There is no chat workspace, no Context Snapshot viewer, and no Agent Runtime interface inside the Desktop Client — chat lives only on the Mobile Client. If a future workspace is ever introduced, it must use **macOS-native navigation patterns** (a sidebar panel, a `toolbar`-style button row beneath the title bar, optional trailing inspector) and never a horizontal top-nav, which would compete with the native menu bar. `{component.top-nav}` must never replace the native macOS title bar — keep Tauri's `decorations: true` and do not set `titleBarStyle: "overlay"` on the main window.
 
 ### CTA & Footer
 
@@ -362,7 +362,7 @@ All brand animations must respect `prefers-reduced-motion: reduce` (CSS) and the
 | Waveform pulse | Continuous amplitude animation | Flat static waveform line |
 | Hero entrance | Fade + translate-up, 0.5s | Instant render, no translate |
 | Context Heartbeat indicator | Pulsing ring or beat animation | Static dot or solid ring |
-| OpenClaw Agent activity | Spinning / morphing glass indicator | Static icon |
+| Capture state transition (idle → capturing → error) | Subtle icon morph, 200ms | Static icon swap, no morph |
 | Card hover lift | `transform: translateY(-2px)`, 200ms | No transform — border color change only |
 | Orb appear on scroll | Scale-in + fade, 350ms | Fade only (no scale) |
 

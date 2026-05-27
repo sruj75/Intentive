@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: Intentive Mobile Surface
+name: Intentive Mobile Client
 description: Visual design system for the Intentive Expo companion chat app — calm, continuous, native on iOS, with light and dark appearance.
 colors:
   primary: "#1C1B1F"
@@ -199,7 +199,7 @@ components:
     padding: 8px
 ---
 
-# Intentive Mobile Surface
+# Intentive Mobile Client
 
 ## Overview
 
@@ -390,7 +390,7 @@ Follow **Expo Router native UI** patterns:
 
 ### Lists & settings (deferred / minimal)
 
-When lists appear (V1.5+), use native row patterns: leading icon, title, optional subtitle, chevron. No dense task board. Dividers: `border-subtle`.
+When lists appear later in v1 (e.g., the Account Surface), use native row patterns: leading icon, title, optional subtitle, chevron. No dense task board. Dividers: `border-subtle`.
 
 ## Implementation Notes (Expo)
 
