@@ -31,7 +31,7 @@ Build Capture Permission Setup as the first-run product flow that makes Auth cap
 
 ## Blocked by
 
-None - can start immediately; final release identity verification is completed by #18.
+None - can start immediately; final release identity verification is completed by #14.
 
 ## Comments
 

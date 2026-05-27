@@ -20,12 +20,14 @@ afterEach(() => {
 });
 
 describe("Settings account surface", () => {
-  it("renders Settings without manual Agent Interface configuration fields", () => {
+  it("renders Settings without manual routing configuration fields or legacy agent copy", () => {
     render(<App />);
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
     expect(screen.queryByLabelText(/endpoint url/i)).toBeNull();
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
     expect(screen.queryByText(/ScreenPipe/i)).toBeNull();
+    expect(screen.queryByText(/OpenClaw/i)).toBeNull();
+    expect(screen.queryByText(/Agent Interface/i)).toBeNull();
   });
 
   it("renders Neon Auth when ?surface=sign-in is set", () => {
@@ -34,6 +36,7 @@ describe("Settings account surface", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Sign In" })).toBeTruthy();
     expect(screen.getByLabelText("Neon Auth")).toBeTruthy();
     expect(screen.queryByText(/placeholder/i)).toBeNull();
+    expect(screen.queryByText(/OpenClaw/i)).toBeNull();
   });
 
   it("has a stable signed-in account home", () => {

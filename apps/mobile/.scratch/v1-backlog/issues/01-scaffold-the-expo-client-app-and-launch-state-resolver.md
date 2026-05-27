@@ -13,11 +13,11 @@ Updated: 2026-05-23T07:19:36Z
 
 ## What to build
 
-Create the initial Intentive Expo client skeleton and an evolvable **Entry Resolver** for the current V1 **Pre-Chat Gates**. The Mobile Surface renders the selected gate or enters the single **Companion Chat** destination.
+Create the initial Intentive Expo client skeleton and an evolvable **Entry Resolver** for the current V1 **Pre-Chat Gates**. The **Mobile Client** renders the selected gate or enters the single **Companion Chat** destination.
 
 Issue #2 defines a typed Entry Resolver contract shaped around a future **Control Plane** response, using injectable demo fixtures for this initial slice. Fixtures simulate server-owned entry decisions only; they must not become authoritative local onboarding state or authored companion conversation content.
 
-The current V1 Mobile Surface gates are:
+The current V1 Mobile Client gates are:
 
 - **Identity Gate** for signed-out users.
 - **Consent Primer** only until relationship-level consent has been completed on any Client App.
@@ -33,7 +33,7 @@ The set and order of Pre-Chat Gates may evolve without creating another chat des
 - [ ] A typed Entry Resolver contract represents a Control Plane-selected Pre-Chat Gate or entry into Companion Chat.
 - [ ] Injectable fixture-backed Entry Resolver scenarios support demo and test work without live Control Plane networking.
 - [ ] Relationship Onboarding is not represented as a separate launch route, client-visible chat mode, or fixture-authored assistant opening message.
-- [ ] Fixture scenarios represent relationship consent already completed through a sibling Client App without asking again on the Mobile Surface.
+- [ ] Fixture scenarios represent relationship consent already completed through a sibling Client App without asking again on the **Mobile Client**.
 - [ ] Fixture scenarios represent macOS Setup pending, skipped, connected, and blocking-if-required states.
 - [ ] Skipping eligible macOS Setup removes it as a blocking Pre-Chat Gate on ordinary relaunch.
 - [ ] Fixture scenarios represent a user whose shared progress already leads directly to the correct remaining gate or Companion Chat destination.
@@ -46,10 +46,11 @@ The set and order of Pre-Chat Gates may evolve without creating another chat des
 
 - Live network-backed Control Plane integration.
 - Gate-screen feature implementation beyond scaffold placeholders; owned by #3, #4, and #5.
-- Actual Agent Runtime conversation delivery, generated Relationship Onboarding messages, or first-message initiation; owned by #7.
-- Companion Chat composing, draft, and opening-recovery interaction behavior; owned by #9.
-- Account Surface setup recovery implementation; owned by #10.
-- Contextual in-chat macOS invitation behavior; owned by #11.
+- Actual **Agent Runtime** conversation delivery and first-message initiation; owned by #6.
+- **Conversation History** hydration from reconnect snapshot; owned by #7.
+- **Companion Chat** composing, draft, and opening-recovery interaction behavior; owned by #8.
+- **Account Surface** setup recovery implementation; owned by #9.
+- Contextual in-chat macOS invitation behavior; owned by #10.
 - Client-owned local persistence of authoritative cross-client onboarding progress.
 
 ## Blocked by

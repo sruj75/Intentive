@@ -28,7 +28,7 @@ Make the final packaged Capture Session permission identity product-owned. macOS
 
 ## Blocked by
 
-- #17
+- #13
 
 ## Comments
 

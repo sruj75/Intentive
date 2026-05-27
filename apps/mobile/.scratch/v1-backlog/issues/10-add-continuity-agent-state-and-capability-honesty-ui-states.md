@@ -13,7 +13,7 @@ Updated: 2026-05-23T07:19:36Z
 
 ## What to build
 
-Add subtle **Agent State**, lightweight continuity events, contextual warnings, and capability-honest UI language to Companion Chat. The Mobile Surface should make remote companion activity legible without implying the client or companion acted unless the Runtime Adapter or Control Plane reported it.
+Add subtle **Agent State**, lightweight continuity events, contextual warnings, and capability-honest UI language to Companion Chat. The **Mobile Client** should make remote companion activity legible without implying the client or **Companion** acted unless the **Protocol** client or **Control Plane** reported it.
 
 When a user skipped macOS Setup, Companion Chat may later surface a contextual **Sibling Client Invitation** only when the current conversation exposes a concrete reason Mac context would help. This is not a repeated onboarding gate and must not turn chat into a setup dashboard.
 

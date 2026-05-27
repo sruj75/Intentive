@@ -31,9 +31,9 @@ function App() {
         <section className="settings-section settings-section--intro">
           <h1>Sign In</h1>
           <p>
-            Use the same Google identity connected to your OpenClaw Agent.
-            After sign-in, Intentive can begin capturing quietly from the menu
-            bar.
+            Use the same Google identity for your Intentive account. After
+            sign-in, Intentive resolves Routing to your Agent Runtime and can
+            begin capturing quietly from the menu bar.
           </p>
         </section>
         <section className="settings-section">
@@ -57,7 +57,10 @@ function App() {
         <div className="settings-section__header">
           <div>
             <h2 id="account-heading">Account</h2>
-            <p>Google sign-in connects Intentive to your OpenClaw Agent.</p>
+            <p>
+              Google sign-in connects this Mac to your Companion through
+              Routing — no manual endpoint or API key.
+            </p>
           </div>
           <SignedIn>
             <UserButton />

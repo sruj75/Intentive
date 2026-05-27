@@ -38,9 +38,9 @@ Add the final v1 launch smoke checklist for the packaged product, run against th
 ## Blocked by
 
 - #10
-- #17
-- #18
-- #19
+- #13
+- #14
+- #15
 
 ## Comments
 

@@ -30,8 +30,9 @@ Rust side (`src-tauri/src/domains/<name>/`):
 
 ## Working docs
 
-- [`PRD.md`](PRD.md), [`SPEC.md`](SPEC.md), [`DESIGN.md`](DESIGN.md) — Desktop-specific product/design. ⚠️ Predate unified `docs/CONTEXT.md`; review before relying on them.
-- [`CHANGELOG.md`](CHANGELOG.md) — user-visible changes
+- [`.scratch/v1-backlog/PRD.md`](.scratch/v1-backlog/PRD.md) — active Desktop backlog parent PRD, aligned with root `docs/CONTEXT.md`
+- [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Desktop-specific product/design/architecture
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`docs/adr/`](docs/adr/) — Desktop-specific ADRs (to be merged into root later)
 - [`docs/agents/`](docs/agents/) — Desktop-specific working rules (build commands, integrations, triage)
 

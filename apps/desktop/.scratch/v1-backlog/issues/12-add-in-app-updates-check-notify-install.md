@@ -99,7 +99,7 @@ Wire **Tauri in-app updates** against the existing GitHub Release pipeline:
 
 Release-packaging dependency addendum from the May 21 packaging pass:
 
-#14 should not be the first place signing/notarization is implemented. In-app updates depend on a finished release identity and signed/notarized artifact pipeline. Once the dedicated v1 packaging issue exists, treat it as a prerequisite for updater install work.
+This issue should not be the first place signing/notarization is implemented. In-app updates depend on a finished release identity and signed/notarized artifact pipeline from #13.
 
 Carry forward these constraints from the packaging decision:
 
@@ -113,4 +113,4 @@ Carry forward these constraints from the packaging decision:
 
 Follow-up link from the packaging issue pass:
 
-In-app updates should treat #17 as a prerequisite for installable release artifacts and #20 as the final packaged-app smoke bar. The updater flow should preserve the same product-owned identity rules from #18.
+In-app updates should treat #13 as a prerequisite for installable release artifacts and #16 as the final packaged-app smoke bar. The updater flow should preserve the same product-owned identity rules from #14.
