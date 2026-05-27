@@ -4,7 +4,7 @@ name: mobile-deploy
 # Triggers a preview build on push to main when apps/mobile/** or shared
 # protocol/contract/types/providers packages change.
 #
-# Required GitHub secret:
+# Required GitHub secret (job is skipped until set):
 #   EXPO_TOKEN — personal access token from https://expo.dev/accounts/<you>/settings/access-tokens
 #
 # Required Expo configuration (in apps/mobile/eas.json):
@@ -30,6 +30,7 @@ on:
 
 jobs:
   build:
+    if: ${{ secrets.EXPO_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

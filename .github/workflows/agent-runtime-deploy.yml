@@ -3,7 +3,7 @@ name: agent-runtime-deploy
 # Agent Runtime → Google Compute Engine VM (Container-Optimized OS).
 # Triggers on push to main when services/agent-runtime/** or shared packages change.
 #
-# Required GitHub secrets:
+# Required GitHub secrets (job is skipped until both are set):
 #   GCP_PROJECT_ID
 #   GCP_SA_KEY                  — JSON key for a Service Account with:
 #                                   - Artifact Registry Writer
@@ -41,6 +41,7 @@ on:
 
 jobs:
   deploy:
+    if: ${{ secrets.GCP_SA_KEY != '' && secrets.GCP_PROJECT_ID != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
