@@ -2,6 +2,20 @@
 
 This is a table of contents, not an encyclopedia. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) for vocabulary and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for structure before making changes.
 
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as local markdown with independent trackers per deployable (`apps/mobile`, `apps/desktop`, `services/control-plane`, `services/agent-runtime`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage roles use the canonical five-label vocabulary with no overrides. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo is configured as single-context: read `docs/CONTEXT.md` and relevant decisions in `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Start here
 
 | If you need... | Read |
