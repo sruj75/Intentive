@@ -99,9 +99,9 @@ Each domain follows the layer rule internally. A new contributor (or agent) shou
 
 These live in `packages/` and are consumed by multiple deployables. **This is where cross-deployable unification happens.**
 
-- **`packages/protocol/`** — WebSocket message contract. Zod schemas for every event. Imported by Mobile Client, Desktop Client, and Agent Runtime. **Single source of truth for the wire format.** When this changes, the whole monorepo's typecheck enforces consistency.
-- **`packages/api-contract/`** — Control Plane HTTP contract (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, `GET /agent`, `POST /devices/register`). Zod schemas for request/response bodies. Imported by clients and the Control Plane.
-- **`packages/domain-types/`** — shared domain shapes that aren't tied to a wire format: `ContextSnapshot`, `ConversationMessage`, `AccountState`, etc.
+- **`packages/protocol/`** — WebSocket message contract. Zod schemas for every event, including the `context_snapshot` event shape. Imported by Mobile Client, Desktop Client, and Agent Runtime. **Single source of truth for the wire format.** When this changes, the whole monorepo's typecheck enforces consistency.
+- **`packages/api-contract/`** — Control Plane HTTP contract (`GET /me` → `AccountState`, `POST /consent`, `POST /sibling-invitation/skip`, `GET /agent`, `POST /devices/register`). Zod schemas for request/response bodies. Imported by clients and the Control Plane.
+- **`packages/domain-types/`** — shared in-process domain shapes that aren't sent over the network as-is: branded ids (`UserId`, `DeviceId`, `AgentInstanceId`, `MessageId`), `Device`, `AgentInstance`, `ConversationMessage`. (Wire shapes like the `context_snapshot` event and `AccountState` live in `protocol`/`api-contract`, not here.)
 - **`packages/providers/`** — shared cross-cutting clients: Neon Auth JWKS verifier, telemetry shim, feature-flag client. Used by both services.
 
 Rule: **if a piece of knowledge is shared between two deployables, it lives in `packages/`, not duplicated.** Lint rules enforce that domain code never imports from another deployable's source.

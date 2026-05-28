@@ -111,7 +111,7 @@ Intentive sits between four external systems and one user:
 
 ### Intentive ↔ Agent Runtime
 
-- **Interface** — The Rust `agent_interface` module opens a WebSocket to the Agent Runtime URL issued by Control Plane's `GET /agent`, presents the JWT at the `connect` handshake (with `client_kind: "tauri"`), and emits `context_snapshot` and `session_end_marker` events whose payloads conform to `packages/protocol/`. No per-event auth header.
+- **Interface** — The Rust `agent_interface` module opens a WebSocket to the Agent Runtime URL issued by Control Plane's `GET /agent`, presents the JWT at the `connect` handshake (with `client_kind: "desktop"`, per the `ClientKind` enum in `packages/protocol/`), and emits `context_snapshot` and `session_end_marker` events whose payloads conform to `packages/protocol/`. No per-event auth header.
 - **Semantics** — The Agent Runtime is always-alive and multi-tenant; the connection persists across a Capture Session. Connection requires a signed-in user because Routing returns a User-scoped JWT.
 - **Failure** — Dropped connection, timeout, or rejected event → the snapshot stays in the Snapshot Store with `pushed_at = null`. Reconnect-snapshot semantics in the Protocol handle recovery; no client-side retry queue in v1 (ADR-0011).
 - **Session End Marker** — Emitted as the `session_end_marker` event when a Capture Session ends. It is a distinct event type, not a flag on `context_snapshot`. Final payload shape is deliberately minimal until the Agent Runtime gateway formalizes it.

@@ -6,7 +6,7 @@ This is a table of contents, not an encyclopedia. Read [`docs/CONTEXT.md`](docs/
 
 ### Issue tracker
 
-Issues are tracked as local markdown with independent trackers per deployable (`apps/mobile`, `apps/desktop`, `services/control-plane`, `services/agent-runtime`). See `docs/agents/issue-tracker.md`.
+Issues are tracked as local markdown in a single root tracker at `.scratch/v1-backlog/` (50 issues, globally numbered 01–50 in MISSION-CONTROL.md phase order). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
