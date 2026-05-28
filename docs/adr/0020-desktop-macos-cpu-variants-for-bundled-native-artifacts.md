@@ -11,7 +11,7 @@ ScreenPipe publishes platform packages on npm (e.g. `@screenpipe/cli-darwin-arm6
 - **Supported hardware**: **Apple Silicon (M-series) Macs only.** Intel Macs are out of scope for v1.
 - **ScreenPipe artifact**: Bundle only `@screenpipe/cli-darwin-arm64` at a **pinned version** per Intentive release (e.g. `0.3.336`). Copy into `src-tauri/resources/screenpipe`, list in `tauri.conf.json` `bundle.resources`, resolve via `BaseDirectory::Resource`.
 - **Source of truth**: Official ScreenPipe npm platform packages — not user `npm install` at runtime.
-- **Selection axis** (when Intel ships): **Mac CPU variant only** — not Neon user, OpenClaw Agent, or Settings.
+- **Selection axis** (when Intel ships): **Mac CPU variant only** — not Neon user, Agent Runtime identity, or Settings.
 - **Linux/Windows**: out of scope (macOS-only product, ADR-0001 / ADR-0003).
 
 ## Deferred (not decided)

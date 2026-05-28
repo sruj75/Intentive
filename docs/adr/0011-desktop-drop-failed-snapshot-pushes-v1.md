@@ -1,6 +1,6 @@
 # Drop failed snapshot pushes in v1
 
-When an HTTPS push to the OpenClaw Agent fails (network down, GCP VM unavailable, timeout), Intentive discards the snapshot and continues. No retry, no local queue.
+When snapshot delivery to the Agent Runtime fails (network down, VM unavailable, timeout), Intentive discards the snapshot and continues. No retry, no local queue.
 
 Persist-and-retry (store failed snapshots to disk, replay when connectivity restores) is the correct long-term behavior but adds meaningful complexity for a v1 infrastructure build. Acceptable data loss during outages is a deliberate v1 trade-off.
 

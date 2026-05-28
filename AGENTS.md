@@ -23,7 +23,7 @@ This repo is configured as single-context: read `docs/CONTEXT.md` and relevant d
 | Domain language (Companion, Agent Runtime, Pre-Chat Gate, Post-Message-Back...) | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
 | Layer rule, deployable topology, directory layout | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Why a specific decision was made | [`docs/adr/`](docs/adr/) |
-| Active or completed multi-step plans | [`docs/plans/`](docs/plans/) |
+| Active or completed multi-step plans | each deployable's own `docs/plans/` |
 | Per-deployable working rules | each deployable's own `AGENTS.md` |
 
 ## The four deployables

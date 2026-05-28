@@ -13,13 +13,15 @@ Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangC
 
 | Topic card | We implement in shell? |
 |------------|-------------------------|
-| architecture, gateway, channels, sessions, cron, heartbeat, workspace, routing, hooks | **Yes** (TypeScript control plane) |
+| architecture, gateway, sessions, cron, heartbeat, workspace, routing, hooks | **Yes** (TypeScript shell) |
+| channels | **Future-only in Intentive v1** — use as external-adapter reference, not as a standalone domain |
 | memory, tools, subagents, agent-runtime | **No** — parity reference only; use DeepAgents |
 
 ## Global invariants
 
 - Do not port upstream OpenClaw sources verbatim into our repo — adapt patterns in TypeScript.
 - Do not reimplement planning, tool loop, vfs, or subagents in the shell.
+- Do not add a standalone `channels` domain for first-party Mobile/Desktop clients in v1; they speak the shared WebSocket Protocol.
 - Packs are **read-only**; change upstream or our `src/`, not `*-llms.txt`.
 - Prefer `SECTION:` aliases from topic cards over guessing APIs.
 
@@ -29,7 +31,7 @@ Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangC
 |------|-----------|
 | [architecture](topics/architecture.md) | Brain vs shell, product shape |
 | [gateway](topics/gateway.md) | WS, protocol, auth, HTTP APIs |
-| [channels](topics/channels.md) | Channel adapters, delivery |
+| [channels](topics/channels.md) | Future external channel adapters only; not Mobile/Desktop v1 |
 | [sessions](topics/sessions.md) | Session keys, store, compaction |
 | [cron](topics/cron.md) | Scheduler, task ledger |
 | [heartbeat](topics/heartbeat.md) | Periodic wake, HEARTBEAT_OK |
