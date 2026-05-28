@@ -1,0 +1,22 @@
+# cargo-audit configuration — see https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+#
+# Policy (ADR-aligned, single-context): the cargo audit gate must only HARD-FAIL on
+# advisories we can act on. Informational advisories (unmaintained / unsound) are left
+# as visible, non-failing warnings on purpose — silencing them would erode the signal
+# the day a real, patchable CVE lands. Today that means 17 such warnings from the
+# Tauri 2.x Linux WebView stack (gtk-rs 0.18 generation via wry → webkit2gtk-rs):
+# the gtk3-rs bindings (RUSTSEC-2024-0411..0420), glib unsoundness (RUSTSEC-2024-0429),
+# proc-macro-error (RUSTSEC-2024-0370), and unic-* (RUSTSEC-2025-0075/0080/0081/0098/0100).
+# None are fixable until webkit2gtk-rs moves to gtk-rs 0.20+; they stay visible, unignored.
+
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071 — rsa "Marvin Attack" timing side-channel. The only hard
+  # vulnerability in the lockfile, and it is un-actionable here:
+  #   * No upstream patch exists (advisory lists no patched version).
+  #   * `rsa` is an unreachable lockfile entry — it is an optional sqlx-mysql
+  #     transitive, and this app builds sqlx with the sqlite feature only
+  #     (`cargo tree -i rsa` returns nothing for any target), so it is never compiled.
+  # Revisit immediately if a MySQL feature is ever enabled, or once rsa ships a fix.
+  "RUSTSEC-2023-0071",
+]

@@ -55,3 +55,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: apps/desktop/src-tauri
+          # Ignored advisories + rationale are documented in
+          # apps/desktop/src-tauri/.cargo/audit.toml (the source of truth for local
+          # `cargo audit`). Mirrored here because the action consumes only this input.
+          # Informational unmaintained/unsound warnings are intentionally NOT ignored.
+          ignore: RUSTSEC-2023-0071
