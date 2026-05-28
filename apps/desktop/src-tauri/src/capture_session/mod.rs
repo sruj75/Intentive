@@ -16,6 +16,7 @@ use crate::capture_state::{
 };
 use crate::context_heartbeat::ContextHeartbeat;
 use crate::screenpipe_supervisor::{Supervisor, SupervisorEvent};
+use crate::snapshot::SessionEndReason;
 
 /// Domain commands the coordinator consumes. Producers (menu bar, future auth
 /// adapter, debug shims) publish these via `submit`; the coordinator decides
@@ -176,7 +177,7 @@ impl Inner {
             }
             CaptureState::Stopped => {
                 let _ = self.supervisor.stop().await;
-                self.stop_heartbeat().await;
+                self.stop_heartbeat(SessionEndReason::UserToggle).await;
             }
             _ => {}
         }
@@ -202,21 +203,21 @@ impl Inner {
     }
 
     async fn handle_supervisor_event(&self, event: SupervisorEvent) {
-        let next = {
+        let (next, reason) = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
             match event {
-                SupervisorEvent::Stopped => fsm.recover_to_stopped().clone(),
+                SupervisorEvent::Stopped => (fsm.recover_to_stopped().clone(), SessionEndReason::Quit),
                 SupervisorEvent::Crashed { user_facing_copy } => {
                     let reason = ErrorReason::new(user_facing_copy.to_string())
                         .expect("supervisor crash copy is non-empty");
-                    fsm.to_error(reason).clone()
+                    (fsm.to_error(reason).clone(), SessionEndReason::Crash)
                 }
             }
         };
         self.notify_observers(&next);
         // ScreenPipe is gone either way — stop the heartbeat so its Session
         // End Marker fires before the FSM settles in its terminal state.
-        self.stop_heartbeat().await;
+        self.stop_heartbeat(reason).await;
     }
 
     fn heartbeat_handle(&self) -> Option<Arc<ContextHeartbeat>> {
@@ -232,9 +233,9 @@ impl Inner {
         }
     }
 
-    async fn stop_heartbeat(&self) {
+    async fn stop_heartbeat(&self, reason: SessionEndReason) {
         if let Some(hb) = self.heartbeat_handle() {
-            hb.stop().await;
+            hb.stop(reason).await;
         }
     }
 }

@@ -12,13 +12,14 @@ Defined in `src/index.ts`:
 
 - **Shared primitives** — `ClientKind` (`mobile | desktop | android`).
 - **Client → Runtime** (`clientToRuntimeEvent` discriminated union): `connect`, `user_message`, `presence_update`, `delivery_ack`, `context_snapshot`, `session_end_marker`.
-- **Runtime → Client** (`runtimeToClientEvent` discriminated union): `hello_ok`, `companion_message`.
-- **Version negotiation** — `connect` carries `min_protocol`/`max_protocol`; `hello_ok` returns `negotiated_protocol`.
-- **Backward-compatible aliases** — `ConnectFrame`, `HelloOkFrame`, `InboundEvent`, `OutboundEvent`, etc., re-exporting the canonical schemas.
+- **Runtime → Client** (`runtimeToClientEvent` discriminated union): `hello_ok`, `companion_message`, `runtime_error`.
+- **Runtime error envelope** — one typed error event shape with `code`, `message`, and optional `details`.
+- **Single-live shape policy** — no backward-compatible alias exports; only canonical schema names are exported.
 
 ## Invariants
 
 - Every wire event is a Zod schema here; no deployable defines its own copy of an event shape.
+- Every wire object schema is strict; unknown keys are rejected.
 - Inbound and outbound events are discriminated on `type` so the Agent Runtime can route exhaustively and clients can narrow safely.
 - The package is imported at exactly **one version** across the monorepo (inviolable rule 5). Stale imports fail typecheck.
 - Clients are distinguished only by the `client_kind` field on `connect` — never by separate channel adapters or separate event sets.
@@ -35,5 +36,5 @@ Defined in `src/index.ts`:
 1. Edit the Zod schema here first.
 2. Run monorepo typecheck — every consumer that fails to handle the change is surfaced mechanically.
 3. Add the handler/emitter in each affected deployable's `protocol`/`chat`/`snapshots` domain.
-4. Bump and negotiate the protocol version when a change is not backward-compatible; keep one version live across the monorepo.
+4. Keep one live protocol shape across the monorepo and update all first-party consumers in the same change stream.
 5. Check new event names against `../../docs/CONTEXT.md` vocabulary before merging.

@@ -33,7 +33,7 @@ Rust side (`src-tauri/src/domains/<name>/`):
 - [`../../.scratch/v1-backlog/prds/desktop-PRD.md`](../../.scratch/v1-backlog/prds/desktop-PRD.md) — Desktop PRD in the root unified backlog
 - [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
-- [`docs/adr/`](docs/adr/) — Desktop-specific ADRs (to be merged into root later)
+- [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)
 - [`docs/agents/`](docs/agents/) — Desktop-specific working rules (build commands, integrations, triage)
 
 ## Stack & deploy

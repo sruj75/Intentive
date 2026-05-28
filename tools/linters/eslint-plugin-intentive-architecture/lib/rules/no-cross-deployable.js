@@ -1,7 +1,7 @@
-'use strict';
+"use strict";
 
-const path = require('path');
-const { parseDomainPath } = require('../path-parser');
+const path = require("path");
+const { parseDomainPath } = require("../path-parser");
 
 /**
  * ESLint rule: forbid one deployable from importing another deployable's
@@ -19,16 +19,16 @@ const { parseDomainPath } = require('../path-parser');
  */
 module.exports = {
   meta: {
-    type: 'problem',
+    type: "problem",
     docs: {
       description:
-        'Forbid relative imports that cross deployable boundaries. Shared code must live in packages/.',
+        "Forbid relative imports that cross deployable boundaries. Shared code must live in packages/.",
       recommended: true,
     },
     messages: {
       crossDeployable:
         "Cross-deployable import: '{{fromKind}}/{{fromDeployable}}' is reaching into '{{toKind}}/{{toDeployable}}'. " +
-        'Shared code belongs in packages/ — import it by workspace name (e.g. @intentive/protocol), not by relative path.',
+        "Shared code belongs in packages/ — import it by workspace name (e.g. @intentive/protocol), not by relative path.",
     },
     schema: [],
   },
@@ -44,10 +44,9 @@ module.exports = {
     return {
       ImportDeclaration(node) {
         const spec = node.source && node.source.value;
-        if (typeof spec !== 'string' || !spec.startsWith('.')) return;
+        if (typeof spec !== "string" || !spec.startsWith(".")) return;
         const resolved = path.resolve(path.dirname(filename), spec);
-        const target =
-          parseDomainPath(resolved) || coarseDeployable(resolved);
+        const target = parseDomainPath(resolved) || coarseDeployable(resolved);
         if (!target) return;
         if (
           target.kind !== sourceDeployable.kind ||
@@ -55,7 +54,7 @@ module.exports = {
         ) {
           context.report({
             node,
-            messageId: 'crossDeployable',
+            messageId: "crossDeployable",
             data: {
               fromKind: sourceDeployable.kind,
               fromDeployable: sourceDeployable.deployable,
@@ -75,7 +74,7 @@ module.exports = {
  * across deployable boundaries.
  */
 function coarseDeployable(absPath) {
-  const norm = absPath.replace(/\\/g, '/');
+  const norm = absPath.replace(/\\/g, "/");
   const m = norm.match(/\/(apps|services)\/([^/]+)(?:\/|$)/);
   if (!m) return null;
   return { kind: m[1], deployable: m[2] };

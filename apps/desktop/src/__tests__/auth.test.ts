@@ -34,8 +34,7 @@ describe("Intentive Auth client setup", () => {
     const { authClient } = await import("../auth");
 
     expect(authClient).toEqual({
-      authUrl:
-        "https://ep-lucky-dew-aqkjv8j5.neonauth.us-east-1.aws.neon.tech/neondb/auth",
+      authUrl: "https://ep-lucky-dew-aqkjv8j5.neonauth.us-east-1.aws.neon.tech/neondb/auth",
       config: {
         adapter: "react-adapter",
       },

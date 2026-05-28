@@ -9,9 +9,7 @@ export function readNeonAuthUrl(
   const authUrl = env[NEON_AUTH_URL_ENV];
 
   if (typeof authUrl !== "string" || authUrl.trim() === "") {
-    throw new Error(
-      `${NEON_AUTH_URL_ENV} is required to render the Intentive Auth surface.`,
-    );
+    throw new Error(`${NEON_AUTH_URL_ENV} is required to render the Intentive Auth surface.`);
   }
 
   return authUrl;

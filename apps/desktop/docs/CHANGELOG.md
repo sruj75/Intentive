@@ -125,6 +125,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Issue #8 protocol-boundary hardening** — Desktop boundary semantics now align
+  to the canonical protocol contract: no protocol-range negotiation fields,
+  strict schema parsing, canonical snapshot/session-end naming
+  (`snapshot_id`, `ended_at`, `reason`), and typed runtime failure envelope
+  usage (`runtime_error`) across first-party contract surfaces.
 - **Post-rebase onboarding repair** — the Settings/onboarding webview is now
   included in the Tauri event capability so live download progress and
   completion reach the user, command-dispatch failures surface Retry rather
@@ -179,7 +184,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   bundled binary is acquired via Tauri resources. An `#[ignore]`d integration
   test (`integration_real_bundled_ollama_prepares_qwen`) is in place.
 - Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
-  present, but mapping a signed-in user to an OpenClaw Agent endpoint and
+  present, but mapping a signed-in user to an Agent Runtime endpoint and
   credential lands in the follow-up Auth/Data API slice.
 - Tauri runtime wiring is still partial for release-completion scope: Capture
   Permission Setup hardening, signed/notarized release packaging evidence, and

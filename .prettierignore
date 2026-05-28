@@ -1,0 +1,16 @@
+node_modules/
+.pnpm-store/
+
+dist/
+build/
+out/
+.next/
+.expo/
+target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/
+coverage/
+
+.turbo/
+.cache/
+pnpm-lock.yaml

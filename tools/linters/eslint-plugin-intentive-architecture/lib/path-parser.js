@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 /**
  * Parse an absolute file path into the layered-domain segments the
@@ -17,12 +17,12 @@
  * @returns {{kind:'apps'|'services', deployable:string, domain:string, layer:string} | null}
  */
 function parseDomainPath(absPath) {
-  if (typeof absPath !== 'string' || absPath.length === 0) return null;
-  const norm = absPath.replace(/\\/g, '/');
+  if (typeof absPath !== "string" || absPath.length === 0) return null;
+  const norm = absPath.replace(/\\/g, "/");
   // Find ".../{apps|services}/<deployable>/.../domains/<domain>/<layer>/..."
   // The middle ".../" allows for "src/", "src-tauri/src/", or any nesting.
   const m = norm.match(
-    /\/(apps|services)\/([^/]+)\/(?:[^/]+\/)*?domains\/([^/]+)\/([^/]+)(?:\/|$)/
+    /\/(apps|services)\/([^/]+)\/(?:[^/]+\/)*?domains\/([^/]+)\/([^/]+)(?:\/|$)/,
   );
   if (!m) return null;
   const [, kind, deployable, domain, layer] = m;

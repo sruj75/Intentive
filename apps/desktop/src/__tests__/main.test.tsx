@@ -59,8 +59,6 @@ describe("Intentive Auth provider wiring", () => {
         }),
       ]),
     );
-    expect(capturedAuthProviderProps.every((props) => props.credentials === false)).toBe(
-      true,
-    );
+    expect(capturedAuthProviderProps.every((props) => props.credentials === false)).toBe(true);
   });
 });

@@ -1,10 +1,5 @@
 import { useMemo } from "react";
-import {
-  AuthView,
-  SignedIn,
-  SignedOut,
-  UserButton,
-} from "@neondatabase/neon-js/auth/react/ui";
+import { AuthView, SignedIn, SignedOut, UserButton } from "@neondatabase/neon-js/auth/react/ui";
 import Onboarding from "./Onboarding";
 import "./App.css";
 
@@ -31,9 +26,9 @@ function App() {
         <section className="settings-section settings-section--intro">
           <h1>Sign In</h1>
           <p>
-            Use the same Google identity for your Intentive account. After
-            sign-in, Intentive resolves Routing to your Agent Runtime and can
-            begin capturing quietly from the menu bar.
+            Use the same Google identity for your Intentive account. After sign-in, Intentive
+            resolves Routing to your Agent Runtime and can begin capturing quietly from the menu
+            bar.
           </p>
         </section>
         <section className="settings-section">
@@ -48,8 +43,8 @@ function App() {
       <section className="settings-section settings-section--intro">
         <h1>Settings</h1>
         <p>
-          Intentive runs from the menu bar. Settings keeps account access and
-          quiet app state in one place.
+          Intentive runs from the menu bar. Settings keeps account access and quiet app state in one
+          place.
         </p>
       </section>
 
@@ -58,8 +53,8 @@ function App() {
           <div>
             <h2 id="account-heading">Account</h2>
             <p>
-              Google sign-in connects this Mac to your Companion through
-              Routing — no manual endpoint or API key.
+              Google sign-in connects this Mac to your Companion through Routing — no manual
+              endpoint or API key.
             </p>
           </div>
           <SignedIn>

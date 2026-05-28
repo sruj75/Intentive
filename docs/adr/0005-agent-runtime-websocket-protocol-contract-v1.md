@@ -1,55 +1,47 @@
-# ADR 0003: WebSocket Protocol Contract (v1)
+> **Status: Amended by [ADR-0035](0035-single-live-protocol-shape-v1.md).**
+> v1 now uses a single live protocol shape with strict schemas and no `min_protocol`/`max_protocol` negotiation fields.
+
+# ADR 0005: WebSocket Protocol Contract (v1)
 
 ## Status
-Accepted
+Accepted (amended)
 
 ## Date
 2026-05-25
 
 ## Context
 
-Intentive clients (`v1-expo`, `v1-tauri`) need a stable, explicit runtime protocol contract to integrate with `v1-deepagent` without ambiguity. The system targets a strong foundation with minimal complexity and clear upgrade paths.
+Intentive clients need a stable, explicit runtime protocol contract. The protocol defines application-level WebSocket semantics (handshake + event schema), not low-level transport details.
 
 ## Decision
 
-Adopt the following v1 WebSocket protocol contract.
-
-### 1) Protocol meaning
-
-"Protocol" means the application-level WebSocket message contract (handshake + frame/event schema), not low-level transport internals.
-
-### 2) Handshake-first connection
+### 1) Handshake-first connection
 
 - Client must complete `connect` before any runtime events are accepted.
 - Pre-handshake, only `connect` is allowed.
 - Non-`connect` pre-handshake frames are rejected with structured protocol error and no side effects.
 
-### 3) Required `connect` fields (v1)
+### 2) Required `connect` fields (v1)
 
 Mandatory:
 - `auth_token`
-- `client_kind` (`mobile` | `desktop`; `android` reserved) — per the `ClientKind` enum in `packages/protocol/`
+- `client_kind` (`mobile` | `desktop` | `android`)
 - `client_version`
-- `min_protocol`
-- `max_protocol`
 
-All other connect metadata is optional in v1.
+### 3) Failure behavior
 
-### 4) Version compatibility
+- Auth failure returns structured `auth_failed` and closes the socket.
+- Invalid connect shape returns structured `invalid_connect`.
+- Unsupported protocol shape returns structured `protocol_unsupported`.
+- Runtime failures are emitted in the dedicated `runtime_error` envelope (see ADR-0035).
 
-If client and server protocol ranges do not overlap, connect is rejected with `protocol_unsupported` structured error.
-
-### 5) Auth failure behavior
-
-On auth failure, return structured `auth_failed` error and close the socket.
-
-### 6) Reconnect and consistency
+### 4) Reconnect and consistency
 
 On connect/reconnect success:
 - server returns snapshot first
 - live updates stream after snapshot
 
-### 7) Live stream reliability (v1)
+### 5) Live stream reliability (v1)
 
 Outbound live stream semantics are at-most-once. Recovery is via authoritative snapshot on reconnect (not replay/ack in v1).
 
@@ -57,16 +49,9 @@ Outbound live stream semantics are at-most-once. Recovery is via authoritative s
 
 ### Positive
 
-- Strong, simple contract for all clients.
-- Fast failure on contract mismatch.
-- Deterministic reconnect recovery.
-- Lower implementation complexity than replay/ack delivery in v1.
+- Strong, simple contract for all first-party clients and runtime.
+- Deterministic reconnect recovery with minimal handshake complexity.
 
 ### Negative
 
-- No guaranteed replay of every transient live event during disconnect windows.
-- If stronger delivery guarantees are needed later, protocol extension work is required.
-
-### Neutral / Follow-up
-
-- Future ADR may introduce optional replay/ack semantics if product evidence shows snapshot recovery is insufficient.
+- No guaranteed replay of transient live events during disconnect windows.

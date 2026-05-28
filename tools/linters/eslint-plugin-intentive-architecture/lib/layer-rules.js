@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 /**
  * The canonical layer order, lowest to highest. A file at layer N may import
@@ -9,8 +9,8 @@
  *
  * `providers/` is cross-cutting: every layer may import from it.
  */
-const LAYER_ORDER = ['types', 'config', 'repo', 'service', 'runtime', 'ui'];
-const CROSS_CUTTING = new Set(['providers']);
+const LAYER_ORDER = ["types", "config", "repo", "service", "runtime", "ui"];
+const CROSS_CUTTING = new Set(["providers"]);
 
 /**
  * Can a file in `fromLayer` import from a file in `toLayer`, assuming both

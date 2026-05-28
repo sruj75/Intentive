@@ -11,7 +11,9 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc --outDir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test"
   },
   "dependencies": {
     "zod": "^3.23.0"

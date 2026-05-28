@@ -159,11 +159,11 @@ pub fn run() {
             let llm_slot = Arc::new(LlmProviderSlot(Mutex::new(None)));
             app.manage(llm_slot.clone());
 
-            // Context Heartbeat (Issue #8, ADR-0008). The placeholder
-            // AgentInterface URL is replaced when Auth-resolved Agent
-            // Interface configuration lands; `send_session_end` is stubbed
-            // until the OpenClaw Agent contract is defined, and `push`
-            // errors are silently dropped per ADR-0005 — so the placeholder
+            // Context Heartbeat (Issue #8, ADR-0008). The placeholder runtime
+            // endpoint is replaced when Auth-resolved Routing lands. The
+            // `emit_session_end` transport path is intentionally stubbed until
+            // #25/#28 session lifecycle wiring lands, and context snapshot
+            // delivery failures are dropped per ADR-0005 — so the placeholder
             // URL never causes user-visible noise.
             let snapshot_store_arc: Arc<SnapshotStore> =
                 app.state::<Arc<SnapshotStore>>().inner().clone();

@@ -19,7 +19,7 @@ fn sample_snapshot() -> ContextSnapshot {
 
 fn sample_at(captured_at: DateTime<Utc>) -> ContextSnapshot {
     ContextSnapshot {
-        id: Uuid::new_v4(),
+        snapshot_id: Uuid::new_v4(),
         captured_at,
         period_start: captured_at - ChronoDuration::minutes(10),
         period_end: captured_at,
@@ -42,7 +42,7 @@ async fn insert_persists_snapshot_with_null_pushed_at() {
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].id, snap.id);
+    assert_eq!(rows[0].snapshot_id, snap.snapshot_id);
     assert!(
         rows[0].pushed_at.is_none(),
         "freshly inserted row must leave pushed_at null"
@@ -57,7 +57,7 @@ async fn insert_round_trips_all_five_fields_exactly() {
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     let row = &rows[0];
-    assert_eq!(row.id, snap.id);
+    assert_eq!(row.snapshot_id, snap.snapshot_id);
     assert_eq!(row.captured_at, snap.captured_at);
     assert_eq!(row.period_start, snap.period_start);
     assert_eq!(row.period_end, snap.period_end);
@@ -71,7 +71,7 @@ async fn mark_pushed_stamps_timestamp_without_mutating_other_fields() {
     store.insert(&snap).await.expect("insert should succeed");
 
     let before = Utc::now();
-    store.mark_pushed(snap.id).await.expect("mark should succeed");
+    store.mark_pushed(snap.snapshot_id).await.expect("mark should succeed");
     let after = Utc::now();
 
     let rows = store.list_recent(10).await.expect("list should succeed");
@@ -80,7 +80,7 @@ async fn mark_pushed_stamps_timestamp_without_mutating_other_fields() {
     assert!(pushed >= before && pushed <= after, "pushed_at should be ~now");
 
     // The five core fields must be byte-identical to the input.
-    assert_eq!(row.id, snap.id);
+    assert_eq!(row.snapshot_id, snap.snapshot_id);
     assert_eq!(row.captured_at, snap.captured_at);
     assert_eq!(row.period_start, snap.period_start);
     assert_eq!(row.period_end, snap.period_end);
@@ -107,13 +107,13 @@ async fn mark_pushed_is_idempotent_for_already_pushed_row() {
     let snap = sample_snapshot();
     store.insert(&snap).await.expect("insert should succeed");
 
-    store.mark_pushed(snap.id).await.expect("first mark");
+    store.mark_pushed(snap.snapshot_id).await.expect("first mark");
     let first_pushed = store.list_recent(10).await.unwrap()[0]
         .pushed_at
         .expect("first mark sets pushed_at");
 
     // Second mark must succeed (no error), not regress the timestamp.
-    store.mark_pushed(snap.id).await.expect("second mark");
+    store.mark_pushed(snap.snapshot_id).await.expect("second mark");
     let second_pushed = store.list_recent(10).await.unwrap()[0]
         .pushed_at
         .expect("second mark keeps pushed_at set");
@@ -154,7 +154,7 @@ async fn launch_purges_rows_older_than_seven_days() {
     let rows = store.list_recent(10).await.expect("list");
 
     assert_eq!(rows.len(), 1, "8-day-old row should have been purged");
-    assert_eq!(rows[0].id, recent.id);
+    assert_eq!(rows[0].snapshot_id, recent.snapshot_id);
 }
 
 #[tokio::test]
@@ -173,7 +173,7 @@ async fn launch_keeps_rows_exactly_seven_days_old() {
     let rows = store.list_recent(10).await.expect("list");
 
     assert_eq!(rows.len(), 1, "row at 7 days minus 1 minute must survive");
-    assert_eq!(rows[0].id, edge.id);
+    assert_eq!(rows[0].snapshot_id, edge.snapshot_id);
 }
 
 #[tokio::test]
@@ -190,6 +190,6 @@ async fn list_recent_returns_newest_first_and_respects_limit() {
 
     let rows = store.list_recent(2).await.expect("list");
     assert_eq!(rows.len(), 2, "limit should cap the result");
-    assert_eq!(rows[0].id, newest.id, "first row should be newest");
-    assert_eq!(rows[1].id, middle.id, "second row should be the next newest");
+    assert_eq!(rows[0].snapshot_id, newest.snapshot_id, "first row should be newest");
+    assert_eq!(rows[1].snapshot_id, middle.snapshot_id, "second row should be the next newest");
 }

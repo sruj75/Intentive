@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 /**
  * Root ESLint config for the Intentive monorepo (ESLint 9+ flat config).
@@ -10,50 +10,51 @@
  * Run: `pnpm lint`  (after `pnpm install` at the repo root).
  */
 
-const architecture = require('@intentive/eslint-plugin-architecture');
-const tsParser = require('@typescript-eslint/parser');
+const architecture = require("@intentive/eslint-plugin-architecture");
+const tsParser = require("@typescript-eslint/parser");
 
 module.exports = [
   {
-    files: ['apps/*/src/**/*.{ts,tsx,mts,cts}', 'services/*/src/**/*.{ts,tsx,mts,cts}'],
+    files: ["apps/*/src/**/*.{ts,tsx,mts,cts}", "services/*/src/**/*.{ts,tsx,mts,cts}"],
     languageOptions: {
       parser: tsParser,
-      ecmaVersion: 'latest',
-      sourceType: 'module',
+      ecmaVersion: "latest",
+      sourceType: "module",
     },
     plugins: {
-      'intentive-architecture': architecture,
+      "intentive-architecture": architecture,
     },
     rules: {
-      'intentive-architecture/layer-direction': 'error',
-      'intentive-architecture/no-cross-deployable': 'error',
+      "intentive-architecture/layer-direction": "error",
+      "intentive-architecture/no-cross-deployable": "error",
     },
   },
   {
-    files: ['apps/*/src/**/*.{js,jsx,mjs,cjs}', 'services/*/src/**/*.{js,jsx,mjs,cjs}'],
+    files: ["apps/*/src/**/*.{js,jsx,mjs,cjs}", "services/*/src/**/*.{js,jsx,mjs,cjs}"],
     languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
+      ecmaVersion: "latest",
+      sourceType: "module",
     },
     plugins: {
-      'intentive-architecture': architecture,
+      "intentive-architecture": architecture,
     },
     rules: {
-      'intentive-architecture/layer-direction': 'error',
-      'intentive-architecture/no-cross-deployable': 'error',
+      "intentive-architecture/layer-direction": "error",
+      "intentive-architecture/no-cross-deployable": "error",
     },
   },
   {
     // The plugin's own test fixtures and unit test live outside the layer rule.
     ignores: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/build/**',
-      '**/.next/**',
-      '**/.expo/**',
-      '**/target/**',
-      'apps/desktop/src-tauri/target/**',
-      'tools/linters/**/test.js',
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.next/**",
+      "**/.expo/**",
+      "**/target/**",
+      "apps/desktop/src-tauri/target/**",
+      "tools/linters/**/test.js",
     ],
   },
 ];

@@ -1,9 +1,9 @@
 //! Snapshot Store — the local SQLite log of every Context Snapshot produced.
 //!
 //! This module is the durable record described in ADR-0007. Each row is a
-//! sanitized `ContextSnapshot` (id, captured_at, period_start, period_end,
-//! summary) plus a nullable `pushed_at` recording successful delivery to the
-//! OpenClaw Agent.
+//! sanitized `ContextSnapshot` (`snapshot_id`, captured_at, period_start,
+//! period_end, summary) plus a nullable `pushed_at` recording successful
+//! delivery to the runtime boundary.
 //!
 //! Privacy boundary (Issue #6 acceptance criterion): `insert` accepts only
 //! `&ContextSnapshot`. No raw ScreenPipe data (OCR, audio, window names) has a
@@ -58,7 +58,7 @@ pub enum SnapshotStoreError {
 /// row-type convention. See CONTEXT.md "Implementation Pattern Rule".
 #[derive(Debug, Clone)]
 pub struct StoredSnapshot {
-    pub id: Uuid,
+    pub snapshot_id: Uuid,
     pub captured_at: DateTime<Utc>,
     pub period_start: DateTime<Utc>,
     pub period_end: DateTime<Utc>,
@@ -116,7 +116,7 @@ impl SnapshotStore {
     /// same `id` returns `SnapshotStoreError::Query` (PRIMARY KEY violation).
     pub async fn insert(&self, snapshot: &ContextSnapshot) -> Result<(), SnapshotStoreError> {
         sqlx::query(INSERT_SQL)
-            .bind(snapshot.id.to_string())
+            .bind(snapshot.snapshot_id.to_string())
             .bind(snapshot.captured_at.to_rfc3339())
             .bind(snapshot.period_start.to_rfc3339())
             .bind(snapshot.period_end.to_rfc3339())
@@ -131,17 +131,17 @@ impl SnapshotStore {
     /// calls (subsequent marks may advance the timestamp slightly). Returns
     /// `NotFound` when no row exists — most likely because the snapshot was
     /// purged before delivery completed.
-    pub async fn mark_pushed(&self, id: Uuid) -> Result<(), SnapshotStoreError> {
+    pub async fn mark_pushed(&self, snapshot_id: Uuid) -> Result<(), SnapshotStoreError> {
         let now = Utc::now().to_rfc3339();
         let result = sqlx::query(MARK_PUSHED_SQL)
             .bind(now)
-            .bind(id.to_string())
+            .bind(snapshot_id.to_string())
             .execute(&self.pool)
             .await
             .map_err(|e| SnapshotStoreError::Query(e.to_string()))?;
 
         if result.rows_affected() == 0 {
-            return Err(SnapshotStoreError::NotFound(id));
+            return Err(SnapshotStoreError::NotFound(snapshot_id));
         }
         Ok(())
     }
@@ -164,7 +164,7 @@ impl SnapshotStore {
 }
 
 fn decode_row(row: sqlx::sqlite::SqliteRow) -> Result<StoredSnapshot, SnapshotStoreError> {
-    let id_str: String = row
+    let snapshot_id_str: String = row
         .try_get("id")
         .map_err(|e| SnapshotStoreError::Corrupt(format!("id column: {e}")))?;
     let captured_at_str: String = row
@@ -183,7 +183,7 @@ fn decode_row(row: sqlx::sqlite::SqliteRow) -> Result<StoredSnapshot, SnapshotSt
         .try_get("pushed_at")
         .map_err(|e| SnapshotStoreError::Corrupt(format!("pushed_at column: {e}")))?;
 
-    let id = Uuid::parse_str(&id_str)
+    let snapshot_id = Uuid::parse_str(&snapshot_id_str)
         .map_err(|e| SnapshotStoreError::Corrupt(format!("id parse: {e}")))?;
     let captured_at = parse_rfc3339(&captured_at_str, "captured_at")?;
     let period_start = parse_rfc3339(&period_start_str, "period_start")?;
@@ -193,7 +193,7 @@ fn decode_row(row: sqlx::sqlite::SqliteRow) -> Result<StoredSnapshot, SnapshotSt
         .transpose()?;
 
     Ok(StoredSnapshot {
-        id,
+        snapshot_id,
         captured_at,
         period_start,
         period_end,

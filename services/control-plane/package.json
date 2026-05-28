@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsc --outDir dist",
+    "test": "pnpm run build && node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

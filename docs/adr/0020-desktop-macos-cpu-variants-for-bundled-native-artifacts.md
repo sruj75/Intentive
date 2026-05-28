@@ -33,6 +33,6 @@ Until one of these is chosen and documented, do not bundle `cli-darwin-x64` or c
 ## Consequences
 
 - CI/release and dev smoke use **arm64 only**; no x64 fetch or dual-resource wiring in v1.
-- Product copy and [SPEC.md](../../SPEC.md) non-goals must state M-series requirement so Intel users are not surprised.
+- Product copy and [Desktop SPEC](../../apps/desktop/docs/SPEC.md) non-goals must state M-series requirement so Intel users are not surprised.
 - ADR-0002 remains spawn-via-HTTP; ADR-0013 ports apply to the bundled child on `44380` / `44381`.
 - When Intel support lands, add a new ADR amendment or superseding ADR for the chosen B vs C packaging tactic.
