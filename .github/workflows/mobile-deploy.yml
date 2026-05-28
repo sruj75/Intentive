@@ -4,7 +4,13 @@ name: mobile-deploy
 # Triggers a preview build on push to main when apps/mobile/** or shared
 # protocol/contract/types/providers packages change.
 #
-# Required GitHub secret (job is skipped until set):
+# Push builds are off until the repository variable DEPLOY_ENABLED is set to
+# "true" (Settings → Secrets and variables → Actions → Variables). Secrets
+# cannot be referenced in job `if:` conditions — use this variable instead.
+#
+# Manual test anytime: Actions → mobile-deploy → Run workflow.
+#
+# Required GitHub secret (must be set before EAS steps can succeed):
 #   EXPO_TOKEN — personal access token from https://expo.dev/accounts/<you>/settings/access-tokens
 #
 # Required Expo configuration (in apps/mobile/eas.json):
@@ -30,7 +36,9 @@ on:
 
 jobs:
   build:
-    if: ${{ secrets.EXPO_TOKEN != '' }}
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
