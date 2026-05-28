@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::agent_interface::AgentSink;
 use crate::screenpipe_supervisor::ScreenpipeEndpoint;
-use crate::snapshot::{ContextSnapshot, SessionEndMarker};
+use crate::snapshot::{ContextSnapshot, SessionEndMarker, SessionEndReason};
 use crate::snapshot_store::SnapshotStore;
 
 pub mod activity;
@@ -150,7 +150,7 @@ impl ContextHeartbeat {
     /// Signal the active tick loop to exit, await its completion, and emit
     /// exactly one Session End Marker via the sink. An active session emits a
     /// marker even if it produced zero ticks; repeated stop calls are no-ops.
-    pub async fn stop(self: Arc<Self>) {
+    pub async fn stop(self: Arc<Self>, reason: SessionEndReason) {
         let (kill_tx, task) = {
             let mut state = self.state.lock().await;
             if !state.session_active {
@@ -166,10 +166,10 @@ impl ContextHeartbeat {
             let _ = task.await;
         }
         let marker = SessionEndMarker {
-            id: Uuid::new_v4(),
-            session_ended_at: Utc::now(),
+            ended_at: Utc::now(),
+            reason,
         };
-        self.deps.sink.push_session_end(&marker).await;
+        self.deps.sink.emit_session_end_marker(&marker).await;
     }
 }
 
@@ -209,7 +209,7 @@ async fn tick_once(deps: &Deps, interval: Duration) {
     };
 
     let snapshot = ContextSnapshot {
-        id: Uuid::new_v4(),
+        snapshot_id: Uuid::new_v4(),
         captured_at: period_end,
         period_start,
         period_end,
@@ -222,8 +222,8 @@ async fn tick_once(deps: &Deps, interval: Duration) {
 
     // Write-before-push (ADR-0007): the row exists locally regardless of
     // delivery outcome. Failed pushes stay unmarked per ADR-0005.
-    if deps.sink.push_snapshot(&snapshot).await.is_ok() {
-        if let Err(e) = deps.snapshot_store.mark_pushed(snapshot.id).await {
+    if deps.sink.emit_context_snapshot(&snapshot).await.is_ok() {
+        if let Err(e) = deps.snapshot_store.mark_pushed(snapshot.snapshot_id).await {
             warn(&format!("snapshot delivery status update failed: {e}"));
         }
     }

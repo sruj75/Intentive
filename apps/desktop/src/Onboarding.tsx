@@ -35,20 +35,17 @@ export default function Onboarding() {
   useEffect(() => {
     let cancelled = false;
     const subscribe = async () => {
-      const progressUn = await listen<ProgressPayload>(
-        EVENT_PROGRESS,
-        (event) => {
-          setStep((prev) =>
-            prev.kind === "downloading" || prev.kind === "welcome"
-              ? {
-                  kind: "downloading",
-                  percent: event.payload.percent,
-                  status: event.payload.status,
-                }
-              : prev
-          );
-        }
-      );
+      const progressUn = await listen<ProgressPayload>(EVENT_PROGRESS, (event) => {
+        setStep((prev) =>
+          prev.kind === "downloading" || prev.kind === "welcome"
+            ? {
+                kind: "downloading",
+                percent: event.payload.percent,
+                status: event.payload.status,
+              }
+            : prev,
+        );
+      });
       const completeUn = await listen<unknown>(EVENT_COMPLETE, () => {
         setStep({ kind: "done" });
       });
@@ -95,16 +92,11 @@ export default function Onboarding() {
         <section className="onboarding-card">
           <h1>Set up Intentive</h1>
           <p>
-            Intentive runs a small on-device model to summarize your activity
-            privately. This one-time download takes a few minutes; you can keep
-            using your Mac while it finishes.
+            Intentive runs a small on-device model to summarize your activity privately. This
+            one-time download takes a few minutes; you can keep using your Mac while it finishes.
           </p>
           <div className="onboarding-actions">
-            <button
-              type="button"
-              className="onboarding-primary"
-              onClick={startDownload}
-            >
+            <button type="button" className="onboarding-primary" onClick={startDownload}>
               Continue
             </button>
           </div>
@@ -119,8 +111,8 @@ export default function Onboarding() {
         <section className="onboarding-card">
           <h1>Downloading model</h1>
           <p>
-            Keep Intentive open while the model finishes downloading. Capture
-            will start automatically once it's ready.
+            Keep Intentive open while the model finishes downloading. Capture will start
+            automatically once it's ready.
           </p>
           <div
             role="progressbar"
@@ -130,10 +122,7 @@ export default function Onboarding() {
             aria-label="Bundled model download progress"
             className="onboarding-progress"
           >
-            <div
-              className="onboarding-progress__fill"
-              style={{ width: `${step.percent}%` }}
-            />
+            <div className="onboarding-progress__fill" style={{ width: `${step.percent}%` }} />
           </div>
           <p className="onboarding-progress__label">
             {step.percent}% — {step.status}
@@ -149,8 +138,8 @@ export default function Onboarding() {
         <section className="onboarding-card">
           <h1>Intentive is ready</h1>
           <p>
-            The on-device model is set up. Intentive will quietly summarize
-            your activity from the menu bar.
+            The on-device model is set up. Intentive will quietly summarize your activity from the
+            menu bar.
           </p>
         </section>
       </main>
@@ -163,11 +152,7 @@ export default function Onboarding() {
         <h1>Setup didn't finish</h1>
         <p>{step.message}</p>
         <div className="onboarding-actions">
-          <button
-            type="button"
-            className="onboarding-primary"
-            onClick={startDownload}
-          >
+          <button type="button" className="onboarding-primary" onClick={startDownload}>
             Retry
           </button>
         </div>

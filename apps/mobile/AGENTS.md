@@ -29,7 +29,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - [`../../.scratch/v1-backlog/prds/mobile-PRD.md`](../../.scratch/v1-backlog/prds/mobile-PRD.md) — Mobile PRD in the root unified backlog
 - [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Mobile-specific design and architecture
-- [`../../../../docs/adr/`](../../../../docs/adr/) — unified ADRs (mobile entries are prefixed `mobile-`).
+- [`../../docs/adr/`](../../docs/adr/) — unified ADRs (mobile entries are prefixed `mobile-`).
 
 ## Stack & deploy
 

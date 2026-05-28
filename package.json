@@ -7,21 +7,35 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "lint": "eslint .",
+    "docs:check": "node tools/docs/check-markdown-links.mjs",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml}\"",
+    "lint": "pnpm docs:check && eslint .",
     "lint:fix": "eslint . --fix",
     "lint:architecture:test": "node tools/linters/eslint-plugin-intentive-architecture/test.js",
     "test": "turbo run test",
+    "coverage": "pnpm --dir apps/desktop test:coverage",
+    "prepare": "husky",
     "dev": "turbo run dev",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
     "@intentive/eslint-plugin-architecture": "workspace:*",
     "@typescript-eslint/parser": "^8.46.2",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
+    "prettier": "^3.8.3",
     "turbo": "^2.0.0"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "lint-staged": {
+    "*.{json,md,yml,yaml}": "prettier --write",
+    "*.{ts,tsx,js,mjs,cjs}": "prettier --write",
+    "{apps,services}/*/src/**/*.{ts,tsx,js,mjs,cjs}": "eslint --fix"
   }
 }

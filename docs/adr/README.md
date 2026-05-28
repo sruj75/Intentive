@@ -18,7 +18,7 @@ This directory is the canonical home for all ADRs in the Intentive monorepo. ADR
 | 0002 | control-plane | Control Plane as source of truth | accepted |
 | 0003 | agent-runtime | OpenClaw patterns as default | accepted |
 | 0004 | agent-runtime | Vertical-first progressive layering | **amended by 0001** |
-| 0005 | agent-runtime | WebSocket protocol contract v1 | accepted |
+| 0005 | agent-runtime | WebSocket protocol contract v1 | **amended by 0035** |
 | 0006 | agent-runtime | DB-backed VFS overlay model v1 | accepted |
 | 0007 | desktop | Tauri over Electron | accepted |
 | 0008 | desktop | Wrap ScreenPipe CLI binary | accepted |
@@ -48,6 +48,7 @@ This directory is the canonical home for all ADRs in the Intentive monorepo. ADR
 | 0032 | mobile | Liquid Glass chat shell | accepted |
 | 0033 | mobile | assistant-ui/native as Chat Primitive Engine | accepted |
 | 0034 | monorepo | No standalone channels domain in Agent Runtime v1 | accepted |
+| 0035 | monorepo | Single live protocol shape v1 | accepted |
 
 ## Origin → unified-number map
 
@@ -62,7 +63,7 @@ For anyone returning from one of the four old repos, the mapping is:
 
 ## Writing a new ADR
 
-1. Use the next sequential number (currently the next is `0035`).
+1. Use the next sequential number (currently the next is `0036`).
 2. Filename: `NNNN-<slug>.md`. No origin prefix for new ADRs — those are only for historical imports.
-3. Format: see [the grill-with-docs skill's ADR template](../../.claude/skills/grill-with-docs/) — short is fine, single paragraph ADRs are allowed when the decision is simple.
+3. Format: follow the `matt-pocock-engineering:grill-with-docs` ADR template guidance — short is fine, single paragraph ADRs are allowed when the decision is simple.
 4. Only write an ADR when all three are true: hard to reverse, surprising without context, the result of a real trade-off.

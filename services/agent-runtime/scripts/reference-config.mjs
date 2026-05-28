@@ -65,11 +65,7 @@ export const TOPICS = [
     id: "channels",
     repo: "openclaw",
     source: "https://github.com/openclaw/openclaw",
-    include: [
-      "src/channels/**",
-      "docs/channels/**",
-      "extensions/**/src/**/channel*",
-    ],
+    include: ["src/channels/**", "docs/channels/**", "extensions/**/src/**/channel*"],
     note: "Channel adapters, routing, allowlists.",
   },
   {
@@ -110,11 +106,7 @@ export const TOPICS = [
     id: "cron",
     repo: "openclaw",
     source: "https://github.com/openclaw/openclaw",
-    include: [
-      "src/cron/**",
-      "docs/automation/cron*.md",
-      "docs/automation/tasks.md",
-    ],
+    include: ["src/cron/**", "docs/automation/cron*.md", "docs/automation/tasks.md"],
     note: "Scheduled jobs and task ledger interaction.",
   },
   {
@@ -175,11 +167,7 @@ export const TOPICS = [
     id: "memory",
     repo: "openclaw",
     source: "https://github.com/openclaw/openclaw",
-    include: [
-      "src/memory/**",
-      "packages/memory-host-sdk/**",
-      "docs/reference/memory-config.md",
-    ],
+    include: ["src/memory/**", "packages/memory-host-sdk/**", "docs/reference/memory-config.md"],
     note: "Long-term memory (DeepAgents parity reference).",
   },
   {
@@ -204,21 +192,14 @@ export const TOPICS = [
     id: "tools",
     repo: "hermes",
     source: "https://github.com/nousresearch/hermes-agent",
-    include: [
-      "toolsets.py",
-      "model_tools.py",
-      "website/docs/user-guide/features/tools.md",
-    ],
+    include: ["toolsets.py", "model_tools.py", "website/docs/user-guide/features/tools.md"],
     note: "Hermes toolsets and tool dispatch.",
   },
   {
     id: "subagents",
     repo: "openclaw",
     source: "https://github.com/openclaw/openclaw",
-    include: [
-      "docs/tools/subagents.md",
-      "docs/tools/multi-agent-sandbox-tools.md",
-    ],
+    include: ["docs/tools/subagents.md", "docs/tools/multi-agent-sandbox-tools.md"],
     note: "Subagent patterns (DeepAgents parity reference).",
   },
   {
@@ -272,11 +253,7 @@ export const TOPICS = [
     id: "agent-runtime",
     repo: "openclaw",
     source: "https://github.com/openclaw/openclaw",
-    include: [
-      "src/auto-reply/**",
-      "src/context-engine/**",
-      "docs/tools/thinking.md",
-    ],
+    include: ["src/auto-reply/**", "src/context-engine/**", "docs/tools/thinking.md"],
     note: "Inner loop (DeepAgents parity reference).",
   },
   {
@@ -316,8 +293,7 @@ export const SECTION_ALIASES = {
     "channels:messaging-index": "messaging/index.md",
   },
   sessions: {
-    "sessions:compaction-doc":
-      "docs/reference/session-management-compaction.md",
+    "sessions:compaction-doc": "docs/reference/session-management-compaction.md",
     "sessions:session-key-ts": "src/routing/session-key.ts",
     "sessions:session-py": "gateway/session.py",
     "sessions:session-context-py": "gateway/session_context.py",

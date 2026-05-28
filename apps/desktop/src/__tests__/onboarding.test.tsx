@@ -13,16 +13,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(
-    async <T,>(event: string, handler: Handler<T>): Promise<() => void> => {
-      const set = (listeners.get(event) ?? new Set()) as Set<Handler<unknown>>;
-      set.add(handler as Handler<unknown>);
-      listeners.set(event, set);
-      return () => {
-        set.delete(handler as Handler<unknown>);
-      };
-    }
-  ),
+  listen: vi.fn(async <T,>(event: string, handler: Handler<T>): Promise<() => void> => {
+    const set = (listeners.get(event) ?? new Set()) as Set<Handler<unknown>>;
+    set.add(handler as Handler<unknown>);
+    listeners.set(event, set);
+    return () => {
+      set.delete(handler as Handler<unknown>);
+    };
+  }),
 }));
 
 function emit<T>(event: string, payload: T) {
@@ -55,9 +53,7 @@ afterEach(() => {
 describe("Onboarding surface", () => {
   it("renders the Welcome step with a Continue button on first paint", () => {
     render(<Onboarding />);
-    expect(
-      screen.getByRole("heading", { level: 1, name: /set up intentive/i })
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: /set up intentive/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /continue/i })).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
@@ -90,9 +86,7 @@ describe("Onboarding surface", () => {
         status: "pulling",
       });
     });
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
-      "80"
-    );
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("80");
   });
 
   it("shows the Done step when bundled-ollama:complete fires", async () => {
@@ -142,7 +136,7 @@ describe("Onboarding surface", () => {
       () =>
         new Promise<void>((resolve) => {
           resolveInvoke = resolve;
-        })
+        }),
     );
 
     render(<Onboarding />);

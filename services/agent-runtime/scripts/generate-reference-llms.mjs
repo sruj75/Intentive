@@ -10,19 +10,14 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  REPOMIX_ARGS,
-  SECTION_ALIASES,
-  TOPICS,
-} from "./reference-config.mjs";
+import { REPOMIX_ARGS, SECTION_ALIASES, TOPICS } from "./reference-config.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "reference");
 const TOPICS_DIR = path.join(OUT, "topics");
 
-const OPENCLAW_REPO =
-  process.env.OPENCLAW_REPO ?? "/tmp/openclaw-ref";
+const OPENCLAW_REPO = process.env.OPENCLAW_REPO ?? "/tmp/openclaw-ref";
 const HERMES_REPO = process.env.HERMES_REPO ?? "/tmp/hermes-ref";
 
 const SECTION_LINE_RE = /^===== SECTION:(.+?) =====$/;
@@ -39,12 +34,7 @@ export function pathToSlug(filePath) {
 function matchPath(filePath, pattern) {
   if (pattern.includes("*")) {
     const re = new RegExp(
-      "^" +
-        pattern
-          .replace(/\./g, "\\.")
-          .replace(/\*\*/g, ".*")
-          .replace(/\*/g, "[^/]*") +
-        "$",
+      "^" + pattern.replace(/\./g, "\\.").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*") + "$",
     );
     return re.test(filePath);
   }
@@ -119,7 +109,7 @@ function writeAnchorsMd(anchorMap, packManifest) {
     "",
     "Do not edit by hand. Regenerate with `node scripts/generate-reference-llms.mjs`.",
     "",
-    "Topic cards cite `SECTION:` ids — find line numbers here or use `rg -n \"SECTION:…\"` on the pack file.",
+    'Topic cards cite `SECTION:` ids — find line numbers here or use `rg -n "SECTION:…"` on the pack file.',
     "",
     "## Packs",
     "",
@@ -128,9 +118,7 @@ function writeAnchorsMd(anchorMap, packManifest) {
   ];
 
   for (const m of packManifest) {
-    lines.push(
-      `| ${m.repo} | ${m.topic} | \`${m.file}\` | ${(m.bytes / 1024).toFixed(0)} KB |`,
-    );
+    lines.push(`| ${m.repo} | ${m.topic} | \`${m.file}\` | ${(m.bytes / 1024).toFixed(0)} KB |`);
   }
 
   const byPack = new Map();
@@ -139,10 +127,14 @@ function writeAnchorsMd(anchorMap, packManifest) {
     byPack.get(meta.pack).push({ id, ...meta });
   }
 
-  for (const [pack, entries] of [...byPack.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0]),
-  )) {
-    lines.push("", `## \`${pack}\``, "", "| Section ID | Line | Source path |", "|------------|------|-------------|");
+  for (const [pack, entries] of [...byPack.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    lines.push(
+      "",
+      `## \`${pack}\``,
+      "",
+      "| Section ID | Line | Source path |",
+      "|------------|------|-------------|",
+    );
     for (const e of entries.sort((a, b) => a.line - b.line)) {
       const src = e.sourcePath ? `\`${e.sourcePath}\`` : "—";
       lines.push(`| \`${e.id}\` | ${e.line} | ${src} |`);
@@ -225,9 +217,7 @@ function runRepomix(repoPath, include, outFile) {
     cwd: ROOT,
   });
   if (r.status !== 0) {
-    throw new Error(
-      `repomix failed for ${outFile}:\n${r.stderr || r.stdout}`,
-    );
+    throw new Error(`repomix failed for ${outFile}:\n${r.stderr || r.stdout}`);
   }
 }
 
@@ -237,9 +227,7 @@ function ensureRepos() {
     ["HERMES_REPO", HERMES_REPO, "https://github.com/nousresearch/hermes-agent"],
   ]) {
     if (!fs.existsSync(p)) {
-      console.error(
-        `${name}=${p} missing. Clone:\n  git clone --depth 1 ${url}.git ${p}`,
-      );
+      console.error(`${name}=${p} missing. Clone:\n  git clone --depth 1 ${url}.git ${p}`);
       process.exit(1);
     }
   }

@@ -1,25 +1,24 @@
-//! Agent Interface — pushes Context Snapshots to the OpenClaw Agent over HTTPS.
+//! Runtime event transport boundary for Desktop-produced Protocol events.
 //!
-//! Callers construct a `ContextSnapshot` (defined in `crate::snapshot`) and hand
-//! it to `AgentInterface::push`. Everything else (JSON serialization, the
-//! `Authorization: Bearer` scheme, the 10-second timeout, drop-on-failure
-//! semantics per ADR-0005) is hidden inside this module — see SPEC.md
-//! "Context Snapshot Payload" and ADR-0004.
+//! Callers hand this module canonical `ContextSnapshot` and `SessionEndMarker`
+//! domain values. Transport details (current HTTP bridge, auth header, timeout,
+//! and failure mapping) stay hidden behind this seam.
 
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde_json::Value;
 use url::Url;
 
 use crate::snapshot::{ContextSnapshot, SessionEndMarker};
 
-/// Boundary the Context Heartbeat depends on for outbound delivery. Snapshot
-/// failures are returned only so the store can leave `pushed_at` unset; the
+/// Boundary the Context Heartbeat depends on for outbound delivery.
+/// Failures are returned only so the store can leave `pushed_at` unset; the
 /// heartbeat does not retry them (ADR-0005).
 #[async_trait]
 pub trait AgentSink: Send + Sync + 'static {
-    async fn push_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError>;
-    async fn push_session_end(&self, marker: &SessionEndMarker);
+    async fn emit_context_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError>;
+    async fn emit_session_end_marker(&self, marker: &SessionEndMarker);
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -32,64 +31,59 @@ pub enum PushError {
     Non2xx(u16),
 }
 
-/// 10-second push timeout, per SPEC.md "Resolved" open questions.
+/// 10-second outbound timeout, per SPEC.md "Resolved" open questions.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct AgentInterface {
-    endpoint: Url,
-    api_key: String,
+    runtime_endpoint: Url,
+    runtime_auth_token: String,
     http: reqwest::Client,
     timeout: Duration,
 }
 
 impl AgentInterface {
-    pub fn new(endpoint: Url, api_key: String, http: reqwest::Client) -> Self {
+    pub fn new(runtime_endpoint: Url, runtime_auth_token: String, http: reqwest::Client) -> Self {
         Self {
-            endpoint,
-            api_key,
+            runtime_endpoint,
+            runtime_auth_token,
             http,
             timeout: DEFAULT_TIMEOUT,
         }
     }
 
-    /// Test-only constructor allowing a shorter timeout — production callers
-    /// always use the 10s value via `new`.
-    #[cfg(test)]
-    pub(crate) fn with_timeout(
-        endpoint: Url,
-        api_key: String,
-        http: reqwest::Client,
-        timeout: Duration,
-    ) -> Self {
-        Self {
-            endpoint,
-            api_key,
-            http,
-            timeout,
-        }
+    fn context_snapshot_json(snapshot: &ContextSnapshot) -> Value {
+        serde_json::json!({
+            "type": "context_snapshot",
+            "snapshot_id": snapshot.snapshot_id.to_string(),
+            "captured_at": snapshot.captured_at.to_rfc3339(),
+            "period_start": snapshot.period_start.to_rfc3339(),
+            "period_end": snapshot.period_end.to_rfc3339(),
+            "summary": snapshot.summary,
+        })
     }
 
-    /// Send a Session End Marker to the OpenClaw Agent.
+    /// Emit the `session_end_marker` signal.
     ///
-    /// Stubbed until the agent-side contract is defined (ADR-0008): today this
-    /// accepts the marker and returns `Ok(())` without an HTTP call.
-    /// When the receiver lands, the implementation will POST to a dedicated
-    /// session-end endpoint — the heartbeat call site is already correct, so
-    /// the change is internal to this method.
-    pub async fn send_session_end(&self, marker: &SessionEndMarker) -> Result<(), PushError> {
+    /// The current delivery path is a no-op until #25/#28 land the live
+    /// runtime session lifecycle. The caller contract is already canonical,
+    /// so this implementation can switch transports internally later.
+    pub async fn emit_session_end(&self, marker: &SessionEndMarker) -> Result<(), PushError> {
         let _ = marker;
         Ok(())
     }
 
-    /// POST the snapshot to the configured OpenClaw endpoint.
-    /// On any failure the caller does NOT retry (ADR-0005); the snapshot is
-    /// dropped from delivery, but its local SQLite row is unaffected.
-    pub async fn push(&self, snapshot: &ContextSnapshot) -> Result<(), PushError> {
+    /// Emit a canonical `context_snapshot` event payload.
+    /// On any failure the caller does NOT retry (ADR-0005); the local store
+    /// row remains and `pushed_at` stays null.
+    pub async fn emit_context_snapshot_event(
+        &self,
+        snapshot: &ContextSnapshot,
+    ) -> Result<(), PushError> {
         let result = self
             .http
-            .post(self.endpoint.clone())
-            .bearer_auth(&self.api_key)
-            .json(snapshot)
+            .post(self.runtime_endpoint.clone())
+            .bearer_auth(&self.runtime_auth_token)
+            .json(&Self::context_snapshot_json(snapshot))
             .timeout(self.timeout)
             .send()
             .await;
@@ -110,12 +104,12 @@ impl AgentInterface {
 
 #[async_trait]
 impl AgentSink for AgentInterface {
-    async fn push_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError> {
-        self.push(snapshot).await
+    async fn emit_context_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError> {
+        self.emit_context_snapshot_event(snapshot).await
     }
 
-    async fn push_session_end(&self, marker: &SessionEndMarker) {
-        let _ = self.send_session_end(marker).await;
+    async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
+        let _ = self.emit_session_end(marker).await;
     }
 }
 

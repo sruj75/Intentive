@@ -1,8 +1,8 @@
-'use strict';
+"use strict";
 
-const path = require('path');
-const { parseDomainPath } = require('../path-parser');
-const { canImport } = require('../layer-rules');
+const path = require("path");
+const { parseDomainPath } = require("../path-parser");
+const { canImport } = require("../layer-rules");
 
 /**
  * ESLint rule: enforce forward-only layer dependencies within a domain.
@@ -19,7 +19,7 @@ const { canImport } = require('../layer-rules');
  */
 module.exports = {
   meta: {
-    type: 'problem',
+    type: "problem",
     docs: {
       description:
         "Enforce Intentive's forward-only layer rule (types → config → repo → service → runtime → ui) within a business domain.",
@@ -28,11 +28,11 @@ module.exports = {
     messages: {
       backwardImport:
         "Layer-direction violation: '{{fromLayer}}/' cannot import from '{{toLayer}}/' inside the same domain ('{{domain}}'). " +
-        'The rule is types → config → repo → service → runtime → ui — code may only import from same or lower layers. ' +
-        'Fix: move the imported symbol to a lower layer, or invert the dependency through providers/.',
+        "The rule is types → config → repo → service → runtime → ui — code may only import from same or lower layers. " +
+        "Fix: move the imported symbol to a lower layer, or invert the dependency through providers/.",
       crossDomainImport:
         "Cross-domain import: '{{fromDomain}}/{{fromLayer}}' is reaching into '{{toDomain}}/{{toLayer}}'. " +
-        'Domains in the same deployable should not import each other directly — extract the shared piece into a lower layer of one domain, or move it to packages/.',
+        "Domains in the same deployable should not import each other directly — extract the shared piece into a lower layer of one domain, or move it to packages/.",
     },
     schema: [],
   },
@@ -41,10 +41,10 @@ module.exports = {
     if (!filename) return {};
     const source = parseDomainPath(filename);
     if (!source) return {};
-    if (source.layer === 'providers') return {}; // providers is cross-cutting; not part of the layer order
+    if (source.layer === "providers") return {}; // providers is cross-cutting; not part of the layer order
 
     function checkImport(node, specifier) {
-      if (typeof specifier !== 'string' || !specifier.startsWith('.')) return;
+      if (typeof specifier !== "string" || !specifier.startsWith(".")) return;
       const resolved = path.resolve(path.dirname(filename), specifier);
       const target = parseDomainPath(resolved);
       if (!target) return;
@@ -53,7 +53,7 @@ module.exports = {
       if (target.domain !== source.domain) {
         context.report({
           node,
-          messageId: 'crossDomainImport',
+          messageId: "crossDomainImport",
           data: {
             fromDomain: source.domain,
             fromLayer: source.layer,
@@ -67,7 +67,7 @@ module.exports = {
       if (!canImport(source.layer, target.layer)) {
         context.report({
           node,
-          messageId: 'backwardImport',
+          messageId: "backwardImport",
           data: {
             fromLayer: source.layer,
             toLayer: target.layer,
@@ -83,16 +83,16 @@ module.exports = {
       },
       // Cover dynamic imports and require() calls too.
       ImportExpression(node) {
-        if (node.source && node.source.type === 'Literal') {
+        if (node.source && node.source.type === "Literal") {
           checkImport(node, node.source.value);
         }
       },
       CallExpression(node) {
         if (
-          node.callee.type === 'Identifier' &&
-          node.callee.name === 'require' &&
+          node.callee.type === "Identifier" &&
+          node.callee.name === "require" &&
           node.arguments.length === 1 &&
-          node.arguments[0].type === 'Literal'
+          node.arguments[0].type === "Literal"
         ) {
           checkImport(node, node.arguments[0].value);
         }

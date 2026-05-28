@@ -16,7 +16,7 @@ Updated: 2026-05-27T00:00:00Z
 
 Emit **Context Snapshots** from the **Snapshot Store** to the **Agent Runtime** as `context_snapshot` events on the shared **Protocol** WebSocket defined in `packages/protocol/`. Consume **Routing** and an open session from #25 — not manual Settings endpoint fields and not legacy HTTP delivery.
 
-When the **Snapshot Store** has a new row after the **Context Heartbeat**, send the five-field payload (`id`, `captured_at`, `period_start`, `period_end`, `summary`) on the open WebSocket. On **Capture Session** end, emit `session_end_marker` as a distinct event type before teardown.
+When the **Snapshot Store** has a new row after the **Context Heartbeat**, send the five-field payload (`snapshot_id`, `captured_at`, `period_start`, `period_end`, `summary`) on the open WebSocket. On **Capture Session** end, emit `session_end_marker` as a distinct event type before teardown.
 
 ## Acceptance criteria
 

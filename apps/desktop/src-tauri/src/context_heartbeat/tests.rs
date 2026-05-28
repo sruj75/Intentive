@@ -9,7 +9,7 @@ use url::Url;
 
 use crate::agent_interface::AgentSink;
 use crate::screenpipe_supervisor::ScreenpipeEndpoint;
-use crate::snapshot::{ContextSnapshot, SessionEndMarker};
+use crate::snapshot::{ContextSnapshot, SessionEndMarker, SessionEndReason};
 use crate::snapshot_store::SnapshotStore;
 
 use super::activity::{ActivityClient, ActivityError};
@@ -130,11 +130,15 @@ impl RecordingSink {
     fn marker_count(&self) -> usize {
         self.markers.lock().unwrap().len()
     }
+
+    fn latest_marker(&self) -> Option<SessionEndMarker> {
+        self.markers.lock().unwrap().last().cloned()
+    }
 }
 
 #[async_trait]
 impl AgentSink for RecordingSink {
-    async fn push_snapshot(
+    async fn emit_context_snapshot(
         &self,
         snapshot: &ContextSnapshot,
     ) -> Result<(), crate::agent_interface::PushError> {
@@ -142,7 +146,7 @@ impl AgentSink for RecordingSink {
         Ok(())
     }
 
-    async fn push_session_end(&self, marker: &SessionEndMarker) {
+    async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
         self.markers.lock().unwrap().push(marker.clone());
     }
 }
@@ -195,7 +199,7 @@ async fn one_tick_produces_one_stored_snapshot() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert!(!rows.is_empty(), "at least one snapshot row after a tick");
@@ -203,7 +207,7 @@ async fn one_tick_produces_one_stored_snapshot() {
     assert!(sink.snapshot_count() >= 1, "snapshot should also be pushed");
 }
 
-/// A sink that, on every `push_snapshot` call, checks whether the snapshot
+/// A sink that, on every `emit_context_snapshot` call, checks whether the snapshot
 /// already exists in the store. Used to assert write-before-push ordering
 /// without relying on real HTTP failures.
 struct OrderCheckingSink {
@@ -227,24 +231,24 @@ impl OrderCheckingSink {
 
 #[async_trait]
 impl AgentSink for OrderCheckingSink {
-    async fn push_snapshot(
+    async fn emit_context_snapshot(
         &self,
         snapshot: &ContextSnapshot,
     ) -> Result<(), crate::agent_interface::PushError> {
         let rows = self.store.list_recent(10).await.unwrap();
-        let present = rows.iter().any(|r| r.id == snapshot.id);
+        let present = rows.iter().any(|r| r.snapshot_id == snapshot.snapshot_id);
         self.findings.lock().unwrap().push(present);
         Ok(())
     }
 
-    async fn push_session_end(&self, _marker: &SessionEndMarker) {}
+    async fn emit_session_end_marker(&self, _marker: &SessionEndMarker) {}
 }
 
 struct FailingSink;
 
 #[async_trait]
 impl AgentSink for FailingSink {
-    async fn push_snapshot(
+    async fn emit_context_snapshot(
         &self,
         _snapshot: &ContextSnapshot,
     ) -> Result<(), crate::agent_interface::PushError> {
@@ -253,7 +257,7 @@ impl AgentSink for FailingSink {
         ))
     }
 
-    async fn push_session_end(&self, _marker: &SessionEndMarker) {}
+    async fn emit_session_end_marker(&self, _marker: &SessionEndMarker) {}
 }
 
 /// Stopping the heartbeat emits exactly one Session End Marker via the sink
@@ -275,13 +279,15 @@ async fn stop_emits_one_session_end_marker() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     assert_eq!(
         sink.marker_count(),
         1,
         "exactly one Session End Marker should be emitted on stop"
     );
+    let marker = sink.latest_marker().expect("marker should be recorded");
+    assert!(matches!(marker.reason, SessionEndReason::UserToggle));
 }
 
 /// Stopping the heartbeat before any tick has fired still emits one marker —
@@ -303,7 +309,7 @@ async fn stop_emits_marker_even_with_zero_ticks() {
         .await
         .expect("start should succeed");
     // Stop immediately, before the first interval elapses.
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     assert_eq!(sink.snapshot_count(), 0, "no snapshot should be pushed");
     assert_eq!(
@@ -315,7 +321,7 @@ async fn stop_emits_marker_even_with_zero_ticks() {
 
 /// Coordinator shutdown can be observed once from the initiating command and
 /// again when ScreenPipe publishes its terminal event. Repeated stop handling
-/// must still describe one Capture Session end to the OpenClaw Agent.
+/// must still describe one Capture Session end to the runtime boundary.
 #[tokio::test]
 async fn repeated_stop_emits_only_one_session_end_marker() {
     let store = in_memory_store().await;
@@ -332,8 +338,8 @@ async fn repeated_stop_emits_only_one_session_end_marker() {
         .start()
         .await
         .expect("start should succeed");
-    heartbeat.clone().stop().await;
-    heartbeat.stop().await;
+    heartbeat.clone().stop(SessionEndReason::UserToggle).await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     assert_eq!(
         sink.marker_count(),
@@ -375,7 +381,7 @@ async fn first_tick_fires_after_one_full_interval() {
         "a snapshot should exist after the first interval elapses"
     );
 
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 }
 
 #[tokio::test]
@@ -394,7 +400,7 @@ async fn start_prepares_summarizer_before_first_tick() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert!(
@@ -425,7 +431,7 @@ async fn snapshot_period_spans_one_full_interval() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert!(!rows.is_empty());
@@ -465,7 +471,7 @@ async fn unresolved_summarizer_skips_tick_without_writing_or_pushing() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert!(
@@ -476,7 +482,7 @@ async fn unresolved_summarizer_skips_tick_without_writing_or_pushing() {
 }
 
 /// The snapshot is persisted to the local store before the agent push is
-/// invoked. Verified by observing the store from inside `push_snapshot` —
+/// invoked. Verified by observing the store from inside `emit_context_snapshot` —
 /// the snapshot's row is already there.
 #[tokio::test]
 async fn snapshot_is_in_store_before_push() {
@@ -495,11 +501,11 @@ async fn snapshot_is_in_store_before_push() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     assert!(
         sink.all_found_in_store(),
-        "every push_snapshot call must see the snapshot already in the store"
+        "every emit_context_snapshot call must see the snapshot already in the store"
     );
 }
 
@@ -522,7 +528,7 @@ async fn successful_push_marks_snapshot_as_pushed() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert!(!rows.is_empty(), "a successful tick should create a row");
@@ -548,7 +554,7 @@ async fn failed_push_leaves_snapshot_unmarked() {
         .await
         .expect("start should succeed");
     sleep(TEST_INTERVAL * 2).await;
-    heartbeat.stop().await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
 
     let rows = store.list_recent(10).await.expect("list should succeed");
     assert!(!rows.is_empty(), "a failed delivery still retains the row");

@@ -25,7 +25,7 @@ Treat the shared packages as first-class, planned work in the `.scratch/shared/`
 
 ## Implementation Decisions
 
-- `packages/protocol/` is imported at exactly one version across the monorepo (inviolable rule 5). Version negotiation semantics (`min_protocol`/`max_protocol` → `negotiated_protocol`) are locked in v1.
+- `packages/protocol/` is imported at exactly one version across the monorepo (inviolable rule 5). Single-live-shape semantics are locked in v1 (no `min_protocol`/`max_protocol` negotiation fields, no `negotiated_protocol` field, no compatibility aliases).
 - `packages/api-contract/` owns both the public (JWT) and internal (shared-secret) HTTP surfaces. Deployables implement these schemas; they never redefine them.
 - `packages/providers/` is the only sanctioned path for auth, telemetry, and feature flags (inviolable rule 3). The auth verifier wraps Neon Auth JWKS.
 - `packages/domain-types/` holds in-process domain shapes (branded ids, Device, AgentInstance, ConversationMessage) and stays free of wire-format concerns.

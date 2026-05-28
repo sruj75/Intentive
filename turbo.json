@@ -13,9 +13,12 @@
     "lint": {
       "outputs": []
     },
+    "docs:check": {
+      "outputs": []
+    },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": []
     },
     "dev": {
       "cache": false,

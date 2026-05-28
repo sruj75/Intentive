@@ -12,8 +12,7 @@ type IntentiveAuthProviderProps = {
   children: React.ReactNode;
 };
 
-const IntentiveAuthProvider =
-  NeonAuthUIProvider as React.ComponentType<IntentiveAuthProviderProps>;
+const IntentiveAuthProvider = NeonAuthUIProvider as React.ComponentType<IntentiveAuthProviderProps>;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

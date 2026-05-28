@@ -8,7 +8,13 @@ The single source of truth for the **Control Plane's HTTP contract** — request
 
 ## Current surface
 
-Defined in `src/index.ts`, two surfaces:
+Defined as three internal modules re-exported by `src/index.ts`:
+
+- `src/shared.ts` — cross-surface primitives (`ClientKind`, `PreChatGateKind`).
+- `src/public.ts` — JWT-authenticated client-facing request/response schemas.
+- `src/internal.ts` — shared-secret internal request/response schemas.
+
+Two API surfaces:
 
 - **Public API (Client → Control Plane), JWT-authenticated:**
   - `GET /me` → `AccountState` (`user_id`, `next_gate`, `has_agent_instance`).
@@ -23,6 +29,7 @@ Defined in `src/index.ts`, two surfaces:
 ## Invariants
 
 - Every Control Plane HTTP body is a Zod schema here; the Control Plane and Clients implement these shapes, they do not redefine them.
+- Every request/response object schema is strict; unknown keys are rejected.
 - The public surface is JWT-authenticated; the internal surface is shared-secret authenticated and private-network only. The two are never conflated.
 - This package contains schemas and types only — no route handlers, no auth logic, no I/O.
 - Routing (`runtime_jwt`, `ws_url`) is returned once via `GET /agent`; nothing here proxies in-session messages.
