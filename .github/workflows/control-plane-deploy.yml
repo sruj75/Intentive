@@ -3,7 +3,13 @@ name: control-plane-deploy
 # Control Plane → Google Cloud Run.
 # Triggers on push to main when services/control-plane/** or shared packages change.
 #
-# Required GitHub secrets (job is skipped until both are set):
+# Push deploys are off until the repository variable DEPLOY_ENABLED is set to
+# "true" (Settings → Secrets and variables → Actions → Variables). Secrets
+# cannot be referenced in job `if:` conditions — use this variable instead.
+#
+# Manual test anytime: Actions → control-plane-deploy → Run workflow.
+#
+# Required GitHub secrets (must be set before deploy steps can succeed):
 #   GCP_PROJECT_ID
 #   GCP_SA_KEY                  — JSON key for a Service Account with:
 #                                   - Artifact Registry Writer
@@ -33,7 +39,9 @@ on:
 
 jobs:
   deploy:
-    if: ${{ secrets.GCP_SA_KEY != '' && secrets.GCP_PROJECT_ID != '' }}
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
