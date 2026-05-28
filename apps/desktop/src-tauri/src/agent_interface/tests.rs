@@ -23,9 +23,9 @@ fn context_snapshot_json_matches_canonical_event_contract() {
         json!({
             "type": "context_snapshot",
             "snapshot_id": "00000000-0000-0000-0000-000000000000",
-            "captured_at": "2026-05-19T12:00:00+00:00",
-            "period_start": "2026-05-19T11:59:00+00:00",
-            "period_end": "2026-05-19T12:00:00+00:00",
+            "captured_at": "2026-05-19T12:00:00Z",
+            "period_start": "2026-05-19T11:59:00Z",
+            "period_end": "2026-05-19T12:00:00Z",
             "summary": "user reviewed a PR"
         })
     );

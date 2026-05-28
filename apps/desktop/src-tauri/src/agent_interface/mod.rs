@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use chrono::SecondsFormat;
 use serde_json::Value;
 use url::Url;
 
@@ -55,9 +56,9 @@ impl AgentInterface {
         serde_json::json!({
             "type": "context_snapshot",
             "snapshot_id": snapshot.snapshot_id.to_string(),
-            "captured_at": snapshot.captured_at.to_rfc3339(),
-            "period_start": snapshot.period_start.to_rfc3339(),
-            "period_end": snapshot.period_end.to_rfc3339(),
+            "captured_at": snapshot.captured_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+            "period_start": snapshot.period_start.to_rfc3339_opts(SecondsFormat::Secs, true),
+            "period_end": snapshot.period_end.to_rfc3339_opts(SecondsFormat::Secs, true),
             "summary": snapshot.summary,
         })
     }
