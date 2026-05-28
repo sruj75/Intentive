@@ -1,6 +1,6 @@
 # Store Context Snapshots locally before pushing
 
-Intentive writes each Context Snapshot to a local SQLite table before pushing to the OpenClaw Agent. This is not a cache — it is the primary record of what was captured and sent, enabling a future transparency UI ("see what Intentive captured") and providing an audit trail that privacy guardrails are functioning correctly.
+Intentive writes each Context Snapshot to a local SQLite table before emitting it to the Agent Runtime. This is not a cache — it is the primary record of what was captured and sent, enabling a future transparency UI ("see what Intentive captured") and providing an audit trail that privacy guardrails are functioning correctly.
 
 Fire-and-forget was rejected because transparency to the user requires a local receipt of what was sent.
 

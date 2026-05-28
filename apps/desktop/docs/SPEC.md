@@ -115,8 +115,8 @@ AI agents that act on behalf of a user need to know what that user is actually d
 - The WebSocket connection is authenticated once at `connect` using the Control Plane-issued JWT; no per-event auth header
 - On a dropped connection, timeout, or rejected event: the snapshot stays in the Snapshot Store with `pushed_at = null`; no client-side retry queue in v1
 - Acceptance:
-  - [ ] `context_snapshot` event payload matches the schema in `packages/protocol/`: `id`, `captured_at`, `period_start`, `period_end`, `summary`
-  - [ ] WebSocket `connect` handshake includes `client_kind: "tauri"` and the Control Plane-issued JWT
+  - [ ] `context_snapshot` event payload matches the schema in `packages/protocol/`: `snapshot_id`, `captured_at`, `period_start`, `period_end`, `summary`
+  - [ ] WebSocket `connect` handshake includes `client_kind: "desktop"` and the Control Plane-issued JWT
   - [ ] Connection drops do not crash or stall the heartbeat; the next cycle runs on schedule and reconnect uses the Protocol's reconnect-snapshot semantics
   - [ ] `session_end_marker` event is a separate Protocol event type, not a flag on `context_snapshot`
 

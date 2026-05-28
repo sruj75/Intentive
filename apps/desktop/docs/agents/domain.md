@@ -1,24 +1,21 @@
 # Domain Docs
 
-This is a single-context repo. Engineering skills should consume the root
-domain and architecture documents before planning or editing.
+Single-context monorepo. Read root domain docs before planning or editing Desktop work.
 
 ## Before exploring, read these
 
-- `CONTEXT.md` for Intentive glossary and source-of-truth product language.
-- `AGENTS.md` for repo-local agent instructions (`CLAUDE.md` points here).
-- `ARCHITECTURE.md` for the current mechanical architecture, codemap, and invariants.
-- `docs/adr/` for architectural decisions that touch the area being changed.
+- [`../../../../docs/CONTEXT.md`](../../../../docs/CONTEXT.md) — Intentive glossary and canonical product language.
+- [`../../AGENTS.md`](../../AGENTS.md) — Desktop deployable agent guide (`CLAUDE.md` should point here).
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — Desktop mechanical architecture, codemap, and invariants.
+- [`../../../../docs/adr/`](../../../../docs/adr/) — unified ADRs (desktop entries are prefixed `desktop-`).
 
 ## Use the glossary's vocabulary
 
-When output names a domain concept, use the term as defined in `CONTEXT.md`.
-In this repo that includes Intentive, ScreenPipe, Capture Session, Context
-Snapshot, Context Heartbeat, OpenClaw Agent, Agent Interface, and Auth.
+When output names a domain concept, use the term as defined in `docs/CONTEXT.md`.
+Examples: **Companion**, **Agent Runtime**, **Control Plane**, **Protocol**, **Context Snapshot**, **Routing**, **Capture Session**.
 
-Avoid synonyms the glossary explicitly rejects.
+Avoid synonyms the glossary explicitly rejects (e.g. OpenClaw Agent, Agent Interface, push in the HTTP sense).
 
 ## Flag ADR conflicts
 
-If a proposal or implementation contradicts an existing ADR, surface it
-explicitly instead of silently overriding the decision.
+If a proposal or implementation contradicts an existing ADR, surface it explicitly instead of silently overriding the decision.

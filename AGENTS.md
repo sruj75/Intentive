@@ -6,7 +6,7 @@ This is a table of contents, not an encyclopedia. Read [`docs/CONTEXT.md`](docs/
 
 ### Issue tracker
 
-Issues are tracked as local markdown with independent trackers per deployable (`apps/mobile`, `apps/desktop`, `services/control-plane`, `services/agent-runtime`). See `docs/agents/issue-tracker.md`.
+Issues are tracked as local markdown in a single root tracker at `.scratch/v1-backlog/` (50 issues, globally numbered 01–50 in MISSION-CONTROL.md phase order). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -23,7 +23,7 @@ This repo is configured as single-context: read `docs/CONTEXT.md` and relevant d
 | Domain language (Companion, Agent Runtime, Pre-Chat Gate, Post-Message-Back...) | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
 | Layer rule, deployable topology, directory layout | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Why a specific decision was made | [`docs/adr/`](docs/adr/) |
-| Active or completed multi-step plans | [`docs/plans/`](docs/plans/) |
+| Active or completed multi-step plans | each deployable's own `docs/plans/` |
 | Per-deployable working rules | each deployable's own `AGENTS.md` |
 
 ## The four deployables

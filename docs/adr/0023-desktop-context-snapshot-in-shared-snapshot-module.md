@@ -1,12 +1,12 @@
 # ContextSnapshot lives in a shared `snapshot` module
 
-`ContextSnapshot` is shared currency between three consumers: the Context Heartbeat (produces it), the snapshot store (writes it to SQLite), and the Agent Interface (pushes it over HTTPS). Defining it inside any one consumer leaks it into the others as a hidden dependency.
+`ContextSnapshot` is shared currency between three consumers: the Context Heartbeat (produces it), the snapshot store (writes it to SQLite), and the runtime sink boundary (emits it). Defining it inside any one consumer leaks it into the others as a hidden dependency.
 
 We created a dedicated `snapshot` module at `src-tauri/src/snapshot/` that owns the `ContextSnapshot` type. All consumers import from there. None depend on each other.
 
 ## Considered Options
 
-- **Leave in `agent_interface`** — simple short-term, but the store and heartbeat would depend on the HTTPS push module for a type that has nothing to do with pushing. Information leakage; any change to `agent_interface` risks the store.
+- **Leave in `agent_interface`** — simple short-term, but the store and heartbeat would depend on the delivery boundary module for a type that has nothing to do with delivery. Information leakage; any change to `agent_interface` risks the store.
 - **Shared `snapshot` module (chosen)** — each module owns what it knows. `agent_interface` owns push logic, `snapshot_store` owns SQLite logic, `snapshot` owns the domain type. Clean separation, no cross-consumer coupling.
 - **Separate type per module** — `StoredSnapshot` in the store, `ContextSnapshot` in the agent interface. These are the same concept split by temporal order (stored vs. sent), not by genuine difference. Conversion boilerplate for zero benefit.
 

@@ -28,7 +28,7 @@ Adopt the following v1 WebSocket protocol contract.
 
 Mandatory:
 - `auth_token`
-- `client_kind` (`expo` | `tauri`)
+- `client_kind` (`mobile` | `desktop`; `android` reserved) — per the `ClientKind` enum in `packages/protocol/`
 - `client_version`
 - `min_protocol`
 - `max_protocol`

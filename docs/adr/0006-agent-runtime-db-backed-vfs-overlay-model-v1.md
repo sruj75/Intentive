@@ -17,7 +17,7 @@ OpenClaw-inspired patterns are useful defaults, but full per-user file tree clon
 
 ## Decision
 
-Adopt a database-backed virtual document model with versioned bundle + tenant/user overlays.
+Adopt a database-backed virtual document model with versioned bundle + per-user overlays.
 
 ### 1) Runtime bundle as immutable versioned documents
 
@@ -25,7 +25,7 @@ Intentive base behavior documents (for example `AGENTS.md`, `SOUL.md`, `BOOTSTRA
 
 ### 2) Overlay model for personalization and mutable state
 
-User-specific and tenant-specific writable content is stored as overlays, scoped by `(tenant_id, user_id, path)`.
+User-specific writable content is stored as overlays, scoped by `(user_id, path)`.
 Examples:
 - `USER.md`
 - day-level memory traces
@@ -56,7 +56,7 @@ Materialize to host filesystem only when a specific tool/backend requires OS-lev
 
 ### Positive
 
-- Strong multi-tenant isolation with explicit namespace keys.
+- Strong per-user isolation with explicit namespace keys.
 - Deterministic behavior per session via bundle pinning.
 - Lower operational overhead versus cloning full user file trees.
 - Safer runtime upgrades with controlled migration boundaries.

@@ -5,5 +5,5 @@ Intentive is a background service, not a foreground app. The v1 UI surface is: a
 ## Consequences
 
 - Auth (sign in / sign up) lives in the settings window, triggered from the menu bar
-- AI chat UI (talking to OpenClaw Agent directly) is explicitly out of scope for v1
+- AI chat UI (talking to the Agent Runtime directly) is explicitly out of scope for v1
 - The Tauri app is configured as a menu bar agent (`LSUIElement = true` equivalent) — no Dock icon
