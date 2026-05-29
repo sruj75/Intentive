@@ -1,28 +1,8 @@
 /**
- * Agent Runtime workspace scaffold.
+ * Agent Runtime composition root.
  *
- * Imports shared contract types so protocol + API contracts are consumed by
- * the runtime package from day one of monorepo-wide typechecks.
+ * Re-exports domain surfaces. Implementation lives under `src/domains/`; this
+ * file only wires them together for the workspace's public entry point.
  */
-import type { ClientToRuntimeEvent, RuntimeToClientEvent } from "@intentive/protocol";
-import type { PostInternalSessionsStartResponse } from "@intentive/api-contract";
-
-export const runtimeContractSample: PostInternalSessionsStartResponse = {
-  agent_instance_id: "agent_stub",
-  ws_url: "https://runtime.example.com/ws",
-};
-
-export const runtimeConnectSample: ClientToRuntimeEvent = {
-  type: "connect",
-  auth_token: "token",
-  client_kind: "mobile",
-  client_version: "0.0.0",
-};
-
-export const companionMessageSample: RuntimeToClientEvent = {
-  type: "companion_message",
-  message_id: "message_stub",
-  body: "hello",
-  emitted_at: "2026-05-28T00:00:00.000Z",
-  via_post_message_back: false,
-};
+export { companionMessageSample, runtimeConnectSample } from "./domains/protocol/types/events.js";
+export { runtimeContractSample } from "./domains/internal/types/sessions.js";

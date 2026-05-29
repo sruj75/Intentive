@@ -14,10 +14,10 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   - writes each Context Snapshot to the Snapshot Store before delivery,
   - stamps `pushed_at` only when Agent Interface delivery succeeds, and
   - emits exactly one Session End Marker per active Capture Session end.
-  Regression coverage includes first-tick timing, interval window shape,
-  unresolved-provider skip behavior, write-before-push ordering, successful
-  delivery marking, failed delivery retention with null `pushed_at`, and
-  duplicate-stop marker suppression.
+    Regression coverage includes first-tick timing, interval window shape,
+    unresolved-provider skip behavior, write-before-push ordering, successful
+    delivery marking, failed delivery retention with null `pushed_at`, and
+    duplicate-stop marker suppression.
 
 - **Capture-start provider preparation without implicit download** — startup
   wiring now prepares any already-available provider tier for the heartbeat via
@@ -125,6 +125,19 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Domain architecture refactor** — all Rust modules are now organized under `src-tauri/src/domains/` with the monorepo layer rule (`types → config → repo → service → runtime → ui`) enforced mechanically by the new `tools/linters/rust-architecture/` checker (`pnpm lint:architecture:rust`). Previous flat modules map to new locations:
+  - `capture_state/` → `domains/capture/service/`
+  - `capture_session/` → `domains/capture/runtime/coordinator/`
+  - `screenpipe_supervisor/` → `domains/capture/runtime/screenpipe_supervisor/`
+  - `snapshot/` → `domains/snapshots/types/`
+  - `snapshot_store/` → `domains/snapshots/repo/`
+  - `agent_interface/` → `domains/snapshots/runtime/agent_interface/`
+  - `context_heartbeat/` → `domains/snapshots/runtime/heartbeat/`
+  - `llm_provider/` → `domains/summarization/service/` (commands under `runtime/commands/`)
+  - `menu_bar/` → `domains/menubar/service/` + `domains/menubar/ui/`
+  - `port/` → `providers/port/` (Rust cross-cutting)
+    No behavior changed; only file paths and module paths. Cross-domain coupling is now expressed via trait seams injected at `lib.rs`.
+- **TS domain layout** — `src/auth.ts` → `src/domains/auth/service/auth.ts`; `src/Onboarding.tsx` → `src/domains/onboarding/ui/Onboarding.tsx`; new `src/domains/auth/ui/IntentiveAuthProvider.tsx` and `src/domains/account/ui/AccountSettingsSurface.tsx`. The layer rule from `docs/ARCHITECTURE.md` now applies to both TS and Rust sides.
 - **Issue #8 protocol-boundary hardening** — Desktop boundary semantics now align
   to the canonical protocol contract: no protocol-range negotiation fields,
   strict schema parsing, canonical snapshot/session-end naming

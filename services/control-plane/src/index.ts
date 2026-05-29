@@ -1,13 +1,7 @@
 /**
- * Control Plane workspace scaffold.
+ * Control Plane composition root.
  *
- * Imports a shared API contract type so the workspace graph and contract
- * dependency chain are validated by monorepo typecheck.
+ * Re-exports domain surfaces. Implementation lives under `src/domains/`; this
+ * file only wires them together for the workspace's public entry point.
  */
-import type { GetMeResponse } from "@intentive/api-contract";
-
-export const controlPlaneContractSample: GetMeResponse = {
-  user_id: "user_stub",
-  next_gate: null,
-  has_agent_instance: false,
-};
+export { controlPlaneContractSample } from "./domains/identity/types/account.js";

@@ -1,13 +1,5 @@
-pub mod agent_interface;
-pub mod capture_session;
-pub mod capture_state;
-pub mod context_heartbeat;
-pub mod llm_provider;
-pub mod menu_bar;
-pub mod port;
-pub mod screenpipe_supervisor;
-pub mod snapshot;
-pub mod snapshot_store;
+pub mod domains;
+pub mod providers;
 
 use std::sync::Arc;
 
@@ -18,15 +10,21 @@ use tauri::WebviewWindow;
 use tokio::sync::Mutex;
 use url::Url;
 
-use agent_interface::{AgentInterface, AgentSink};
-use capture_session::{CaptureSessionCoordinator, CoordinatorCommand};
-use capture_state::{AuthChecker, CaptureState, StubAuthChecker};
-use context_heartbeat::{ContextHeartbeat, ReqwestActivityClient, Summarizer, SummarizerError};
-use llm_provider::{LlmProvider, ProviderConfig};
-use screenpipe_supervisor::{
+use domains::capture::runtime::coordinator::CaptureSessionCoordinator;
+use domains::capture::runtime::screenpipe_supervisor::{
     OsSpawner, ScreenpipeEndpoint, ScreenpipeSupervisor, Spawner, Supervisor,
 };
-use snapshot_store::SnapshotStore;
+use domains::capture::service::{AuthChecker, StubAuthChecker};
+use domains::capture::types::session::{CaptureSessionControl, CoordinatorCommand, SessionHooks};
+use domains::capture::types::state::CaptureState;
+use domains::snapshots::types::SessionEndReason;
+use domains::snapshots::repo::SnapshotStore;
+use domains::snapshots::runtime::agent_interface::{AgentInterface, AgentSink};
+use domains::snapshots::runtime::heartbeat::{
+    ContextHeartbeat, ReqwestActivityClient, ScreenpipeUrlSource, Summarizer, SummarizerError,
+};
+use domains::summarization::config::ProviderConfig;
+use domains::summarization::service::LlmProvider;
 use tokio::sync::mpsc;
 
 /// Tauri-managed state for the resolved on-device LLM Provider. Starts as
@@ -77,6 +75,31 @@ impl LlmProviderSlotSummarizer {
     }
 }
 
+/// Composition-root adapter exposing the capture domain's `ScreenpipeEndpoint`
+/// through the snapshots domain's `ScreenpipeUrlSource` seam. Lives here so
+/// neither domain depends on the other — only `lib.rs` knows both.
+impl ScreenpipeUrlSource for ScreenpipeEndpoint {
+    fn current_or_primary_url(&self) -> Url {
+        ScreenpipeEndpoint::current_or_primary_url(self)
+    }
+}
+
+/// Composition-root adapter wiring the snapshots-domain Context Heartbeat into
+/// the capture-domain coordinator's `SessionHooks` seam, so the coordinator
+/// never names the heartbeat type directly.
+struct HeartbeatHooks(Arc<ContextHeartbeat>);
+
+#[async_trait]
+impl SessionHooks for HeartbeatHooks {
+    async fn on_session_start(&self) {
+        let _ = self.0.clone().start().await;
+    }
+
+    async fn on_session_end(&self, reason: SessionEndReason) {
+        self.0.clone().stop(reason).await;
+    }
+}
+
 /// Tauri-managed state for the `ProviderConfig` resolved at startup. The
 /// command path reads this to drive `LlmProvider::resolve_with_progress`.
 pub struct ProviderConfigState {
@@ -117,7 +140,7 @@ pub fn run() {
                 events_rx,
                 &auth,
             );
-            app.manage(coordinator.clone());
+            app.manage(coordinator.clone() as Arc<dyn CaptureSessionControl>);
             app.manage(supervisor.clone());
 
             // Snapshot Store (Issue #6, ADR-0007). Opens or creates the local
@@ -137,7 +160,10 @@ pub fn run() {
 
             tauri::async_runtime::spawn(coordinator.clone().run());
 
-            menu_bar::install(app, coordinator.clone())?;
+            domains::menubar::ui::install(
+                app,
+                coordinator.clone() as Arc<dyn CaptureSessionControl>,
+            )?;
 
             // LLM Provider wiring (Issue #7, ADR-0006, ADR-0018). The slot
             // starts empty — Tier 3 may need a model download that drives
@@ -183,11 +209,11 @@ pub fn run() {
             let heartbeat = ContextHeartbeat::new(
                 summarizer,
                 activity_client,
-                screenpipe_endpoint,
+                Arc::new(screenpipe_endpoint) as Arc<dyn ScreenpipeUrlSource>,
                 snapshot_store_arc,
                 agent_sink,
             );
-            coordinator.set_heartbeat(heartbeat);
+            coordinator.set_heartbeat(Arc::new(HeartbeatHooks(heartbeat)));
 
             // Signed-in launch auto-starts a Capture Session per ADR-0009.
             // Install orchestration collaborators first so startup cannot
@@ -205,7 +231,7 @@ pub fn run() {
             // path; StateHolder no longer exists. Models-root resolution,
             // disk probe, and failsafe direction live inside the helper.
             let needs_onboarding = matches!(coordinator.snapshot(), CaptureState::Capturing)
-                && llm_provider::bundled::bundled_model_needs_install();
+                && domains::summarization::service::bundled::bundled_model_needs_install();
             if needs_onboarding {
                 if let Some(window) = app.get_webview_window("settings") {
                     open_onboarding_window(&window);
@@ -218,29 +244,29 @@ pub fn run() {
     #[cfg(debug_assertions)]
     {
         builder = builder.invoke_handler(tauri::generate_handler![
-            menu_bar::toggle_capture,
-            menu_bar::open_settings,
-            menu_bar::open_sign_in_surface,
-            menu_bar::quit_app,
-            menu_bar::simulate_error,
-            llm_provider::commands::start_model_download,
+            domains::menubar::ui::toggle_capture,
+            domains::menubar::ui::open_settings,
+            domains::menubar::ui::open_sign_in_surface,
+            domains::menubar::ui::quit_app,
+            domains::menubar::ui::simulate_error,
+            domains::summarization::runtime::commands::start_model_download,
         ]);
     }
     #[cfg(not(debug_assertions))]
     {
         builder = builder.invoke_handler(tauri::generate_handler![
-            menu_bar::toggle_capture,
-            menu_bar::open_settings,
-            menu_bar::open_sign_in_surface,
-            menu_bar::quit_app,
-            llm_provider::commands::start_model_download,
+            domains::menubar::ui::toggle_capture,
+            domains::menubar::ui::open_settings,
+            domains::menubar::ui::open_sign_in_surface,
+            domains::menubar::ui::quit_app,
+            domains::summarization::runtime::commands::start_model_download,
         ]);
     }
 
     builder
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
+        .run(|app, event| {
             // Intentive is a menu bar service. The tray icon is the anchor —
             // closing the Settings window must not quit the app. Only honor
             // an explicit exit (Quit menu item calls `app.exit(0)`, which
@@ -248,6 +274,16 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 if code.is_none() {
                     api.prevent_exit();
+                } else {
+                    // Explicit Quit: tear down managed child processes before
+                    // process termination so no orphan ScreenPipe/Ollama
+                    // listeners remain after Intentive exits.
+                    let supervisor = app.state::<Arc<ScreenpipeSupervisor>>().inner().clone();
+                    let llm_slot = app.state::<Arc<LlmProviderSlot>>().inner().clone();
+                    tauri::async_runtime::block_on(async move {
+                        let _ = supervisor.stop().await;
+                        *llm_slot.0.lock().await = None;
+                    });
                 }
             }
         });

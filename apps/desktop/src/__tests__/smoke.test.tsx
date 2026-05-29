@@ -20,9 +20,9 @@ afterEach(() => {
 });
 
 describe("Settings account surface", () => {
-  it("renders Settings without manual routing configuration fields or legacy agent copy", () => {
+  it("renders Settings without manual routing configuration fields or legacy agent copy", async () => {
     render(<App />);
-    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
     expect(screen.queryByLabelText(/endpoint url/i)).toBeNull();
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
     expect(screen.queryByText(/ScreenPipe/i)).toBeNull();
@@ -30,18 +30,18 @@ describe("Settings account surface", () => {
     expect(screen.queryByText(/Agent Interface/i)).toBeNull();
   });
 
-  it("renders Neon Auth when ?surface=sign-in is set", () => {
+  it("renders Neon Auth when ?surface=sign-in is set", async () => {
     window.history.replaceState({}, "", "/?surface=sign-in");
     render(<App />);
-    expect(screen.getByRole("heading", { level: 1, name: "Sign In" })).toBeTruthy();
-    expect(screen.getByLabelText("Neon Auth")).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Sign In" })).toBeTruthy();
+    expect(await screen.findByLabelText("Neon Auth")).toBeTruthy();
     expect(screen.queryByText(/placeholder/i)).toBeNull();
     expect(screen.queryByText(/OpenClaw/i)).toBeNull();
   });
 
-  it("has a stable signed-in account home", () => {
+  it("has a stable signed-in account home", async () => {
     render(<App />);
-    expect(screen.getByRole("heading", { level: 2, name: "Account" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Intentive account" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 2, name: "Account" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Intentive account" })).toBeTruthy();
   });
 });

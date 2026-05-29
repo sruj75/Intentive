@@ -9,12 +9,14 @@ Run these from the repository root:
 ```bash
 pnpm typecheck
 pnpm lint
+pnpm lint:architecture:rust
 pnpm test
 pnpm coverage
 ```
 
 - `pnpm typecheck` runs every workspace typecheck through Turbo.
-- `pnpm lint` checks documentation links and architecture lint rules.
+- `pnpm lint` checks documentation links and architecture lint rules (TS).
+- `pnpm lint:architecture:rust` runs the custom Rust layer + structure checker (`tools/linters/rust-architecture/`) over every `apps/*/src-tauri/src/` tree as a hard gate. ESLint never parses `.rs`, so this is how the layered-domain rule reaches the Rust side. The fixture tests for both checkers run via `pnpm lint:architecture:test`.
 - `pnpm test` runs every workspace with a `test` script, including desktop Vitest, desktop Rust tests, shared contract tests, architecture lint tests, and scaffold tests for deployables that are not implemented yet.
 - `pnpm coverage` runs desktop Vitest coverage and writes LCOV output under `coverage/apps/desktop/`.
 
@@ -36,6 +38,12 @@ The root `apps/desktop` `test` script runs both surfaces. Do not replace it with
 ```bash
 pnpm --dir packages/protocol test
 pnpm --dir packages/api-contract test
+```
+
+`packages/providers` owns cross-cutting behavior (auth, telemetry, flags). Its tests run a fake JWKS HTTP server to exercise the real fetch path — no mocking of internal collaborators:
+
+```bash
+pnpm --dir packages/providers test
 ```
 
 ## Scaffold Deployables

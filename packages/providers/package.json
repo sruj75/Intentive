@@ -23,9 +23,15 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc --outDir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test"
+  },
+  "dependencies": {
+    "jose": "^6.1.2"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.5.0"
   }
 }

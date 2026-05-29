@@ -4,4 +4,4 @@ The single explicit interface for cross-cutting concerns. See [`docs/ARCHITECTUR
 
 Auth, telemetry, feature flags, and any future cross-cutting client lives here. Domain code must import these from `@intentive/providers` (or from its own deployable's `providers/` re-export) — never directly from underlying SDKs.
 
-Lint rule will enforce this once `tools/linters/` is in place.
+The provider-only cross-cutting lint in `tools/linters/` enforces this rule on every PR.
