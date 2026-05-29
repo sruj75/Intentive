@@ -17,16 +17,18 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 
 ## Domains
 
-TypeScript side (`src/domains/<name>/`):
-- `auth` — Neon Auth UI integration, sign-in
-- `onboarding` — Capture Permission Setup flow (macOS Privacy Settings wizard)
-- `menubar` — tray icon, toggle, Capture Error state
-- `account` — Settings surface
+TypeScript side (`src/domains/<name>/`; `App.tsx`/`main.tsx` are the exempt composition root):
+- `auth` — Neon Auth client + UI integration, sign-in
+- `onboarding` — bundled-model download / Capture Permission Setup UI
+- `account` — Settings surface (planned)
 
 Rust side (`src-tauri/src/domains/<name>/`):
-- `capture` — ScreenPipe subprocess lifecycle, port management
-- `summarization` — LLM Provider resolution, Context Heartbeat
-- `snapshots` — Snapshot Store (sqlx), Snapshot Privacy Boundary, WebSocket delivery
+- `capture` — ScreenPipe supervisor, Capture Session coordinator, shell-state FSM, port resolution
+- `summarization` — LLM Provider tier resolution + bundled-model download commands
+- `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, Protocol WebSocket delivery (`agent_interface`)
+- `menubar` — tray icon, capture toggle, Capture Error state (Rust Tauri UI)
+
+Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/providers/`. Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
 
 ## Working docs
 

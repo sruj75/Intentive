@@ -1,27 +1,23 @@
-import React from "react";
+import { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
-import { NeonAuthUIProvider } from "@neondatabase/neon-js/auth/react";
-import "@neondatabase/neon-js/ui/css";
 import App from "./App";
-import { authClient } from "./auth";
+const IntentiveAuthProvider = lazy(() => import("./domains/auth/ui/IntentiveAuthProvider"));
 
-type IntentiveAuthProviderProps = {
-  authClient: unknown;
-  credentials: false;
-  social: { providers: ["google"] };
-  children: React.ReactNode;
-};
+function isOnboardingSurface(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("surface") === "onboarding";
+}
 
-const IntentiveAuthProvider = NeonAuthUIProvider as React.ComponentType<IntentiveAuthProviderProps>;
+const app = <App />;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <IntentiveAuthProvider
-      authClient={authClient}
-      credentials={false}
-      social={{ providers: ["google"] }}
-    >
-      <App />
-    </IntentiveAuthProvider>
-  </React.StrictMode>,
+  <Suspense fallback={app}>
+    {isOnboardingSurface() ? (
+      app
+    ) : (
+      <IntentiveAuthProvider>
+        {app}
+      </IntentiveAuthProvider>
+    )}
+  </Suspense>,
 );

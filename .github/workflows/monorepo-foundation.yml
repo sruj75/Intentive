@@ -51,5 +51,8 @@ jobs:
       - name: Architecture lint plugin tests
         run: pnpm lint:architecture:test
 
+      - name: Architecture lint (Rust layer + structure)
+        run: pnpm lint:architecture:rust
+
       - name: Test
         run: pnpm test
