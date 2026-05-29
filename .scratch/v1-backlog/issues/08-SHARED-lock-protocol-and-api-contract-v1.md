@@ -1,7 +1,7 @@
 # Phase 0: Lock Protocol And API-Contract V1
 
-Status: ready-for-agent
-Labels: ready-for-agent
+Status: closed
+Labels: closed
 Deployable: shared
 Opened: 2026-05-28T12:00:00Z
 Updated: 2026-05-28T12:00:00Z
