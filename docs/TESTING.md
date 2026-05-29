@@ -40,6 +40,12 @@ pnpm --dir packages/protocol test
 pnpm --dir packages/api-contract test
 ```
 
+`packages/providers` owns cross-cutting behavior (auth, telemetry, flags). Its tests run a fake JWKS HTTP server to exercise the real fetch path — no mocking of internal collaborators:
+
+```bash
+pnpm --dir packages/providers test
+```
+
 ## Scaffold Deployables
 
 `apps/mobile`, `services/control-plane`, and `services/agent-runtime` currently include minimal scaffold tests. Keep these tests small until real domains land, then replace them with domain-level tests that exercise the documented `types -> config -> repo -> service -> runtime -> ui` layers.
