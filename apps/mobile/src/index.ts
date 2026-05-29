@@ -1,7 +1,7 @@
 /**
- * Mobile workspace scaffold.
+ * Mobile workspace composition root.
  *
- * Kept intentionally minimal so Turbo includes the mobile deployable in
- * typecheck/lint workflows while implementation domains are migrated in.
+ * Re-exports domain surfaces. Implementation lives under `src/domains/`; this
+ * file only wires them together for the workspace's public entry point.
  */
-export const MOBILE_WORKSPACE_READY = true;
+export { MOBILE_WORKSPACE_READY } from "./domains/account/types/workspace.js";

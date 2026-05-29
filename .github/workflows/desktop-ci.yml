@@ -45,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Architecture lint (Rust layer + structure)
+        run: pnpm lint:architecture:rust
+
       - name: Typecheck
         run: pnpm --dir apps/desktop exec tsc --noEmit
 

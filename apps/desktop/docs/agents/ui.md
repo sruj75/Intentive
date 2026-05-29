@@ -4,8 +4,7 @@ Read when changing React surfaces under `src/` or macOS chrome (menu bar, settin
 
 ## Design system
 
-- `DESIGN.md` — Intentive brand and UX design system.
-- `.claude/commands/macos-design.md` — native macOS UI patterns; companion refs in `.claude/commands/references/` as that command directs.
+- `DESIGN.md` — native macOS UI patterns; companion refs in `references/` as that doc directs.
 
 ## Boundary
 

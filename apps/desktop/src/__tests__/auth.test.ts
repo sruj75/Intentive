@@ -20,7 +20,7 @@ describe("Intentive Auth client setup", () => {
   it("fails clearly when VITE_NEON_AUTH_URL is missing", async () => {
     vi.stubEnv("VITE_NEON_AUTH_URL", "");
 
-    await expect(import("../auth")).rejects.toThrow(
+    await expect(import("../domains/auth/service/auth")).rejects.toThrow(
       "VITE_NEON_AUTH_URL is required to render the Intentive Auth surface.",
     );
   });
@@ -31,7 +31,7 @@ describe("Intentive Auth client setup", () => {
       "https://ep-lucky-dew-aqkjv8j5.neonauth.us-east-1.aws.neon.tech/neondb/auth",
     );
 
-    const { authClient } = await import("../auth");
+    const { authClient } = await import("../domains/auth/service/auth");
 
     expect(authClient).toEqual({
       authUrl: "https://ep-lucky-dew-aqkjv8j5.neonauth.us-east-1.aws.neon.tech/neondb/auth",
