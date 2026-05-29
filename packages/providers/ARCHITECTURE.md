@@ -10,7 +10,7 @@ The single explicit interface for cross-cutting concerns. Auth, telemetry, featu
 
 `src/index.ts` is a barrel; prefer subpath imports (`@intentive/providers/auth`) so consumers pull only what they need.
 
-- **`auth.ts`** — `createJwtVerifier({ jwks_url, issuer, audience })` → `JwtVerifier` resolving a typed `VerifiedPrincipal` (`{ user_id }`). Both the Control Plane and the Agent Runtime verify Neon Auth JWTs through this one boundary. **Currently a stub that throws "Not implemented".** See `.scratch/v1-backlog/issues/09-SHARED-implement-providers-auth-jwks-verifier.md`.
+- **`auth.ts`** — `createJwtVerifier({ jwks_url, issuer, audience })` → `JwtVerifier` resolving a typed `VerifiedPrincipal` (`{ user_id }` from the JWT `sub` claim). Backed by `jose`'s `createRemoteJWKSet` (lazy fetch, in-memory cache, refetch on unknown `kid`). Every failure surfaces as one `JwtVerificationError` with a `reason` discriminant; error messages never carry the token or claims. Both the Control Plane and the Agent Runtime verify Neon Auth JWTs through this one boundary. Construct once at startup and reuse.
 - **`telemetry.ts`** — `createLogger(name)` → `Logger` (`info`/`warn`/`error` with structured attrs). **Currently a no-op stub.**
 - **`flags.ts`** — `createFlagClient({ defaults })` → `FlagClient` with synchronous `isEnabled`. **Currently defaults-only.**
 

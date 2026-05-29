@@ -5,14 +5,12 @@
 - Date: 2026-05-28
 - Repo: `/Users/srujanu/Desktop/Hey Intentive`
 - Tracker root: `.scratch/v1-backlog/` (unified — 50 issues globally numbered 01–50)
-- Closed: `#01`–`#08` (Desktop v1 foundation + shared protocol/api-contract lock, shipped)
-- Open: `#09`–`#50`
+- Closed: `#01`–`#09` (Desktop v1 foundation + shared protocol/api-contract lock + Providers JWKS auth, shipped)
+- Open: `#10`–`#50`
 
 ## Executive Next Move
 
-Recommended next issue: [#09 SHARED — Providers Auth (JWKS)](.scratch/v1-backlog/issues/09-SHARED-implement-providers-auth-jwks-verifier.md)
-
-Why this is next: `packages/providers/src/auth.ts` still throws "Not implemented" — both Control Plane identity (#17) and Agent Runtime WebSocket gateway (#19) are hard-blocked on it. This is the shortest critical path to unblocking both service lanes.
+Two shared roots are now landed (`#08` protocol/api-contract lock, `#09` Providers JWKS auth). The lane roots are unblocked: run [#10 AR — Resolve Runtime Contracts](.scratch/v1-backlog/issues/10-AR-resolve-runtime-contracts-before-code.md) and [#11 CP — Contracts + Domain Scaffolds](.scratch/v1-backlog/issues/11-CP-resolve-control-plane-contracts-and-domain-scaffolds.md) (both depend only on `#08`). Mobile foundation lane `#12`–`#16` can also start now. `#17` (CP Identity) and `#19` (AR WS gateway) now have their hard auth blocker (`#09`) cleared and consume `createJwtVerifier` from `@intentive/providers/auth`.
 
 What it unlocks:
 - `#09` (Providers auth) → `#45` (telemetry/flags) → `#46` (CI rule enforcement).
@@ -86,12 +84,12 @@ flowchart TD
 | 06 | Desktop | [Manage Ollama readiness and first-run setup](.scratch/v1-backlog/issues/06-DESKTOP-manage-ollama-readiness-and-first-run-setup.md) | closed |
 | 07 | Desktop | [Produce a Context Snapshot on fixed 10-minute heartbeat cycle](.scratch/v1-backlog/issues/07-DESKTOP-produce-a-context-snapshot-on-fixed-10-minute-heartbeat-cycle.md) | closed |
 | 08 | Shared | [Lock Protocol + API-Contract V1](.scratch/v1-backlog/issues/08-SHARED-lock-protocol-and-api-contract-v1.md) | closed |
+| 09 | Shared | [Providers auth (JWKS)](.scratch/v1-backlog/issues/09-SHARED-implement-providers-auth-jwks-verifier.md) | closed |
 
 ### Phase 1: Now
 
 | # | Deployable | Issue | Why now | Unblocks |
 |---|---|---|---|---|
-| 09 | Shared | [Providers auth (JWKS)](.scratch/v1-backlog/issues/09-SHARED-implement-providers-auth-jwks-verifier.md) | Stub throws today; hard blocker for both services' auth | #17; #19 |
 | 10 | Agent Runtime | [Resolve Runtime Contracts](.scratch/v1-backlog/issues/10-AR-resolve-runtime-contracts-before-code.md) | Runtime-lane root once protocol is locked | #18 onward |
 | 11 | Control Plane | [CP Contracts + Domain Scaffolds](.scratch/v1-backlog/issues/11-CP-resolve-control-plane-contracts-and-domain-scaffolds.md) | CP-lane root once api-contract is locked | #17/#20/#21 |
 | 12 | Mobile | [Scaffold Expo App + Launch State Resolver](.scratch/v1-backlog/issues/12-MOBILE-scaffold-the-expo-client-app-and-launch-state-resolver.md) | Mobile foundation skeleton | #13/#14/#15/#16 |
@@ -157,9 +155,9 @@ flowchart TD
 
 ### Shared / Cross-Cutting (issues #08–#09, #45–#46)
 
-- **Next:** `#08` Lock Protocol + API-Contract — the true root of the monorepo. Then `#09` Providers auth (JWKS stub throws today).
-- `#45` (telemetry/flags) and `#46` (CI rules) only depend on `#08`; run them after `#09` lands while other lanes progress.
-- `packages/providers/src/auth.ts` throws "Not implemented" today — `#09` is a hard blocker for both `#17` and `#19`.
+- `#08` (protocol/api-contract lock) and `#09` (Providers JWKS auth) are **closed**.
+- **Next:** `#45` (telemetry/flags) and `#46` (CI rules) only depend on `#08`; run them while other lanes progress.
+- `packages/providers/src/auth.ts` now ships a real `jose`-backed `createJwtVerifier` (see `packages/providers/test/auth.test.mjs`); `#17` and `#19` consume it from `@intentive/providers/auth`.
 
 ### Mobile Client (issues #12–#16, #27, #38–#42)
 
