@@ -5,16 +5,14 @@
 - Date: 2026-05-28
 - Repo: `/Users/srujanu/Desktop/Hey Intentive`
 - Tracker root: `.scratch/v1-backlog/` (unified — 50 issues globally numbered 01–50)
-- Closed: `#01`–`#07` (Desktop v1 foundation, shipped)
-- Open: `#08`–`#50`
+- Closed: `#01`–`#08` (Desktop v1 foundation + shared protocol/api-contract lock, shipped)
+- Open: `#09`–`#50`
 
 ## Executive Next Move
 
-Recommended next issue: [#08 SHARED — Lock Protocol + API-Contract V1](.scratch/v1-backlog/issues/08-SHARED-lock-protocol-and-api-contract-v1.md)
+Recommended next issue: [#09 SHARED — Providers Auth (JWKS)](.scratch/v1-backlog/issues/09-SHARED-implement-providers-auth-jwks-verifier.md)
 
-Why this is next: the shared `protocol` + `api-contract` lock is the true root of the whole monorepo. Agent Runtime #10 explicitly checks `packages/protocol` against vocabulary, Control Plane #11 reconciles `packages/api-contract`, and every client/runtime handshake imports both.
-
-Immediately after it, do #09 (Providers auth / Neon Auth JWKS verifier) — that stub currently throws "Not implemented" and is a hard blocker for Control Plane identity (#17) and the Agent Runtime WebSocket gateway (#19).
+Why this is next: `packages/providers/src/auth.ts` still throws "Not implemented" — both Control Plane identity (#17) and Agent Runtime WebSocket gateway (#19) are hard-blocked on it. This is the shortest critical path to unblocking both service lanes.
 
 What it unlocks:
 - `#09` (Providers auth) → `#45` (telemetry/flags) → `#46` (CI rule enforcement).
@@ -87,12 +85,12 @@ flowchart TD
 | 05 | Desktop | [Establish local snapshot store with retention](.scratch/v1-backlog/issues/05-DESKTOP-establish-local-snapshot-store-with-retention.md) | closed |
 | 06 | Desktop | [Manage Ollama readiness and first-run setup](.scratch/v1-backlog/issues/06-DESKTOP-manage-ollama-readiness-and-first-run-setup.md) | closed |
 | 07 | Desktop | [Produce a Context Snapshot on fixed 10-minute heartbeat cycle](.scratch/v1-backlog/issues/07-DESKTOP-produce-a-context-snapshot-on-fixed-10-minute-heartbeat-cycle.md) | closed |
+| 08 | Shared | [Lock Protocol + API-Contract V1](.scratch/v1-backlog/issues/08-SHARED-lock-protocol-and-api-contract-v1.md) | closed |
 
 ### Phase 1: Now
 
 | # | Deployable | Issue | Why now | Unblocks |
 |---|---|---|---|---|
-| 08 | Shared | [Lock Protocol + API-Contract V1](.scratch/v1-backlog/issues/08-SHARED-lock-protocol-and-api-contract-v1.md) | True root of the monorepo; every handshake imports it | #09–#11; #45–#46 |
 | 09 | Shared | [Providers auth (JWKS)](.scratch/v1-backlog/issues/09-SHARED-implement-providers-auth-jwks-verifier.md) | Stub throws today; hard blocker for both services' auth | #17; #19 |
 | 10 | Agent Runtime | [Resolve Runtime Contracts](.scratch/v1-backlog/issues/10-AR-resolve-runtime-contracts-before-code.md) | Runtime-lane root once protocol is locked | #18 onward |
 | 11 | Control Plane | [CP Contracts + Domain Scaffolds](.scratch/v1-backlog/issues/11-CP-resolve-control-plane-contracts-and-domain-scaffolds.md) | CP-lane root once api-contract is locked | #17/#20/#21 |
