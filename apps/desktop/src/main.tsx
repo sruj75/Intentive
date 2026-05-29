@@ -12,12 +12,6 @@ const app = <App />;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <Suspense fallback={app}>
-    {isOnboardingSurface() ? (
-      app
-    ) : (
-      <IntentiveAuthProvider>
-        {app}
-      </IntentiveAuthProvider>
-    )}
+    {isOnboardingSurface() ? app : <IntentiveAuthProvider>{app}</IntentiveAuthProvider>}
   </Suspense>,
 );
