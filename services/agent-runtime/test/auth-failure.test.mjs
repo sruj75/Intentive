@@ -15,12 +15,10 @@ const authFailureReasons = [
 ];
 
 test("JWKS outage maps to a retryable runtime_error", () => {
-  const event = mapJwtVerificationErrorToRuntimeError(
-    {
-      reason: "jwks_unavailable",
-      message: "JWKS endpoint https://issuer.test/.well-known/jwks.json failed for secret-user-id",
-    },
-  );
+  const event = mapJwtVerificationErrorToRuntimeError({
+    reason: "jwks_unavailable",
+    message: "JWKS endpoint https://issuer.test/.well-known/jwks.json failed for secret-user-id",
+  });
 
   assert.deepEqual(event, {
     type: "runtime_error",
@@ -32,12 +30,10 @@ test("JWKS outage maps to a retryable runtime_error", () => {
 
 test("token verification failures map to auth_failed runtime_error", () => {
   for (const reason of authFailureReasons) {
-    const event = mapJwtVerificationErrorToRuntimeError(
-      {
-        reason,
-        message: `token secret-token-for-${reason} failed for secret-user-id`,
-      },
-    );
+    const event = mapJwtVerificationErrorToRuntimeError({
+      reason,
+      message: `token secret-token-for-${reason} failed for secret-user-id`,
+    });
 
     assert.deepEqual(event, {
       type: "runtime_error",
@@ -52,18 +48,14 @@ test("runtime auth errors do not leak token, claim, or provider internals", () =
   const sensitiveFragments = ["secret-token", "secret-user-id", "issuer.test", "jwks.json"];
 
   const events = [
-    mapJwtVerificationErrorToRuntimeError(
-      {
-        reason: "jwks_unavailable",
-        message: "fetch failed for https://issuer.test/.well-known/jwks.json and secret-token",
-      },
-    ),
-    mapJwtVerificationErrorToRuntimeError(
-      {
-        reason: "malformed",
-        message: "secret-token subject secret-user-id is invalid",
-      },
-    ),
+    mapJwtVerificationErrorToRuntimeError({
+      reason: "jwks_unavailable",
+      message: "fetch failed for https://issuer.test/.well-known/jwks.json and secret-token",
+    }),
+    mapJwtVerificationErrorToRuntimeError({
+      reason: "malformed",
+      message: "secret-token subject secret-user-id is invalid",
+    }),
   ];
 
   for (const event of events) {
