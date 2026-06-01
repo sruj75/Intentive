@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read `../../docs/CONTEXT.md` first.
+This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read `../../docs/CONTEXT.md` (monorepo-wide) and [`../CONTEXT.md`](../CONTEXT.md) (deployable-local: Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning) first.
 
 ## Bird's-eye Overview
 
@@ -40,6 +40,9 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 
 `AGENTS.md`
 : Agent-facing deployable guide. Read it before changing this service.
+
+`CONTEXT.md`
+: Deployable-local vocabulary: Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning. Read alongside `docs/CONTEXT.md`.
 
 `README.md`
 : Operator/developer entrypoint for the deployable.

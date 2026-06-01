@@ -19,11 +19,12 @@ Implement the `identity` domain: resolve a **User** from a Neon Auth JWT on ever
 ## Acceptance criteria
 
 - [ ] User JWTs are verified through the shared Providers auth interface (`packages/providers/auth`), not a Control Plane-local verifier.
-- [ ] Signature, expiry, issuer, and audience are all validated; failures return a structured 401 without leaking token contents.
+- [ ] Signature, expiry, issuer, and audience are all validated; token-verification failures return structured `401 auth_failed` responses without leaking token contents.
+- [ ] Transient JWKS transport/availability failures return structured `503 service_unavailable` responses without leaking token or provider internals.
 - [ ] A verified request exposes a typed principal (`{ user_id }`) to downstream domains.
 - [ ] First sign-in creates the User record in the control-plane-owned Neon schema; repeat sign-in resolves the existing User idempotently.
 - [ ] Google is the only identity provider wired in v1; the verifier config leaves room for Apple later without code changes to callers.
-- [ ] Tests cover valid token, expired token, wrong issuer/audience, malformed token, and first-vs-repeat User resolution.
+- [ ] Tests cover valid token, expired token, wrong issuer/audience, malformed token, JWKS-unavailable outage behavior, and first-vs-repeat User resolution.
 
 ## Blocked by
 

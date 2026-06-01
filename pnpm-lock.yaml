@@ -145,6 +145,9 @@ importers:
       '@intentive/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@intentive/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
     devDependencies:
       typescript:
         specifier: ^5.5.0
@@ -155,6 +158,9 @@ importers:
       '@intentive/api-contract':
         specifier: workspace:*
         version: link:../../packages/api-contract
+      '@intentive/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
     devDependencies:
       typescript:
         specifier: ^5.5.0

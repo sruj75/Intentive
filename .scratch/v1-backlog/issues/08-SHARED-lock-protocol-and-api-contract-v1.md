@@ -21,7 +21,7 @@ Lock the v1 wire surfaces in `packages/protocol/` and `packages/api-contract/` s
 - [ ] `packages/protocol/` event names and the `connect` → `hello_ok` handshake are checked against `docs/CONTEXT.md` vocabulary and reconciled where they drift.
 - [ ] Single-live-protocol policy is specified: clients and runtime move together on one canonical protocol shape/version in-repo, with no long-lived old/new compatibility window.
 - [ ] Handshake is simplified for the single-live-protocol policy (no `min_protocol`/`max_protocol` range negotiation fields in `connect`).
-- [ ] Protocol failure contract is explicit in `packages/protocol/` with typed failure events for at least `protocol_unsupported` and `auth_failed`.
+- [ ] Protocol failure contract is explicit in `packages/protocol/` with typed failure events for at least `protocol_unsupported`, `auth_failed`, and `service_unavailable` (transient auth infrastructure outage path).
 - [ ] The single-protocol-version rule (inviolable rule 5) is documented and the version source is singular.
 - [ ] Canonical wire field names from `packages/protocol/` are used end-to-end by first-party clients and runtime boundaries (no compatibility aliases or transport-time rename adapters in v1).
 - [ ] Existing first-party transport implementations are refactored in this issue to canonical wire fields (including `context_snapshot.snapshot_id` and `session_end_marker.ended_at`/`reason`) rather than carrying legacy field names.

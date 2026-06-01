@@ -3,7 +3,8 @@
 The always-alive, multi-tenant service that runs **Companion** behavior. Built on **DeepAgents** (LangChain TypeScript: `langchain-ai/deepagentsjs`).
 
 **Always read first:**
-- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary
+- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — monorepo-wide vocabulary
+- [`CONTEXT.md`](CONTEXT.md) — deployable-local vocabulary (Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning)
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
 - [`reference/AGENTS.md`](reference/AGENTS.md) — OpenClaw / Hermes pattern reference (start at topic cards, not raw `*-llms.txt` packs)
 
@@ -27,7 +28,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - `cron` — scheduled-trigger primitive
 - `heartbeat` — interval-trigger primitive
 - `memory` — runtime memory, Neon-backed durable store, virtual filesystem overlay
-- `bundles` — runtime bundle documents (AGENTS.md, SOUL.md, BOOTSTRAP.md, HEARTBEAT.md), overlay resolution
+- `bundles` — runtime bundle documents (`AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md` — immutable; `USER.md`, `MEMORY.md` — agent-writable overlays), overlay resolution
 - `internal` — server-to-server API surface (Session Start)
 
 ## Stack & deploy

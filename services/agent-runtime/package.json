@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "tsc --outDir dist",
-    "test": "pnpm run build && node --test",
+    "test": "pnpm --filter @intentive/protocol build && pnpm run build && node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@intentive/api-contract": "workspace:*",
-    "@intentive/protocol": "workspace:*"
+    "@intentive/protocol": "workspace:*",
+    "@intentive/providers": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

@@ -1,7 +1,7 @@
 # ADR 0004: Database-Backed VFS Overlay Model for Multi-Tenant Intentive Runtime (v1)
 
 ## Status
-Accepted
+Accepted — write policy refined by ADR-0036; bundle-version pin boundary clarified by the amendment below.
 
 ## Date
 2026-05-25
@@ -41,6 +41,8 @@ Runtime read resolution order:
 
 Each session is pinned to one bundle version.
 Bundle migration occurs only at controlled boundaries (for example reconnect or new session), not mid-turn.
+
+**Amendment (2026-05-29):** the concrete pin boundary for v1 is the **WebSocket connection**. The bundle version is resolved once at `hello_ok` from the then-latest version and held fixed for the connection's lifetime; every turn on that connection resolves Bundle Defaults against it. A reconnect re-resolves to whatever is latest at that moment and is the only migration boundary. The resolved version is recorded on each `runtime_turns` row so "which bundle produced this behavior?" stays answerable for the eval loop. Rejected: per-turn pinning (behavioral drift within one conversation) and explicit `agent_instance`-level migration jobs (more control than v1 needs; can strand users on stale bundles).
 
 ### 5) Materialization policy
 
