@@ -41,8 +41,8 @@ The server-side authority at `services/control-plane/`. Owns identity, device re
 _Avoid_: backend, mobile backend, desktop backend, API, proxy, gateway
 
 **Routing**:
-The Control Plane's job of telling each signed-in client *where* the Agent Runtime is and *who* the client is (URL + JWT). Routing happens **once, before** the data connection opens. The Control Plane is not in the path of any subsequent message.
-_Avoid_: proxying, forwarding, gatewaying
+The Control Plane's job of telling each signed-in client *where* the Agent Runtime is and *who* the client is (URL + JWT). Routing happens **once, before** the data connection opens. The Control Plane is not in the path of any subsequent message. The `runtime_jwt` it returns is the client's **Neon Auth user JWT passed through** — the Control Plane does not mint a token with its own signing key. The Agent Runtime verifies it with the single shared Neon Auth JWKS verifier (`packages/providers`), the same one the Control Plane uses on its public endpoints.
+_Avoid_: proxying, forwarding, gatewaying, minting a Control-Plane-signed token
 
 **Protocol**:
 The shared WebSocket message contract every client speaks and the Agent Runtime understands. Defined once in `packages/protocol/` (Zod schemas). Imported by Mobile Client, Desktop Client, future Android Client, and Agent Runtime. **This is where client unification lives** — not in network topology.
@@ -180,3 +180,4 @@ An optional client-offered prompt to install the other client (Mobile invites to
 - "Defer notification permission until Follow-Up exists" appeared in `apps/mobile/CONTEXT.md`. Rejected: with Post-Message-Back in v1, notifications are a v1 capability and the permission ask happens on first chat entry, framed around Companion message delivery.
 - "GCP Provisioner" appeared in `apps/mobile/CONTEXT.md`, `apps/desktop/CONTEXT.md`, and `services/control-plane/CONTEXT.md` as a module that spins up per-user infrastructure. **Removed** from v1 vocabulary entirely. The Agent Runtime is one always-on GCE VM deployed by CI/CD, serving all users. There is no per-user provisioning step. If per-deployment infrastructure ever returns it will get a fresh, specific name.
 - "Desktop Client has a chat UI / chat shell" was implied in some early Tauri DESIGN.md content. Rejected for v1: Desktop is capture-only. Chat lives on Mobile (and future Android). The Desktop's WebSocket connection sends `context_snapshot` + `session_end_marker` and receives delivery acks only.
+- "Control Plane mints the runtime JWT with its own signing key" was implied by PRD/issue wording ("`GET /agent` mints the runtime JWT", issue #11's "runtime JWT signing key"). Resolved for v1: the `runtime_jwt` is the client's **Neon Auth user JWT passed through**, not a Control-Plane-signed token. The Agent Runtime verifies it with the one shared Neon Auth JWKS verifier (#09) — there is no second signing key and no second verifier. "Mint" in those docs means "issue/hand back," not "sign with a CP key." Issue #11 criterion 5 must drop "runtime JWT signing key" from the enumerated config.

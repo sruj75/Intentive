@@ -40,7 +40,7 @@ The Control Plane is the single writer of account truth. Clients render this sta
 : This file. Control-Plane-local architecture contract and map.
 
 `.scratch/v1-backlog/prds/control-plane-PRD.md`
-: Control Plane PRD. Issues `#11`, `#17`, `#20`, `#21`, `#24`, `#43`, `#44` in the root `.scratch/v1-backlog/issues/` tracker.
+: Control Plane PRD. Issues `#17`, `#23`, `#26`, `#27`, `#30`, `#49`, `#50` on [GitHub](https://github.com/sruj75/Intentive/issues).
 
 `src/index.ts`
 : Thin process entrypoint. It should delegate to domain composition, not accumulate domain logic.
