@@ -112,7 +112,7 @@ Rule: **if a piece of knowledge is shared between two deployables, it lives in `
 
 These live in `tools/linters/`. They run in CI on every PR.
 
-1. **Layer-direction lint** — fails if a `service/` file imports from `runtime/` or `ui/`. Fails if a `repo/` file imports from `service/`. Etc. Custom ESLint rule for TS, custom Clippy lint for Rust.
+1. **Layer-direction lint** — fails if a `service/` file imports from `runtime/` or `ui/`. Fails if a `repo/` file imports from `service/`. Etc. Custom ESLint rule (`tools/linters/eslint-plugin-intentive-architecture/`) for TS; a custom Node checker (`tools/linters/rust-architecture/`) for Rust, since ESLint never parses `.rs`. Both share the same `LAYER_ORDER`. The Rust checker also enforces a structural rule — only `lib.rs`, `main.rs`, `domains/`, and `providers/` may live directly under `src-tauri/src/` — and treats `lib.rs`/`main.rs` as the exempt composition root. Run via `pnpm lint:architecture:rust` (hard gate).
 2. **Cross-deployable import lint** — fails if `apps/mobile/**` imports from `apps/desktop/**` or `services/**`. Cross-deployable code must go through `packages/`.
 3. **Provider-only cross-cutting lint** — fails if a domain imports auth/telemetry/flag code from anywhere except `packages/providers/` or its own `providers/` re-export.
 4. **CONTEXT.md term lint** — scans source files for forbidden terms listed in CONTEXT.md's `_Avoid_` lines. Surfaces the canonical term in the error message.
@@ -181,15 +181,15 @@ intentive/
 │   │       └── account/{...}/
 │   └── desktop/                         ← was Tauri
 │       ├── AGENTS.md
-│       ├── src/domains/                 ← TS/React side
-│       │   ├── auth/{...}/
-│       │   ├── onboarding/{...}/
-│       │   ├── menubar/{...}/
-│       │   └── account/{...}/
+│       ├── src/domains/                 ← TS/React side (App.tsx/main.tsx are the exempt composition root)
+│       │   ├── auth/{service}/
+│       │   └── onboarding/{ui}/
 │       └── src-tauri/src/domains/       ← Rust side, same layer rule
-│           ├── capture/{types,config,repo,service,runtime}/
-│           ├── summarization/{...}/
-│           └── snapshots/{...}/
+│           ├── capture/{types,config,service,runtime}/
+│           ├── menubar/{service,ui}/
+│           ├── summarization/{types,config,service,runtime}/
+│           └── snapshots/{types,repo,runtime}/
+│       └── src-tauri/src/providers/     ← Rust cross-cutting (e.g. port)
 ├── services/
 │   ├── control-plane/
 │   │   ├── AGENTS.md

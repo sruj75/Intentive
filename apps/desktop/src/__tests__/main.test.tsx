@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 type CapturedAuthProviderProps = {
   authClient: unknown;
+  baseURL?: string;
+  redirectTo?: string;
   credentials?: boolean;
   social?: { providers: string[] };
   children: React.ReactNode;
@@ -20,8 +22,9 @@ vi.mock("@neondatabase/neon-js/auth/react", () => ({
 
 vi.mock("@neondatabase/neon-js/ui/css", () => ({}));
 
-vi.mock("../auth", () => ({
+vi.mock("../domains/auth/service/auth", () => ({
   authClient: { kind: "test-auth-client" },
+  readNeonAuthUrl: () => "https://neon.example/auth",
 }));
 
 vi.mock("../App", () => ({
@@ -47,6 +50,8 @@ describe("Intentive Auth provider wiring", () => {
       expect.arrayContaining([
         expect.objectContaining({
           authClient: { kind: "test-auth-client" },
+          baseURL: "https://neon.example/auth",
+          redirectTo: "https://neon.example/auth",
           credentials: false,
           social: { providers: ["google"] },
         }),
@@ -60,5 +65,17 @@ describe("Intentive Auth provider wiring", () => {
       ]),
     );
     expect(capturedAuthProviderProps.every((props) => props.credentials === false)).toBe(true);
+  });
+
+  it("does not boot the Auth provider for onboarding surface", async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    window.history.replaceState({}, "", "/?surface=onboarding");
+
+    await import("../main");
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("Intentive Settings");
+    });
+    expect(capturedAuthProviderProps).toHaveLength(0);
   });
 });

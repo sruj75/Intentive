@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import Onboarding from "../Onboarding";
+import Onboarding from "../domains/onboarding/ui/Onboarding";
 
 type ProgressPayload = { percent: number; status: string };
 type Handler<T> = (event: { payload: T }) => void;
