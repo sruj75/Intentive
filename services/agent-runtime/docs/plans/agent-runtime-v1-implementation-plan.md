@@ -20,7 +20,6 @@ Implementation should use the local OpenClaw/Hermes reference library at `servic
 
 ## Capability split
 
-
 | Capability                 | Owner                                           | Notes                                                                                    |
 | -------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Chat loop                  | DeepAgents                                      | Runtime shell invokes DeepAgents per ordered user/system event.                          |
@@ -36,7 +35,6 @@ Implementation should use the local OpenClaw/Hermes reference library at `servic
 | Multi-layer prompts        | Intentive bundle + DeepAgents config            | Bundle documents, user overlays, skills, and dynamic prompt assembly.                    |
 | Post-Message-Back          | Intentive shell                                 | Deliberate proactive message primitive and only push-notification origin.                |
 | Neon Auth                  | Control Plane + Providers                       | Runtime verifies client JWTs locally via shared provider, but does not own auth state.   |
-
 
 ## Architecture shape
 
@@ -70,7 +68,6 @@ Mobile Client                 Desktop Client
 
 Use a separate Agent Runtime schema and Postgres role from the Control Plane schema.
 
-
 | Table family                 | Purpose                                                                                                  |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `agent_instances`            | One logical Agent Instance per `user_id`.                                                                |
@@ -84,14 +81,13 @@ Use a separate Agent Runtime schema and Postgres role from the Control Plane sch
 | `heartbeat_states`           | Per-user heartbeat policy, liveness, and last evaluation state.                                          |
 | `post_message_back_requests` | Proactive delivery ledger and Control Plane notification handoff status.                                 |
 
-
 All user-owned Runtime rows are scoped by `user_id`. The User is the tenant in v1.
 
 ## Phase 0: Resolve contracts before code
 
 1. Accept monorepo ADR-0002: no standalone `channels` domain in v1.
-2. Verify Agent Runtime ADR-0004 and `docs/CONTEXT.md` agree that overlays are scoped by `user_id` rather than `tenant_id`.
-3. Confirm `packages/protocol` event names and handshake match the current `docs/CONTEXT.md` vocabulary.
+2. Verify Agent Runtime ADR-0004 and `services/agent-runtime/CONTEXT.md` agree that overlays are scoped by `user_id` rather than `tenant_id`.
+3. Confirm `packages/protocol` event names and handshake match the current `CONTEXT-MAP.md` and `packages/CONTEXT.md` vocabulary.
 4. Decide whether the initial DeepAgents persistence adapter is direct Postgres, LangGraph store over Postgres, or a thin repo-owned adapter that can be swapped later.
 5. Decide the first set of bundle documents for v1: likely `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `USER.md`, and `MEMORY.md`.
 
@@ -256,7 +252,7 @@ Exit criteria:
 
 ## Reference sources
 
-- Intentive vocabulary: `docs/CONTEXT.md`
+- Intentive vocabulary: `CONTEXT-MAP.md`, `services/agent-runtime/CONTEXT.md`, `packages/CONTEXT.md`
 - Intentive architecture: `docs/ARCHITECTURE.md`
 - OpenClaw pattern default: `docs/adr/0003-agent-runtime-openclaw-patterns-default.md`
 - WebSocket Protocol: `docs/adr/0005-agent-runtime-websocket-protocol-contract-v1.md`

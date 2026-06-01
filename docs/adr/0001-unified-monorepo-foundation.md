@@ -8,7 +8,7 @@ Until May 2026, Intentive lived as four separate repositories — `v1-expo`, `v1
 
 ## Decision
 
-Collapse the four repositories into one monorepo at this root. Adopt one ubiquitous language ([`docs/CONTEXT.md`](../CONTEXT.md)) and one architectural rule ([`docs/ARCHITECTURE.md`](../ARCHITECTURE.md)). All future ADRs live in this single `docs/adr/` directory and are numbered globally.
+Collapse the four repositories into one monorepo at this root. Adopt one ubiquitous language ([`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) plus per-deployable and `packages/CONTEXT.md` files; vocabulary is no longer a single `docs/CONTEXT.md`) and one architectural rule ([`docs/ARCHITECTURE.md`](../ARCHITECTURE.md)). All future ADRs live in this single `docs/adr/` directory and are numbered globally.
 
 Key boundary decisions established by this ADR (full vocabulary in CONTEXT.md):
 

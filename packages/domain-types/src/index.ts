@@ -5,7 +5,7 @@
  * @intentive/api-contract (HTTP). This package is for in-process
  * domain types shared across deployables.
  *
- * See docs/CONTEXT.md for the canonical meaning of each term.
+ * See CONTEXT-MAP.md and packages/CONTEXT.md for the canonical meaning of each term.
  */
 
 // ---------- Identity ----------

@@ -4,8 +4,8 @@
  * Both the Control Plane (`identity` domain) and the Agent Runtime verify user
  * JWTs independently against the shared Neon Auth JWKS
  * endpoint. This is the single sanctioned verifier — there is no second,
- * deployable-local one (see docs/CONTEXT.md → Control Plane and
- * packages/providers/ARCHITECTURE.md).
+ * deployable-local one (see services/control-plane/CONTEXT.md → Control Plane and
+ * packages/CONTEXT.md).
  */
 
 import { createRemoteJWKSet, errors, jwtVerify } from "jose";

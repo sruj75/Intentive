@@ -37,7 +37,7 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   from the live `user_message`/`companion_message` wire events.
 
 - **Domain scaffolds** — `src/domains/{bundles,cron,gateway,heartbeat,memory,protocol,
-  runtime,sessions}/types/scaffold.ts` and `src/domains/internal/types/sessions.ts` added
+runtime,sessions}/types/scaffold.ts` and `src/domains/internal/types/sessions.ts` added
   so the layered domain tree is tracked by git, covered by typecheck, and visible to the
   architecture lint before any domain logic ships.
 
@@ -62,5 +62,5 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   corrected to list all six bundle paths with their immutable/writable designations.
 
 - **`docs/ARCHITECTURE.md`** — vocabulary pointer updated to reference both the
-  monorepo-wide `docs/CONTEXT.md` and the service-local `CONTEXT.md`; Codemap entry for
+  root `CONTEXT-MAP.md` and the service-local `CONTEXT.md`; Codemap entry for
   `CONTEXT.md` added.
