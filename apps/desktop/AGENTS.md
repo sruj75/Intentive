@@ -3,7 +3,8 @@
 macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile Client.
 
 **Always read first:**
-- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary
+- [`CONTEXT.md`](CONTEXT.md) — Desktop Client vocabulary
+- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
 
 ## Role in V1

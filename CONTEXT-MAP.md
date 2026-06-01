@@ -1,6 +1,33 @@
-# Intentive
+# Intentive — Context Map
 
-Intentive is one product spanning a mobile client, a desktop client, a server-side control plane, and a multi-tenant agent runtime. A user signs in once on either client, completes onboarding once, and connects every client surface to the same agent. This document is the single source of truth for vocabulary across all four deployables.
+Intentive is one product spanning a Mobile Client, a Desktop Client, a server-side Control Plane, and a multi-tenant Agent Runtime, plus the shared contracts they all import. This repo is **multi-context**: each deployable owns its own `CONTEXT.md` for the vocabulary specific to it. This map holds the product-wide shared language, the relationships that cross context boundaries, and a pointer to where each context lives.
+
+## Contexts
+
+| Context | Vocabulary | Decisions (ADRs) |
+|---|---|---|
+| **Shared** (`packages/`) | [`packages/CONTEXT.md`](packages/CONTEXT.md) | system-wide → [`docs/adr/`](docs/adr/) |
+| **Mobile Client** | [`apps/mobile/CONTEXT.md`](apps/mobile/CONTEXT.md) | [`apps/mobile/docs/adr/`](apps/mobile/docs/adr/) |
+| **Desktop Client** | [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md) | [`apps/desktop/docs/adr/`](apps/desktop/docs/adr/) |
+| **Control Plane** | [`services/control-plane/CONTEXT.md`](services/control-plane/CONTEXT.md) | [`services/control-plane/docs/adr/`](services/control-plane/docs/adr/) |
+| **Agent Runtime** | [`services/agent-runtime/CONTEXT.md`](services/agent-runtime/CONTEXT.md) | [`services/agent-runtime/docs/adr/`](services/agent-runtime/docs/adr/) |
+| **System-wide** | this map | [`docs/adr/`](docs/adr/) |
+
+## Maintaining these docs (read before editing — esp. with `/grill-with-docs`)
+
+This repo follows the `grill-with-docs` multi-context layout. When a term is resolved or an ADR is written, put it in the right place — do **not** recreate a single unified `docs/CONTEXT.md`.
+
+**Where each kind of vocabulary lives — every term has exactly ONE owning context; other contexts reference it by name, never redefine it:**
+
+- **Product-umbrella terms** (true of the whole system, owned by no single deployable — e.g. **Intentive**, **Companion**) → the `## Language` section of **this file** (`CONTEXT-MAP.md`).
+- **The cross-context narrative** — `## Relationships`, `## Example dialogue`, and `## Flagged ambiguities` — also lives in **this file**, because it describes interactions *between* contexts. Per-context `CONTEXT.md` files keep only their own terms (plus, optionally, a context-local Flagged-ambiguities for purely internal naming clashes, as `services/agent-runtime/CONTEXT.md` does).
+- **Wire/HTTP-contract and cross-cutting terms** (e.g. **Protocol**, **Context Snapshot**, **Session End Marker**, **Internal API**) → **`packages/CONTEXT.md`** (the Shared context), since they're imported by multiple deployables.
+- **Deployable-specific terms** → that deployable's own `CONTEXT.md` (`apps/mobile/`, `apps/desktop/`, `services/control-plane/`, `services/agent-runtime/`).
+- **Boundary-spanning terms** (a flow that touches two contexts, e.g. **Session Start** = Control Plane → Agent Runtime) → assign to the context that *owns/initiates* the concept; the other context references it by name.
+
+**Adding or renaming a term:** edit the single owning `CONTEXT.md` (use the Contexts table above to find it); if it's an umbrella/cross-cutting term, edit this file. Keep one definition; link related terms with **bold names**, not duplicate definitions.
+
+**ADRs:** system-wide decisions → `docs/adr/`, numbered from `0001`. Context-specific decisions → that deployable's own `docs/adr/`, numbered independently from `0001`. A reference from a context ADR to a system-wide one is written **monorepo ADR-NNNN** with a relative link into `docs/adr/`. See [`docs/adr/README.md`](docs/adr/README.md) for the full convention and the historical old→new number map.
 
 ## Language
 
@@ -11,106 +38,6 @@ _Avoid_: macOS app, mobile app, the agent, the backend
 **Companion**:
 The product-facing concept of the proactive agent the user talks to. What the user thinks they are interacting with.
 _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the product), bot
-
-**Agent Runtime**:
-The deployed, always-alive, multi-tenant service that runs Companion behavior for every user. Lives at `services/agent-runtime/`. Hosts long-running runtime state, agent loops, cron, and heartbeats — must stay resident, which is why it deploys to a GCE VM rather than to a stateless platform.
-_Avoid_: Deep Agent (the service), OpenClaw Agent, v1-deepagent, per-user VM, serverless runtime
-
-**Multi-Tenant**:
-Shared compute, per-user isolation. One Agent Runtime process serves many users; each user has their own logical **Agent Instance** scoped by `user_id` alone. There is no second-level grouping (no org, team, workspace, or `tenant_id`) in v1 — the User is the tenant.
-_Avoid_: tenant_id, per-tenant schema, B2B isolation, per-user VM
-
-**Agent Instance**:
-The per-user logical record (id, config, conversation handle, status) inside the Agent Runtime. Created synchronously on first chat entry. Not a process, not a VM, not a container — a row.
-_Avoid_: per-user VM, runtime process, container
-
-**DeepAgents**:
-The LangChain TypeScript library (`langchain-ai/deepagentsjs`) the Agent Runtime is built on. Reference only — never a name for our service or product.
-_Avoid_: Deep Agent, the runtime, the agent
-
-**Mobile Client**:
-The iOS Expo application at `apps/mobile/`.
-_Avoid_: Expo, mobile surface, the mobile app
-
-**Desktop Client**:
-The macOS Tauri application at `apps/desktop/`. **Capture-only in v1** — runs ScreenPipe, produces Context Snapshots, manages capture state from the menu bar, and exposes Account/Settings via Neon Auth UI. **No chat UI in v1.** All conversation lives on the Mobile Client (and future Android Client).
-_Avoid_: Tauri, the desktop app, OpenClaw client, desktop chat surface
-
-**Control Plane**:
-The server-side authority at `services/control-plane/`. Owns identity, device registry, agent instance registry, pre-chat gate state, and routing. Sits **beside** the client↔runtime data path, never **on** it.
-_Avoid_: backend, mobile backend, desktop backend, API, proxy, gateway
-
-**Routing**:
-The Control Plane's job of telling each signed-in client *where* the Agent Runtime is and *who* the client is (URL + JWT). Routing happens **once, before** the data connection opens. The Control Plane is not in the path of any subsequent message. The `runtime_jwt` it returns is the client's **Neon Auth user JWT passed through** — the Control Plane does not mint a token with its own signing key. The Agent Runtime verifies it with the single shared Neon Auth JWKS verifier (`packages/providers`), the same one the Control Plane uses on its public endpoints.
-_Avoid_: proxying, forwarding, gatewaying, minting a Control-Plane-signed token
-
-**Protocol**:
-The shared WebSocket message contract every client speaks and the Agent Runtime understands. Defined once in `packages/protocol/` (Zod schemas). Imported by Mobile Client, Desktop Client, future Android Client, and Agent Runtime. **This is where client unification lives** — not in network topology.
-_Avoid_: client SDK, wire format, message format (those are implementation details under Protocol)
-
-**Context Snapshot**:
-A time-bounded, on-device-summarized record of what the user was doing during a 10-minute window. Produced by the Desktop Client. Delivered to the Agent Runtime as a `context_snapshot` event on the same WebSocket every client uses.
-_Avoid_: webhook payload, HTTP POST body, activity dump
-
-**Session End Marker**:
-A `session_end_marker` event the Desktop Client sends when a Capture Session ends (user toggle, quit, or crash). Distinct event type from `context_snapshot`.
-_Avoid_: final snapshot, end flag
-
-**Internal API**:
-The private HTTP surfaces the two services expose for server-to-server calls: the **Agent Runtime**'s (`POST /internal/sessions/start`, called by the Control Plane) and the **Control Plane**'s (`POST /internal/notifications/push`, called by the Agent Runtime). Bound only to a private network interface; not reachable from clients or the public internet. Each direction is protected by its **own** shared secret in `Authorization: Bearer` (two **Directional Secrets**, not one symmetric password) — so a leaked inbound secret on one service cannot be replayed against the other's door.
-_Avoid_: admin API, public API, management API, one symmetric shared secret
-
-**Session Start**:
-The single, synchronous, idempotent internal call from Control Plane → Agent Runtime when a user first enters chat. One call (`POST /internal/sessions/start`) creates the **Agent Instance** if missing and fires the **Conversation Start Trigger**, returning routing info (`agent_instance_id`, `ws_url`).
-_Avoid_: Agent Instance Creation + Conversation Start Trigger as separate calls, async provisioning
-
-**Conversation Start Trigger**:
-The one-time, idempotent-per-User signal that tells the Agent Runtime to begin the first conversation. Fires as part of **Session Start**, not as a separate call.
-_Avoid_: standalone endpoint, client-issued trigger, repeated triggers across reconnects
-
-**Conversation History**:
-The complete record of messages between a User and their Companion. Owned exclusively by the **Agent Runtime** in its Neon schema. The Mobile Client does not persist messages locally — it reads the authoritative timeline from the WebSocket reconnect snapshot on every cold open.
-_Avoid_: on-device chat store, local conversation cache, two-sided sync, mock messages in the app
-
-**Snapshot Store**:
-The Desktop Client's local SQLite record of every Context Snapshot it produced and sent. **Local-truth, not a cache** — the snapshot originates on-device and the local copy is the audit trail. Different role from chat history; do not generalize the two.
-_Avoid_: cache, mirror of server state, optional store
-
-**Post-Message-Back**:
-The Agent Runtime's primitive for **deliberately** interrupting a user with a message. Distinct from a regular reply. Invoked when the agent has decided "this is worth a push notification." The Runtime delivers the message into the **Conversation History** *and* — if the user is not connected — calls Control Plane's `POST /internal/notifications/push` to fire an APNs push. Every push notification in V1 originates from a Post-Message-Back; regular replies do not push.
-_Avoid_: auto-notify on reply, "agent replied while you were away" push, background sync
-
-**Cron**:
-The Agent Runtime's scheduled-trigger primitive. Allows the agent to decide on its own time ("ping the user at 9am tomorrow about the deadline"). A Cron firing may or may not result in **Post-Message-Back** — the agent decides whether the trigger is worth interrupting for.
-_Avoid_: scheduled notification, background reminder
-
-**Heartbeat**:
-The Agent Runtime's interval-trigger primitive (e.g., "every N minutes while a Capture Session is active, evaluate state"). Distinct from Cron because it is periodic and tied to liveness rather than absolute time. Like Cron, a Heartbeat tick may or may not produce a **Post-Message-Back**.
-_Avoid_: keep-alive ping, presence beacon (those are transport-layer concerns)
-
-**Push Notification**:
-An APNs (or later FCM) push delivered to a User's device(s). Always originates from **Post-Message-Back**. The Agent Runtime does not call APNs directly — it asks the Control Plane, which owns device tokens and Apple credentials.
-_Avoid_: in-app banner, toast, transport ping
-
-**Pre-Chat Gate**:
-A client-visible step the Control Plane requires (or offers) before a User enters chat. Gates fall into two kinds:
-- **Cross-Client Gate** — once completed on any device, the Control Plane records it and no other client of the same User re-prompts. Examples: **Identity Gate**, **Consent Primer**, **Sibling Client Invitation** (skip).
-- **Device-Local Gate** — must be completed on the specific device that requires it; cross-client completion does not satisfy it. Example: **Capture Permission Setup** (macOS Privacy Settings can only be granted on the Mac that records).
-
-The Control Plane's `GET /me` returns the next gate for the calling client based on `client_kind` and cross-client state. One endpoint, one model, per-client gate sequence.
-_Avoid_: per-screen onboarding flag, client-local gate state, separate endpoints per gate
-
-**Identity Gate**:
-The Google sign-in step (Apple sign-in later). **Cross-Client Gate**. Same Google account on phone and Mac resolves to the same User.
-
-**Consent Primer**:
-The one-time relationship-consent screen explaining memory, follow-ups, and user control. **Cross-Client Gate**. Asked once per User across all clients.
-
-**Capture Permission Setup**:
-The macOS Privacy Settings flow (Screen Recording, Microphone, Accessibility) required on the Mac before the Desktop Client can start a Capture Session. **Device-Local Gate**. Cannot be granted from the phone.
-
-**Sibling Client Invitation**:
-An optional client-offered prompt to install the other client (Mobile invites to install Desktop, and vice versa). **Cross-Client Gate** for *skip* state — skipping on either client records "skipped for now" and removes it from active gate flow on both. Re-offered later only when a contextual reason appears.
 
 ## Relationships
 

@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read `../../docs/CONTEXT.md` (monorepo-wide) and [`../CONTEXT.md`](../CONTEXT.md) (deployable-local: Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning) first.
+This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read [`../CONTEXT.md`](../CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md) (context map + shared product language) first.
 
 ## Bird's-eye Overview
 
@@ -42,7 +42,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Agent-facing deployable guide. Read it before changing this service.
 
 `CONTEXT.md`
-: Deployable-local vocabulary: Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning. Read alongside `docs/CONTEXT.md`.
+: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning. Read alongside the root `CONTEXT-MAP.md`.
 
 `README.md`
 : Operator/developer entrypoint for the deployable.
@@ -132,7 +132,7 @@ Mechanical checks should enforce:
 - No cross-deployable imports from `apps/**` or other `services/**`.
 - Provider-only access for auth, telemetry, feature flags, Neon clients, and Control Plane clients.
 - Protocol consistency through `packages/protocol`.
-- Forbidden vocabulary from `../../docs/CONTEXT.md` avoid lists.
+- Forbidden vocabulary from `../CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists.
 
 ## Boundaries
 

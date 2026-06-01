@@ -1,8 +1,40 @@
 # Agent Runtime
 
-The Agent Runtime is the always-alive, multi-tenant service that runs Companion behavior for every User. For monorepo-wide vocabulary, read `docs/CONTEXT.md` first. This file captures terms and decisions specific to the Runtime deployable.
+The Agent Runtime is the always-alive, multi-tenant service that runs Companion behavior for every User. For monorepo-wide vocabulary, read the root `CONTEXT-MAP.md` first. This file captures terms and decisions specific to the Runtime deployable.
 
 ## Language
+
+**Agent Runtime**:
+The deployed, always-alive, multi-tenant service that runs Companion behavior for every user. Lives at `services/agent-runtime/`. Hosts long-running runtime state, agent loops, cron, and heartbeats — must stay resident, which is why it deploys to a GCE VM rather than to a stateless platform.
+_Avoid_: Deep Agent (the service), OpenClaw Agent, v1-deepagent, per-user VM, serverless runtime
+
+**Multi-Tenant**:
+Shared compute, per-user isolation. One Agent Runtime process serves many users; each user has their own logical **Agent Instance** scoped by `user_id` alone. There is no second-level grouping (no org, team, workspace, or `tenant_id`) in v1 — the User is the tenant.
+_Avoid_: tenant_id, per-tenant schema, B2B isolation, per-user VM
+
+**Agent Instance**:
+The per-user logical record (id, config, conversation handle, status) inside the Agent Runtime. Created synchronously on first chat entry. Not a process, not a VM, not a container — a row.
+_Avoid_: per-user VM, runtime process, container
+
+**DeepAgents**:
+The LangChain TypeScript library (`langchain-ai/deepagentsjs`) the Agent Runtime is built on. Reference only — never a name for our service or product.
+_Avoid_: Deep Agent, the runtime, the agent
+
+**Conversation History**:
+The complete record of messages between a User and their Companion. Owned exclusively by the **Agent Runtime** in its Neon schema. The Mobile Client does not persist messages locally — it reads the authoritative timeline from the WebSocket reconnect snapshot on every cold open.
+_Avoid_: on-device chat store, local conversation cache, two-sided sync, mock messages in the app
+
+**Post-Message-Back**:
+The Agent Runtime's primitive for **deliberately** interrupting a user with a message. Distinct from a regular reply. Invoked when the agent has decided "this is worth a push notification." The Runtime delivers the message into the **Conversation History** *and* — if the user is not connected — calls Control Plane's `POST /internal/notifications/push` to fire an APNs push. Every push notification in V1 originates from a Post-Message-Back; regular replies do not push.
+_Avoid_: auto-notify on reply, "agent replied while you were away" push, background sync
+
+**Cron**:
+The Agent Runtime's scheduled-trigger primitive. Allows the agent to decide on its own time ("ping the user at 9am tomorrow about the deadline"). A Cron firing may or may not result in **Post-Message-Back** — the agent decides whether the trigger is worth interrupting for.
+_Avoid_: scheduled notification, background reminder
+
+**Heartbeat**:
+The Agent Runtime's interval-trigger primitive (e.g., "every N minutes while a Capture Session is active, evaluate state"). Distinct from Cron because it is periodic and tied to liveness rather than absolute time. Like Cron, a Heartbeat tick may or may not produce a **Post-Message-Back**.
+_Avoid_: keep-alive ping, presence beacon (those are transport-layer concerns)
 
 **Persistence Adapter**:
 The thin repo-owned wrapper that the `runtime/` and `memory/` domains use to save and load DeepAgents checkpoints. Wraps LangGraph's Postgres checkpoint store internally so that shell code never imports LangGraph checkpoint types directly.
@@ -21,7 +53,7 @@ _Avoid_: state snapshot, agent state (ambiguous with Agent Instance status)
 ## Flagged ambiguities
 
 - "checkpoint" vs "snapshot" — resolved: **Checkpoint** is LangGraph turn state; **Context Snapshot** is the Desktop's screen-capture summary event; **Session Snapshot** is the reconnect history projection. Three unrelated concepts that all once read as "snapshot."
-- `hello_ok.session_snapshot` was typed `z.unknown()` in `packages/protocol` — resolved to the **Session Snapshot** shape above and implemented as explicit `session_message`/`session_snapshot` Zod schemas (see ADR-0037).
+- `hello_ok.session_snapshot` was typed `z.unknown()` in `packages/protocol` — resolved to the **Session Snapshot** shape above and implemented as explicit `session_message`/`session_snapshot` Zod schemas (see ADR-0006).
 
 **Bundle Path Set**:
 The canonical list of VFS paths the `bundles/` domain knows to resolve at session start. Defines *where* the shell looks, not *what is inside*. Bundle paths resolve overlay-first (user overlay wins over the pinned bundle default). Content of each path is a product concern seeded separately and evolves independently of the shell build.
@@ -72,6 +104,6 @@ Decided 2026-05-29. The VFS backend splits the path set into two buckets by what
 Personalization in v1 expresses through the knowledge layer plus **Cron** (scheduled actions), not by the agent editing its own procedure files. Worked example: the agent learns "user takes a pill ~9pm" → writes the fact to `USER.md`/`MEMORY.md`, creates a Cron job to fire at 9pm; `HEARTBEAT.md` is read (never written) to decide whether a given tick is worth a Post-Message-Back.
 
 **Bundle version is pinned per WebSocket connection**
-Decided 2026-05-29. The Pinned Bundle Version is resolved once at `hello_ok` (from the then-latest version) and held fixed for the connection's lifetime; every turn on that connection resolves Bundle Defaults against it. A reconnect is the migration boundary — it re-resolves to whatever is latest at that moment. The resolved version is written to each `runtime_turns` row so "which bundle produced this behavior?" is always answerable (matters for the Langfuse eval loop). This honors ADR-0006's "migrate at reconnect, never mid-turn" boundary. Alternatives rejected: per-turn pinning (risks behavioral drift within one conversation) and explicit `agent_instance`-level migration jobs (more control than v1 needs; can strand users on stale bundles).
+Decided 2026-05-29. The Pinned Bundle Version is resolved once at `hello_ok` (from the then-latest version) and held fixed for the connection's lifetime; every turn on that connection resolves Bundle Defaults against it. A reconnect is the migration boundary — it re-resolves to whatever is latest at that moment. The resolved version is written to each `runtime_turns` row so "which bundle produced this behavior?" is always answerable (matters for the Langfuse eval loop). This honors ADR-0004's "migrate at reconnect, never mid-turn" boundary. Alternatives rejected: per-turn pinning (risks behavioral drift within one conversation) and explicit `agent_instance`-level migration jobs (more control than v1 needs; can strand users on stale bundles).
 
 **Agent-driven behavioral self-personalization is deferred to its own ADR.** Letting the agent overlay procedure files (`AGENTS.md`/`HEARTBEAT.md`) is a hard, near-irreversible mechanism entangling override-vs-augment semantics, base-version migration, and the safety floor. It must not be a silent Phase 0 default. When built, it should be **augment** (base always loaded, learned layer composed on top) rather than **replace** (overlay shadows base), so central bundle improvements still reach personalized users.

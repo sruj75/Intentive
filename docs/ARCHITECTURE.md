@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the **structural shape** of the Intentive monorepo. For domain vocabulary, see [CONTEXT.md](CONTEXT.md). For specific decisions and their rationale, see [adr/](adr/).
+This document describes the **structural shape** of the Intentive monorepo. For domain vocabulary, see the root [CONTEXT-MAP.md](../CONTEXT-MAP.md) and each deployable's own `CONTEXT.md`. For specific decisions and their rationale, see [adr/](adr/).
 
 Two ideas govern everything below:
 
@@ -54,7 +54,7 @@ Each business domain inside every deployable is organized into a fixed set of la
 
 ## What counts as a "business domain"
 
-A business domain is a vertical slice of product capability inside one deployable. It is **not** a deployable, and it is not a technical layer. Each domain is a cohesive concept the [CONTEXT.md](CONTEXT.md) vocabulary already names.
+A business domain is a vertical slice of product capability inside one deployable. It is **not** a deployable, and it is not a technical layer. Each domain is a cohesive concept the [CONTEXT-MAP.md](../CONTEXT-MAP.md) vocabulary (and the owning deployable's `CONTEXT.md`) already names.
 
 **Mobile Client domains** (`apps/mobile/src/domains/`):
 - `auth` — Identity Gate, session, JWT handling
@@ -167,6 +167,8 @@ intentive/
 ├── apps/
 │   ├── mobile/                          ← was Expo
 │   │   ├── AGENTS.md                    ← ~100 lines, table of contents only
+│   │   ├── CONTEXT.md                   ← Mobile Client vocabulary
+│   │   ├── docs/adr/                    ← Mobile Client decisions
 │   │   └── src/domains/
 │   │       ├── auth/
 │   │       │   ├── types/
@@ -181,6 +183,8 @@ intentive/
 │   │       └── account/{...}/
 │   └── desktop/                         ← was Tauri
 │       ├── AGENTS.md
+│       ├── CONTEXT.md                   ← Desktop Client vocabulary
+│       ├── docs/adr/                    ← Desktop Client decisions
 │       ├── src/domains/                 ← TS/React side (App.tsx/main.tsx are the exempt composition root)
 │       │   ├── auth/{service}/
 │       │   └── onboarding/{ui}/
@@ -193,6 +197,8 @@ intentive/
 ├── services/
 │   ├── control-plane/
 │   │   ├── AGENTS.md
+│   │   ├── CONTEXT.md                   ← Control Plane vocabulary
+│   │   ├── docs/adr/                    ← Control Plane decisions
 │   │   └── src/domains/
 │   │       ├── identity/{...}/
 │   │       ├── devices/{...}/
@@ -202,6 +208,8 @@ intentive/
 │   │       └── notifications/{...}/
 │   └── agent-runtime/                   ← was Deep Agent
 │       ├── AGENTS.md
+│       ├── CONTEXT.md                   ← Agent Runtime vocabulary
+│       ├── docs/adr/                    ← Agent Runtime decisions
 │       └── src/domains/
 │           ├── gateway/{...}/
 │           ├── sessions/{...}/
@@ -213,18 +221,19 @@ intentive/
 │           ├── bundles/{...}/
 │           └── internal/{...}/
 ├── packages/
+│   ├── CONTEXT.md                       ← Shared vocabulary (Protocol, Internal API, ...)
 │   ├── protocol/                        ← shared WebSocket schemas
 │   ├── api-contract/                    ← shared Control Plane HTTP schemas
 │   ├── domain-types/                    ← shared domain shapes
 │   └── providers/                       ← shared cross-cutting clients
 ├── docs/
-│   ├── CONTEXT.md                       ← ubiquitous language
 │   ├── ARCHITECTURE.md                  ← this file
-│   ├── adr/                             ← architectural decision records
+│   ├── adr/                             ← system-wide architectural decision records
 │   └── plans/                           ← versioned execution plans
 ├── tools/
 │   └── linters/                         ← custom mechanical enforcement
 ├── .github/workflows/                   ← per-deployable CI
+├── CONTEXT-MAP.md                       ← context map + shared product language
 ├── AGENTS.md                            ← root map, ~100 lines, pointers only
 ├── pnpm-workspace.yaml
 ├── turbo.json

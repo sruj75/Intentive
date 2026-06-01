@@ -45,4 +45,4 @@ session_snapshot = {
 - Live events (transport of a single moment — may grow delivery acks, sequence numbers, streaming chunks) and history rows (rendered record — may grow edited flags, reactions, read state) evolve on independent axes without coupling.
 - A third "message" shape exists, justified because it hides a distinct design decision (how history renders) behind a simple, zero-branch render contract.
 - `before_cursor` reserves room for backward pagination without committing to an infinite-scroll implementation in v1.
-- Extends ADR-0035 (single live protocol shape); the snapshot schema is the canonical, strict shape for `hello_ok.session_snapshot`.
+- Extends monorepo ADR-0003 (single live protocol shape); the snapshot schema is the canonical, strict shape for `hello_ok.session_snapshot`.

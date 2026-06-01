@@ -54,7 +54,7 @@ Request/response schemas are owned by `packages/api-contract/`; the Control Plan
 
 ## Further Notes
 
-- ADR-0002 records Control Plane as source of truth. ADR-0031 records the shared Control Plane for Client Apps. ADR-0016/0030 cover Neon Auth.
+- Control Plane ADR-0001 records Control Plane as source of truth. mobile ADR-0007 records the shared Control Plane for Client Apps. desktop ADR-0010 and mobile ADR-0006 cover Neon Auth.
 - Endpoints and domains are described in `services/control-plane/README.md` and `services/control-plane/AGENTS.md`.
 - Cross-cutting contract and Providers work (which this tracker depends on) lives in `.scratch/shared/contracts-v1/`.
 

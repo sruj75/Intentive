@@ -1,6 +1,6 @@
 # @intentive/api-contract Architecture
 
-This is the package-local architecture contract for `packages/api-contract/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../../docs/CONTEXT.md` → **Control Plane** and **Internal API**.
+This is the package-local architecture contract for `packages/api-contract/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md` → **Internal API** (and the Control Plane's own `../../services/control-plane/CONTEXT.md` → **Control Plane**).
 
 ## Purpose
 
@@ -45,4 +45,4 @@ Two API surfaces:
 2. Run monorepo typecheck — the Control Plane implementation and every Client/Runtime caller are flagged.
 3. Implement the change in `services/control-plane` and adjust callers.
 4. Keep public vs internal separation intact; a new internal endpoint must stay off the public surface.
-5. Check endpoint and field names against `../../docs/CONTEXT.md` vocabulary before merging.
+5. Check endpoint and field names against `../CONTEXT.md` vocabulary before merging.

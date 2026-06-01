@@ -1,6 +1,6 @@
 # Control Plane Architecture
 
-This document is the deployable-local architecture contract for `services/control-plane/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read `../../docs/CONTEXT.md` first. For agent-facing working rules, read `../AGENTS.md`.
+This document is the deployable-local architecture contract for `services/control-plane/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read [`../CONTEXT.md`](../CONTEXT.md) (Control Plane) and the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md) first. For agent-facing working rules, read `../AGENTS.md`.
 
 ## Bird's-eye Overview
 
@@ -26,7 +26,7 @@ It sits **beside** the client↔runtime data path, never **on** it. It tells eac
                                           POST /internal/notifications/push ◄── Agent Runtime
 ```
 
-The Control Plane is the single writer of account truth. Clients render this state but never decide it locally (ADR-0002). The Agent Runtime owns behavior and Conversation History, not account truth.
+The Control Plane is the single writer of account truth. Clients render this state but never decide it locally (ADR-0001). The Agent Runtime owns behavior and Conversation History, not account truth.
 
 ## Codemap
 
@@ -110,7 +110,7 @@ Mechanical checks should enforce:
 - No cross-deployable imports from `apps/**` or other `services/**`.
 - Provider-only access for auth, telemetry, feature flags, Neon clients, and APNs clients.
 - HTTP-contract consistency through `packages/api-contract`.
-- Forbidden vocabulary from `../../docs/CONTEXT.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
+- Forbidden vocabulary from `../CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
 
 ## Boundaries
 

@@ -1,4 +1,4 @@
-# ADR 0035: Single Live Protocol Shape (v1)
+# ADR 0003: Single Live Protocol Shape (v1)
 
 ## Status
 Accepted

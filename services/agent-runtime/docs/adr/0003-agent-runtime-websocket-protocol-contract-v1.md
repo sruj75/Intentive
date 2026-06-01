@@ -1,7 +1,7 @@
-> **Status: Amended by [ADR-0035](0035-single-live-protocol-shape-v1.md).**
+> **Status: Amended by monorepo [ADR-0003](../../../../docs/adr/0003-single-live-protocol-shape-v1.md).**
 > v1 now uses a single live protocol shape with strict schemas and no `min_protocol`/`max_protocol` negotiation fields.
 
-# ADR 0005: WebSocket Protocol Contract (v1)
+# ADR 0003: WebSocket Protocol Contract (v1)
 
 ## Status
 Accepted (amended)
@@ -33,7 +33,7 @@ Mandatory:
 - Auth failure returns structured `auth_failed` and closes the socket.
 - Invalid connect shape returns structured `invalid_connect`.
 - Unsupported protocol shape returns structured `protocol_unsupported`.
-- Runtime failures are emitted in the dedicated `runtime_error` envelope (see ADR-0035).
+- Runtime failures are emitted in the dedicated `runtime_error` envelope (see monorepo ADR-0003).
 
 ### 4) Reconnect and consistency
 

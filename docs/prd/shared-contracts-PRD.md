@@ -34,12 +34,12 @@ Treat the shared packages as first-class, planned work in the `.scratch/shared/`
 ## Out of Scope
 
 - Adding new Protocol events or endpoints beyond what v1 Clients/Control Plane/Runtime already require.
-- External channel adapters (Discord/SMS/etc.) — deferred with the Agent Runtime's `channels` decision (ADR-0034).
+- External channel adapters (Discord/SMS/etc.) — deferred with the Agent Runtime's `channels` decision (monorepo ADR-0002).
 - Replacing the telemetry/flags backend vendor; the interface is what is locked, not the vendor.
 
 ## Further Notes
 
-- ADR-0005 records the WebSocket Protocol contract. ADR-0001 records the unified monorepo foundation.
+- Agent Runtime ADR-0003 records the WebSocket Protocol contract. monorepo ADR-0001 records the unified monorepo foundation.
 - Agent Runtime #01 ("Resolve Runtime Contracts Before Code") and Control Plane #01 both depend on this tracker's #01 landing first.
 - Inviolable rules and package ownership are documented in the root `AGENTS.md`.
 

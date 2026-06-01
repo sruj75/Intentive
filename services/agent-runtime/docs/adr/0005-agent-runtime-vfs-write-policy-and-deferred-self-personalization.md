@@ -10,7 +10,7 @@ accepted
 
 ## Context
 
-ADR-0006 established the DB-backed VFS overlay model (immutable versioned Bundle Defaults + per-`(user_id, path)` User Overlays, overlay-first read resolution) but deliberately left the *write* policy open: it said "immutable bundle defaults are not mutated in place" without specifying what happens when DeepAgents calls `write`/`edit` on an immutable bundle path.
+ADR-0004 established the DB-backed VFS overlay model (immutable versioned Bundle Defaults + per-`(user_id, path)` User Overlays, overlay-first read resolution) but deliberately left the *write* policy open: it said "immutable bundle defaults are not mutated in place" without specifying what happens when DeepAgents calls `write`/`edit` on an immutable bundle path.
 
 The v1 Bundle Path Set is six paths: `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `USER.md`, `MEMORY.md`. These fall into two kinds:
 
@@ -38,4 +38,4 @@ The VFS backend splits the path set by what each file *is*:
 
 - The agent cannot rewrite its own reasoning procedure in v1; personalization is confined to the memory layer + Cron, which is more powerful and keeps the product tunable.
 - **Agent-driven behavioral self-personalization is deferred to its own future ADR.** Letting the agent overlay procedure files entangles override-vs-augment semantics, base-version migration, and the safety floor — too hard and too irreversible to adopt as a silent default. When built, it should be **augment** (Bundle Default always loaded, learned layer composed on top) rather than **replace** (overlay shadows default), so central bundle improvements still reach personalized users.
-- Refines ADR-0006; the overlay-first read contract there is unchanged (it only ever applies to paths that have both a default and an overlay).
+- Refines ADR-0004; the overlay-first read contract there is unchanged (it only ever applies to paths that have both a default and an overlay).

@@ -1,6 +1,7 @@
 /**
- * gateway domain scaffold (Agent Runtime). Placeholder so the layered domain
- * tree is tracked by git and covered by typecheck + architecture lint. Replace
- * with real `types` and add sibling layers as the domain is implemented.
+ * Entry domain scaffold (src/domains/gateway/, Agent Runtime). Placeholder so
+ * the layered domain tree is tracked by git and covered by typecheck +
+ * architecture lint. Replace with real `types` and add sibling layers as the
+ * domain is implemented.
  */
-export const agentRuntimeGatewayDomainScaffold = true;
+export const agentRuntimeEntryDomainScaffold = true;

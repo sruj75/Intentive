@@ -3,7 +3,8 @@
 iOS Expo client. The chat surface for the **Companion**. Capture concerns and Mac-specific work live in `apps/desktop/`.
 
 **Always read first:**
-- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary (Companion, Pre-Chat Gate, Post-Message-Back, etc.)
+- [`CONTEXT.md`](CONTEXT.md) — Mobile Client vocabulary
+- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language (Companion, Pre-Chat Gate, Post-Message-Back, etc.)
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule, why this deployable is structured the way it is
 
 ## Role in V1

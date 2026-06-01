@@ -1,7 +1,7 @@
 # ADR 0004: Database-Backed VFS Overlay Model for Multi-Tenant Intentive Runtime (v1)
 
 ## Status
-Accepted — write policy refined by ADR-0036; bundle-version pin boundary clarified by the amendment below.
+Accepted — write policy refined by ADR-0005; bundle-version pin boundary clarified by the amendment below.
 
 ## Date
 2026-05-25

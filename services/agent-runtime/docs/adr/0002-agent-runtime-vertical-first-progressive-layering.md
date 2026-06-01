@@ -1,4 +1,4 @@
-> **Status: Amended by [ADR-0001](0001-unified-monorepo-foundation.md).**
+> **Status: Amended by monorepo [ADR-0001](../../../../docs/adr/0001-unified-monorepo-foundation.md).**
 > The vertical-first organization is preserved. The full layered domain rule (`types → config → repo → service → runtime → ui` + cross-cutting via `providers/`) now applies inside every vertical domain across the whole monorepo. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the canonical rule and the lint enforcement.
 
 # ADR 0002: Vertical-First Architecture with Progressive Layering

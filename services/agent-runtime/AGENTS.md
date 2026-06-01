@@ -3,8 +3,8 @@
 The always-alive, multi-tenant service that runs **Companion** behavior. Built on **DeepAgents** (LangChain TypeScript: `langchain-ai/deepagentsjs`).
 
 **Always read first:**
-- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — monorepo-wide vocabulary
-- [`CONTEXT.md`](CONTEXT.md) — deployable-local vocabulary (Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning)
+- [`CONTEXT.md`](CONTEXT.md) — Agent Runtime vocabulary (Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning)
+- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
 - [`reference/AGENTS.md`](reference/AGENTS.md) — OpenClaw / Hermes pattern reference (start at topic cards, not raw `*-llms.txt` packs)
 

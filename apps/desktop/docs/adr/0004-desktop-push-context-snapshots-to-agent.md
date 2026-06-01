@@ -1,4 +1,4 @@
-> **Status: Superseded by [ADR-0001](0001-unified-monorepo-foundation.md).**
+> **Status: Superseded by monorepo [ADR-0001](../../../../docs/adr/0001-unified-monorepo-foundation.md).**
 > The delivery mechanism (HTTPS POST to a per-user agent webhook) is replaced by `context_snapshot` events sent over the unified WebSocket Protocol. The principle of *push, not pull* still holds. The naming of "OpenClaw Agent" is retired in favor of **Agent Runtime** per the unified vocabulary.
 
 # Push Context Snapshots to the OpenClaw Agent

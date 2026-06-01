@@ -125,7 +125,7 @@ The Runtime will expose public WebSocket ingress for first-party Clients and a p
 
 ## Further Notes
 
-- ADR-0034 records the no-standalone-channels decision.
+- monorepo ADR-0002 records the no-standalone-channels decision.
 - The implementation plan lives in `docs/plans/agent-runtime-v1-implementation-plan.md`.
 - The Runtime should continue to use OpenClaw as a behavioral shell reference, but only where the pattern fits Intentive's product boundary.
 - The first implementation issues should be thin tracer-bullet slices, not horizontal layer-only tasks.

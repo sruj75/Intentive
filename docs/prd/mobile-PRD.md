@@ -1,6 +1,6 @@
 # Intentive Mobile Client V1 PRD
 
-> **Canonical vocabulary:** [`CONTEXT.md`](../CONTEXT.md). This PRD is the parent scope for related GitHub issues; when they disagree, CONTEXT wins.
+> **Canonical vocabulary:** the Mobile Client [`CONTEXT.md`](../../apps/mobile/CONTEXT.md) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md). This PRD is the parent scope for related GitHub issues; when they disagree, CONTEXT wins.
 
 ## Problem Statement
 

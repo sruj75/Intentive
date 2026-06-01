@@ -2,7 +2,7 @@
 
 The always-alive, multi-tenant service at `services/agent-runtime/` that runs Companion behavior for every user. Built on [LangChain DeepAgents (TypeScript)](https://github.com/langchain-ai/deepagentsjs) with an OpenClaw-style outer shell (gateway, sessions, channels, cron, heartbeat, workspace). Deploys to a GCE VM because it hosts long-running state and cannot run on stateless platforms.
 
-For vocabulary, see [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md). For boundaries and layer rule, see [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
+For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md)). For boundaries and layer rule, see [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
 
 ## Reference patterns
 

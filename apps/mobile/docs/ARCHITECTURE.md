@@ -1,6 +1,6 @@
 # Mobile Client Architecture
 
-For canonical vocabulary, see [`docs/CONTEXT.md`](../../docs/CONTEXT.md) at the repo root. For the cross-deployable architecture and layer rule, see [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). This file describes Mobile Client-specific structure only.
+For Mobile Client vocabulary, see [`CONTEXT.md`](../CONTEXT.md); for the context map and shared product language, see the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md). For the cross-deployable architecture and layer rule, see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md). This file describes Mobile Client-specific structure only.
 
 ## Bird's-eye Overview
 
@@ -69,7 +69,7 @@ Agent State must be capability-honest. The UI must not imply the Companion read,
 
 `app/` may import route screens only. Route files compose domain UI but do not contain business logic, persistence, runtime calls, or reusable components.
 
-UI code may call Services or Runtime facades, not provider implementations directly. Layer direction (`types → config → repo → service → runtime → ui`) is enforced by the architecture lint rules — see [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
+UI code may call Services or Runtime facades, not provider implementations directly. Layer direction (`types → config → repo → service → runtime → ui`) is enforced by the architecture lint rules — see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md).
 
 Repo code owns local-storage details (secure storage of auth tokens, settings, telemetry buffer). **No chat-message repo exists** — Conversation History is read from the WebSocket reconnect snapshot, not from a local DB.
 
@@ -95,7 +95,7 @@ Required contract tests:
 - Composer layout: keyboard safety, safe area, scroll inset correctness.
 - Permission behavior: notification prompt fires on first chat entry, not at launch.
 
-Mechanical checks (already wired at the repo root — see [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)):
+Mechanical checks (already wired at the repo root — see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md)):
 
 - Layer-direction lint (`types → config → repo → service → runtime → ui`).
 - No-cross-deployable lint (no relative imports into `apps/desktop/` or `services/`).

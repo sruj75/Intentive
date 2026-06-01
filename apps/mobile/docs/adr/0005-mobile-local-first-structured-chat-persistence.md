@@ -1,4 +1,4 @@
-> **Status: Superseded by [ADR-0001](0001-unified-monorepo-foundation.md).**
+> **Status: Superseded by monorepo [ADR-0001](../../../../docs/adr/0001-unified-monorepo-foundation.md).**
 > On-device chat persistence was scaffolding for building the Mobile UI before the Agent Runtime existed. With the unified monorepo and the Runtime in scope, Conversation History is server-truth and the Mobile Client renders the authoritative timeline from the WebSocket reconnect snapshot. No on-device message store, not even as a cache, until measured latency requires one.
 
 # Local-First Structured Chat Persistence

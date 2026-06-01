@@ -89,8 +89,8 @@ All user-owned Runtime rows are scoped by `user_id`. The User is the tenant in v
 
 ## Phase 0: Resolve contracts before code
 
-1. Accept ADR-0034: no standalone `channels` domain in v1.
-2. Verify ADR-0006 and `docs/CONTEXT.md` agree that overlays are scoped by `user_id` rather than `tenant_id`.
+1. Accept monorepo ADR-0002: no standalone `channels` domain in v1.
+2. Verify Agent Runtime ADR-0004 and `docs/CONTEXT.md` agree that overlays are scoped by `user_id` rather than `tenant_id`.
 3. Confirm `packages/protocol` event names and handshake match the current `docs/CONTEXT.md` vocabulary.
 4. Decide whether the initial DeepAgents persistence adapter is direct Postgres, LangGraph store over Postgres, or a thin repo-owned adapter that can be swapped later.
 5. Decide the first set of bundle documents for v1: likely `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `USER.md`, and `MEMORY.md`.
@@ -269,4 +269,3 @@ Exit criteria:
 - LangChain Deep Agents backends: [https://docs.langchain.com/oss/javascript/deepagents/backends](https://docs.langchain.com/oss/javascript/deepagents/backends)
 - LangChain Deep Agents memory: [https://docs.langchain.com/oss/javascript/deepagents/memory](https://docs.langchain.com/oss/javascript/deepagents/memory)
 - Build Your Own OpenClaw reference: [https://github.com/czl9707/build-your-own-openclaw/tree/main](https://github.com/czl9707/build-your-own-openclaw/tree/main)
-
