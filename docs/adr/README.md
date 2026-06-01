@@ -51,6 +51,7 @@ This directory is the canonical home for all ADRs in the Intentive monorepo. ADR
 | 0035 | monorepo | Single live protocol shape v1 | accepted |
 | 0036 | agent-runtime | VFS write policy: immutable procedure files, writable knowledge files | accepted |
 | 0037 | agent-runtime | Session Snapshot as a separate history projection | accepted |
+| 0038 | control-plane | Runtime JWT is the pass-through Neon Auth token | accepted |
 
 ## Origin → unified-number map
 
@@ -65,7 +66,7 @@ For anyone returning from one of the four old repos, the mapping is:
 
 ## Writing a new ADR
 
-1. Use the next sequential number (currently the next is `0038`).
+1. Use the next sequential number (currently the next is `0039`).
 2. Filename: `NNNN-<slug>.md`. No origin prefix for new ADRs — those are only for historical imports.
 3. Format: follow the `matt-pocock-engineering:grill-with-docs` ADR template guidance — short is fine, single paragraph ADRs are allowed when the decision is simple.
 4. Only write an ADR when all three are true: hard to reverse, surprising without context, the result of a real trade-off.

@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@intentive/api-contract": "workspace:*",
-    "@intentive/providers": "workspace:*"
+    "@intentive/providers": "workspace:*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.5.0"
   }
 }

@@ -128,8 +128,9 @@ Agent Runtime boundary:
 
 Neon boundary:
 
-- The Control Plane owns identity, device, gate, and Agent Instance Registry tables in its own schema and role.
+- The Control Plane owns identity, device, gate, and Agent Instance Registry tables in its own schema (`control_plane`) reached through its own Postgres role (`control_plane_app`). The role holds privileges **only** on the `control_plane` schema; it has no grants on the Agent Runtime's schema, and vice versa. There are no tables shared across the two services.
 - It never reads or writes the Runtime's Conversation History, runtime events, VFS overlays, or scheduler state.
+- Migrations live under `services/control-plane/migrations/` and create their tables inside the `control_plane` schema. The schema namespace and the `control_plane_app` role + grants are provisioned in #50 (which holds Neon admin access); each behavior issue adds only its own tables. No migration runs as part of #17.
 
 Deployment boundary:
 
