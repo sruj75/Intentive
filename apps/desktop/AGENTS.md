@@ -32,7 +32,7 @@ Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/provider
 
 ## Working docs
 
-- [`../../.scratch/v1-backlog/prds/desktop-PRD.md`](../../.scratch/v1-backlog/prds/desktop-PRD.md) — Desktop PRD in the root unified backlog
+- [`../../docs/prd/desktop-PRD.md`](../../docs/prd/desktop-PRD.md) — Desktop PRD
 - [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)

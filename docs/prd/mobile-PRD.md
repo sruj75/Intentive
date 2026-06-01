@@ -1,6 +1,6 @@
 # Intentive Mobile Client V1 PRD
 
-> **Canonical vocabulary:** [`docs/CONTEXT.md`](../../../docs/CONTEXT.md) at the repo root. This PRD is the parent scope for open issues in `issues/`; when they disagree, CONTEXT wins.
+> **Canonical vocabulary:** [`CONTEXT.md`](../CONTEXT.md). This PRD is the parent scope for related GitHub issues; when they disagree, CONTEXT wins.
 
 ## Problem Statement
 
@@ -106,6 +106,6 @@ MVP 1 spikes `assistant-ui/native` as a replaceable Chat Primitive Engine behind
 
 ## Further Notes
 
-- Open issues: `issues/01`–`11` implement this PRD in slices.
+- Open issues: see [`ISSUE-BOARD.md`](../ISSUE-BOARD.md) and [GitHub](https://github.com/sruj75/Intentive/issues).
 - Build order (current): shell/resolver → identity → consent → sibling invitation → assistant-ui spike → **Protocol** client → reconnect hydration → Liquid Glass shell → account → continuity UI → E2E polish.
 - First ship should feel simple: one chat home, one composer, one quiet account affordance, native gates that get out of the way.

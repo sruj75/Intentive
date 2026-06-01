@@ -39,7 +39,7 @@ The Control Plane is the single writer of account truth. Clients render this sta
 `docs/ARCHITECTURE.md`
 : This file. Control-Plane-local architecture contract and map.
 
-`.scratch/v1-backlog/prds/control-plane-PRD.md`
+[`docs/prd/control-plane-PRD.md`](../../../docs/prd/control-plane-PRD.md)
 : Control Plane PRD. Issues `#17`, `#23`, `#26`, `#27`, `#30`, `#49`, `#50` on [GitHub](https://github.com/sruj75/Intentive/issues).
 
 `src/index.ts`

@@ -1,6 +1,6 @@
 # Intentive Desktop Client V1 PRD
 
-> **Canonical vocabulary:** [`docs/CONTEXT.md`](../../../docs/CONTEXT.md) at the repo root. This PRD is the parent scope for open issues in `issues/`; when they disagree, CONTEXT wins.
+> **Canonical vocabulary:** [`CONTEXT.md`](../CONTEXT.md). This PRD is the parent scope for related GitHub issues; when they disagree, CONTEXT wins.
 
 ## Clarification (aligned May 2026)
 
@@ -98,6 +98,6 @@ The product stays quiet: start/stop capture from the menu bar; account in Settin
 
 ## Further Notes
 
-- Glossary: [`docs/CONTEXT.md`](../../../docs/CONTEXT.md) — **Agent Runtime**, **Protocol**, **Routing**, **Snapshot Store**, **Context Snapshot**, **Capture Session**, etc.
+- Glossary: [`CONTEXT.md`](../CONTEXT.md) — **Agent Runtime**, **Protocol**, **Routing**, **Snapshot Store**, **Context Snapshot**, **Capture Session**, etc.
 - Follows repo ADRs: Tauri, ScreenPipe wrap, menu bar-only UI, local snapshot store, at-most-once emit, on-device summarization.
 - Open issues implement remaining slices (#7–#16 among open work); closed issues record shipped history unchanged.

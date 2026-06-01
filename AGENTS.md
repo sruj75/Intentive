@@ -6,7 +6,7 @@ This is a table of contents, not an encyclopedia. Read [`docs/CONTEXT.md`](docs/
 
 ### Issue tracker
 
-Issues are tracked on [GitHub](https://github.com/sruj75/Intentive/issues) (#7–#56 for the imported v1 backlog; PRDs at `.scratch/v1-backlog/prds/`). See `docs/agents/issue-tracker.md`.
+Issues are tracked on [GitHub](https://github.com/sruj75/Intentive/issues) (#7–#56 for the v1 backlog; PRDs at `docs/prd/`; board at [`docs/ISSUE-BOARD.md`](docs/ISSUE-BOARD.md)). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -24,6 +24,7 @@ This repo is configured as single-context: read `docs/CONTEXT.md` and relevant d
 | Layer rule, deployable topology, directory layout | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Verification commands and test ownership | [`docs/TESTING.md`](docs/TESTING.md) |
 | Why a specific decision was made | [`docs/adr/`](docs/adr/) |
+| Sequenced v1 backlog and dependencies | [`docs/ISSUE-BOARD.md`](docs/ISSUE-BOARD.md) |
 | Active or completed multi-step plans | each deployable's own `docs/plans/` |
 | Per-deployable working rules | each deployable's own `AGENTS.md` |
 

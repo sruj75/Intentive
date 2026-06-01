@@ -1,4 +1,4 @@
-# Mission Control
+# Issue Board
 
 > Issue numbers are GitHub issue numbers. Click Issue titles to open on GitHub.
 
@@ -6,7 +6,7 @@
 
 - Date: 2026-05-28
 - Repo: `/Users/srujanu/Desktop/Hey Intentive`
-- Tracker root: [GitHub Issues](https://github.com/sruj75/Intentive/issues) on `sruj75/Intentive` (imported v1 backlog #7–#56); PRDs at `.scratch/v1-backlog/prds/`
+- Tracker root: [GitHub Issues](https://github.com/sruj75/Intentive/issues) on `sruj75/Intentive` (v1 backlog #7–#56); PRDs at [`docs/prd/`](prd/)
 - Closed: `#7`–`#15` (Desktop v1 foundation + shared protocol/api-contract lock + Providers JWKS auth, shipped)
 - Open: `#16`–`#56`
 
@@ -191,9 +191,9 @@ flowchart TD
 ## Source Index
 
 - PRDs:
-  - [.scratch/v1-backlog/prds/shared-contracts-PRD.md](.scratch/v1-backlog/prds/shared-contracts-PRD.md)
-  - [.scratch/v1-backlog/prds/mobile-PRD.md](.scratch/v1-backlog/prds/mobile-PRD.md)
-  - [.scratch/v1-backlog/prds/desktop-PRD.md](.scratch/v1-backlog/prds/desktop-PRD.md)
-  - [.scratch/v1-backlog/prds/control-plane-PRD.md](.scratch/v1-backlog/prds/control-plane-PRD.md)
-  - [.scratch/v1-backlog/prds/agent-runtime-PRD.md](.scratch/v1-backlog/prds/agent-runtime-PRD.md)
+  - [shared-contracts-PRD.md](prd/shared-contracts-PRD.md)
+  - [mobile-PRD.md](prd/mobile-PRD.md)
+  - [desktop-PRD.md](prd/desktop-PRD.md)
+  - [control-plane-PRD.md](prd/control-plane-PRD.md)
+  - [agent-runtime-PRD.md](prd/agent-runtime-PRD.md)
 - Issues: [GitHub #7–#56](https://github.com/sruj75/Intentive/issues)
