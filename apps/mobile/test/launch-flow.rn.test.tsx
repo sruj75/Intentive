@@ -30,6 +30,14 @@ function Destination() {
   return <Text testID="dest">{resolveLaunchState(state)}</Text>;
 }
 
+function renderWithSource(source: LaunchStateSource) {
+  return render(
+    <LaunchStateProvider source={source}>
+      <Destination />
+    </LaunchStateProvider>,
+  );
+}
+
 function renderHarness() {
   return render(
     <LaunchStateProvider source={walkSource}>
@@ -69,4 +77,22 @@ test("completing (not skipping) the sibling invitation also reaches chat", async
 
   fireEvent.press(screen.getByText("Complete setup (dev)"));
   await expectDestination("READY_FOR_CHAT");
+});
+
+test("failed source hydration falls back to signed out instead of staying resolving", async () => {
+  const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+  const failingSource: LaunchStateSource = {
+    read: () => Promise.reject(new Error("GET /me unavailable")),
+  };
+
+  try {
+    renderWithSource(failingSource);
+    await expectDestination("SIGNED_OUT");
+    expect(warn).toHaveBeenCalledWith(
+      "Launch State hydration failed; using signed-out fallback.",
+      expect.any(Error),
+    );
+  } finally {
+    warn.mockRestore();
+  }
 });

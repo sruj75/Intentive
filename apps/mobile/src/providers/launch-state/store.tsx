@@ -20,6 +20,11 @@ import type { GateStatus, LaunchState } from "./types";
 import type { LaunchStateSource } from "./source";
 
 const UNKNOWN: LaunchState = { signedIn: null, consent: null, siblingInvitation: null };
+const HYDRATION_FAILURE_FALLBACK: LaunchState = {
+  signedIn: false,
+  consent: null,
+  siblingInvitation: null,
+};
 
 export interface LaunchStateStore {
   state: LaunchState;
@@ -45,9 +50,15 @@ export function LaunchStateProvider({
   // Read path: hydrate from the source of truth once on mount.
   useEffect(() => {
     let active = true;
-    void source.read().then((hydrated) => {
-      if (active) setState(hydrated);
-    });
+    void source
+      .read()
+      .then((hydrated) => {
+        if (active) setState(hydrated);
+      })
+      .catch((err: unknown) => {
+        console.warn("Launch State hydration failed; using signed-out fallback.", err);
+        if (active) setState(HYDRATION_FAILURE_FALLBACK);
+      });
     return () => {
       active = false;
     };
