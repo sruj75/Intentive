@@ -23,7 +23,8 @@ import {
  * gate values until the user signs in.
  */
 const devSource: LaunchStateSource = {
-  read: () => Promise.resolve({ signedIn: false, consent: "pending", siblingInvitation: "pending" }),
+  read: () =>
+    Promise.resolve({ signedIn: false, consent: "pending", siblingInvitation: "pending" }),
 };
 
 const HREF_FOR: Record<Exclude<LaunchDestination, "RESOLVING">, string> = {

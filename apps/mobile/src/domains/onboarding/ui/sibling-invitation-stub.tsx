@@ -35,8 +35,20 @@ const styles = StyleSheet.create({
   screen: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
   title: { fontSize: 24, fontWeight: "600" },
   subtitle: { fontSize: 15, opacity: 0.6, textAlign: "center" },
-  devButton: { marginTop: 16, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, backgroundColor: "#1f6feb" },
+  devButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: "#1f6feb",
+  },
   devButtonText: { color: "white", fontSize: 16, fontWeight: "600" },
-  devButtonSecondary: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, borderWidth: 1, borderColor: "#1f6feb" },
+  devButtonSecondary: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1f6feb",
+  },
   devButtonSecondaryText: { color: "#1f6feb", fontSize: 16, fontWeight: "600" },
 });

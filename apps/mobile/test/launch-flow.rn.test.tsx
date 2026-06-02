@@ -21,7 +21,8 @@ import {
 // Mirrors the dev harness source: signed-out with gates pre-populated so the
 // whole walk works; the resolver's short-circuit hides gates until sign-in.
 const walkSource: LaunchStateSource = {
-  read: () => Promise.resolve({ signedIn: false, consent: "pending", siblingInvitation: "pending" }),
+  read: () =>
+    Promise.resolve({ signedIn: false, consent: "pending", siblingInvitation: "pending" }),
 };
 
 function Destination() {
