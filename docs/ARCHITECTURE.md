@@ -58,7 +58,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 
 **Mobile Client domains** (`apps/mobile/src/domains/`):
 - `auth` — Identity Gate, session, JWT handling
-- `onboarding` — Pre-Chat Gate sequence rendering (Consent Primer, Sibling Invitation)
+- `onboarding` — Pre-Chat Gate sequence rendering (Consent Primer, Sibling Invitation) + the Launch State Resolver (gate-ordering state machine)
 - `chat` — Companion Chat shell, composer, message rendering, agent state display
 - `notifications` — APNs token registration, permission flow
 - `account` — Account Surface, logout, app info
@@ -77,7 +77,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `devices` — Device Registry, APNs token storage
 - `gates` — Pre-Chat Gate state (Consent Primer, Sibling Invitation skip)
 - `agents` — Agent Instance Registry, Session Start internal calls
-- `routing` — `GET /agent`, JWT minting for runtime
+- `routing` — `GET /agent`, Routing issuance (runtime JWT is the pass-through Neon Auth token; see control-plane ADR-0002)
 - `notifications` — APNs client, push delivery
 
 **Agent Runtime domains** (`services/agent-runtime/src/domains/`):
@@ -169,7 +169,11 @@ intentive/
 │   │   ├── AGENTS.md                    ← ~100 lines, table of contents only
 │   │   ├── CONTEXT.md                   ← Mobile Client vocabulary
 │   │   ├── docs/adr/                    ← Mobile Client decisions
-│   │   └── src/domains/
+│   │   ├── app/                         ← NAVIGATION axis: Expo Router, thin route shells
+│   │   │   ├── _layout.tsx              ← root: reads Launch State → redirects
+│   │   │   ├── (gates)/                 ← shared gate chrome; identity, consent, invite
+│   │   │   └── (chat)/                  ← chat route shell; `(account)/` when Account Surface lands
+│   │   └── src/domains/                 ← CAPABILITY axis: deep modules, layer rule (see mobile ADR 0010)
 │   │       ├── auth/
 │   │       │   ├── types/
 │   │       │   ├── config/
@@ -199,13 +203,16 @@ intentive/
 │   │   ├── AGENTS.md
 │   │   ├── CONTEXT.md                   ← Control Plane vocabulary
 │   │   ├── docs/adr/                    ← Control Plane decisions
-│   │   └── src/domains/
-│   │       ├── identity/{...}/
-│   │       ├── devices/{...}/
-│   │       ├── gates/{...}/
-│   │       ├── agents/{...}/
-│   │       ├── routing/{...}/
-│   │       └── notifications/{...}/
+│   │   ├── migrations/                  ← SQL migrations (control_plane schema; applied by #50)
+│   │   └── src/
+│   │       ├── config/                  ← single validated config seam (loadConfig); not a domain layer
+│   │       └── domains/
+│   │           ├── identity/{...}/
+│   │           ├── devices/{...}/
+│   │           ├── gates/{...}/
+│   │           ├── agents/{...}/
+│   │           ├── routing/{...}/
+│   │           └── notifications/{...}/
 │   └── agent-runtime/                   ← was Deep Agent
 │       ├── AGENTS.md
 │       ├── CONTEXT.md                   ← Agent Runtime vocabulary

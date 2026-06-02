@@ -1,4 +1,14 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*"]
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "//": "Full RN-aware config: typecheck (tsc --noEmit), IDE, and Metro. The pure-core node:test build uses tsconfig.build.json (repo base) instead. See apps/mobile/docs/ARCHITECTURE.md (split test toolchains by axis).",
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx"
+  ]
 }

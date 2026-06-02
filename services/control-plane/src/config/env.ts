@@ -11,7 +11,7 @@
  * provisioned into Cloud Run by #50.
  *
  * There is deliberately **no** runtime-JWT signing key: the `runtime_jwt`
- * returned by Routing is the client's pass-through Neon Auth token (ADR-0038),
+ * returned by Routing is the client's pass-through Neon Auth token (control-plane ADR-0002),
  * verified by the one shared JWKS verifier (`packages/providers`, #15). The two
  * `INTERNAL_SECRET_*` vars are the Directional Secrets guarding the private
  * Internal API — one per direction, never one symmetric password.

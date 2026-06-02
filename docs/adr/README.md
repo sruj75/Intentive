@@ -41,6 +41,8 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0007 | Shared Control Plane for client apps | accepted |
 | 0008 | Liquid Glass chat shell | accepted |
 | 0009 | assistant-ui/native as Chat Primitive Engine | accepted |
+| 0010 | Navigation and capability as orthogonal axes | accepted |
+| 0011 | Launch State as in-memory projection of CP gate truth | accepted |
 
 ### Desktop Client — `apps/desktop/docs/adr/`
 

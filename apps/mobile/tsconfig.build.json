@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "//": "Pure-core build for the fast node:test path (split test toolchains by axis). Lists ONLY the RN-free modules: the resolver, the launch-state types/source, and the workspace entry. The barrel (index.ts) and the store (.tsx) belong to the navigation axis — they are compiled by Metro and type-checked by the full tsconfig.json, never here, so node:test never loads React Native.",
+  "include": [
+    "src/index.ts",
+    "src/domains/account/types/workspace.ts",
+    "src/providers/launch-state/types.ts",
+    "src/providers/launch-state/source.ts",
+    "src/domains/onboarding/service/**/*.ts"
+  ]
+}

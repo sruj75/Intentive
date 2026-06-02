@@ -20,8 +20,8 @@ The Mobile Client is the **only client with a chat surface**. It:
 
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
-- `auth` — sign-in, JWT lifecycle
-- `onboarding` — Pre-Chat Gate rendering
+- `auth` — Identity Gate screen, sign-in, JWT lifecycle
+- `onboarding` — Consent Primer + Sibling Invitation screens; **Launch State Resolver** (`service/`)
 - `chat` — Companion Chat shell, composer, message rendering, agent state display
 - `notifications` — APNs token registration, permission ask (on first chat entry, not at launch)
 - `account` — Account Surface, logout, app info
@@ -30,11 +30,12 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - [`../../docs/prd/mobile-PRD.md`](../../docs/prd/mobile-PRD.md) — Mobile PRD
 - [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Mobile-specific design and architecture
-- [`../../docs/adr/`](../../docs/adr/) — unified ADRs (mobile entries are prefixed `mobile-`).
+- [`docs/adr/`](docs/adr/) — Mobile Client ADRs (system-wide → [`docs/adr/`](../../docs/adr/))
 
 ## Stack & deploy
 
 - Expo / React Native, TypeScript
+- Local dev: `pnpm --dir apps/mobile dev` (or `ios` / `android`); tests: `pnpm --dir apps/mobile test` (Node) and `pnpm --dir apps/mobile test:rn` (Jest / RN harness)
 - Deploys to TestFlight / App Store via **EAS Build** (Git-based)
 - `assistant-ui/native` may be used as a **Chat Primitive Engine** behind Intentive Chat Components — keep it replaceable
 

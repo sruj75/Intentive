@@ -2,13 +2,36 @@
   "name": "@intentive/mobile",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
+  "main": "expo-router/entry",
   "scripts": {
-    "build": "tsc --outDir dist",
+    "build": "tsc -p tsconfig.build.json && node scripts/write-esm-marker.mjs",
     "test": "pnpm run build && node --test",
-    "typecheck": "tsc --noEmit"
+    "test:rn": "jest",
+    "typecheck": "tsc --noEmit",
+    "dev": "expo start",
+    "ios": "expo run:ios",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~56.0.13",
+    "expo": "^56.0.8",
+    "expo-constants": "*",
+    "expo-linking": "*",
+    "expo-router": "*",
+    "expo-status-bar": "*",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-native": "*",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-screens": "*",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "@testing-library/react-native": "*",
+    "@types/react": "*",
+    "jest": "^29.7.0",
+    "jest-expo": "*",
+    "react-test-renderer": "^19.2.3",
+    "typescript": "^6.0.3"
   }
 }
