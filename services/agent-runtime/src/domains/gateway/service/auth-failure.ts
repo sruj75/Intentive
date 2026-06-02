@@ -1,9 +1,7 @@
 import type { RuntimeError } from "@intentive/protocol";
 import type { JwtVerificationFailure } from "@intentive/providers/auth";
 
-export function mapJwtVerificationErrorToRuntimeError(
-  error: JwtVerificationFailure,
-): RuntimeError {
+export function mapJwtVerificationErrorToRuntimeError(error: JwtVerificationFailure): RuntimeError {
   if (error.reason === "jwks_unavailable") {
     return {
       type: "runtime_error",

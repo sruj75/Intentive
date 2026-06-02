@@ -5,6 +5,10 @@
 # /review         - full PR-Agent review
 # /improve        - suggest code improvements
 # /describe       - describe or summarize changes
+# /checks         - analyze a specific failed CI check
 
 [config]
 disable_auto_feedback = true
+
+[checks]
+enable_auto_checks_feedback = false
