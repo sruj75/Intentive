@@ -1,0 +1,10 @@
+# Qodo Merge / PR-Agent runs only when explicitly triggered from a PR comment.
+#
+# Manual commands:
+# /agentic_review - primary Qodo review workflow
+# /review         - full PR-Agent review
+# /improve        - suggest code improvements
+# /describe       - describe or summarize changes
+
+[config]
+disable_auto_feedback = true
