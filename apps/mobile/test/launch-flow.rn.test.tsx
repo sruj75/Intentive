@@ -1,6 +1,6 @@
 /**
  * RN harness-loop test: proves the reactive write path in the React runtime —
- * a gate stub's dev button writes its status into the shared store, and the
+ * a gate screen's dev control writes its status into the shared store, and the
  * resolver re-evaluates to the next destination. (The router redirect itself is
  * verified by the simulator walk-through; here we assert the store↔resolver loop
  * that drives it.)
@@ -9,7 +9,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import { Text } from "react-native";
 
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
-import { IdentityGateStub } from "../src/domains/auth/ui/identity-gate-stub";
+import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
+import { IdentityGate } from "../src/domains/auth/ui/identity-gate";
+import type { AuthAdapter } from "../src/domains/auth/types/auth";
 import { ConsentPrimerStub } from "../src/domains/onboarding/ui/consent-primer-stub";
 import { SiblingInvitationStub } from "../src/domains/onboarding/ui/sibling-invitation-stub";
 import {
@@ -17,6 +19,15 @@ import {
   useLaunchState,
   type LaunchStateSource,
 } from "../src/providers/launch-state";
+
+// A fake adapter that always signs in — keeps this test about the gate-walk
+// store↔resolver loop, not the auth boundary (covered by identity-gate.rn.test).
+const signInOkAdapter: AuthAdapter = {
+  signIn: () => Promise.resolve({ status: "signed-in" }),
+  signOut: () => Promise.resolve(),
+  restoreSession: () => Promise.resolve(false),
+  getAccessToken: () => Promise.resolve(null),
+};
 
 // Mirrors the dev harness source: signed-out with gates pre-populated so the
 // whole walk works; the resolver's short-circuit hides gates until sign-in.
@@ -41,10 +52,12 @@ function renderWithSource(source: LaunchStateSource) {
 function renderHarness() {
   return render(
     <LaunchStateProvider source={walkSource}>
-      <Destination />
-      <IdentityGateStub />
-      <ConsentPrimerStub />
-      <SiblingInvitationStub />
+      <AuthAdapterProvider adapter={signInOkAdapter}>
+        <Destination />
+        <IdentityGate />
+        <ConsentPrimerStub />
+        <SiblingInvitationStub />
+      </AuthAdapterProvider>
     </LaunchStateProvider>,
   );
 }
@@ -57,7 +70,7 @@ test("walking the gates (skip path) drives the resolver to chat", async () => {
   renderHarness();
   await expectDestination("SIGNED_OUT");
 
-  fireEvent.press(screen.getByText("Sign in (dev)"));
+  fireEvent.press(screen.getByText("Continue with Google"));
   await expectDestination("MISSING_CONSENT");
 
   fireEvent.press(screen.getByText("Accept consent (dev)"));
@@ -71,7 +84,7 @@ test("completing (not skipping) the sibling invitation also reaches chat", async
   renderHarness();
   await expectDestination("SIGNED_OUT");
 
-  fireEvent.press(screen.getByText("Sign in (dev)"));
+  fireEvent.press(screen.getByText("Continue with Google"));
   fireEvent.press(screen.getByText("Accept consent (dev)"));
   await expectDestination("SIBLING_INVITATION_PENDING");
 

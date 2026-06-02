@@ -3,6 +3,7 @@
 iOS Expo client. The chat surface for the **Companion**. Capture concerns and Mac-specific work live in `apps/desktop/`.
 
 **Always read first:**
+
 - [`CONTEXT.md`](CONTEXT.md) — Mobile Client vocabulary
 - [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language (Companion, Pre-Chat Gate, Post-Message-Back, etc.)
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule, why this deployable is structured the way it is
@@ -10,6 +11,7 @@ iOS Expo client. The chat surface for the **Companion**. Capture concerns and Ma
 ## Role in V1
 
 The Mobile Client is the **only client with a chat surface**. It:
+
 - Renders the **Liquid Glass Chat Shell** (no header, no bottom tabs)
 - Runs the Pre-Chat Gate sequence: Identity Gate → Consent Primer → Sibling Client Invitation
 - Connects to the **Agent Runtime** directly via WebSocket using **Protocol** schemas from `packages/protocol/`
@@ -20,7 +22,7 @@ The Mobile Client is the **only client with a chat surface**. It:
 
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
-- `auth` — Identity Gate screen, sign-in, JWT lifecycle
+- `auth` — **Auth Adapter**, Identity Gate, Neon/Dev providers ([`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md))
 - `onboarding` — Consent Primer + Sibling Invitation screens; **Launch State Resolver** (`service/`)
 - `chat` — Companion Chat shell, composer, message rendering, agent state display
 - `notifications` — APNs token registration, permission ask (on first chat entry, not at launch)

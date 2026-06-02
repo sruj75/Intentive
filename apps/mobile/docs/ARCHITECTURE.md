@@ -21,7 +21,7 @@ Enforceable import boundaries and explicit provider interfaces are now wired at 
 Root shape (v1 foundation — stubs for gates/chat; resolver + launch-state provider wired):
 
 - `app/`: Expo Router routes only — thin shells grouped by UX context (`(gates)`, `(chat)`; `(account)/` when Account Surface lands). No reusable components or logic live here; a route file imports and composes a domain's `ui` export and nothing else. This is the **navigation axis**, deliberately distinct from the capability axis below (see [`adr/0010`](adr/0010-mobile-navigation-and-capability-as-orthogonal-axes.md)).
-- `src/domains/auth/`: sign-in machinery — the **Identity Gate** screen, Google OAuth, JWT lifecycle, session. A screen lives where its logic lives, so the Identity Gate (which establishes a session) is owned here, not by `onboarding`.
+- `src/domains/auth/`: **Auth Adapter** (`service/`) and **Identity Gate** (`ui/`) — Neon Auth and launch-only Dev providers behind one `signIn`/`signOut` boundary (ADR 0012). Session persistence is owned by the Neon Auth SDK; the Mobile Client does not verify **User JWT**s (#23). A screen lives where its logic lives, so the Identity Gate is owned here, not by `onboarding`.
 - `src/domains/chat/`: Companion Chat domain — message rendering, composer, Runtime Adapter usage, Agent State display. Reads Conversation History from the WebSocket reconnect snapshot; does not persist messages.
 - `src/domains/onboarding/`: the Pre-Chat Gate **sequence** — the Consent Primer and Sibling Client Invitation screens, plus the **Launch State Resolver** (the pure `service`-layer state machine that owns gate ordering). The Identity Gate screen itself lives in `auth/`; `onboarding` only decides when to show it (by resolving to `SIGNED_OUT`). The Companion's bootstrap-guided opening message renders inside `chat/`, not here.
 - `src/domains/notifications/`: APNs token registration with the Control Plane (via `POST /devices/register`), permission ask on first chat entry, push intent surfaces.
@@ -91,6 +91,8 @@ Testing should assert user-visible behavior and contracts, not vendor internals 
 
 Required contract tests:
 
+- Auth Adapter: provider selection, Neon outcome mapping, dev provider `__DEV__` gating (Node).
+- Identity Gate: success writes `signedIn` via the launch-state seam; recoverable failure surfaces (RN harness).
 - Launch state resolver: signed out, missing Consent Primer, sibling-invitation pending, entry to Companion Chat.
 - Runtime Adapter (Protocol WebSocket client): `connect` handshake with the Control Plane-issued JWT, render reconnect snapshot, handle live `companion_message` chunks, surface `delivery_ack`s for sent messages, reconnect cleanly after a drop.
 - Chat Components: custom user/assistant rows, streaming, loading, error, retry.

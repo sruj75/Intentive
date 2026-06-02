@@ -28,8 +28,22 @@ _Avoid_: screen, page, next step
 The state of a single **Pre-Chat Gate**: `pending | completed | skipped`. Uniform across all gates, though only the skippable **Sibling Client Invitation** ever takes `skipped`. Both `completed` and `skipped` let the resolver advance past a gate.
 _Avoid_: done flag, gate boolean
 
+**Auth Adapter**:
+The single boundary the **Identity Gate** calls to obtain or drop a session — `signIn` / `signOut`. It hides which **Auth Provider** answered; nothing else in the Mobile Client imports an auth SDK. A deep module: a tiny interface over a volatile decision (which provider, what token shape). See [`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md).
+_Avoid_: auth client, login service, OAuth wrapper
+
+**Auth Provider**:
+A concrete implementation behind the **Auth Adapter**. v1 has two: the **Neon Auth** provider (real Google/Apple sign-in, yields a verifiable **User JWT**, and owns its own session persistence), and the **Dev Auth Provider** (`__DEV__`-only, flips `signedIn` with no verifiable token). The Dev Auth Provider is launch-only — it unblocks gate/UI work without a backend, and cannot ship to production.
+_Avoid_: identity provider (reserve that phrasing for Neon Auth itself)
+
+**User JWT**:
+The Neon Auth-issued token the **Neon Auth** provider returns on sign-in — the credential later passed through to `GET /me` and the Agent Runtime WebSocket, verified everywhere against the one shared Neon Auth JWKS (see root `CONTEXT-MAP.md`). The Mobile Client never mints or verifies it. The **Dev Auth Provider** does not produce one.
+_Avoid_: session token, access token, runtime token
+
 ## Relationships
 
 - The **Launch State Resolver** reads **Launch State** and returns one **Launch Destination**.
 - A gate screen completing writes its **Gate Status** into **Launch State**; the root layout reactively redirects via the resolver. Gate screens never navigate forward themselves.
 - **Pre-Chat Gate** ordering (Identity → Consent → Sibling Invitation → Chat) lives only inside the resolver.
+- The **Identity Gate** calls the **Auth Adapter**; on success it writes `signedIn` into **Launch State** (the seam #18 left) and never navigates forward itself.
+- The **Auth Adapter** selects an **Auth Provider**; only the **Neon Auth** provider yields a **User JWT**. Verifying that **User JWT** is the Control Plane's job (#23), not the Mobile Client's.

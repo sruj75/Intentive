@@ -8,6 +8,12 @@
 import { useEffect } from "react";
 import { Stack, useRouter } from "expo-router";
 
+import { createAuthAdapter } from "../src/domains/auth/service/auth-adapter";
+import {
+  NEON_ENABLED_PROVIDERS,
+  createNeonAuthClient,
+} from "../src/domains/auth/service/neon-client";
+import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
 import {
   LaunchStateProvider,
@@ -15,6 +21,19 @@ import {
   type LaunchDestination,
   type LaunchStateSource,
 } from "../src/providers/launch-state";
+
+/**
+ * The single real Auth Adapter, built once from the Neon client. No social
+ * provider is a working capability yet (`NEON_ENABLED_PROVIDERS` is empty — see
+ * neon-client.ts), so Google/Apple report `not-configured`; the launch-only dev
+ * provider, exposed only under `__DEV__` and never shipped, is the working path
+ * until #23 lands the https redirect (ADR 0012).
+ */
+const authAdapter = createAuthAdapter({
+  client: createNeonAuthClient(),
+  enabled: NEON_ENABLED_PROVIDERS,
+  includeDev: __DEV__,
+});
 
 /**
  * DEV harness source — replaced in #23 by a `GET /me`-backed LaunchStateSource.
@@ -54,7 +73,9 @@ function RootNavigator(): React.JSX.Element {
 export default function RootLayout(): React.JSX.Element {
   return (
     <LaunchStateProvider source={devSource}>
-      <RootNavigator />
+      <AuthAdapterProvider adapter={authAdapter}>
+        <RootNavigator />
+      </AuthAdapterProvider>
     </LaunchStateProvider>
   );
 }
