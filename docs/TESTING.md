@@ -46,9 +46,19 @@ pnpm --dir packages/api-contract test
 pnpm --dir packages/providers test
 ```
 
+## Mobile Client
+
+```bash
+pnpm --dir apps/mobile test       # build + Node tests (resolver, launch-state source)
+pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gate stub write path)
+pnpm --dir apps/mobile typecheck
+```
+
+The root `pnpm test` runs the Node `test` script above. `test:rn` is opt-in until CI wires it.
+
 ## Scaffold Deployables
 
-`apps/mobile`, `services/control-plane`, and `services/agent-runtime` currently include minimal scaffold tests. Keep these tests small until real domains land, then replace them with domain-level tests that exercise the documented `types -> config -> repo -> service -> runtime -> ui` layers.
+`services/control-plane` and `services/agent-runtime` still use minimal scaffold tests. `apps/mobile` adds launch-state resolver/source tests plus an RN harness; grow domain coverage as real layers land.
 
 ## CI Expectations
 

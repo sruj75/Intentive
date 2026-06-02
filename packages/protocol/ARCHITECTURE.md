@@ -1,6 +1,6 @@
 # @intentive/protocol Architecture
 
-This is the package-local architecture contract for `packages/protocol/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../../docs/CONTEXT.md` → **Protocol**. See ADR-0005 for the contract decision.
+This is the package-local architecture contract for `packages/protocol/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md` → **Protocol**. See agent-runtime ADR-0003 for the contract decision.
 
 ## Purpose
 
@@ -37,4 +37,4 @@ Defined in `src/index.ts`:
 2. Run monorepo typecheck — every consumer that fails to handle the change is surfaced mechanically.
 3. Add the handler/emitter in each affected deployable's `protocol`/`chat`/`snapshots` domain.
 4. Keep one live protocol shape across the monorepo and update all first-party consumers in the same change stream.
-5. Check new event names against `../../docs/CONTEXT.md` vocabulary before merging.
+5. Check new event names against `../CONTEXT.md` vocabulary before merging.

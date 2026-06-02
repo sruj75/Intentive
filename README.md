@@ -2,7 +2,7 @@
 
 A proactive companion that lives across your phone and your Mac.
 
-See [`AGENTS.md`](AGENTS.md) to get oriented, [`docs/CONTEXT.md`](docs/CONTEXT.md) for vocabulary, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for structure.
+See [`AGENTS.md`](AGENTS.md) to get oriented, [`CONTEXT-MAP.md`](CONTEXT-MAP.md) for the context map and vocabulary, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for structure.
 
 ## The four deployables
 

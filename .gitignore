@@ -29,6 +29,8 @@ pnpm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+.scratch/
+.cursor/
 *.suo
 *.swp
 *.swo

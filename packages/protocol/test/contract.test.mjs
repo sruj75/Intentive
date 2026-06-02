@@ -53,6 +53,13 @@ test("runtime_error validates canonical envelope and codes", () => {
   });
   assert.equal(valid.success, true);
 
+  const serviceUnavailable = protocol.runtimeToClientEvent.safeParse({
+    type: "runtime_error",
+    code: "service_unavailable",
+    message: "Try again later",
+  });
+  assert.equal(serviceUnavailable.success, true);
+
   const invalidCode = protocol.runtimeToClientEvent.safeParse({
     type: "runtime_error",
     code: "legacy_code",

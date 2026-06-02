@@ -1,72 +1,40 @@
-# Issue tracker: Local Markdown (Single root tracker)
+# Issue tracker: GitHub
 
-Issues and PRDs for this monorepo live as markdown files under a single root tracker at `.scratch/v1-backlog/`.
+Issues for this monorepo live as [GitHub Issues](https://github.com/sruj75/Intentive/issues) on `sruj75/Intentive`. PRDs live at `docs/prd/<deployable>-PRD.md`. Sequenced backlog and dependencies: [`docs/ISSUE-BOARD.md`](../ISSUE-BOARD.md).
 
-## Tracker root
+Use the `gh` CLI for all operations (run inside this repo clone).
 
-`.scratch/v1-backlog/` — one unified backlog for all deployables and shared packages.
+## Conventions
 
-- PRDs: `.scratch/v1-backlog/prds/<deployable>-PRD.md`
-- Issues: `.scratch/v1-backlog/issues/NN-<CODE>-<slug>.md`, numbered `01`–`50` globally in MISSION-CONTROL.md execution order
+- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Read an issue**: `gh issue view <number> --comments`
+- **List issues**: `gh issue list --state open --json number,title,body,labels`
+- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Close**: `gh issue close <number> --comment "..."`
 
-## Filename convention
+Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
-```
-NN-<CODE>-<slug>.md
-```
+## Numbering
 
-- `NN` — two-digit global sequence number (01–50), ordered by MISSION-CONTROL.md phase
-- `CODE` — deployable identity prefix: `DESKTOP`, `MOBILE`, `AR` (agent-runtime), `CP` (control-plane), `SHARED`
-- `slug` — kebab-case short description matching the issue title
+[`docs/ISSUE-BOARD.md`](../ISSUE-BOARD.md) and navigation use **GitHub issue numbers** (#7–#56 for the v1 backlog). PRs #1–#6 occupy GitHub numbers 1–6 and are not issues.
 
-## Canonical Issue Format
+## Deployable labels
 
-Use this exact local markdown format for issue files:
+Each issue has a deployable code label: `DESKTOP`, `MOBILE`, `AR` (agent-runtime), `CP` (control-plane), `SHARED`.
 
-```md
-# <Issue title>
+Filter examples: `gh issue list --label AR --state open`, `gh issue list --label MOBILE`.
 
-Status: <open|closed|needs-triage|needs-info|ready-for-agent|ready-for-human|wontfix>
-Labels: <comma-separated labels or (none)>
-Deployable: <desktop|mobile|agent-runtime|control-plane|shared>
-Opened: <ISO timestamp>
-Updated: <ISO timestamp>
-Closed: <ISO timestamp>   <!-- include only when closed -->
+## PRDs
 
-## Description
-
-<issue body markdown>
-
-## Comments
-
-### 01 @<author> — <ISO timestamp>
-
-<comment body markdown>
-```
-
-### Mapping from GitHub
-
-- GitHub `title` -> markdown `# <Issue title>`
-- GitHub `state` -> `Status: open|closed`
-- GitHub `labels[].name` -> `Labels: ...`
-- GitHub `createdAt` -> `Opened: ...`
-- GitHub `updatedAt` -> `Updated: ...`
-- GitHub `closedAt` -> `Closed: ...` (only when present)
-- GitHub `body` -> `## Description`
-- GitHub `comments[]` -> `## Comments` entries in chronological order, numbered `01`, `02`, ...
-
-When importing, preserve issue and comment markdown content verbatim (no rewriting, summarizing, or normalization of prose).
-
-## Cross-references
-
-- In `## Blocked by`, `## Unblocks`, and `## Parent`, reference issues by global ID (e.g. `#08`, `#24`).
-- Preserve prose `#N` mentions verbatim — do not rewrite historical narrative.
-- `## Parent` points to the PRD file path relative to the repo root: `.scratch/v1-backlog/prds/<deployable>-PRD.md`.
+Parent scope docs: `docs/prd/<deployable>-PRD.md`
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file in `.scratch/v1-backlog/issues/` with the next available `NN` global number, following the `NN-<CODE>-<slug>.md` naming convention. Update MISSION-CONTROL.md to sequence the new issue.
+Create a GitHub issue with `gh issue create`. Add a deployable label (`DESKTOP`, `MOBILE`, `AR`, `CP`, `SHARED`) when appropriate.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at `.scratch/v1-backlog/issues/NN-<CODE>-<slug>.md`. The user will normally pass a global number or a filename.
+Run `gh issue view <number> --comments`. The user normally passes a GitHub issue number (as in ISSUE-BOARD).
+
+When importing or exporting, preserve issue and comment markdown content verbatim (no rewriting, summarizing, or normalization of prose).

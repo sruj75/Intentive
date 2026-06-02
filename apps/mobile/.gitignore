@@ -1,1 +1,8 @@
 .DS_Store
+
+# Build / test output
+dist/
+
+# Expo
+.expo/
+web-build/

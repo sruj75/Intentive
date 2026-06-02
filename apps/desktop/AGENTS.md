@@ -3,7 +3,8 @@
 macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile Client.
 
 **Always read first:**
-- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary
+- [`CONTEXT.md`](CONTEXT.md) — Desktop Client vocabulary
+- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
 
 ## Role in V1
@@ -32,11 +33,11 @@ Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/provider
 
 ## Working docs
 
-- [`../../.scratch/v1-backlog/prds/desktop-PRD.md`](../../.scratch/v1-backlog/prds/desktop-PRD.md) — Desktop PRD in the root unified backlog
+- [`../../docs/prd/desktop-PRD.md`](../../docs/prd/desktop-PRD.md) — Desktop PRD
 - [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)
-- [`docs/agents/`](docs/agents/) — Desktop-specific working rules (build commands, integrations, triage)
+- [`../../docs/agents/issue-tracker.md`](../../docs/agents/issue-tracker.md), [`../../docs/agents/triage-labels.md`](../../docs/agents/triage-labels.md), [`../../docs/agents/domain.md`](../../docs/agents/domain.md) — root agent workflow rules for tracking, labels, and vocabulary
 
 ## Stack & deploy
 

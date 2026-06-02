@@ -2,7 +2,7 @@
  * @intentive/protocol — WebSocket message contract.
  *
  * Single source of truth for the wire format between every Client and the
- * Agent Runtime. See docs/CONTEXT.md → "Protocol" and docs/ARCHITECTURE.md.
+ * Agent Runtime. See packages/CONTEXT.md → "Protocol" and docs/ARCHITECTURE.md.
  */
 
 import { z } from "zod";
@@ -83,10 +83,37 @@ export type ClientToRuntimeEvent = z.infer<typeof clientToRuntimeEvent>;
 
 // ---------- Runtime -> Client ----------
 
+// A single uniform timeline entry in a reconnect Session Snapshot. This is a
+// read projection of Conversation History, deliberately separate from the live
+// `user_message`/`companion_message` wire events so the two contracts can
+// evolve independently. See ADR-0037. `via_post_message_back` is always present
+// and is `false` for user-authored entries.
+export const session_message = z
+  .object({
+    message_id: z.string(),
+    author: z.enum(["user", "companion"]),
+    body: z.string(),
+    at: z.string().datetime(),
+    via_post_message_back: z.boolean(),
+  })
+  .strict();
+export type SessionMessage = z.infer<typeof session_message>;
+
+// Authoritative reconnect projection returned in `hello_ok`. `messages` holds
+// the most recent entries (default 50) oldest-first; `before_cursor` is
+// non-null when older history exists. See ADR-0037.
+export const session_snapshot = z
+  .object({
+    messages: z.array(session_message),
+    before_cursor: z.string().nullable(),
+  })
+  .strict();
+export type SessionSnapshot = z.infer<typeof session_snapshot>;
+
 export const hello_ok = z
   .object({
     type: z.literal("hello_ok"),
-    session_snapshot: z.unknown(),
+    session_snapshot: session_snapshot,
   })
   .strict();
 export type HelloOk = z.infer<typeof hello_ok>;
@@ -102,7 +129,12 @@ export const companion_message = z
   .strict();
 export type CompanionMessage = z.infer<typeof companion_message>;
 
-export const runtimeErrorCode = z.enum(["protocol_unsupported", "auth_failed", "invalid_connect"]);
+export const runtimeErrorCode = z.enum([
+  "protocol_unsupported",
+  "auth_failed",
+  "invalid_connect",
+  "service_unavailable",
+]);
 export type RuntimeErrorCode = z.infer<typeof runtimeErrorCode>;
 
 export const runtime_error = z

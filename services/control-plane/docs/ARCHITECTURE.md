@@ -1,6 +1,6 @@
 # Control Plane Architecture
 
-This document is the deployable-local architecture contract for `services/control-plane/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read `../../docs/CONTEXT.md` first. For agent-facing working rules, read `../AGENTS.md`.
+This document is the deployable-local architecture contract for `services/control-plane/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read [`../CONTEXT.md`](../CONTEXT.md) (Control Plane) and the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md) first. For agent-facing working rules, read `../AGENTS.md`.
 
 ## Bird's-eye Overview
 
@@ -26,7 +26,7 @@ It sits **beside** the client↔runtime data path, never **on** it. It tells eac
                                           POST /internal/notifications/push ◄── Agent Runtime
 ```
 
-The Control Plane is the single writer of account truth. Clients render this state but never decide it locally (ADR-0002). The Agent Runtime owns behavior and Conversation History, not account truth.
+The Control Plane is the single writer of account truth. Clients render this state but never decide it locally (ADR-0001). The Agent Runtime owns behavior and Conversation History, not account truth.
 
 ## Codemap
 
@@ -39,8 +39,8 @@ The Control Plane is the single writer of account truth. Clients render this sta
 `docs/ARCHITECTURE.md`
 : This file. Control-Plane-local architecture contract and map.
 
-`.scratch/v1-backlog/prds/control-plane-PRD.md`
-: Control Plane PRD. Issues `#11`, `#17`, `#20`, `#21`, `#24`, `#43`, `#44` in the root `.scratch/v1-backlog/issues/` tracker.
+[`docs/prd/control-plane-PRD.md`](../../../docs/prd/control-plane-PRD.md)
+: Control Plane PRD. Issues `#17`, `#23`, `#26`, `#27`, `#30`, `#49`, `#50` on [GitHub](https://github.com/sruj75/Intentive/issues).
 
 `src/index.ts`
 : Thin process entrypoint. It should delegate to domain composition, not accumulate domain logic.
@@ -110,7 +110,7 @@ Mechanical checks should enforce:
 - No cross-deployable imports from `apps/**` or other `services/**`.
 - Provider-only access for auth, telemetry, feature flags, Neon clients, and APNs clients.
 - HTTP-contract consistency through `packages/api-contract`.
-- Forbidden vocabulary from `../../docs/CONTEXT.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
+- Forbidden vocabulary from `../CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
 
 ## Boundaries
 
@@ -128,8 +128,9 @@ Agent Runtime boundary:
 
 Neon boundary:
 
-- The Control Plane owns identity, device, gate, and Agent Instance Registry tables in its own schema and role.
+- The Control Plane owns identity, device, gate, and Agent Instance Registry tables in its own schema (`control_plane`) reached through its own Postgres role (`control_plane_app`). The role holds privileges **only** on the `control_plane` schema; it has no grants on the Agent Runtime's schema, and vice versa. There are no tables shared across the two services.
 - It never reads or writes the Runtime's Conversation History, runtime events, VFS overlays, or scheduler state.
+- Migrations live under `services/control-plane/migrations/` and create their tables inside the `control_plane` schema. The schema namespace and the `control_plane_app` role + grants are provisioned in #50 (which holds Neon admin access); each behavior issue adds only its own tables. No migration runs as part of #17.
 
 Deployment boundary:
 

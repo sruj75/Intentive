@@ -1,6 +1,6 @@
 # @intentive/domain-types Architecture
 
-This is the package-local architecture contract for `packages/domain-types/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../../docs/CONTEXT.md`.
+This is the package-local architecture contract for `packages/domain-types/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md`.
 
 ## Purpose
 
@@ -34,4 +34,4 @@ Defined in `src/index.ts`:
 1. Add a type here only when a second deployable needs the same shape.
 2. If the concept is also serialized, define the wire form in the matching contract package and keep this in-process form aligned.
 3. Run monorepo typecheck so all consumers pick up the change.
-4. Check type and field names against `../../docs/CONTEXT.md` vocabulary before merging.
+4. Check type and field names against `../CONTEXT.md` vocabulary before merging.

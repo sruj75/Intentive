@@ -3,7 +3,8 @@
 Server-side authority: identity, devices, gate state, agent instance registry, routing, notifications.
 
 **Always read first:**
-- [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md) — vocabulary
+- [`CONTEXT.md`](CONTEXT.md) — Control Plane vocabulary
+- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
 
 ## Role in V1
@@ -51,3 +52,4 @@ Request/response schemas live in `packages/api-contract/`.
 - Holds APNs credentials. The Agent Runtime never calls APNs directly.
 - All write endpoints idempotent where they represent a one-time lifecycle transition.
 - **GCP Provisioner is removed from v1.** Agent Instance Creation is synchronous; there is no per-user provisioning lifecycle.
+- **Read all configuration from the one seam** at `src/config/` (`loadConfig`) — never re-parse `process.env` in a domain. The Internal API is guarded by **two Directional Secrets** (`INTERNAL_SECRET_TO_RUNTIME`, `INTERNAL_SECRET_FROM_RUNTIME`), one per direction. There is **no** runtime-JWT signing key: `runtime_jwt` is the pass-through Neon Auth token (ADR-0002), verified by the shared `packages/providers` JWKS verifier.

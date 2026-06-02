@@ -2,7 +2,7 @@
 
 The macOS Tauri app at `apps/desktop/`. **Capture-only in v1** — runs ScreenPipe, produces Context Snapshots, manages capture state from the menu bar, and exposes Account/Settings via Neon Auth UI. **No chat UI.**
 
-For vocabulary, see [`../../docs/CONTEXT.md`](../../docs/CONTEXT.md). For boundaries and layer rule, see [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
+For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md)). For boundaries and layer rule, see [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
 
 ## Stack
 
@@ -41,4 +41,4 @@ VITE_NEON_AUTH_URL=<Neon Auth URL>
 
 v1 ships a Developer ID signed and notarized Apple Silicon `.dmg` containing only `Intentive.app`. The release pipeline lives in the monorepo's `.github/workflows/desktop-release.yml`. `tauri dev` is not a valid final-evidence build for macOS Privacy Settings identity.
 
-See [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes.
+See [`CHANGELOG.md`](docs/CHANGELOG.md) for user-visible changes.

@@ -1,12 +1,12 @@
 # Intentive — Agent Map
 
-This is a table of contents, not an encyclopedia. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) for vocabulary and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for structure before making changes.
+This is a table of contents, not an encyclopedia. Read [`CONTEXT-MAP.md`](CONTEXT-MAP.md) for the context map and shared product language (then the owning deployable's own `CONTEXT.md`) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for structure before making changes.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues are tracked as local markdown in a single root tracker at `.scratch/v1-backlog/` (50 issues, globally numbered 01–50 in MISSION-CONTROL.md phase order). See `docs/agents/issue-tracker.md`.
+Issues are tracked on [GitHub](https://github.com/sruj75/Intentive/issues) (#7–#56 for the v1 backlog; PRDs at `docs/prd/`; board at [`docs/ISSUE-BOARD.md`](docs/ISSUE-BOARD.md)). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -14,16 +14,17 @@ Triage roles use the canonical five-label vocabulary with no overrides. See `doc
 
 ### Domain docs
 
-This repo is configured as single-context: read `docs/CONTEXT.md` and relevant decisions in `docs/adr/`. See `docs/agents/domain.md`.
+This repo is configured as multi-context: read the root `CONTEXT-MAP.md` for the context map and shared product language, then the owning deployable's own `CONTEXT.md` and the relevant decisions in `docs/adr/` (system-wide) or that deployable's `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Start here
 
 | If you need... | Read |
 |---|---|
-| Domain language (Companion, Agent Runtime, Pre-Chat Gate, Post-Message-Back...) | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
+| Domain language (Companion, Agent Runtime, Pre-Chat Gate, Post-Message-Back...) | [`CONTEXT-MAP.md`](CONTEXT-MAP.md) + the owning deployable's `CONTEXT.md` |
 | Layer rule, deployable topology, directory layout | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Verification commands and test ownership | [`docs/TESTING.md`](docs/TESTING.md) |
-| Why a specific decision was made | [`docs/adr/`](docs/adr/) |
+| Why a specific decision was made | [`docs/adr/`](docs/adr/) (system-wide) or that deployable's own `docs/adr/` |
+| Sequenced v1 backlog and dependencies | [`docs/ISSUE-BOARD.md`](docs/ISSUE-BOARD.md) |
 | Active or completed multi-step plans | each deployable's own `docs/plans/` |
 | Per-deployable working rules | each deployable's own `AGENTS.md` |
 
@@ -57,9 +58,9 @@ This repo is configured as single-context: read `docs/CONTEXT.md` and relevant d
 
 | About to... | First check |
 |---|---|
-| Add a new term or rename one | `docs/CONTEXT.md` — update it before the code |
+| Add a new term or rename one | the owning context's `CONTEXT.md` (see `CONTEXT-MAP.md`) — update it before the code |
 | Change a module boundary | `docs/ARCHITECTURE.md` and the layer rule |
 | Add a runtime dependency | Does it belong in `packages/`? |
 | Change a WebSocket event | `packages/protocol/` is the source of truth |
 | Add a new Control Plane endpoint | `packages/api-contract/` first, implementation second |
-| Make a non-trivial decision | Consider an ADR in `docs/adr/` |
+| Make a non-trivial decision | Consider an ADR in the owning context's `docs/adr/` (system-wide → `docs/adr/`; per-deployable → that deployable's `docs/adr/`). See [`docs/adr/README.md`](docs/adr/README.md) for the convention. |

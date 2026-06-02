@@ -25,7 +25,7 @@ name: agent-runtime-deploy
 #
 # Deployment model: image-tag swap. We push a new tag and update the VM
 # metadata; konlet picks it up and restarts the container. The VM itself
-# stays up (long-running state, cron, heartbeat — see docs/CONTEXT.md).
+# stays up (long-running state, cron, heartbeat — see CONTEXT-MAP.md).
 
 env:
   GCP_REGION: us-central1

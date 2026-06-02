@@ -30,7 +30,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   ADR-0013. The new
   onboarding surface (`?surface=onboarding`) walks the user through a one-time
   `qwen3.5:0.8b` download with a live percentage bar and a retry path on
-  failure, per [ADR-0018](docs/adr/0018-bundled-model-download-during-onboarding.md).
+  failure, per [ADR-0018](adr/0018-desktop-bundled-model-download-during-onboarding.md).
   Behind the scenes:
   - `LlmProvider::resolve_with_progress` exposes Tier 3 pull progress on a
     `tokio::sync::mpsc::Sender<PullProgress>` channel.
@@ -43,7 +43,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   - `model_is_present_on_disk` startup check opens the onboarding window only
     when the user is signed in and the model is genuinely absent.
 - **`snapshot_store` Rust module** (`src-tauri/src/snapshot_store/`) — sqlx-backed
-  local SQLite log per [ADR-0007](docs/adr/0007-local-snapshot-log-with-retention.md).
+  local SQLite log per [ADR-0007](adr/0007-desktop-local-snapshot-log-with-retention.md).
   Public API: `SnapshotStore::new` (opens or creates the file, runs migrations,
   purges rows older than 7 days), `insert`, `mark_pushed` (idempotent single-UPDATE
   per ScreenPipe pattern), `list_recent`. `SnapshotStoreError` wraps `sqlx::Error`
@@ -54,7 +54,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   retention boundary. Schema lives in `src-tauri/migrations/0001_create_snapshots.sql`
   and is applied via `sqlx::migrate!()` at startup.
 - **`snapshot` Rust module** (`src-tauri/src/snapshot/`) — neutral home for
-  `ContextSnapshot` per [ADR-0017](docs/adr/0017-context-snapshot-in-shared-snapshot-module.md).
+  `ContextSnapshot` per [ADR-0017](adr/0017-desktop-context-snapshot-in-shared-snapshot-module.md).
   Both `agent_interface` and `snapshot_store` import from here; neither depends
   on the other.
 - **ADR-0016** records the sqlx-over-rusqlite choice for the snapshot store
@@ -72,11 +72,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **`agent_interface` Rust module** (`src-tauri/src/agent_interface/`) — `ContextSnapshot`
   payload type and `AgentInterface::push` HTTPS POST with `Authorization: Bearer`
   header, 10-second timeout, and drop-on-failure semantics per
-  [ADR-0005](docs/adr/0005-drop-failed-snapshot-pushes-v1.md). Six wiremock-driven
+  [ADR-0005](adr/0005-desktop-drop-failed-snapshot-pushes-v1.md). Six wiremock-driven
   tests cover the exact 5-field contract, non-2xx, timeout, and network failure paths.
 - **`llm_provider` Rust module** (`src-tauri/src/llm_provider/`) — `LlmProvider::resolve`
   picks Apple Intelligence → existing Ollama → bundled Ollama per
-  [ADR-0006](docs/adr/0006-ollama-for-on-device-summarization.md);
+  [ADR-0006](adr/0006-desktop-ollama-for-on-device-summarization.md);
   `LlmProvider::summarize` routes to the resolved tier with a privacy-constrained
   prompt. Tier 2 selects the currently loaded model from `/api/ps`, falls back to
   the first installed model ≤ 5GB on disk from `/api/tags`, and falls through to
@@ -152,7 +152,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   ([#2](https://github.com/sruj75/v1-tauri/issues/2)):
   - Tier 3 bundled model confirmed: `qwen3.5:0.8b` (verified in Ollama registry).
   - Tier 2 model selection rule encoded in
-    [ADR-0006](docs/adr/0006-ollama-for-on-device-summarization.md): loaded model
+    [ADR-0006](adr/0006-desktop-ollama-for-on-device-summarization.md): loaded model
     → first installed model ≤ 5GB on disk → fall through to Tier 3.
   - Agent Interface contract locked: 5-field JSON payload (`id`, `captured_at`,
     `period_start`, `period_end`, `summary`) + `Authorization` header, 10s timeout.
@@ -161,15 +161,15 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **`ContextSnapshot` relocated** from `agent_interface` to a shared `snapshot`
   module so `snapshot_store` and `agent_interface` can both import it without
   depending on each other (ADR-0017). No payload shape change.
-- **[CONTEXT.md](CONTEXT.md) — `LLM Provider`** definition updated to describe
+- **[CONTEXT.md](../CONTEXT.md) — `LLM Provider`** definition updated to describe
   the Tier 2 selection rule.
-- **Product docs aligned to ADR-0008/0009**: [README.md](README.md),
-  [SPEC.md](SPEC.md), [PRD.md](PRD.md), [CONTEXT.md](CONTEXT.md), and
+- **Product docs aligned to ADR-0008/0009**: [README.md](../README.md),
+  [SPEC.md](SPEC.md), [PRD.md](../../../docs/prd/desktop-PRD.md), [CONTEXT.md](../CONTEXT.md), and
   [ARCHITECTURE.md](ARCHITECTURE.md) now describe signed-in auto-start, consent
   as the Auth gate, fixed 10-minute Context Heartbeat behavior, and Session End
   Marker delivery.
-- **Product docs aligned to ADR-0015**: [README.md](README.md),
-  [SPEC.md](SPEC.md), [PRD.md](PRD.md), [CONTEXT.md](CONTEXT.md), and
+- **Product docs aligned to ADR-0015**: [README.md](../README.md),
+  [SPEC.md](SPEC.md), [PRD.md](../../../docs/prd/desktop-PRD.md), [CONTEXT.md](../CONTEXT.md), and
   [ARCHITECTURE.md](ARCHITECTURE.md) now describe capture-ready Auth, Capture
   Permission Setup, signed/notarized DMG release packaging, and product-owned
   macOS Privacy Settings identity.
