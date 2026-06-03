@@ -12,8 +12,8 @@ import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-la
 import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
 import { IdentityGate } from "../src/domains/auth/ui/identity-gate";
 import type { AuthAdapter } from "../src/domains/auth/types/auth";
-import { ConsentPrimerStub } from "../src/domains/onboarding/ui/consent-primer-stub";
-import { SiblingInvitationStub } from "../src/domains/onboarding/ui/sibling-invitation-stub";
+import { ConsentPrimer } from "../src/domains/onboarding/ui/consent-primer";
+import { SiblingInvitation } from "../src/domains/onboarding/ui/sibling-invitation";
 import {
   LaunchStateProvider,
   useLaunchState,
@@ -55,8 +55,8 @@ function renderHarness() {
       <AuthAdapterProvider adapter={signInOkAdapter}>
         <Destination />
         <IdentityGate />
-        <ConsentPrimerStub />
-        <SiblingInvitationStub />
+        <ConsentPrimer />
+        <SiblingInvitation />
       </AuthAdapterProvider>
     </LaunchStateProvider>,
   );
@@ -73,10 +73,10 @@ test("walking the gates (skip path) drives the resolver to chat", async () => {
   fireEvent.press(screen.getByText("Continue with Google"));
   await expectDestination("MISSING_CONSENT");
 
-  fireEvent.press(screen.getByText("Accept consent (dev)"));
+  fireEvent.press(screen.getByText("Continue"));
   await expectDestination("SIBLING_INVITATION_PENDING");
 
-  fireEvent.press(screen.getByText("Skip for now (dev)"));
+  fireEvent.press(screen.getByText("Not now"));
   await expectDestination("READY_FOR_CHAT");
 });
 
@@ -85,10 +85,10 @@ test("completing (not skipping) the sibling invitation also reaches chat", async
   await expectDestination("SIGNED_OUT");
 
   fireEvent.press(screen.getByText("Continue with Google"));
-  fireEvent.press(screen.getByText("Accept consent (dev)"));
+  fireEvent.press(screen.getByText("Continue"));
   await expectDestination("SIBLING_INVITATION_PENDING");
 
-  fireEvent.press(screen.getByText("Complete setup (dev)"));
+  fireEvent.press(screen.getByText("Mark Mac connected (dev)"));
   await expectDestination("READY_FOR_CHAT");
 });
 

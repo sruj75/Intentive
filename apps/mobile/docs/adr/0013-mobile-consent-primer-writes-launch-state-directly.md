@@ -1,0 +1,17 @@
+# Consent Primer writes Launch State directly — no consent service
+
+The **Consent Primer** (#20) is a single affirmative **Pre-Chat Gate** screen: it explains memory, follow-ups, and user control in trust-setting language, and on accept writes `consent: "completed"` into **Launch State** by calling the store's `setConsent` mutator directly. There is no consent service, port, or adapter between the screen and the store. The durable `POST /consent` and cross-client suppression are deferred to the Control Plane (#26); the real `GET /me`-backed hydration is #23. The screen does not change when either lands.
+
+**Considered Options**
+
+- Screen calls the existing `setConsent("completed")` mutator directly (chosen): consent has no external system to hide — no SDK, token, or provider choice — so the launch-state store is already the seam. Matches ADR 0011 (client owns no durable gate truth; gates write optimistically) and the pragmatic-over-defensive stance.
+- A consent service/port mirroring #19's **Auth Adapter**. Rejected: it would wrap a single mutator call for a server write that does not exist yet — a shallow module (interface as wide as its implementation). #19 earned its deep adapter by hiding OAuth, tokens, and multiple providers; consent hides nothing comparable.
+- An accept/decline fork. Rejected: declining strands the user (no memory ⇒ no companion in v1) and would need a new `Gate Status` (`declined`) the type deliberately lacks. Opt-out, if ever, belongs to the **Account Surface** (#46), not a launch gate.
+
+**Consequences**
+
+- **The #20 ↔ #26 boundary.** #20 records consent only in the in-memory Launch State. The idempotent `POST /consent`, the cross-client `next_gate` computation, and the rule that device-local notification permission is never modeled as shared relationship consent all live in #26. They slot in _behind_ the store with zero change to the Consent Primer screen.
+- **Cross-client suppression is server-computed, not client-stored.** "Desktop consent suppresses Mobile re-prompt" can only be satisfied server-side — Mobile cannot see a sibling Client's state directly. #20 proves only the _mechanism_: a pre-consented Launch State (e.g. the `needs-invite` dev fixture, which hydrates `consent: completed`) resolves straight past the Consent Primer so the screen never renders. The real integration arrives when #23 replaces the stub `LaunchStateSource` with the `GET /me`-backed one.
+- **Capability honesty in the copy.** The "user control" trust point stays a present-tense truth ("you're always in control of what it keeps") and does not promise a review/clear button, because that capability belongs to the **Account Surface** (#46) and does not exist yet.
+- **Notification permission is deferred and is not consent.** The Consent Primer — and nothing else in the launch/auth/consent path — imports a notifications API or requests notification permission. The ask is deferred to a concrete first-chat reason (a waiting message / follow-up), per battle-tested deferred-permission UX. This is satisfied by construction (no import) plus this record, not by a mock-based "not called" test, which would verify a fabricated mock rather than real behavior.
+- **#20 does not touch the Launch State Resolver.** The `MISSING_CONSENT` destination, the `(gates)/consent` route, the `setConsent` mutator, and the `needs-consent` dev scenario already exist from #18; #20 only replaces the stub screen with the real one and tests it. The slice is screen-only.

@@ -1,6 +1,6 @@
 /** Consent Primer route — thin shell; renders the `onboarding` domain's screen. */
-import { ConsentPrimerStub } from "../../src/domains/onboarding/ui/consent-primer-stub";
+import { ConsentPrimer } from "../../src/domains/onboarding/ui/consent-primer";
 
 export default function ConsentRoute(): React.JSX.Element {
-  return <ConsentPrimerStub />;
+  return <ConsentPrimer />;
 }

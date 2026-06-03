@@ -40,10 +40,20 @@ _Avoid_: identity provider (reserve that phrasing for Neon Auth itself)
 The Neon Auth-issued token the **Neon Auth** provider returns on sign-in — the credential later passed through to `GET /me` and the Agent Runtime WebSocket, verified everywhere against the one shared Neon Auth JWKS (see root `CONTEXT-MAP.md`). The Mobile Client never mints or verifies it. The **Dev Auth Provider** does not produce one.
 _Avoid_: session token, access token, runtime token
 
+**Consent Primer**:
+The **Pre-Chat Gate** shown to a signed-in user whose relationship has not yet consented — a short, trust-setting explainer of memory, follow-ups, and user control. A single affirmative screen (no decline path; `Gate Status` has no `declined`): accepting writes `consent: "completed"` into **Launch State** optimistically via the store mutator. The screen calls no auth SDK, no consent service, and **never requests notification permission**. The durable `POST /consent` and cross-client suppression are the Control Plane's (#26); the Mobile screen is unchanged when they land. See [`adr/0013`](docs/adr/0013-mobile-consent-primer-writes-launch-state-directly.md).
+_Avoid_: consent screen, terms gate, privacy prompt, permission primer
+
+**Sibling Client Invitation**:
+The **Pre-Chat Gate** shown after the **Consent Primer** — a skippable, capability-honest invitation to set up the **Desktop Client** so the companion gets fuller context. It is static guidance only: an explainer of what connecting the Mac improves plus where to get it (no QR, deep link, email, or account pairing — pairing is the Control Plane's Device Registry, #27). Its only first-party action is **"Not now"**, which writes `siblingInvitation: "skipped"` into **Launch State** optimistically; the resolver advances to **Companion Chat**. The phone never claims the Mac connected — a real `completed` is server-observed (the Mac registers via #27 and `GET /me` reports it, #26); a `__DEV__`-only control exercises the completed path. No live detection in v1: a Mac that connects mid-session is picked up on the next state resolve (hydrate-on-mount, [`adr/0011`](docs/adr/0011-mobile-launch-state-as-in-memory-projection-of-cp-gate-truth.md)). A "required/blocking" variant is deferred — honest handling of "you need the Mac for this" is contextual in-chat (#41), not a launch block. See [`adr/0014`](docs/adr/0014-mobile-sibling-invitation-skippable-invite-screen.md).
+_Avoid_: macOS onboarding, desktop pairing wizard, relationship onboarding, device-linking screen
+
 ## Relationships
 
 - The **Launch State Resolver** reads **Launch State** and returns one **Launch Destination**.
 - A gate screen completing writes its **Gate Status** into **Launch State**; the root layout reactively redirects via the resolver. Gate screens never navigate forward themselves.
 - **Pre-Chat Gate** ordering (Identity → Consent → Sibling Invitation → Chat) lives only inside the resolver.
 - The **Identity Gate** calls the **Auth Adapter**; on success it writes `signedIn` into **Launch State** (the seam #18 left) and never navigates forward itself.
+- The **Consent Primer** writes `consent: "completed"` into **Launch State** on accept (no service layer between screen and store); the resolver advances it to the next gate. Notification permission is never requested here and is never modeled as relationship consent.
+- The **Sibling Client Invitation** writes `siblingInvitation: "skipped"` on "Not now"; a real `completed` is server-observed (the Mac registers via #27, surfaced by `GET /me` #26), never claimed by the phone. The resolver treats `skipped` and `completed` alike — both advance to **Companion Chat**.
 - The **Auth Adapter** selects an **Auth Provider**; only the **Neon Auth** provider yields a **User JWT**. Verifying that **User JWT** is the Control Plane's job (#23), not the Mobile Client's.

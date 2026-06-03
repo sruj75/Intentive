@@ -18,7 +18,7 @@ Enforceable import boundaries and explicit provider interfaces are now wired at 
 
 ## Codemap
 
-Root shape (v1 foundation — stubs for gates/chat; resolver + launch-state provider wired):
+Root shape (v1 foundation — Pre-Chat Gate screens through Sibling Invitation (#19–#21); Companion Chat still stub; resolver + launch-state provider wired):
 
 - `app/`: Expo Router routes only — thin shells grouped by UX context (`(gates)`, `(chat)`; `(account)/` when Account Surface lands). No reusable components or logic live here; a route file imports and composes a domain's `ui` export and nothing else. This is the **navigation axis**, deliberately distinct from the capability axis below (see [`adr/0010`](adr/0010-mobile-navigation-and-capability-as-orthogonal-axes.md)).
 - `src/domains/auth/`: **Auth Adapter** (`service/`) and **Identity Gate** (`ui/`) — Neon Auth and launch-only Dev providers behind one `signIn`/`signOut` boundary (ADR 0012). Session persistence is owned by the Neon Auth SDK; the Mobile Client does not verify **User JWT**s (#23). A screen lives where its logic lives, so the Identity Gate is owned here, not by `onboarding`.
@@ -93,6 +93,8 @@ Required contract tests:
 
 - Auth Adapter: provider selection, Neon outcome mapping, dev provider `__DEV__` gating (Node).
 - Identity Gate: success writes `signedIn` via the launch-state seam; recoverable failure surfaces (RN harness).
+- Consent Primer: trust-setting copy; accept writes `consent: "completed"` via the launch-state seam (RN harness).
+- Sibling Client Invitation: skip writes `siblingInvitation: "skipped"`; production UI never self-attests `completed` (RN harness).
 - Launch state resolver: signed out, missing Consent Primer, sibling-invitation pending, entry to Companion Chat.
 - Runtime Adapter (Protocol WebSocket client): `connect` handshake with the Control Plane-issued JWT, render reconnect snapshot, handle live `companion_message` chunks, surface `delivery_ack`s for sent messages, reconnect cleanly after a drop.
 - Chat Components: custom user/assistant rows, streaming, loading, error, retry.
