@@ -9,7 +9,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.intentive.mobile"
+      "bundleIdentifier": "com.heyintentive.expo"
     },
     "plugins": ["expo-router", "expo-secure-store", "expo-web-browser"],
     "experiments": {

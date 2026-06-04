@@ -66,9 +66,9 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
   self-attests `completed`) ([ADR 0014](adr/0014-mobile-sibling-invitation-skippable-invite-screen.md)).
   `sibling-invitation.rn.test.tsx`.
 
-- **Chat Primitive Engine spike (KEEP)** ([Issue #22]) — *uncommitted on branch
+- **Chat Primitive Engine spike (KEEP)** ([Issue #22]) — _uncommitted on branch
   `issue-19to22` at time of writing; included here so the log matches the working
-  tree.*
+  tree._
   - `@assistant-ui/react-native@0.1.20` behind Intentive Chat Components
     (`src/domains/chat/ui/companion-chat.tsx`) — custom user/assistant rows, Intentive
     composer slot, loading/error/streaming/retry; route renders `<CompanionChat />`
@@ -98,6 +98,22 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
   `consent-primer-stub.tsx`, `sibling-invitation-stub.tsx`, `chat-shell-stub.tsx`.
 - Placeholder `scaffold.ts` types under `auth` and `chat` domains.
 
+### Fixed
+
+- **`babel-preset-expo` unresolvable under pnpm** — the Expo Babel preset was only a
+  transitive dependency of `expo`, so pnpm's strict linking left it unresolvable from
+  `@intentive/mobile`. Both `pnpm --filter @intentive/mobile test:rn` and the Metro /
+  iOS-simulator bundle failed with `Cannot find module 'babel-preset-expo'`. Declared
+  it as an explicit mobile `devDependency` (`~56.0.14`).
+- **`expo-network` missing for `@better-auth/expo`** ([Issue #19]) — the Better Auth
+  Expo client `import()`s `expo-network` unconditionally even though it is declared an
+  _optional_ peer, so it was never installed and the iOS Metro bundle failed to resolve
+  it. Surfaced on the first successful simulator bundle. Installed via
+  `expo install expo-network` (`~56.0.4`); native pod linked.
+- **Chat Primitive Engine spike verified on iOS simulator** ([Issue #22]) —
+  `<CompanionChat/>` exercised end-to-end on iPhone 17 Pro (iOS 26.2): gate walk →
+  empty chat → send → user row → dev-adapter streamed assistant reply → composer reset.
+
 ### Deferred (not in this changelog as shipped behavior)
 
 - **#23** — `GET /me`-backed `LaunchStateSource`, cold-launch session restore, real
@@ -107,7 +123,9 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard.
 - **#46** — Account Surface and sign-out UX.
 - **CI** — `test:rn` remains opt-in locally; root `pnpm test` runs Node mobile tests
-  only (see `docs/TESTING.md`).
+  only (see `docs/TESTING.md`). Known issue: `test:rn` passes all suites but does not
+  exit on its own (open async handle, likely the assistant-ui `useLocalRuntime`); needs
+  a root-cause cleanup or `--forceExit` before it can run unattended in CI.
 - Production chat persistence remains out of scope per ADR/server-truth model; the
   local runtime adapter is dev-only until `#33`.
 

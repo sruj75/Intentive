@@ -28,7 +28,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>intentive</string>
-				<string>com.intentive.mobile</string>
+				<string>com.heyintentive.expo</string>
 			</array>
 		</dict>
 	</array>

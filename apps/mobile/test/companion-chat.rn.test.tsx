@@ -53,7 +53,9 @@ test("the dev adapter's canned reply lands in an Intentive-owned assistant row",
 test("a thinking surface shows while the reply is in flight, then clears", async () => {
   // Delayed multi-chunk reply keeps the thread `running` long enough to observe.
   render(
-    <CompanionChat adapter={createDevChatAdapter({ delayMs: 80, chunks: ["Part one ", "part two."] })} />,
+    <CompanionChat
+      adapter={createDevChatAdapter({ delayMs: 80, chunks: ["Part one ", "part two."] })}
+    />,
   );
   await typeAndSend("hi");
   expect(await screen.findByTestId("intentive-thinking")).toBeTruthy();
@@ -71,7 +73,9 @@ test("a failed reply surfaces an error + retry, and retry re-runs the adapter", 
     async *run() {
       calls += 1;
       if (calls === 1) {
-        yield { status: { type: "incomplete", reason: "error", error: "simulated first-attempt failure" } };
+        yield {
+          status: { type: "incomplete", reason: "error", error: "simulated first-attempt failure" },
+        };
         return;
       }
       yield { content: [{ type: "text", text: "Recovered on retry." }] };

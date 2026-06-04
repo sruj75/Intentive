@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/write-esm-marker.mjs",
     "test": "pnpm run build && node --test",
-    "test:rn": "jest",
+    "//test:rn": "--forceExit: @assistant-ui/tap's scheduler opens a module-scoped MessageChannel singleton at import time (a ref'd MESSAGEPORT handle with no teardown API). It can't be cleaned up — the port stays ref'd by design via its onmessage scheduler listener — so without this flag Jest hangs after the suite passes ('Jest did not exit...'), a CI footgun. Verified via --detectOpenHandles. See jest.config.js.",
+    "test:rn": "jest --forceExit",
     "typecheck": "tsc --noEmit",
     "dev": "expo start",
     "ios": "expo run:ios",
