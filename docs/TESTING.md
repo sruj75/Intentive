@@ -50,7 +50,7 @@ pnpm --dir packages/providers test
 
 ```bash
 pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch-state resolver/source)
-pnpm --dir apps/mobile test:rn    # Jest / React Native harness (Identity, Consent Primer, Sibling Invitation screens + gate-walk loop)
+pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat / Chat Primitive Engine spike #22)
 pnpm --dir apps/mobile typecheck
 ```
 
@@ -58,7 +58,7 @@ The root `pnpm test` runs the Node `test` script above. `test:rn` is opt-in unti
 
 ## Scaffold Deployables
 
-`services/control-plane` and `services/agent-runtime` still use minimal scaffold tests. `apps/mobile` adds auth-adapter, launch-state resolver/source, and RN harness tests for the Pre-Chat Gate screens (#19–#21); grow chat/runtime coverage as those layers land.
+`services/control-plane` and `services/agent-runtime` still use minimal scaffold tests. `apps/mobile` adds auth-adapter and launch-state resolver/source tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Chat Primitive Engine spike tests (`companion-chat.rn.test.tsx`, `dev-chat-adapter.test.mjs`). Protocol/runtime adapter coverage grows with #33.
 
 ## CI Expectations
 

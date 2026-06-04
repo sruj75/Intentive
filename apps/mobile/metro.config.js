@@ -8,6 +8,11 @@ const path = require("path");
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, "../..");
 
+// `@assistant-ui/core` eagerly imports the (uninstalled, unused) `assistant-cloud`
+// integration; alias the bare specifier to a no-op stub so `<CompanionChat/>`
+// bundles. Mirrors jest.config.js `moduleNameMapper` — same stub, both paths.
+const assistantCloudStub = path.resolve(projectRoot, "assistant-cloud-stub.js");
+
 const config = getDefaultConfig(projectRoot);
 
 config.watchFolders = [workspaceRoot];
@@ -19,6 +24,10 @@ config.resolver.nodeModulesPaths = [
 const defaultResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "assistant-cloud") {
+    return { type: "sourceFile", filePath: assistantCloudStub };
+  }
+
   if (moduleName.startsWith(".") && moduleName.endsWith(".js")) {
     const originDir = path.dirname(context.originModulePath);
     const withoutJs = moduleName.slice(0, -".js".length);

@@ -18,11 +18,11 @@ Enforceable import boundaries and explicit provider interfaces are now wired at 
 
 ## Codemap
 
-Root shape (v1 foundation — Pre-Chat Gate screens through Sibling Invitation (#19–#21); Companion Chat still stub; resolver + launch-state provider wired):
+Root shape (v1 foundation — Pre-Chat Gate screens through Sibling Invitation (#19–#21); Chat Primitive Engine spike (#22) landed as `CompanionChat` + dev adapter; resolver + launch-state provider wired):
 
 - `app/`: Expo Router routes only — thin shells grouped by UX context (`(gates)`, `(chat)`; `(account)/` when Account Surface lands). No reusable components or logic live here; a route file imports and composes a domain's `ui` export and nothing else. This is the **navigation axis**, deliberately distinct from the capability axis below (see [`adr/0010`](adr/0010-mobile-navigation-and-capability-as-orthogonal-axes.md)).
 - `src/domains/auth/`: **Auth Adapter** (`service/`) and **Identity Gate** (`ui/`) — Neon Auth and launch-only Dev providers behind one `signIn`/`signOut` boundary (ADR 0012). Session persistence is owned by the Neon Auth SDK; the Mobile Client does not verify **User JWT**s (#23). A screen lives where its logic lives, so the Identity Gate is owned here, not by `onboarding`.
-- `src/domains/chat/`: Companion Chat domain — message rendering, composer, Runtime Adapter usage, Agent State display. Reads Conversation History from the WebSocket reconnect snapshot; does not persist messages.
+- `src/domains/chat/`: Companion Chat domain — `ui/companion-chat.tsx` (Intentive Chat Components over `@assistant-ui/react-native`, ADR 0009), `runtime/dev-chat-adapter.ts` (MVP dev seam; Protocol adapter in #33), future Runtime Adapter usage, Agent State display. Reads Conversation History from the WebSocket reconnect snapshot; does not persist messages. Routes import `CompanionChat` only — no vendor types in `app/`.
 - `src/domains/onboarding/`: the Pre-Chat Gate **sequence** — the Consent Primer and Sibling Client Invitation screens, plus the **Launch State Resolver** (the pure `service`-layer state machine that owns gate ordering). The Identity Gate screen itself lives in `auth/`; `onboarding` only decides when to show it (by resolving to `SIGNED_OUT`). The Companion's bootstrap-guided opening message renders inside `chat/`, not here.
 - `src/domains/notifications/`: APNs token registration with the Control Plane (via `POST /devices/register`), permission ask on first chat entry, push intent surfaces.
 - `src/domains/account/`: Account Surface, logout, setup recovery, connection status, and debug status.
