@@ -24,6 +24,14 @@ export interface LaunchStateSource {
  * Named dev scenarios for booting the app directly into any zone while the real
  * `GET /me` does not exist. Each maps deterministically through the resolver to
  * one destination — asserted in the contract tests.
+ *
+ * Every scenario is WALK-SAFE: its gates are pre-seeded `pending`, never `null`.
+ * `null` is reserved for the genuine cold-launch, pre-hydration state the store's
+ * `UNKNOWN` owns. If a dev source handed out `null` gates, signing in (an
+ * optimistic write that only flips `signedIn`) would leave `consent: null`, and
+ * the resolver returns `RESOLVING` — stranding the user on the splash with no
+ * re-read to recover. Pre-seeding `pending` guarantees the resolver always has a
+ * concrete value as the user walks the gates forward.
  */
 export type StubScenario = "signed-out" | "needs-consent" | "needs-invite" | "ready";
 
@@ -31,7 +39,7 @@ const completed: GateStatus = "completed";
 const pending: GateStatus = "pending";
 
 const SCENARIOS: Record<StubScenario, LaunchState> = {
-  "signed-out": { signedIn: false, consent: null, siblingInvitation: null },
+  "signed-out": { signedIn: false, consent: pending, siblingInvitation: pending },
   "needs-consent": { signedIn: true, consent: pending, siblingInvitation: pending },
   "needs-invite": { signedIn: true, consent: completed, siblingInvitation: pending },
   ready: { signedIn: true, consent: completed, siblingInvitation: completed },

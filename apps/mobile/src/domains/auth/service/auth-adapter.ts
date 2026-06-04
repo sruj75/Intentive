@@ -3,12 +3,15 @@
  * provider selection and the **User JWT** behind four methods (ADR 0012).
  *
  * Construction takes the normalized Neon client port, the set of social
- * providers that actually have credentials (capability honesty — an absent
- * provider yields `not-configured`, never a fake success), and whether to
- * expose the launch-only dev provider (`__DEV__`). Session, token, and
- * sign-out delegate to the shared Neon client, so cold-launch restore (#23)
- * and the token-getter (#33) always reflect real Neon sessions, never the dev
- * fake.
+ * providers that are a *working* capability, and whether to expose the
+ * launch-only dev provider (`__DEV__`). The adapter owns capability honesty: a
+ * provider not in `enabled` (or the dev provider when `includeDev` is false)
+ * short-circuits to `not-configured` here — never a fake success, and without
+ * opening a dead OAuth flow — so the **Auth Providers** themselves stay pure
+ * sign-in strategies that only ever run when they should genuinely try. Session,
+ * token, and sign-out delegate to the shared Neon client, so cold-launch restore
+ * (#23) and the token-getter (#33) always reflect real Neon sessions, never the
+ * dev fake.
  */
 import type { AuthAdapter, AuthProviderId, SignInOutcome } from "../types/auth.js";
 import type { NeonAuthClientPort, SocialProvider } from "./ports.js";
@@ -21,23 +24,19 @@ export function createAuthAdapter(deps: {
   includeDev: boolean;
 }): AuthAdapter {
   const { client, enabled, includeDev } = deps;
-  const google = createNeonAuthProvider({
-    client,
-    social: "google",
-    enabled: enabled.has("google"),
-  });
-  const apple = createNeonAuthProvider({ client, social: "apple", enabled: enabled.has("apple") });
+  const google = createNeonAuthProvider({ client, social: "google" });
+  const apple = createNeonAuthProvider({ client, social: "apple" });
   const dev = includeDev ? createDevAuthProvider() : null;
 
   return {
     signIn(provider: AuthProviderId): Promise<SignInOutcome> {
       switch (provider) {
         case "google":
-          return google.signIn();
+          return enabled.has("google") ? google.signIn() : notConfigured();
         case "apple":
-          return apple.signIn();
+          return enabled.has("apple") ? apple.signIn() : notConfigured();
         case "dev":
-          return dev ? dev.signIn() : Promise.resolve({ status: "not-configured" });
+          return dev ? dev.signIn() : notConfigured();
       }
     },
     signOut: () => client.signOut(),
@@ -45,3 +44,5 @@ export function createAuthAdapter(deps: {
     getAccessToken: () => client.getJwt(),
   };
 }
+
+const notConfigured = (): Promise<SignInOutcome> => Promise.resolve({ status: "not-configured" });

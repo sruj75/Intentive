@@ -23,7 +23,7 @@ The Mobile Client is the **only client with a chat surface**. It:
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `auth` — **Auth Adapter**, Identity Gate, Neon/Dev providers ([`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md))
-- `onboarding` — Consent Primer + Sibling Invitation screens; **Launch State Resolver** (`service/`)
+- `onboarding` — Consent Primer + Sibling Invitation screens; **Launch State Resolver** + **Launch Route** (`service/resolve-launch-state.ts`, `service/route-for-destination.ts`)
 - `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, ADR 0009); dev adapter in `runtime/`; route composes `CompanionChat` only
 - `notifications` — APNs token registration, permission ask (on first chat entry, not at launch)
 - `account` — Account Surface, logout, app info

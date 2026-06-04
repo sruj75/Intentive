@@ -24,6 +24,10 @@ _Avoid_: gate repo, me-client
 The resolver's output — exactly one of `RESOLVING`, `SIGNED_OUT`, `MISSING_CONSENT`, `SIBLING_INVITATION_PENDING`, `READY_FOR_CHAT`. `RESOLVING` means state is not yet known and the root layout shows the splash — so the resolver owns the splash decision too, not the layout. The root layout redirects to the matching route zone.
 _Avoid_: screen, page, next step
 
+**Launch Route**:
+The route intent a **Launch Destination** maps to — either the splash (`RESOLVING`, state not yet known) or a redirect to exactly one route zone. A pure function (`onboarding/service/route-for-destination.ts`), the second half of the launch decision: the resolver answers _where the user stands_, the **Launch Route** answers _where that sends them_. The root layout's `RootNavigator` only runs the intent (`router.replace` on a redirect); it never owns the mapping.
+_Avoid_: href, redirect, route guard
+
 **Gate Status**:
 The state of a single **Pre-Chat Gate**: `pending | completed | skipped`. Uniform across all gates, though only the skippable **Sibling Client Invitation** ever takes `skipped`. Both `completed` and `skipped` let the resolver advance past a gate.
 _Avoid_: done flag, gate boolean
@@ -51,6 +55,7 @@ _Avoid_: macOS onboarding, desktop pairing wizard, relationship onboarding, devi
 ## Relationships
 
 - The **Launch State Resolver** reads **Launch State** and returns one **Launch Destination**.
+- The root layout maps that **Launch Destination** to one **Launch Route** (`route-for-destination.ts`) and replaces to it; `RESOLVING` maps to the splash, not a redirect.
 - A gate screen completing writes its **Gate Status** into **Launch State**; the root layout reactively redirects via the resolver. Gate screens never navigate forward themselves.
 - **Pre-Chat Gate** ordering (Identity → Consent → Sibling Invitation → Chat) lives only inside the resolver.
 - The **Identity Gate** calls the **Auth Adapter**; on success it writes `signedIn` into **Launch State** (the seam #18 left) and never navigates forward itself.

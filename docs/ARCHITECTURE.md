@@ -175,7 +175,7 @@ intentive/
 │   │   ├── CONTEXT.md                   ← Mobile Client vocabulary
 │   │   ├── docs/adr/                    ← Mobile Client decisions
 │   │   ├── app/                         ← NAVIGATION axis: Expo Router, thin route shells
-│   │   │   ├── _layout.tsx              ← root: reads Launch State → redirects
+│   │   │   ├── _layout.tsx              ← root: resolver + Launch Route → redirect effect
 │   │   │   ├── (gates)/                 ← shared gate chrome; identity, consent, invite
 │   │   │   └── (chat)/                  ← chat route shell; `(account)/` when Account Surface lands
 │   │   └── src/domains/                 ← CAPABILITY axis: deep modules, layer rule (see mobile ADR 0010)

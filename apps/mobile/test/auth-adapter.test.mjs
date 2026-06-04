@@ -12,7 +12,11 @@ import { createAuthAdapter } from "../dist/domains/auth/service/auth-adapter.js"
 
 function fakeClient(overrides = {}) {
   return {
-    signInSocial: () => Promise.resolve(overrides.attempt ?? { result: "authenticated" }),
+    socialCalls: [],
+    signInSocial(provider) {
+      this.socialCalls.push(provider);
+      return Promise.resolve(overrides.attempt ?? { result: "authenticated" });
+    },
     hasSession: () => Promise.resolve(overrides.hasSession ?? false),
     getJwt: () => Promise.resolve(overrides.jwt ?? null),
     signOut() {
@@ -41,13 +45,17 @@ test("google routes to the Neon provider and signs in", async () => {
   assert.deepEqual(await adapter.signIn("google"), { status: "signed-in" });
 });
 
-test("a social provider without credentials is not-configured", async () => {
+test("a social provider without credentials is not-configured, opening no OAuth flow", async () => {
+  const client = fakeClient();
   const adapter = createAuthAdapter({
-    client: fakeClient(),
+    client,
     enabled: new Set(["google"]), // apple absent
     includeDev: false,
   });
   assert.deepEqual(await adapter.signIn("apple"), { status: "not-configured" });
+  // Capability honesty lives in the adapter now: a disabled provider never even
+  // reaches the client, so no dead OAuth flow is opened.
+  assert.deepEqual(client.socialCalls, []);
 });
 
 test("session, token, and sign-out delegate to the shared client", async () => {

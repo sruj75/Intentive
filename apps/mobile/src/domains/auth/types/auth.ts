@@ -41,14 +41,13 @@ export interface AuthAdapter {
 }
 
 /**
- * One concrete sign-in path behind the **Auth Adapter** — same shape minus
- * provider selection, which the adapter owns. The dev provider holds no real
- * session, so its `restoreSession` is always `false` and `getAccessToken`
- * always `null`.
+ * One concrete sign-in path behind the **Auth Adapter** — a sign-in *strategy*,
+ * nothing more. A provider's only job is to answer "did this sign-in attempt
+ * succeed, cancel, or fail"; the **Auth Adapter** owns provider selection and
+ * delegates session, token, and sign-out straight to the shared Neon client, so
+ * those never flow through a provider (in particular, the dev fake never serves
+ * a `restoreSession`/`getAccessToken` — those always come from the real client).
  */
 export interface AuthProvider {
   signIn(): Promise<SignInOutcome>;
-  signOut(): Promise<void>;
-  restoreSession(): Promise<boolean>;
-  getAccessToken(): Promise<string | null>;
 }

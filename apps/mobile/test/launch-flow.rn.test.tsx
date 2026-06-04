@@ -16,6 +16,7 @@ import { ConsentPrimer } from "../src/domains/onboarding/ui/consent-primer";
 import { SiblingInvitation } from "../src/domains/onboarding/ui/sibling-invitation";
 import {
   LaunchStateProvider,
+  createStubLaunchStateSource,
   useLaunchState,
   type LaunchStateSource,
 } from "../src/providers/launch-state";
@@ -29,12 +30,10 @@ const signInOkAdapter: AuthAdapter = {
   getAccessToken: () => Promise.resolve(null),
 };
 
-// Mirrors the dev harness source: signed-out with gates pre-populated so the
-// whole walk works; the resolver's short-circuit hides gates until sign-in.
-const walkSource: LaunchStateSource = {
-  read: () =>
-    Promise.resolve({ signedIn: false, consent: "pending", siblingInvitation: "pending" }),
-};
+// The same walk-safe source the dev harness boots: signed-out with gates
+// pre-seeded `pending` so the whole walk works; the resolver's short-circuit
+// hides gates until sign-in. One definition, owned by the stub factory.
+const walkSource: LaunchStateSource = createStubLaunchStateSource("signed-out");
 
 function Destination() {
   const { state } = useLaunchState();

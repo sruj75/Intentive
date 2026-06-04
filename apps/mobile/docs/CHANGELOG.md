@@ -85,6 +85,16 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Changed
 
+- **Launch Route** — `route-for-destination.ts` owns `LaunchDestination →` splash or
+  redirect href; `app/_layout.tsx` runs the redirect effect only. Node contract:
+  `route-for-destination.test.mjs`. Dev/test harnesses use `createStubLaunchStateSource`
+  so stub scenarios cannot drift from `source.ts`.
+- **Auth Adapter capability honesty** — disabled social providers and absent dev
+  provider short-circuit to `not-configured` in the adapter (no dead OAuth flow).
+  **Auth Providers** (`neon-provider`, `dev-provider`) are sign-in-only strategies;
+  session, token, and sign-out stay on the adapter + Neon client.
+- **Walk-safe dev stubs** — `signed-out` stub scenario pre-seeds gates `pending`
+  (not `null`) so optimistic sign-in cannot strand on `RESOLVING` splash.
 - Pre-Chat Gate and Companion Chat routes now import real domain screens instead of
   stubs (`identity`, `consent`, `invite`, `chat`).
 - `apps/mobile/AGENTS.md`, `docs/ARCHITECTURE.md`, and root `docs/TESTING.md` synced
