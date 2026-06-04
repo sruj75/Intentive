@@ -16,11 +16,12 @@ import type { LaunchDestination } from "../../../providers/launch-state/types.js
 
 /**
  * The route intent for one Launch Destination: stay on the splash while state is
- * still resolving, or replace into a concrete route zone.
+ * still resolving, or replace into a concrete route zone (`zone` is the route-zone
+ * string the layout hands to `router.replace`).
  */
-export type LaunchRoute = { kind: "splash" } | { kind: "redirect"; href: string };
+export type LaunchRoute = { kind: "splash" } | { kind: "replace"; zone: string };
 
-const HREF_FOR: Record<Exclude<LaunchDestination, "RESOLVING">, string> = {
+const ROUTE_ZONE_FOR: Record<Exclude<LaunchDestination, "RESOLVING">, string> = {
   SIGNED_OUT: "/(gates)/identity",
   MISSING_CONSENT: "/(gates)/consent",
   SIBLING_INVITATION_PENDING: "/(gates)/invite",
@@ -30,5 +31,5 @@ const HREF_FOR: Record<Exclude<LaunchDestination, "RESOLVING">, string> = {
 /** Map a Launch Destination to its Launch Route. */
 export function routeForDestination(destination: LaunchDestination): LaunchRoute {
   if (destination === "RESOLVING") return { kind: "splash" };
-  return { kind: "redirect", href: HREF_FOR[destination] };
+  return { kind: "replace", zone: ROUTE_ZONE_FOR[destination] };
 }

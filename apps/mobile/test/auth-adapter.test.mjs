@@ -62,7 +62,7 @@ test("session, token, and sign-out delegate to the shared client", async () => {
   const client = fakeClient({ hasSession: true, jwt: "jwt-xyz" });
   const adapter = createAuthAdapter({ client, enabled: ALL, includeDev: true });
   assert.equal(await adapter.restoreSession(), true);
-  assert.equal(await adapter.getAccessToken(), "jwt-xyz");
+  assert.equal(await adapter.getUserJwt(), "jwt-xyz");
   await adapter.signOut();
   assert.equal(client.signedOut, true);
 });

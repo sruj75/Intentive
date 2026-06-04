@@ -1,8 +1,17 @@
 /**
- * Neon Auth boundary — the ONE native-SDK-importing file in the auth domain. It
- * adapts Better Auth's native client path (SecureStore
- * cookies + deep-link OAuth) into the RN-free `NeonAuthClientPort` the provider
- * and adapter depend on. Because this file imports native Mobile Client modules, it is excluded from
+ * Neon Auth boundary — the ONE native-SDK-importing file in the auth domain, and
+ * the single sanctioned seam to the sign-in SDK for the whole Mobile Client (ADR
+ * 0012, CONTEXT.md → Auth Adapter / Auth Provider). Product code never imports an
+ * auth SDK directly: the UI reaches sign-in only through the **Auth Adapter**,
+ * which depends on the RN-free `NeonAuthClientPort` this file alone implements —
+ * so this *is* the provider seam, just expressed as the auth domain's own deep
+ * boundary rather than a shared package. It does NOT belong in
+ * `packages/providers/`: that package holds the cross-deployable, server-side
+ * JWKS *verify* concern (`packages/providers/src/auth.ts`, used by the Control
+ * Plane and Agent Runtime); this is the RN-native, Mobile-only sign-in client and
+ * cannot run server-side. It adapts Better Auth's native client path (SecureStore
+ * cookies + deep-link OAuth) into the port the provider and adapter depend on.
+ * Because this file imports native Mobile Client modules, it is excluded from
  * the pure-core node:test build (tsconfig.build.json) and lives on the RN axis.
  *
  * The client points at the Neon Auth base URL, whose Better Auth server is the
@@ -61,15 +70,25 @@ export function createNeonAuthClient(): NeonAuthClientPort {
 
   return {
     async signInSocial(provider: SocialProvider): Promise<NeonAttempt> {
-      // The Better Auth native plugin opens the system browser and returns once the deep-link
-      // callback fires (or the user dismisses it).
-      const { error } = await client.signIn.social({ provider, callbackURL: "/" });
-      if (error) {
-        return { result: "failed", message: error.message ?? "Sign-in failed." };
+      // This boundary always *returns* a NeonAttempt — never throws — so the
+      // provider/adapter chain stays a pure outcome map. SDK/network throws are
+      // collapsed into `failed` here, the same recoverable shape as a returned error.
+      try {
+        // The Better Auth native plugin opens the system browser and returns once the deep-link
+        // callback fires (or the user dismisses it).
+        const { error } = await client.signIn.social({ provider, callbackURL: "/" });
+        if (error) {
+          return { result: "failed", message: error.message ?? "Sign-in failed." };
+        }
+        // A dismissed browser leaves no session; a completed flow sets one.
+        const session = await client.getSession();
+        return session.data ? { result: "authenticated" } : { result: "dismissed" };
+      } catch (err) {
+        return {
+          result: "failed",
+          message: err instanceof Error ? err.message : "Sign-in failed.",
+        };
       }
-      // A dismissed browser leaves no session; a completed flow sets one.
-      const session = await client.getSession();
-      return session.data ? { result: "authenticated" } : { result: "dismissed" };
     },
 
     async hasSession(): Promise<boolean> {

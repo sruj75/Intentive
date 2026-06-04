@@ -29,15 +29,15 @@ export type SignInOutcome =
 /**
  * The boundary the Identity Gate calls. Deep module: four methods over all the
  * SDK / provider / token complexity. `restoreSession` exists for #23
- * (cold-launch hydration) and `getAccessToken` for #33 (the WebSocket
+ * (cold-launch hydration) and `getUserJwt` for #33 (the WebSocket
  * handshake) — neither is wired in #19, and the UI never calls
- * `getAccessToken`.
+ * `getUserJwt`.
  */
 export interface AuthAdapter {
   signIn(provider: AuthProviderId): Promise<SignInOutcome>;
   signOut(): Promise<void>;
   restoreSession(): Promise<boolean>;
-  getAccessToken(): Promise<string | null>;
+  getUserJwt(): Promise<string | null>;
 }
 
 /**
@@ -46,7 +46,7 @@ export interface AuthAdapter {
  * succeed, cancel, or fail"; the **Auth Adapter** owns provider selection and
  * delegates session, token, and sign-out straight to the shared Neon client, so
  * those never flow through a provider (in particular, the dev fake never serves
- * a `restoreSession`/`getAccessToken` — those always come from the real client).
+ * a `restoreSession`/`getUserJwt` — those always come from the real client).
  */
 export interface AuthProvider {
   signIn(): Promise<SignInOutcome>;

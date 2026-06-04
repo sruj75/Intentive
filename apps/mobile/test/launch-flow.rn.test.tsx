@@ -1,7 +1,7 @@
 /**
  * RN harness-loop test: proves the reactive write path in the React runtime —
  * a gate screen's dev control writes its status into the shared store, and the
- * resolver re-evaluates to the next destination. (The router redirect itself is
+ * resolver re-evaluates to the next destination. (The router replacement itself is
  * verified by the simulator walk-through; here we assert the store↔resolver loop
  * that drives it.)
  */
@@ -27,7 +27,7 @@ const signInOkAdapter: AuthAdapter = {
   signIn: () => Promise.resolve({ status: "signed-in" }),
   signOut: () => Promise.resolve(),
   restoreSession: () => Promise.resolve(false),
-  getAccessToken: () => Promise.resolve(null),
+  getUserJwt: () => Promise.resolve(null),
 };
 
 // The same walk-safe source the dev harness boots: signed-out with gates
@@ -48,9 +48,9 @@ function renderWithSource(source: LaunchStateSource) {
   );
 }
 
-function renderHarness() {
+function renderHarness(source: LaunchStateSource = walkSource) {
   return render(
-    <LaunchStateProvider source={walkSource}>
+    <LaunchStateProvider source={source}>
       <AuthAdapterProvider adapter={signInOkAdapter}>
         <Destination />
         <IdentityGate />
@@ -89,6 +89,26 @@ test("completing (not skipping) the sibling invitation also reaches chat", async
 
   fireEvent.press(screen.getByText("Mark Mac connected (dev)"));
   await expectDestination("READY_FOR_CHAT");
+});
+
+test("signing in after a failed hydration still walks forward (never stranded on splash)", async () => {
+  // Regression: the hydration-failure fallback leaves the gates unknown. An
+  // optimistic sign-in must still hand the resolver concrete gate values, or the
+  // user is stranded on RESOLVING with no re-read. markSignedIn owns that invariant.
+  const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+  const failingSource: LaunchStateSource = {
+    read: () => Promise.reject(new Error("GET /me unavailable")),
+  };
+
+  try {
+    renderHarness(failingSource);
+    await expectDestination("SIGNED_OUT");
+
+    fireEvent.press(screen.getByText("Continue with Google"));
+    await expectDestination("MISSING_CONSENT");
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test("failed source hydration falls back to signed out instead of staying resolving", async () => {

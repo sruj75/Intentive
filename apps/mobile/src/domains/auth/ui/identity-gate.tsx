@@ -15,6 +15,9 @@ import { useLaunchState } from "../../../providers/launch-state";
 import type { AuthProviderId } from "../types/auth";
 import { useAuthAdapter } from "./auth-context";
 
+/** Shown for any recoverable failure — an `error` outcome or a thrown attempt. */
+const RETRY_NOTICE = "Couldn't sign you in. Please try again.";
+
 export function IdentityGate(): React.JSX.Element {
   const adapter = useAuthAdapter();
   const { markSignedIn } = useLaunchState();
@@ -36,9 +39,14 @@ export function IdentityGate(): React.JSX.Element {
           setNotice("That sign-in option isn't available yet.");
           return;
         case "error":
-          setNotice("Couldn't sign you in. Please try again.");
+          setNotice(RETRY_NOTICE);
           return;
       }
+    } catch {
+      // The adapter should map failures to an `error` outcome, but a thrown SDK
+      // or network error must never escape as an unhandled rejection — surface
+      // the same recoverable notice instead.
+      setNotice(RETRY_NOTICE);
     } finally {
       setBusy((current) => (current === provider ? null : current));
     }

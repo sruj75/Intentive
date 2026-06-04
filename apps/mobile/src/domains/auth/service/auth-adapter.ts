@@ -41,7 +41,7 @@ export function createAuthAdapter(deps: {
     },
     signOut: () => client.signOut(),
     restoreSession: () => client.hasSession(),
-    getAccessToken: () => client.getJwt(),
+    getUserJwt: () => client.getJwt(),
   };
 }
 

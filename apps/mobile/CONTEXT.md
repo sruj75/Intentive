@@ -25,7 +25,7 @@ The resolver's output — exactly one of `RESOLVING`, `SIGNED_OUT`, `MISSING_CON
 _Avoid_: screen, page, next step
 
 **Launch Route**:
-The route intent a **Launch Destination** maps to — either the splash (`RESOLVING`, state not yet known) or a redirect to exactly one route zone. A pure function (`onboarding/service/route-for-destination.ts`), the second half of the launch decision: the resolver answers _where the user stands_, the **Launch Route** answers _where that sends them_. The root layout's `RootNavigator` only runs the intent (`router.replace` on a redirect); it never owns the mapping.
+The route intent a **Launch Destination** maps to — either the splash (`RESOLVING`, state not yet known) or a replacement to exactly one route zone. A pure function (`onboarding/service/route-for-destination.ts`), the second half of the launch decision: the resolver answers _where the user stands_, the **Launch Route** answers _where that sends them_. The root layout's `RootNavigator` only runs the intent (`router.replace` to that zone); it never owns the mapping.
 _Avoid_: href, redirect, route guard
 
 **Gate Status**:
