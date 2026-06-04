@@ -4,14 +4,14 @@ Intentive is one product spanning a Mobile Client, a Desktop Client, a server-si
 
 ## Contexts
 
-| Context | Vocabulary | Decisions (ADRs) |
-|---|---|---|
-| **Shared** (`packages/`) | [`packages/CONTEXT.md`](packages/CONTEXT.md) | system-wide → [`docs/adr/`](docs/adr/) |
-| **Mobile Client** | [`apps/mobile/CONTEXT.md`](apps/mobile/CONTEXT.md) | [`apps/mobile/docs/adr/`](apps/mobile/docs/adr/) |
-| **Desktop Client** | [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md) | [`apps/desktop/docs/adr/`](apps/desktop/docs/adr/) |
-| **Control Plane** | [`services/control-plane/CONTEXT.md`](services/control-plane/CONTEXT.md) | [`services/control-plane/docs/adr/`](services/control-plane/docs/adr/) |
-| **Agent Runtime** | [`services/agent-runtime/CONTEXT.md`](services/agent-runtime/CONTEXT.md) | [`services/agent-runtime/docs/adr/`](services/agent-runtime/docs/adr/) |
-| **System-wide** | this map | [`docs/adr/`](docs/adr/) |
+| Context                  | Vocabulary                                                               | Decisions (ADRs)                                                       |
+| ------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| **Shared** (`packages/`) | [`packages/CONTEXT.md`](packages/CONTEXT.md)                             | system-wide → [`docs/adr/`](docs/adr/)                                 |
+| **Mobile Client**        | [`apps/mobile/CONTEXT.md`](apps/mobile/CONTEXT.md)                       | [`apps/mobile/docs/adr/`](apps/mobile/docs/adr/)                       |
+| **Desktop Client**       | [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md)                     | [`apps/desktop/docs/adr/`](apps/desktop/docs/adr/)                     |
+| **Control Plane**        | [`services/control-plane/CONTEXT.md`](services/control-plane/CONTEXT.md) | [`services/control-plane/docs/adr/`](services/control-plane/docs/adr/) |
+| **Agent Runtime**        | [`services/agent-runtime/CONTEXT.md`](services/agent-runtime/CONTEXT.md) | [`services/agent-runtime/docs/adr/`](services/agent-runtime/docs/adr/) |
+| **System-wide**          | this map                                                                 | [`docs/adr/`](docs/adr/)                                               |
 
 ## Maintaining these docs (read before editing — esp. with `/grill-with-docs`)
 
@@ -20,12 +20,14 @@ This repo follows the `grill-with-docs` multi-context layout. When a term is res
 **Where each kind of vocabulary lives — every term has exactly ONE owning context; other contexts reference it by name, never redefine it:**
 
 - **Product-umbrella terms** (true of the whole system, owned by no single deployable — e.g. **Intentive**, **Companion**) → the `## Language` section of **this file** (`CONTEXT-MAP.md`).
-- **The cross-context narrative** — `## Relationships`, `## Example dialogue`, and `## Flagged ambiguities` — also lives in **this file**, because it describes interactions *between* contexts. Per-context `CONTEXT.md` files keep only their own terms (plus, optionally, a context-local Flagged-ambiguities for purely internal naming clashes, as `services/agent-runtime/CONTEXT.md` does).
+- **The cross-context narrative** — `## Relationships`, `## Example dialogue`, and `## Flagged ambiguities` — also lives in **this file**, because it describes interactions _between_ contexts. Per-context `CONTEXT.md` files keep only their own terms (plus, optionally, a context-local Flagged-ambiguities for purely internal naming clashes, as `services/agent-runtime/CONTEXT.md` does).
 - **Wire/HTTP-contract and cross-cutting terms** (e.g. **Protocol**, **Context Snapshot**, **Session End Marker**, **Internal API**) → **`packages/CONTEXT.md`** (the Shared context), since they're imported by multiple deployables.
 - **Deployable-specific terms** → that deployable's own `CONTEXT.md` (`apps/mobile/`, `apps/desktop/`, `services/control-plane/`, `services/agent-runtime/`).
-- **Boundary-spanning terms** (a flow that touches two contexts, e.g. **Session Start** = Control Plane → Agent Runtime) → assign to the context that *owns/initiates* the concept; the other context references it by name.
+- **Boundary-spanning terms** (a flow that touches two contexts, e.g. **Session Start** = Control Plane → Agent Runtime) → assign to the context that _owns/initiates_ the concept; the other context references it by name.
 
 **Adding or renaming a term:** edit the single owning `CONTEXT.md` (use the Contexts table above to find it); if it's an umbrella/cross-cutting term, edit this file. Keep one definition; link related terms with **bold names**, not duplicate definitions.
+
+**Writing `_Avoid_` lines:** avoid terms are product-vocabulary guardrails, not a ban on exact implementation names. Do not put a bare framework, library, vendor, or protocol name in `_Avoid_` when agents may need to reference it accurately in technical comments or source docs (for example, `Expo Router`, `Tauri invoke()`, `ScreenPipe`, `Neon Auth`). Prefer product-alias phrases that show the actual drift: `Expo app` → **Mobile Client**, `Tauri app` → **Desktop Client**, `backend` → **Control Plane**. This lets the CONTEXT vocabulary lint catch product/domain naming drift without deleting useful implementation breadcrumbs.
 
 **ADRs:** system-wide decisions → `docs/adr/`, numbered from `0001`. Context-specific decisions → that deployable's own `docs/adr/`, numbered independently from `0001`. A reference from a context ADR to a system-wide one is written **monorepo ADR-NNNN** with a relative link into `docs/adr/`. See [`docs/adr/README.md`](docs/adr/README.md) for the full convention and the historical old→new number map.
 

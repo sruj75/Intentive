@@ -107,6 +107,8 @@ const MOBILE_CHAT_TYPES = "/repo/apps/mobile/src/domains/chat/types/index.ts";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CONTROL_PLANE_CONFIG = `${REPO_ROOT}/services/control-plane/src/config/env.ts`;
 const PROTOCOL_PACKAGE_SOURCE = `${REPO_ROOT}/packages/protocol/src/index.ts`;
+const MOBILE_AUTH_SOURCE = `${REPO_ROOT}/apps/mobile/src/domains/auth/service/neon-client.ts`;
+const DESKTOP_ONBOARDING_SOURCE = `${REPO_ROOT}/apps/desktop/src/domains/onboarding/ui/Onboarding.tsx`;
 const AGENT_INSTRUCTIVE_MESSAGE =
   /Rule violated:[\s\S]*Owning boundary:[\s\S]*Preferred import path:[\s\S]*Example fix:/;
 
@@ -191,6 +193,16 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
       filename: PROTOCOL_PACKAGE_SOURCE,
       code: 'export const owner = "Protocol";',
     },
+    {
+      name: "Expo framework reference is allowed",
+      filename: MOBILE_AUTH_SOURCE,
+      code: "// Expo Router owns replace() behavior here.\nexport const owner = true;",
+    },
+    {
+      name: "Tauri framework reference is allowed",
+      filename: DESKTOP_ONBOARDING_SOURCE,
+      code: "// Tauri invoke() calls a Rust command by name.\nexport const owner = true;",
+    },
   ],
   invalid: [
     {
@@ -212,6 +224,28 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
         {
           message:
             'Vocabulary drift: "wire format" belongs to Shared vocabulary. Use "Protocol". Owner: packages/CONTEXT.md.',
+        },
+      ],
+    },
+    {
+      name: "Mobile framework-as-product alias is forbidden",
+      filename: MOBILE_AUTH_SOURCE,
+      code: "// The Expo app routes to chat.\nexport const owner = true;",
+      errors: [
+        {
+          message:
+            'Vocabulary drift: "Expo app" belongs to Mobile Client vocabulary. Use "Mobile Client". Owner: apps/mobile/CONTEXT.md.',
+        },
+      ],
+    },
+    {
+      name: "Desktop framework-as-product alias is forbidden",
+      filename: DESKTOP_ONBOARDING_SOURCE,
+      code: "// The Tauri app has no chat UI.\nexport const owner = true;",
+      errors: [
+        {
+          message:
+            'Vocabulary drift: "Tauri app" belongs to Desktop Client vocabulary. Use "Desktop Client". Owner: apps/desktop/CONTEXT.md.',
         },
       ],
     },

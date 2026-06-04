@@ -5,8 +5,8 @@ The iOS Expo application — the chat surface. For monorepo-wide vocabulary and 
 ## Language
 
 **Mobile Client**:
-The iOS Expo application at `apps/mobile/`.
-_Avoid_: Expo, mobile surface, the mobile app
+The iOS application, built with Expo, at `apps/mobile/`.
+_Avoid_: Expo app, mobile surface, the mobile app
 
 **Launch State Resolver**:
 The single deep function that maps the current **Launch State** to one **Launch Destination**. It owns the entire **Pre-Chat Gate** ordering for the client; gate screens never decide what comes next.

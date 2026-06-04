@@ -1,0 +1,52 @@
+{
+  "name": "Desktop Client",
+  "scope": "apps/desktop",
+  "aliases": ["desktop"],
+  "owningContextDocs": [
+    "CONTEXT-MAP.md",
+    "apps/desktop/CONTEXT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/TESTING.md"
+  ],
+  "adrDirs": ["docs/adr", "apps/desktop/docs/adr"],
+  "requiredCommands": [
+    {
+      "label": "Desktop typecheck",
+      "command": "pnpm",
+      "args": ["--dir", "apps/desktop", "typecheck"]
+    },
+    {
+      "label": "Desktop frontend and Rust tests",
+      "command": "pnpm",
+      "args": ["--dir", "apps/desktop", "test"]
+    },
+    {
+      "label": "Rust architecture lint",
+      "command": "pnpm",
+      "args": ["lint:architecture:rust"]
+    }
+  ],
+  "sensors": [
+    {
+      "label": "Impact radius sensor",
+      "command": "pnpm",
+      "args": ["sensor:impact-radius"]
+    }
+  ],
+  "highRiskSharedPackages": [
+    "packages/protocol",
+    "packages/api-contract",
+    "packages/domain-types",
+    "packages/providers"
+  ],
+  "commonFailureModes": [
+    "Desktop is capture only; chat behavior belongs in Mobile and Agent Runtime.",
+    "Rust layer and src-tauri structure violations are caught by lint:architecture:rust.",
+    "The desktop test script already runs Vitest and cargo +stable test from the repo root.",
+    "Desktop CI and audit jobs are path-sensitive; shared package changes can still affect Desktop assumptions."
+  ],
+  "reviewHints": [
+    "Provider changes should inspect desktop auth and telemetry seams.",
+    "Protocol changes should inspect capture/session event assumptions even when Desktop has no chat UI."
+  ]
+}

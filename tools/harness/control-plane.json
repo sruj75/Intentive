@@ -1,0 +1,51 @@
+{
+  "name": "Control Plane",
+  "scope": "services/control-plane",
+  "aliases": ["control-plane", "@intentive/control-plane"],
+  "owningContextDocs": [
+    "CONTEXT-MAP.md",
+    "services/control-plane/CONTEXT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/TESTING.md"
+  ],
+  "adrDirs": ["docs/adr", "services/control-plane/docs/adr"],
+  "requiredCommands": [
+    {
+      "label": "Control Plane typecheck",
+      "command": "pnpm",
+      "args": ["--dir", "services/control-plane", "typecheck"]
+    },
+    {
+      "label": "Control Plane tests",
+      "command": "pnpm",
+      "args": ["--dir", "services/control-plane", "test"]
+    }
+  ],
+  "sensors": [
+    {
+      "label": "Impact radius sensor",
+      "command": "pnpm",
+      "args": ["sensor:impact-radius"]
+    },
+    {
+      "label": "Contract drift sensor",
+      "command": "pnpm",
+      "args": ["sensor:contract-drift"]
+    }
+  ],
+  "highRiskSharedPackages": [
+    "packages/api-contract",
+    "packages/domain-types",
+    "packages/providers"
+  ],
+  "commonFailureModes": [
+    "HTTP request and response shapes belong in packages/api-contract before implementation changes.",
+    "Auth/JWKS behavior should use packages/providers rather than local duplicate failure taxonomies.",
+    "Routing changes can alter Mobile and Agent Runtime assumptions even when only Control Plane code moves.",
+    "Provider transport outages should stay distinguishable from malformed token failures."
+  ],
+  "reviewHints": [
+    "API contract changes should inspect Mobile callers and Agent Runtime internal API consumers.",
+    "Provider/auth changes should inspect HTTP status mapping and retry semantics."
+  ]
+}

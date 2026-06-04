@@ -43,6 +43,15 @@ jobs:
         run: pnpm sensor:impact-radius
         continue-on-error: true
 
+      - name: Deployable harness template contract
+        run: pnpm harness:test
+
+      - name: Harness health report contract
+        run: pnpm sensor:harness-health:test
+
+      - name: CONTEXT vocabulary docs contract
+        run: pnpm docs:context:test
+
       - name: Architecture lint message contract
         run: pnpm lint:architecture:test
 
