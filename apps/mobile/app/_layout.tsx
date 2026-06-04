@@ -54,6 +54,7 @@ function RootNavigator(): React.JSX.Element {
   // route-for-destination.ts; the layout owns only the effect. A `splash` route
   // stays on the initial `index`; a `redirect` replaces to its zone. Replacing
   // to the current route is a no-op, so this is safe to run on every change.
+  // `replace` (not `push`) so users can't back-navigate past the gate.
   const target = route.kind === "redirect" ? route.href : null;
   useEffect(() => {
     if (target !== null) router.replace(target);

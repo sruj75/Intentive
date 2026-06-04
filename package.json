@@ -7,6 +7,12 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
+    "harness": "node tools/harness/run-harness.mjs",
+    "harness:ci": "node tools/harness/run-harness.mjs",
+    "sensor:impact-radius": "node tools/sensors/impact-radius/index.mjs",
+    "sensor:impact-radius:test": "node tools/sensors/impact-radius/test.mjs",
+    "sensor:contract-drift": "node tools/sensors/contract-drift/index.mjs",
+    "sensor:contract-drift:test": "node tools/sensors/contract-drift/test.mjs",
     "docs:check": "node tools/docs/check-markdown-links.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml}\"",

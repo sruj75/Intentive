@@ -1,6 +1,6 @@
 /**
  * The slice of the Neon Auth (Better Auth) client the auth domain depends on,
- * normalized so the provider/adapter logic stays free of SDK and expo types —
+ * normalized so the provider/adapter logic stays free of SDK and native module types —
  * and therefore runs under the fast node:test path. `service/neon-client.ts`
  * adapts the real SDK into this port; tests pass a fake.
  */

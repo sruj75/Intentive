@@ -119,7 +119,7 @@ describe("Onboarding surface", () => {
     expect(invokeMock).toHaveBeenLastCalledWith("start_model_download");
   });
 
-  it("shows an error with Retry when the Tauri command cannot be invoked", async () => {
+  it("shows an error with Retry when the Rust command cannot be invoked", async () => {
     invokeMock.mockRejectedValueOnce("command not found");
 
     render(<Onboarding />);

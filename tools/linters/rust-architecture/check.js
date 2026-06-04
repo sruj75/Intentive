@@ -13,7 +13,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { checkSource } = require("./lib/check-source");
-const { structuralViolations } = require("./lib/check-structure");
+const { structuralMessage, structuralViolations } = require("./lib/check-structure");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const strict = process.argv.includes("--strict");
@@ -68,9 +68,7 @@ for (const srcDir of findRustSrcDirs()) {
     findings.push({
       file: path.relative(REPO_ROOT, path.join(srcDir, offender)),
       line: 0,
-      message:
-        `Structural violation: '${offender}' must live inside a domain layer. ` +
-        `Only lib.rs, main.rs, domains/, and providers/ are allowed directly under src-tauri/src/.`,
+      message: structuralMessage(offender),
     });
   }
 

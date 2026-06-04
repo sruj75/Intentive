@@ -27,12 +27,16 @@ module.exports = {
     },
     messages: {
       backwardImport:
-        "Layer-direction violation: '{{fromLayer}}/' cannot import from '{{toLayer}}/' inside the same domain ('{{domain}}'). " +
-        "The rule is types → config → repo → service → runtime → ui — code may only import from same or lower layers. " +
-        "Fix: move the imported symbol to a lower layer, or invert the dependency through providers/.",
+        "Rule violated: layer-direction (types → config → repo → service → runtime → ui). " +
+        "'{{domain}}/{{fromLayer}}' cannot import higher layer '{{domain}}/{{toLayer}}'. " +
+        "Owning boundary: domain '{{domain}}' inside this deployable; code may only import same or lower layers. " +
+        "Preferred import path: stay within '{{domain}}/{{fromLayer}}' or lower layers, or use a cross-cutting providers/ seam. " +
+        "Example fix: move reusable orchestration from '{{domain}}/{{toLayer}}' into '{{domain}}/{{fromLayer}}' or a lower layer, then let higher layers import downward.",
       crossDomainImport:
-        "Cross-domain import: '{{fromDomain}}/{{fromLayer}}' is reaching into '{{toDomain}}/{{toLayer}}'. " +
-        "Domains in the same deployable should not import each other directly — extract the shared piece into a lower layer of one domain, or move it to packages/.",
+        "Rule violated: domain boundary. '{{fromDomain}}/{{fromLayer}}' cannot import another domain's internal '{{toDomain}}/{{toLayer}}'. " +
+        "Owning boundary: domains are vertical product capabilities inside one deployable. " +
+        "Preferred import path: use this domain's own layers, another domain's public types/ contract, or move shared knowledge to packages/* and import it by workspace name. " +
+        "Example fix: extract the shared shape to packages/domain-types and import '@intentive/domain-types', or expose pure data from '{{toDomain}}/types' instead of reaching into '{{toDomain}}/{{toLayer}}'.",
     },
     schema: [],
   },

@@ -1,5 +1,5 @@
 /**
- * devices domain — Device Registry shapes. Typed against the shared API
+ * devices domain — Device Registry shapes. Typed against the shared HTTP
  * contract so the idempotent registration request/response (device fingerprint,
  * client_kind, APNs/FCM token → device_id) are validated by monorepo typecheck.
  * Behavior (idempotent storage, token rotation) lands in #27.

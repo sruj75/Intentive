@@ -8,7 +8,7 @@
  * Roles, kept separate (see apps/mobile/docs/adr/0011-*):
  *   - read path:  `LaunchStateSource` hydrates the store on mount.
  *   - write path: gate completion calls a mutator, which updates the store
- *                 OPTIMISTICALLY (instant redirect). The durable POST to the
+ *                 OPTIMISTICALLY (instant Launch Route transition). The durable POST to the
  *                 Control Plane is a later concern (#23/#26).
  *
  * Nothing is persisted to disk. Cold launch starts UNKNOWN (→ RESOLVING).

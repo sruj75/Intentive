@@ -4,7 +4,7 @@
  * companion gets fuller context. Its only first-party action is "Not now",
  * which writes `siblingInvitation: "skipped"` into Launch State via the store's
  * `setSiblingInvitation` mutator (the seam #18 left); the resolver/root layout
- * owns the redirect — this screen never navigates itself.
+ * owns the Launch Route — this gate never navigates itself.
  *
  * The phone cannot connect the Mac, so it never writes `completed`: a real
  * `completed` is server-observed (the Mac registers via #27 and `GET /me`

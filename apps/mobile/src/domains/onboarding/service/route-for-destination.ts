@@ -2,12 +2,12 @@
  * Launch Route — the route intent a Launch Destination maps to. The second half
  * of the launch decision: the resolver answers *where the user stands* (a
  * `LaunchDestination`); this pure module answers *where that sends them* — either
- * the splash (`RESOLVING`, state not yet known) or a redirect to exactly one
+ * the splash (`RESOLVING`, state not yet known) or a route replacement to exactly one
  * route zone.
  *
- * Pure: `LaunchDestination → LaunchRoute`, no I/O, no React, no expo-router
- * import (the href is a plain route-zone string). The root layout's
- * `RootNavigator` runs the intent — `router.replace(route.href)` on a redirect,
+ * Pure: `LaunchDestination → LaunchRoute`, no I/O, no React, no router package
+ * import (the route target is a plain route-zone string). The root layout's
+ * `RootNavigator` runs the intent — replaces to the route target when needed,
  * nothing on a splash. Splitting this out of the layout makes the whole launch
  * decision (resolver + routing) assertable on the pure node:test path; the layout
  * keeps only the effect. See apps/mobile/CONTEXT.md (Launch Route) and ADR 0011.
@@ -16,7 +16,7 @@ import type { LaunchDestination } from "../../../providers/launch-state/types.js
 
 /**
  * The route intent for one Launch Destination: stay on the splash while state is
- * still resolving, or redirect to a concrete route zone.
+ * still resolving, or replace into a concrete route zone.
  */
 export type LaunchRoute = { kind: "splash" } | { kind: "redirect"; href: string };
 

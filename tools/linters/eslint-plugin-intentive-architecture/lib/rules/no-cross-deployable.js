@@ -27,8 +27,10 @@ module.exports = {
     },
     messages: {
       crossDeployable:
-        "Cross-deployable import: '{{fromKind}}/{{fromDeployable}}' is reaching into '{{toKind}}/{{toDeployable}}'. " +
-        "Shared code belongs in packages/ — import it by workspace name (e.g. @intentive/protocol), not by relative path.",
+        "Rule violated: no-cross-deployable. '{{fromKind}}/{{fromDeployable}}' cannot import '{{toKind}}/{{toDeployable}}' by relative path. " +
+        "Owning boundary: deployables are independently deployed; shared code lives in packages/*. " +
+        "Preferred import path: use a workspace package such as '@intentive/protocol', '@intentive/api-contract', '@intentive/domain-types', or '@intentive/providers'. " +
+        "Example fix: move the shared type into packages/domain-types and replace the relative apps/services import with '@intentive/domain-types'.",
     },
     schema: [],
   },

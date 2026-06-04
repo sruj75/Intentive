@@ -43,6 +43,9 @@ export function createDevChatAdapter(options: DevChatAdapterOptions = {}): ChatM
   const { mode = "reply", delayMs = 0, chunks = DEFAULT_REPLY_CHUNKS } = options;
 
   return {
+    // ChatModelAdapter.run is an async generator. THE non-obvious vendor contract:
+    // each yield carries the *cumulative* message, not a delta — see #33 before
+    // wiring a real backend. https://www.assistant-ui.com/docs/runtimes/custom/local-runtime#streaming-responses
     async *run({ abortSignal }) {
       if (mode === "error") {
         await maybeDelay(delayMs, abortSignal);
@@ -65,7 +68,7 @@ export function createDevChatAdapter(options: DevChatAdapterOptions = {}): ChatM
       for (const chunk of chunks) {
         await maybeDelay(delayMs, abortSignal);
         if (abortSignal.aborted) return;
-        text += chunk;
+        text += chunk; // accumulate — the yield below replaces, not appends
         yield { content: [{ type: "text", text }] };
       }
     },

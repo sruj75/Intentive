@@ -39,20 +39,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Impact radius advisory
+        run: pnpm sensor:impact-radius
+        continue-on-error: true
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Format check
-        run: pnpm format:check
-
-      - name: Architecture lint plugin tests
+      - name: Architecture lint message contract
         run: pnpm lint:architecture:test
 
-      - name: Architecture lint (Rust layer + structure)
-        run: pnpm lint:architecture:rust
-
-      - name: Test
-        run: pnpm test
+      - name: Harness
+        run: pnpm harness:ci

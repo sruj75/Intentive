@@ -7,12 +7,19 @@ const assert = require("node:assert/strict");
 const { parseRustDomainPath } = require("./lib/rust-path-parser");
 const { extractDomainReferences } = require("./lib/rust-imports");
 const { checkSource } = require("./lib/check-source");
-const { structuralViolations } = require("./lib/check-structure");
+const { structuralMessage, structuralViolations } = require("./lib/check-structure");
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
 const BASE = "/x/Hey Intentive/apps/desktop/src-tauri/src";
+
+function assertAgentInstructive(message, preferredLabel = "Preferred path:") {
+  assert.match(message, /Rule violated:/);
+  assert.match(message, /Owning boundary:/);
+  assert.match(message, new RegExp(preferredLabel));
+  assert.match(message, /Example fix:/);
+}
 
 // ── parseRustDomainPath ─────────────────────────────────────────────────────
 
@@ -99,6 +106,7 @@ test("backward import (service -> runtime) is flagged", () => {
   assert.equal(v.length, 1);
   assert.equal(v[0].messageId, "backwardImport");
   assert.match(v[0].message, /types → config → repo → service → runtime → ui/);
+  assertAgentInstructive(v[0].message);
 });
 
 test("providers is cross-cutting and importable from any layer", () => {
@@ -126,7 +134,8 @@ test("cross-domain reference to a non-types layer is flagged", () => {
   });
   assert.equal(v.length, 1);
   assert.equal(v[0].messageId, "crossDomainImport");
-  assert.match(v[0].message, /composition root/);
+  assert.match(v[0].message, /lib\.rs/);
+  assertAgentInstructive(v[0].message);
 });
 
 test("cross-domain reference to another domain's types layer is allowed", () => {
@@ -181,6 +190,13 @@ test("stray top-level modules under src/ are flagged", () => {
     "capture_session",
     "snapshot.rs",
   ]);
+});
+
+test("structural violation message tells agents how to repair it", () => {
+  const message = structuralMessage("snapshot.rs");
+  assertAgentInstructive(message);
+  assert.match(message, /domains\/<domain>\/<layer>\//);
+  assert.match(message, /domains\/capture\/service\/snapshot\.rs/);
 });
 
 // ── runner ──────────────────────────────────────────────────────────────────

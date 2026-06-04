@@ -12,9 +12,9 @@
 export type AuthProviderId = "google" | "apple" | "dev";
 
 /**
- * The result of a sign-in attempt — deliberately token-free, so the screen
+ * The result of a sign-in attempt — deliberately token-free, so the Identity Gate
  * learns only whether to advance, retry, or explain:
- *   - `signed-in`      success; the screen flips Launch State via `markSignedIn`.
+ *   - `signed-in`      success; the Identity Gate flips Launch State via `markSignedIn`.
  *   - `cancelled`      the user backed out — NOT an error; return silently.
  *   - `not-configured` the provider has no credentials yet (e.g. Apple today);
  *                      surfaced honestly, never as a fake success.

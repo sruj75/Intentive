@@ -1,7 +1,7 @@
 /**
- * Identity Gate — the signed-out entry screen (#19). It calls the Auth Adapter
+ * Identity Gate — the signed-out entry surface (#19). It calls the Auth Adapter
  * and, on success, flips Launch State via `markSignedIn` (the #18 seam); the
- * resolver/root layout owns the redirect, so this screen never navigates
+ * resolver/root layout owns the Launch Route transition, so this gate never navigates
  * itself. Copy explains continuity, not features (ADR 0006).
  *
  * Outcome handling is capability-honest: `cancelled` is silent, `not-configured`

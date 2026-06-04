@@ -4,6 +4,7 @@
 // Runs without ESLint installed: `node tools/linters/.../test.js`.
 
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const { parseDomainPath } = require("./lib/path-parser");
 const { canImport } = require("./lib/layer-rules");
 
@@ -103,6 +104,11 @@ const ruleTester = new RuleTester({
 
 const MOBILE_CHAT_SERVICE = "/repo/apps/mobile/src/domains/chat/service/sendMessage.ts";
 const MOBILE_CHAT_TYPES = "/repo/apps/mobile/src/domains/chat/types/index.ts";
+const REPO_ROOT = path.resolve(__dirname, "../../..");
+const CONTROL_PLANE_CONFIG = `${REPO_ROOT}/services/control-plane/src/config/env.ts`;
+const PROTOCOL_PACKAGE_SOURCE = `${REPO_ROOT}/packages/protocol/src/index.ts`;
+const AGENT_INSTRUCTIVE_MESSAGE =
+  /Rule violated:[\s\S]*Owning boundary:[\s\S]*Preferred import path:[\s\S]*Example fix:/;
 
 ruleTester.run("layer-direction", plugin.rules["layer-direction"], {
   valid: [
@@ -127,13 +133,21 @@ ruleTester.run("layer-direction", plugin.rules["layer-direction"], {
       name: "service importing runtime is a backwardImport",
       filename: MOBILE_CHAT_SERVICE,
       code: "import { handler } from '../runtime/handler';",
-      errors: [{ messageId: "backwardImport" }],
+      errors: [
+        {
+          message: AGENT_INSTRUCTIVE_MESSAGE,
+        },
+      ],
     },
     {
       name: "service reaching into another domain is a crossDomainImport",
       filename: MOBILE_CHAT_SERVICE,
       code: "import { token } from '../../auth/repo/token';",
-      errors: [{ messageId: "crossDomainImport" }],
+      errors: [
+        {
+          message: AGENT_INSTRUCTIVE_MESSAGE,
+        },
+      ],
     },
   ],
 });
@@ -156,7 +170,50 @@ ruleTester.run("no-cross-deployable", plugin.rules["no-cross-deployable"], {
       name: "mobile reaching into desktop by relative path is a crossDeployable",
       filename: MOBILE_CHAT_SERVICE,
       code: "import { foo } from '../../../../../desktop/src/domains/capture/service/foo';",
-      errors: [{ messageId: "crossDeployable" }],
+      errors: [
+        {
+          message: AGENT_INSTRUCTIVE_MESSAGE,
+        },
+      ],
+    },
+  ],
+});
+
+ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
+  valid: [
+    {
+      name: "canonical Control Plane term is allowed",
+      filename: CONTROL_PLANE_CONFIG,
+      code: 'export const owner = "Control Plane";',
+    },
+    {
+      name: "canonical Shared Protocol term is allowed",
+      filename: PROTOCOL_PACKAGE_SOURCE,
+      code: 'export const owner = "Protocol";',
+    },
+  ],
+  invalid: [
+    {
+      name: "Control Plane forbidden term reports owner and path",
+      filename: CONTROL_PLANE_CONFIG,
+      code: "// backend handoff\nexport const owner = true;",
+      errors: [
+        {
+          message:
+            'Vocabulary drift: "backend" belongs to Control Plane vocabulary. Use "Control Plane". Owner: services/control-plane/CONTEXT.md.',
+        },
+      ],
+    },
+    {
+      name: "Shared forbidden term reports owner and path",
+      filename: PROTOCOL_PACKAGE_SOURCE,
+      code: "// wire format handoff\nexport const owner = true;",
+      errors: [
+        {
+          message:
+            'Vocabulary drift: "wire format" belongs to Shared vocabulary. Use "Protocol". Owner: packages/CONTEXT.md.',
+        },
+      ],
     },
   ],
 });

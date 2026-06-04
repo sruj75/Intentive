@@ -87,6 +87,8 @@ impl SnapshotStore {
             format!("sqlite://{}", path_str)
         };
 
+        // WAL + Normal synchronous = safe crash recovery with much better concurrent read
+        // throughput than the default DELETE journal.
         let options = SqliteConnectOptions::from_str(&connection_string)
             .map_err(|e| SnapshotStoreError::Open(e.to_string()))?
             .create_if_missing(true)
@@ -102,6 +104,8 @@ impl SnapshotStore {
             .await
             .map_err(|e| SnapshotStoreError::Open(e.to_string()))?;
 
+        // sqlx::migrate! embeds ./migrations at compile time and applies pending
+        // migrations in version order on startup.
         sqlx::migrate!("./migrations")
             .run(&pool)
             .await
