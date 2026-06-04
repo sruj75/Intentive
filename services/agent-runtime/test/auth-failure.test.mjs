@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runtimeToClientEvent } from "../../../packages/protocol/dist/index.js";
+import { runtimeToClientEvent } from "@intentive/protocol";
 
 import { mapJwtVerificationErrorToRuntimeError } from "../dist/index.js";
 

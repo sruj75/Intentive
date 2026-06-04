@@ -1,21 +1,7 @@
 import type { RuntimeError } from "@intentive/protocol";
+import type { JwtVerificationFailure } from "@intentive/providers/auth";
 
-type JwtVerificationReason =
-  | "expired"
-  | "invalid_signature"
-  | "wrong_issuer"
-  | "wrong_audience"
-  | "unknown_key"
-  | "jwks_unavailable"
-  | "malformed";
-
-interface JwtVerificationFailureLike {
-  reason: JwtVerificationReason;
-}
-
-export function mapJwtVerificationErrorToRuntimeError(
-  error: JwtVerificationFailureLike,
-): RuntimeError {
+export function mapJwtVerificationErrorToRuntimeError(error: JwtVerificationFailure): RuntimeError {
   if (error.reason === "jwks_unavailable") {
     return {
       type: "runtime_error",

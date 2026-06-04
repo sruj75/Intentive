@@ -1,6 +1,6 @@
 /** Identity Gate route — thin shell; renders the `auth` domain's screen. */
-import { IdentityGateStub } from "../../src/domains/auth/ui/identity-gate-stub";
+import { IdentityGate } from "../../src/domains/auth/ui/identity-gate";
 
 export default function IdentityRoute(): React.JSX.Element {
-  return <IdentityGateStub />;
+  return <IdentityGate />;
 }

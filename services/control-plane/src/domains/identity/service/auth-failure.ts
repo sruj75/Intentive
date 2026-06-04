@@ -1,15 +1,4 @@
-type JwtVerificationReason =
-  | "expired"
-  | "invalid_signature"
-  | "wrong_issuer"
-  | "wrong_audience"
-  | "unknown_key"
-  | "jwks_unavailable"
-  | "malformed";
-
-interface JwtVerificationFailureLike {
-  reason: JwtVerificationReason;
-}
+import type { JwtVerificationFailure } from "@intentive/providers/auth";
 
 export interface ControlPlaneAuthErrorResponse {
   status: 401 | 503;
@@ -20,7 +9,7 @@ export interface ControlPlaneAuthErrorResponse {
 }
 
 export function mapJwtVerificationErrorToHttpResponse(
-  error: JwtVerificationFailureLike,
+  error: JwtVerificationFailure,
 ): ControlPlaneAuthErrorResponse {
   if (error.reason === "jwks_unavailable") {
     return {

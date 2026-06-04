@@ -47,6 +47,10 @@ export class JwtVerificationError extends Error {
   }
 }
 
+export interface JwtVerificationFailure {
+  readonly reason: JwtVerificationReason;
+}
+
 /**
  * Build a verifier bound to one JWKS endpoint. Construct this once at startup
  * and reuse it: the returned verifier closes over an in-memory key cache that

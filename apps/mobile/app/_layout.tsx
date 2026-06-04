@@ -8,45 +8,56 @@
 import { useEffect } from "react";
 import { Stack, useRouter } from "expo-router";
 
+import { createAuthAdapter } from "../src/domains/auth/service/auth-adapter";
+import {
+  NEON_ENABLED_PROVIDERS,
+  createNeonAuthClient,
+} from "../src/domains/auth/service/neon-client";
+import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
+import { routeForDestination } from "../src/domains/onboarding/service/route-for-destination";
 import {
   LaunchStateProvider,
+  createStubLaunchStateSource,
   useLaunchState,
-  type LaunchDestination,
-  type LaunchStateSource,
 } from "../src/providers/launch-state";
 
 /**
- * DEV harness source — replaced in #23 by a `GET /me`-backed LaunchStateSource.
- * Starts signed-out with the gates pre-populated so the whole gate walk works
- * with no network round-trip; the resolver's signed-out short-circuit hides the
- * gate values until the user signs in.
+ * The single real Auth Adapter, built once from the Neon client. No social
+ * provider is a working capability yet (`NEON_ENABLED_PROVIDERS` is empty — see
+ * neon-client.ts), so Google/Apple report `not-configured`; the launch-only dev
+ * provider, exposed only under `__DEV__` and never shipped, is the working path
+ * until #23 lands the https redirect (ADR 0012).
  */
-const devSource: LaunchStateSource = {
-  read: () =>
-    Promise.resolve({ signedIn: false, consent: "pending", siblingInvitation: "pending" }),
-};
+const authAdapter = createAuthAdapter({
+  client: createNeonAuthClient(),
+  enabled: NEON_ENABLED_PROVIDERS,
+  includeDev: __DEV__,
+});
 
-const HREF_FOR: Record<Exclude<LaunchDestination, "RESOLVING">, string> = {
-  SIGNED_OUT: "/(gates)/identity",
-  MISSING_CONSENT: "/(gates)/consent",
-  SIBLING_INVITATION_PENDING: "/(gates)/invite",
-  READY_FOR_CHAT: "/(chat)",
-};
+/**
+ * DEV harness source — replaced in #23 by a `GET /me`-backed LaunchStateSource.
+ * The `signed-out` scenario starts signed-out with the gates pre-seeded `pending`
+ * (walk-safe, see source.ts) so the whole gate walk works with no network
+ * round-trip; the resolver's signed-out short-circuit hides the gate values until
+ * the user signs in. One definition of every bootable Launch State lives in the
+ * stub factory — never an inline literal that can drift.
+ */
+const devSource = createStubLaunchStateSource("signed-out");
 
 function RootNavigator(): React.JSX.Element {
   const { state } = useLaunchState();
-  const destination = resolveLaunchState(state);
+  const route = routeForDestination(resolveLaunchState(state));
   const router = useRouter();
 
+  // The launch decision (resolver + route mapping) is pure and tested in
+  // route-for-destination.ts; the layout owns only the effect. A `splash` route
+  // stays on the initial `index`; a `redirect` replaces to its zone. Replacing
+  // to the current route is a no-op, so this is safe to run on every change.
+  const target = route.kind === "redirect" ? route.href : null;
   useEffect(() => {
-    // RESOLVING stays on the splash (the initial `index` route); every other
-    // destination redirects to its zone. Replacing to the current route is a
-    // no-op, so this is safe to run on every destination change.
-    if (destination !== "RESOLVING") {
-      router.replace(HREF_FOR[destination]);
-    }
-  }, [destination, router]);
+    if (target !== null) router.replace(target);
+  }, [target, router]);
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }
@@ -54,7 +65,9 @@ function RootNavigator(): React.JSX.Element {
 export default function RootLayout(): React.JSX.Element {
   return (
     <LaunchStateProvider source={devSource}>
-      <RootNavigator />
+      <AuthAdapterProvider adapter={authAdapter}>
+        <RootNavigator />
+      </AuthAdapterProvider>
     </LaunchStateProvider>
   );
 }

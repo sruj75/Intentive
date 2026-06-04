@@ -11,12 +11,12 @@ Two ideas govern everything below:
 
 ## The four deployables
 
-| Path | What it is | Deploys to |
-|---|---|---|
-| `apps/mobile/` | **Mobile Client** — iOS Expo app, the chat surface | EAS Build → TestFlight → App Store |
-| `apps/desktop/` | **Desktop Client** — macOS Tauri app, capture-only | GitHub Actions → signed `.dmg` → landing page download |
-| `services/control-plane/` | **Control Plane** — stateless server, identity + routing | GitHub Actions → Cloud Run |
-| `services/agent-runtime/` | **Agent Runtime** — always-alive multi-tenant agent service | GitHub Actions → GCE VM (Container-Optimized OS) |
+| Path                      | What it is                                                  | Deploys to                                             |
+| ------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
+| `apps/mobile/`            | **Mobile Client** — iOS Expo app, the chat surface          | EAS Build → TestFlight → App Store                     |
+| `apps/desktop/`           | **Desktop Client** — macOS Tauri app, capture-only          | GitHub Actions → signed `.dmg` → landing page download |
+| `services/control-plane/` | **Control Plane** — stateless server, identity + routing    | GitHub Actions → Cloud Run                             |
+| `services/agent-runtime/` | **Agent Runtime** — always-alive multi-tenant agent service | GitHub Actions → GCE VM (Container-Optimized OS)       |
 
 Each deployable owns its own deploy pipeline. The monorepo unifies code, contracts, docs, and CI orchestration — not deployment.
 
@@ -48,7 +48,7 @@ Each business domain inside every deployable is organized into a fixed set of la
 
 **Cross-cutting via Providers:** auth checks, telemetry, feature flags, and external connector clients (APNs, Neon connection pools, etc.) enter every domain through a single explicit `providers/` interface. Nothing else cross-cuts.
 
-**Why this matters:** when a Claude or Codex agent makes a change, it needs to know *exactly* which file owns which responsibility. The layer rule makes that legible without reading the whole codebase. The agent looks at a file's path and immediately knows what it can and cannot import.
+**Why this matters:** when a Claude or Codex agent makes a change, it needs to know _exactly_ which file owns which responsibility. The layer rule makes that legible without reading the whole codebase. The agent looks at a file's path and immediately knows what it can and cannot import.
 
 ---
 
@@ -57,13 +57,15 @@ Each business domain inside every deployable is organized into a fixed set of la
 A business domain is a vertical slice of product capability inside one deployable. It is **not** a deployable, and it is not a technical layer. Each domain is a cohesive concept the [CONTEXT-MAP.md](../CONTEXT-MAP.md) vocabulary (and the owning deployable's `CONTEXT.md`) already names.
 
 **Mobile Client domains** (`apps/mobile/src/domains/`):
-- `auth` — Identity Gate, session, JWT handling
+
+- `auth` — Auth Adapter, Identity Gate, Neon/Dev providers (see mobile ADR 0012)
 - `onboarding` — Pre-Chat Gate sequence rendering (Consent Primer, Sibling Invitation) + the Launch State Resolver (gate-ordering state machine)
-- `chat` — Companion Chat shell, composer, message rendering, agent state display
+- `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, mobile ADR 0009); dev adapter; Protocol runtime adapter (#33)
 - `notifications` — APNs token registration, permission flow
 - `account` — Account Surface, logout, app info
 
 **Desktop Client domains** (`apps/desktop/src/domains/` for TS + `apps/desktop/src-tauri/src/domains/` for Rust):
+
 - `auth` — sign-in, Neon Auth UI
 - `onboarding` — Capture Permission Setup wizard
 - `capture` — ScreenPipe subprocess management, Capture Session lifecycle
@@ -73,6 +75,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `account` — Settings, sibling invitation
 
 **Control Plane domains** (`services/control-plane/src/domains/`):
+
 - `identity` — Neon Auth integration, User resolution
 - `devices` — Device Registry, APNs token storage
 - `gates` — Pre-Chat Gate state (Consent Primer, Sibling Invitation skip)
@@ -81,6 +84,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `notifications` — APNs client, push delivery
 
 **Agent Runtime domains** (`services/agent-runtime/src/domains/`):
+
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
 - `sessions` — per-user session queue, ordering, idempotency
 - `protocol` — inbound/outbound event handling (`user_message`, `context_snapshot`, `session_end_marker`, `companion_message`, `presence_update`, `delivery_ack`)
@@ -152,6 +156,7 @@ All lint error messages include the remediation instruction the agent should fol
 ```
 
 **Network rules:**
+
 - Clients reach **Control Plane** over public HTTPS for routing and gate state.
 - Clients reach **Agent Runtime** over public WSS for the data path.
 - **Control Plane → Agent Runtime** uses a private interface (VPC) with shared-secret auth.
@@ -170,7 +175,7 @@ intentive/
 │   │   ├── CONTEXT.md                   ← Mobile Client vocabulary
 │   │   ├── docs/adr/                    ← Mobile Client decisions
 │   │   ├── app/                         ← NAVIGATION axis: Expo Router, thin route shells
-│   │   │   ├── _layout.tsx              ← root: reads Launch State → redirects
+│   │   │   ├── _layout.tsx              ← root: resolver + Launch Route → redirect effect
 │   │   │   ├── (gates)/                 ← shared gate chrome; identity, consent, invite
 │   │   │   └── (chat)/                  ← chat route shell; `(account)/` when Account Surface lands
 │   │   └── src/domains/                 ← CAPABILITY axis: deep modules, layer rule (see mobile ADR 0010)
