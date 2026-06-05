@@ -52,3 +52,29 @@ test("an already-aborted run yields nothing and never rejects", async () => {
 
   assert.deepEqual(frames, []);
 });
+
+test("a completed delayed run removes every abort listener it adds", async () => {
+  // Each delayed chunk registers an `abort` listener on the run's signal. When
+  // the timer fires normally (no abort), that listener must be removed or it
+  // accumulates on the signal for the life of the run. Asserted at the signal
+  // boundary: every `abort` listener added during a completed run is removed.
+  const controller = new AbortController();
+  const { signal } = controller;
+  let added = 0;
+  let removed = 0;
+  const add = signal.addEventListener.bind(signal);
+  const remove = signal.removeEventListener.bind(signal);
+  signal.addEventListener = (type, ...rest) => {
+    if (type === "abort") added += 1;
+    return add(type, ...rest);
+  };
+  signal.removeEventListener = (type, ...rest) => {
+    if (type === "abort") removed += 1;
+    return remove(type, ...rest);
+  };
+
+  await drain(createDevChatAdapter({ delayMs: 1, chunks: ["a", "b", "c"] }), { signal });
+
+  assert.ok(added > 0, "the delayed run should register at least one abort listener");
+  assert.equal(removed, added, "every abort listener added must be removed on normal completion");
+});

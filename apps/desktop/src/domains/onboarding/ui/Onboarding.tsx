@@ -1,3 +1,5 @@
+// Tauri JS↔Rust IPC: invoke() calls a #[tauri::command] by name; listen()
+// subscribes to events the Rust side emits. https://v2.tauri.app/develop/calling-rust/
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -5,7 +7,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 /// Step machine for the onboarding flow. Welcome is the cold-start view with
 /// a Continue button; Downloading shows the live progress bar while
 /// `start_model_download` runs; Done and Failed are terminal states the
-/// backend signals via Tauri events.
+/// Rust side signals via emitted events.
 type Step =
   | { kind: "welcome" }
   | { kind: "downloading"; percent: number; status: string }
@@ -20,15 +22,15 @@ const EVENT_FAILED = "bundled-ollama:failed";
 
 /// Onboarding surface (ADR-0018). Rendered when Intentive launches signed-in
 /// but without the bundled model on disk. Drives the `start_model_download`
-/// Tauri command and reflects the three events it emits.
+/// Rust command and reflects the three events it emits.
 export default function Onboarding() {
   const [step, setStep] = useState<Step>({ kind: "welcome" });
   // `useRef` to track the unlisten functions across renders so we can
-  // detach handlers when the component unmounts. Tauri's `listen` returns a
+  // detach handlers when the component unmounts. The event bridge returns a
   // Promise<UnlistenFn>; we collect resolved unlisteners here.
   const unlistenersRef = useRef<UnlistenFn[]>([]);
 
-  // Wire event listeners once on mount. The backend emits events even before
+  // Wire event listeners once on mount. The Rust side emits events even before
   // the command resolves, so attaching here (rather than inside the click
   // handler) avoids a race where the first progress tick arrives before our
   // `listen()` promise resolves.

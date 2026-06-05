@@ -12,6 +12,9 @@
  * Visuals here are deliberately PLAIN placeholders. Liquid Glass message rows,
  * the floating Composer, safe-area/keyboard handling, and Dynamic Type are #45.
  * No Protocol, routing, or real streaming/Agent State semantics — that is #33.
+ *
+ * assistant-ui primitive/runtime composition (niche vendor API):
+ * https://www.assistant-ui.com/docs/runtimes/custom/local-runtime
  */
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -75,7 +78,7 @@ function UserMessage(): React.JSX.Element {
 }
 
 /**
- * Intentive-owned assistant row — renders the canned reply streamed by the dev
+ * Intentive-owned Companion row — renders the canned reply streamed by the dev
  * adapter (or, under #33, the Protocol-backed adapter). Plain placeholder only.
  */
 function AssistantMessage(): React.JSX.Element {
@@ -87,7 +90,7 @@ function AssistantMessage(): React.JSX.Element {
       <MessagePrimitive.Content
         renderText={({ part }) => <Text style={styles.assistantText}>{part.text}</Text>}
       />
-      {/* Renders only when this assistant message carries an error. Quiet inline
+      {/* Renders only when this Companion message carries an error. Quiet inline
           recovery with a single retry — the streaming/Agent-State-driven version
           is #33; the Liquid Glass presentation is #45. */}
       <ErrorPrimitive.Root testID="intentive-error" style={styles.error}>

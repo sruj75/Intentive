@@ -1,9 +1,9 @@
 /**
  * Auth context — makes the single Auth Adapter available to the Identity Gate,
  * mirroring `LaunchStateProvider`. The real adapter is wired once at the
- * composition root (`app/_layout.tsx`); screens consume it through
+ * composition root (`app/_layout.tsx`); UI surfaces consume it through
  * `useAuthAdapter`, and tests inject a fake. The adapter is the only auth
- * surface the UI ever sees — no screen imports an auth SDK.
+ * surface the UI ever sees — no gate imports an auth SDK.
  */
 import { createContext, useContext, type ReactNode } from "react";
 

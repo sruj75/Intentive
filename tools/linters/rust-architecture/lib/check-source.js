@@ -8,12 +8,16 @@ const { canImport } = require("../../eslint-plugin-intentive-architecture/lib/la
 
 const MESSAGES = {
   backwardImport: (d) =>
-    `Layer-direction violation: '${d.fromLayer}/' cannot reference 'crate::domains::${d.domain}::${d.toLayer}' inside the same domain ('${d.domain}'). ` +
-    `The rule is types → config → repo → service → runtime → ui — code may only reference same or lower layers. ` +
-    `Fix: move the referenced item to a lower layer, or invert the dependency through a trait seam injected at lib.rs.`,
+    `Rule violated: layer-direction (types → config → repo → service → runtime → ui). ` +
+    `'${d.domain}/${d.fromLayer}' cannot reference higher layer 'crate::domains::${d.domain}::${d.toLayer}'. ` +
+    `Owning boundary: Rust domain '${d.domain}' inside the Desktop Client binary; code may only reference same or lower layers. ` +
+    `Preferred path: reference 'crate::domains::${d.domain}::${d.fromLayer}' or lower layers, or use a trait seam injected at lib.rs. ` +
+    `Example fix: move reusable behavior from '${d.domain}/${d.toLayer}' into '${d.domain}/${d.fromLayer}' or a lower layer, then let higher layers depend downward.`,
   crossDomainImport: (d) =>
-    `Cross-domain reference: '${d.fromDomain}/${d.fromLayer}' is reaching into 'crate::domains::${d.toDomain}::${d.toLayer}'. ` +
-    `Domains in the same deployable must not reference each other directly — compose them at the lib.rs composition root via a trait seam, or move the shared piece into a lower layer of one domain.`,
+    `Rule violated: Rust domain boundary. '${d.fromDomain}/${d.fromLayer}' cannot reference another domain's internal 'crate::domains::${d.toDomain}::${d.toLayer}'. ` +
+    `Owning boundary: Rust domains are vertical product capabilities inside the Desktop Client binary. ` +
+    `Preferred path: reference only 'crate::domains::${d.toDomain}::types' across domains, or compose behavior at lib.rs through an injected trait seam. ` +
+    `Example fix: define a trait in '${d.fromDomain}/types' or '${d.fromDomain}/service' and wire the '${d.toDomain}/${d.toLayer}' implementation at lib.rs instead of importing it directly.`,
 };
 
 /** A colocated Rust unit-test module (`tests.rs` or anything under `tests/`). */

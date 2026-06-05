@@ -1,11 +1,10 @@
-import { Suspense, lazy, useMemo } from "react";
+import { useMemo } from "react";
 import Onboarding from "./domains/onboarding/ui/Onboarding";
+import AccountSettingsSurface from "./domains/account/ui/AccountSettingsSurface";
 import "./App.css";
 
 type Surface = "settings" | "sign-in" | "onboarding";
 type AuthSurface = Exclude<Surface, "onboarding">;
-
-const AccountSettingsSurface = lazy(() => import("./domains/account/ui/AccountSettingsSurface"));
 
 function resolveSurface(): Surface {
   const params = new URLSearchParams(window.location.search);
@@ -22,11 +21,7 @@ function App() {
     return <Onboarding />;
   }
 
-  return (
-    <Suspense fallback={<main className="settings-shell" />}>
-      <AccountSettingsSurface surface={surface as AuthSurface} />
-    </Suspense>
-  );
+  return <AccountSettingsSurface surface={surface as AuthSurface} />;
 }
 
 export default App;

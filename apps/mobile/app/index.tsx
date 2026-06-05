@@ -1,6 +1,6 @@
 /**
  * Splash — the initial route, shown while the resolver returns RESOLVING
- * (Launch State not yet hydrated). The root layout redirects away once a
+ * (Launch State not yet hydrated). The root layout replaces this route once a
  * concrete destination is known.
  */
 import { ActivityIndicator, StyleSheet, View } from "react-native";

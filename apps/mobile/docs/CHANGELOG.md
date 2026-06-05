@@ -123,6 +123,13 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **Chat Primitive Engine spike verified on iOS simulator** ([Issue #22]) —
   `<CompanionChat/>` exercised end-to-end on iPhone 17 Pro (iOS 26.2): gate walk →
   empty chat → send → user row → dev-adapter streamed assistant reply → composer reset.
+- **`test:rn` hung after passing** ([Issue #22]) — all suites passed but Jest never
+  exited (`Jest did not exit one second after the test run has completed`), hanging the
+  process indefinitely — a CI footgun. Root cause (via `--detectOpenHandles`):
+  `@assistant-ui/tap`'s scheduler opens a module-scoped `MessageChannel` singleton at
+  import time — a ref'd `MessagePort` handle kept alive by its `onmessage` listener with
+  no teardown API, so it can't be cleaned up from tests. Fixed by running
+  `jest --forceExit`; rationale documented in `package.json` (`//test:rn`).
 
 ### Deferred (not in this changelog as shipped behavior)
 
@@ -133,9 +140,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard.
 - **#46** — Account Surface and sign-out UX.
 - **CI** — `test:rn` remains opt-in locally; root `pnpm test` runs Node mobile tests
-  only (see `docs/TESTING.md`). Known issue: `test:rn` passes all suites but does not
-  exit on its own (open async handle, likely the assistant-ui `useLocalRuntime`); needs
-  a root-cause cleanup or `--forceExit` before it can run unattended in CI.
+  only (see `docs/TESTING.md`).
 - Production chat persistence remains out of scope per ADR/server-truth model; the
   local runtime adapter is dev-only until `#33`.
 

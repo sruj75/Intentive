@@ -16,6 +16,16 @@ export default defineConfig({
       exclude: ["src/**/*.{test,spec}.{ts,tsx}", "src/vite-env.d.ts"],
       reporter: ["text", "lcov"],
       reportsDirectory: "../../coverage/apps/desktop",
+      // Regression gate. Set a few points below the current baseline
+      // (stmts 91 / branch 78 / funcs 100 / lines 92) so normal churn passes
+      // but a real drop fails `vitest run --coverage` (and thus coverage.yml).
+      // Ratchet these up as coverage improves.
+      thresholds: {
+        statements: 85,
+        branches: 70,
+        functions: 90,
+        lines: 85,
+      },
     },
   },
 });

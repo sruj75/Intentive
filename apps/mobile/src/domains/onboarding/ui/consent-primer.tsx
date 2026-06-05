@@ -2,14 +2,14 @@
  * Consent Primer — the signed-in-but-not-consented gate (#20). A single
  * affirmative explainer of memory, follow-ups, and user control; accepting
  * writes `consent: "completed"` into Launch State via the store's `setConsent`
- * mutator (the seam #18 left), and the resolver/root layout owns the redirect —
- * this screen never navigates itself.
+ * mutator (the seam #18 left), and the resolver/root layout owns the Launch Route —
+ * this gate never navigates itself.
  *
- * No consent service sits between the screen and the store: consent has no
+ * No consent service sits between the gate and the store: consent has no
  * external system to hide, so a wrapper would be a shallow module (ADR 0013).
  * The durable POST /consent and cross-client suppression are the Control Plane's
  * (#26). Copy stays capability-honest — the "control" line promises no review/
- * clear button (that is the Account Surface's, #46). This screen requests no
+ * clear button (that is the Account Surface's, #46). This gate requests no
  * notification permission and imports nothing notification-related.
  */
 import { Pressable, StyleSheet, Text, View } from "react-native";

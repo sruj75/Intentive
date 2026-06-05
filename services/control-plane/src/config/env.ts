@@ -14,7 +14,7 @@
  * returned by Routing is the client's pass-through Neon Auth token (control-plane ADR-0002),
  * verified by the one shared JWKS verifier (`packages/providers`, #15). The two
  * `INTERNAL_SECRET_*` vars are the Directional Secrets guarding the private
- * Internal API — one per direction, never one symmetric password.
+ * Internal HTTP surface — one per direction, never one symmetric password.
  */
 import { z } from "zod";
 
@@ -25,12 +25,14 @@ const EnvSchema = z.object({
   NEON_DATABASE_URL: z.string().url(),
   NEON_DATABASE_ROLE: z.string().min(1).default("control_plane_app"),
 
-  // Neon Auth — shared JWKS verifier config (user JWTs on public endpoints + pass-through runtime_jwt)
+  // Neon Auth — shared JWKS verifier config (user JWTs on public endpoints + pass-through runtime_jwt).
+  // Where these three values come from (the JWKS-URL-per-provider table is the
+  // non-obvious part): https://neon.com/docs/guides/neon-authorize#find-your-jwks-url
   NEON_AUTH_JWKS_URL: z.string().url(),
   NEON_AUTH_ISSUER: z.string().min(1),
   NEON_AUTH_AUDIENCE: z.string().min(1),
 
-  // Internal API — Directional Secrets (one per direction)
+  // Internal HTTP surface — Directional Secrets (one per direction)
   RUNTIME_INTERNAL_BASE_URL: z.string().url(),
   INTERNAL_SECRET_TO_RUNTIME: z.string().min(1), // CP -> AR: POST /internal/sessions/start
   INTERNAL_SECRET_FROM_RUNTIME: z.string().min(1), // AR -> CP: POST /internal/notifications/push

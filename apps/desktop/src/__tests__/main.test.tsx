@@ -23,7 +23,7 @@ vi.mock("@neondatabase/neon-js/auth/react", () => ({
 vi.mock("@neondatabase/neon-js/ui/css", () => ({}));
 
 vi.mock("../domains/auth/service/auth", () => ({
-  authClient: { kind: "test-auth-client" },
+  createIntentiveAuthClient: () => ({ kind: "test-auth-client" }),
   readNeonAuthUrl: () => "https://neon.example/auth",
 }));
 

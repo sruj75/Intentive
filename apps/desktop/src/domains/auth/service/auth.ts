@@ -1,3 +1,5 @@
+// neon-js is beta and thinly documented; the React adapter wiring (DOM session
+// cookies, vs. Expo SecureStore on mobile) is here: https://neon.com/docs/guides/neon-auth
 import { createAuthClient } from "@neondatabase/neon-js/auth";
 import { BetterAuthReactAdapter } from "@neondatabase/neon-js/auth/react/adapters";
 
@@ -15,6 +17,8 @@ export function readNeonAuthUrl(
   return authUrl;
 }
 
-export const authClient = createAuthClient(readNeonAuthUrl(), {
-  adapter: BetterAuthReactAdapter(),
-});
+export function createIntentiveAuthClient(authUrl = readNeonAuthUrl()): unknown {
+  return createAuthClient(authUrl, {
+    adapter: BetterAuthReactAdapter(),
+  });
+}

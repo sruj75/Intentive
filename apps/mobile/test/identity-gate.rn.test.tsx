@@ -35,7 +35,7 @@ function fakeAdapter(signIn: (provider: string) => Promise<SignInOutcome>): Auth
     signIn: signIn as AuthAdapter["signIn"],
     signOut: () => Promise.resolve(),
     restoreSession: () => Promise.resolve(false),
-    getAccessToken: () => Promise.resolve(null),
+    getUserJwt: () => Promise.resolve(null),
   };
 }
 
@@ -80,6 +80,14 @@ test("cancelled sign-in is silent and stays on the gate", async () => {
 
 test("a recoverable error keeps the gate and shows a retry notice", async () => {
   renderGate(fakeAdapter(() => Promise.resolve({ status: "error", message: "boom" })));
+  await expectDestination("SIGNED_OUT");
+  fireEvent.press(screen.getByText("Continue with Google"));
+  await waitFor(() => expect(screen.getByTestId("auth-notice")).toHaveTextContent(/try again/i));
+  await expectDestination("SIGNED_OUT");
+});
+
+test("a thrown sign-in is handled as recoverable, not an unhandled rejection", async () => {
+  renderGate(fakeAdapter(() => Promise.reject(new Error("network down"))));
   await expectDestination("SIGNED_OUT");
   fireEvent.press(screen.getByText("Continue with Google"));
   await waitFor(() => expect(screen.getByTestId("auth-notice")).toHaveTextContent(/try again/i));

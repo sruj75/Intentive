@@ -1,6 +1,6 @@
 /**
  * Identity domain — User resolution and Account Surface shapes. This sample is
- * typed against the shared API contract so the workspace graph and contract
+ * typed against the shared HTTP contract so the workspace graph and contract
  * dependency chain are validated by monorepo typecheck.
  */
 import type { GetMeResponse } from "@intentive/api-contract";

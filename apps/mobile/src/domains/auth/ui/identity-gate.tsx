@@ -1,7 +1,7 @@
 /**
- * Identity Gate — the signed-out entry screen (#19). It calls the Auth Adapter
+ * Identity Gate — the signed-out entry surface (#19). It calls the Auth Adapter
  * and, on success, flips Launch State via `markSignedIn` (the #18 seam); the
- * resolver/root layout owns the redirect, so this screen never navigates
+ * resolver/root layout owns the Launch Route transition, so this gate never navigates
  * itself. Copy explains continuity, not features (ADR 0006).
  *
  * Outcome handling is capability-honest: `cancelled` is silent, `not-configured`
@@ -14,6 +14,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { useLaunchState } from "../../../providers/launch-state";
 import type { AuthProviderId } from "../types/auth";
 import { useAuthAdapter } from "./auth-context";
+
+/** Shown for any recoverable failure — an `error` outcome or a thrown attempt. */
+const RETRY_NOTICE = "Couldn't sign you in. Please try again.";
 
 export function IdentityGate(): React.JSX.Element {
   const adapter = useAuthAdapter();
@@ -36,9 +39,14 @@ export function IdentityGate(): React.JSX.Element {
           setNotice("That sign-in option isn't available yet.");
           return;
         case "error":
-          setNotice("Couldn't sign you in. Please try again.");
+          setNotice(RETRY_NOTICE);
           return;
       }
+    } catch {
+      // The adapter should map failures to an `error` outcome, but a thrown SDK
+      // or network error must never escape as an unhandled rejection — surface
+      // the same recoverable notice instead.
+      setNotice(RETRY_NOTICE);
     } finally {
       setBusy((current) => (current === provider ? null : current));
     }

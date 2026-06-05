@@ -3,9 +3,11 @@
 macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile Client.
 
 **Always read first:**
+
 - [`CONTEXT.md`](CONTEXT.md) — Desktop Client vocabulary
 - [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
+- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
 
 ## Role in V1
 
@@ -19,11 +21,13 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 ## Domains
 
 TypeScript side (`src/domains/<name>/`; `App.tsx`/`main.tsx` are the exempt composition root):
+
 - `auth` — Neon Auth client + UI integration, sign-in
 - `onboarding` — bundled-model download / Capture Permission Setup UI
 - `account` — Settings surface (planned)
 
 Rust side (`src-tauri/src/domains/<name>/`):
+
 - `capture` — ScreenPipe supervisor, Capture Session coordinator, shell-state FSM, port resolution
 - `summarization` — LLM Provider tier resolution + bundled-model download commands
 - `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, Protocol WebSocket delivery (`agent_interface`)

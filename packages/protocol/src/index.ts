@@ -1,7 +1,7 @@
 /**
  * @intentive/protocol — WebSocket message contract.
  *
- * Single source of truth for the wire format between every Client and the
+ * Single source of truth for the Protocol between every Client and the
  * Agent Runtime. See packages/CONTEXT.md → "Protocol" and docs/ARCHITECTURE.md.
  */
 
@@ -153,3 +153,7 @@ export const runtimeToClientEvent = z.discriminatedUnion("type", [
   runtime_error,
 ]);
 export type RuntimeToClientEvent = z.infer<typeof runtimeToClientEvent>;
+
+// ---------- Parse-at-boundary helpers ----------
+
+export * from "./parse.js";

@@ -1,0 +1,52 @@
+{
+  "name": "Agent Runtime",
+  "scope": "services/agent-runtime",
+  "aliases": ["agent-runtime", "@intentive/agent-runtime"],
+  "owningContextDocs": [
+    "CONTEXT-MAP.md",
+    "services/agent-runtime/CONTEXT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/TESTING.md"
+  ],
+  "adrDirs": ["docs/adr", "services/agent-runtime/docs/adr"],
+  "requiredCommands": [
+    {
+      "label": "Agent Runtime typecheck",
+      "command": "pnpm",
+      "args": ["--dir", "services/agent-runtime", "typecheck"]
+    },
+    {
+      "label": "Agent Runtime tests",
+      "command": "pnpm",
+      "args": ["--dir", "services/agent-runtime", "test"]
+    }
+  ],
+  "sensors": [
+    {
+      "label": "Impact radius sensor",
+      "command": "pnpm",
+      "args": ["sensor:impact-radius"]
+    },
+    {
+      "label": "Contract drift sensor",
+      "command": "pnpm",
+      "args": ["sensor:contract-drift"]
+    }
+  ],
+  "highRiskSharedPackages": [
+    "packages/protocol",
+    "packages/api-contract",
+    "packages/domain-types",
+    "packages/providers"
+  ],
+  "commonFailureModes": [
+    "WebSocket event schemas belong in packages/protocol before runtime adapter changes.",
+    "Agent Runtime auth failure events should use shared provider failure reasons.",
+    "Runtime errors that represent retryable provider outages should not collapse into auth_failed.",
+    "Protocol changes should inspect Mobile chat behavior and Desktop capture/session assumptions."
+  ],
+  "reviewHints": [
+    "Protocol changes should inspect Mobile, Desktop, and Control Plane assumptions.",
+    "Provider/auth changes should inspect runtime_error mapping and connection lifecycle behavior."
+  ]
+}

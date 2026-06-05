@@ -15,7 +15,11 @@ const tsParser = require("@typescript-eslint/parser");
 
 module.exports = [
   {
-    files: ["apps/*/src/**/*.{ts,tsx,mts,cts}", "services/*/src/**/*.{ts,tsx,mts,cts}"],
+    files: [
+      "apps/*/src/**/*.{ts,tsx,mts,cts}",
+      "services/*/src/**/*.{ts,tsx,mts,cts}",
+      "packages/*/src/**/*.{ts,tsx,mts,cts}",
+    ],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: "latest",
@@ -27,10 +31,16 @@ module.exports = [
     rules: {
       "intentive-architecture/layer-direction": "error",
       "intentive-architecture/no-cross-deployable": "error",
+      "intentive-architecture/context-vocabulary": "error",
+      "intentive-architecture/filename-case": "error",
     },
   },
   {
-    files: ["apps/*/src/**/*.{js,jsx,mjs,cjs}", "services/*/src/**/*.{js,jsx,mjs,cjs}"],
+    files: [
+      "apps/*/src/**/*.{js,jsx,mjs,cjs}",
+      "services/*/src/**/*.{js,jsx,mjs,cjs}",
+      "packages/*/src/**/*.{js,jsx,mjs,cjs}",
+    ],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
@@ -41,6 +51,8 @@ module.exports = [
     rules: {
       "intentive-architecture/layer-direction": "error",
       "intentive-architecture/no-cross-deployable": "error",
+      "intentive-architecture/context-vocabulary": "error",
+      "intentive-architecture/filename-case": "error",
     },
   },
   {

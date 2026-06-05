@@ -1,15 +1,28 @@
 /**
- * Neon Auth client — the ONE expo/SDK-importing file in the auth domain. It
- * adapts Better Auth's Expo client (the documented native path: SecureStore
- * cookies + deep-link OAuth) into the RN-free `NeonAuthClientPort` the provider
- * and adapter depend on. Because this file imports expo, it is excluded from
+ * Neon Auth boundary — the ONE native-SDK-importing file in the auth domain, and
+ * the single sanctioned seam to the sign-in SDK for the whole Mobile Client (ADR
+ * 0012, CONTEXT.md → Auth Adapter / Auth Provider). Product code never imports an
+ * auth SDK directly: the UI reaches sign-in only through the **Auth Adapter**,
+ * which depends on the RN-free `NeonAuthClientPort` this file alone implements —
+ * so this *is* the provider seam, just expressed as the auth domain's own deep
+ * boundary rather than a shared package. It does NOT belong in
+ * `packages/providers/`: that package holds the cross-deployable, server-side
+ * JWKS *verify* concern (`packages/providers/src/auth.ts`, used by the Control
+ * Plane and Agent Runtime); this is the RN-native, Mobile-only sign-in client and
+ * cannot run server-side. It adapts Better Auth's native client path (SecureStore
+ * cookies + deep-link OAuth) into the port the provider and adapter depend on.
+ * Because this file imports native Mobile Client modules, it is excluded from
  * the pure-core node:test build (tsconfig.build.json) and lives on the RN axis.
  *
  * The client points at the Neon Auth base URL, whose Better Auth server is the
  * same one whose JWKS backs the shared verifier (#15). Mobile uses Better Auth
  * directly (not neon-js's React-DOM adapter the Desktop Client uses) because
- * only the Expo plugin handles native session persistence and the OAuth
- * redirect. See apps/mobile/docs/adr/0012-*.
+ * only the Better Auth native plugin handles session persistence and the OAuth
+ * callback. See apps/mobile/docs/adr/0012-*.
+ *
+ * The native path differs from BetterAuth's web SDK; its setup gotchas (the
+ * scheme/trusted-origins constraint above is one) live in the Expo guide:
+ * https://better-auth.com/docs/integrations/expo
  */
 import { expoClient } from "@better-auth/expo/client";
 import { createAuthClient } from "better-auth/client";
@@ -30,7 +43,7 @@ const NEON_AUTH_BASE_URL = process.env.EXPO_PUBLIC_NEON_AUTH_BASE_URL ?? "";
  * rejects the custom `intentive://` callback scheme — so advertising it would
  * open a flow that dead-ends. Apple has no credentials at all. Both therefore
  * report `not-configured`, and the only working path is the `__DEV__` dev
- * provider until #23 lands the https-based redirect; re-enable `"google"` (and
+ * provider until #23 lands the https-based callback; re-enable `"google"` (and
  * later `"apple"`) here once that round-trip actually completes.
  */
 export const NEON_ENABLED_PROVIDERS: ReadonlySet<SocialProvider> = new Set<SocialProvider>();
@@ -50,22 +63,32 @@ function createClient() {
 
 /**
  * Build the real `NeonAuthClientPort`. Session/token persistence is owned by
- * the Expo plugin (SecureStore) — the Mobile Client hand-rolls none of it.
+ * the Better Auth native plugin (SecureStore) — the Mobile Client hand-rolls none of it.
  */
 export function createNeonAuthClient(): NeonAuthClientPort {
   const client = createClient();
 
   return {
     async signInSocial(provider: SocialProvider): Promise<NeonAttempt> {
-      // The Expo plugin opens the system browser and returns once the deep-link
-      // callback fires (or the user dismisses it).
-      const { error } = await client.signIn.social({ provider, callbackURL: "/" });
-      if (error) {
-        return { result: "failed", message: error.message ?? "Sign-in failed." };
+      // This boundary always *returns* a NeonAttempt — never throws — so the
+      // provider/adapter chain stays a pure outcome map. SDK/network throws are
+      // collapsed into `failed` here, the same recoverable shape as a returned error.
+      try {
+        // The Better Auth native plugin opens the system browser and returns once the deep-link
+        // callback fires (or the user dismisses it).
+        const { error } = await client.signIn.social({ provider, callbackURL: "/" });
+        if (error) {
+          return { result: "failed", message: error.message ?? "Sign-in failed." };
+        }
+        // A dismissed browser leaves no session; a completed flow sets one.
+        const session = await client.getSession();
+        return session.data ? { result: "authenticated" } : { result: "dismissed" };
+      } catch (err) {
+        return {
+          result: "failed",
+          message: err instanceof Error ? err.message : "Sign-in failed.",
+        };
       }
-      // A dismissed browser leaves no session; a completed flow sets one.
-      const session = await client.getSession();
-      return session.data ? { result: "authenticated" } : { result: "dismissed" };
     },
 
     async hasSession(): Promise<boolean> {
@@ -76,6 +99,7 @@ export function createNeonAuthClient(): NeonAuthClientPort {
     async getJwt(): Promise<string | null> {
       // The Neon Auth server exposes the Better Auth JWT plugin's token route;
       // its JWKS is the one #15 verifies. #33 consumes this for the WS handshake.
+      // JWT plugin setup + /token endpoint: https://www.better-auth.com/docs/plugins/jwt#retrieve-the-token
       try {
         const res = await client.$fetch<{ token: string }>("/token");
         return res.data?.token ?? null;
