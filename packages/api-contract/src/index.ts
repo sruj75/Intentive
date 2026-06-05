@@ -8,3 +8,4 @@
 export * from "./shared.js";
 export * from "./public.js";
 export * from "./internal.js";
+export * from "./parse.js";

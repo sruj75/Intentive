@@ -1,8 +1,8 @@
 /**
  * Root layout — composition root for the navigation axis. This is the one place
  * allowed to wire providers to a domain service (it is not under `src/` and is
- * not lint-checked). It owns the single reactive redirect: it reads the shared
- * Launch State, runs the resolver, and replaces to the matching route zone
+ * not lint-checked). It owns the single reactive route replacement: it reads the
+ * shared Launch State, runs the resolver, and replaces to the matching route zone
  * whenever the destination changes. Gate screens never navigate themselves.
  */
 import { useEffect } from "react";
@@ -27,7 +27,7 @@ import {
  * provider is a working capability yet (`NEON_ENABLED_PROVIDERS` is empty — see
  * neon-client.ts), so Google/Apple report `not-configured`; the launch-only dev
  * provider, exposed only under `__DEV__` and never shipped, is the working path
- * until #23 lands the https redirect (ADR 0012).
+ * until #23 lands the https callback (ADR 0012).
  */
 const authAdapter = createAuthAdapter({
   client: createNeonAuthClient(),
@@ -52,12 +52,13 @@ function RootNavigator(): React.JSX.Element {
 
   // The launch decision (resolver + route mapping) is pure and tested in
   // route-for-destination.ts; the layout owns only the effect. A `splash` route
-  // stays on the initial `index`; a `redirect` replaces to its zone. Replacing
+  // stays on the initial `index`; a `replace` route swaps to its zone. Replacing
   // to the current route is a no-op, so this is safe to run on every change.
-  const target = route.kind === "redirect" ? route.href : null;
+  // `replace` (not `push`) so users can't back-navigate past the gate.
+  const zone = route.kind === "replace" ? route.zone : null;
   useEffect(() => {
-    if (target !== null) router.replace(target);
-  }, [target, router]);
+    if (zone !== null) router.replace(zone);
+  }, [zone, router]);
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }

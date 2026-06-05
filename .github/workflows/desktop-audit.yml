@@ -1,39 +1,16 @@
 name: desktop-audit
 
+# Rust (cargo) dependency audit for the Tauri desktop app. JS/workspace
+# dependency auditing lives in security-audit.yml (runs on every PR + weekly).
+
 on:
   pull_request:
     paths:
       - "apps/desktop/**"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
       - ".github/workflows/desktop-audit.yml"
   workflow_dispatch:
 
 jobs:
-  pnpm-audit:
-    name: pnpm audit
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Audit dependencies
-        run: pnpm audit --audit-level high
-
   cargo-audit:
     name: cargo audit
     runs-on: ubuntu-latest

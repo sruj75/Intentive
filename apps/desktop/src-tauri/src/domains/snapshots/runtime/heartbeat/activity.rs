@@ -2,6 +2,11 @@
 //! local HTTP API. Hidden behind the `ActivityClient` trait so the heartbeat
 //! has no compile-time dependency on `reqwest`, the `/activity-summary`
 //! response shape, or the ADR-0013 port indirection.
+//!
+//! ScreenPipe is a niche local tool (base URL http://localhost:3030) an agent is
+//! unlikely to know. Its endpoints, query params, and JSON response shapes:
+//! https://docs.screenpi.pe/api-recipes — `/activity-summary` is the recipe
+//! "Summarize Activity"; the raw OCR/audio/window feed it distils is `/search`.
 
 use async_trait::async_trait;
 use url::Url;
@@ -24,7 +29,8 @@ pub trait ActivityClient: Send + Sync + 'static {
 /// Production implementation backed by `reqwest`. Calls ScreenPipe's
 /// `/activity-summary` endpoint with a `10m ago → now` window — the
 /// highest-signal "what was the user doing?" endpoint per ScreenPipe's own
-/// progressive-disclosure guidance.
+/// progressive-disclosure guidance. `start_time`/`end_time` accept ISO 8601 UTC
+/// or relative strings like "10m ago" (see the module-level docs link).
 pub struct ReqwestActivityClient {
     http: reqwest::Client,
 }

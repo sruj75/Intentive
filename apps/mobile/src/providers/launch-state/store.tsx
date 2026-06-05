@@ -8,7 +8,7 @@
  * Roles, kept separate (see apps/mobile/docs/adr/0011-*):
  *   - read path:  `LaunchStateSource` hydrates the store on mount.
  *   - write path: gate completion calls a mutator, which updates the store
- *                 OPTIMISTICALLY (instant redirect). The durable POST to the
+ *                 OPTIMISTICALLY (instant Launch Route transition). The durable POST to the
  *                 Control Plane is a later concern (#23/#26).
  *
  * Nothing is persisted to disk. Cold launch starts UNKNOWN (→ RESOLVING).
@@ -20,11 +20,32 @@ import type { GateStatus, LaunchState } from "./types";
 import type { LaunchStateSource } from "./source";
 
 const UNKNOWN: LaunchState = { signedIn: null, consent: null, siblingInvitation: null };
+
+// Signed-out with gates still unknown. `null` gates are safe here: the user can
+// only leave this state by signing in, and `markSignedIn` heals any unknown gate
+// to `pending` so the resolver always has concrete values to walk forward (see
+// markSignedIn). The signed-out short-circuit hides the gates until then.
 const HYDRATION_FAILURE_FALLBACK: LaunchState = {
   signedIn: false,
   consent: null,
   siblingInvitation: null,
 };
+
+/**
+ * Apply an optimistic sign-in. Beyond flipping `signedIn`, this defaults any gate
+ * still `null` to `"pending"`: a signed-in state with a `null` gate the resolver
+ * needs maps to `RESOLVING` (splash) with no re-read to recover — stranding the
+ * user. Pre-seeding `pending` guarantees the resolver can advance to the next
+ * gate. This is the one place that owns the walk-safety invariant, so no producer
+ * of `LaunchState` (the hydration fallback, the #23 `GET /me` mapper) has to.
+ */
+function withSignedIn(state: LaunchState): LaunchState {
+  return {
+    signedIn: true,
+    consent: state.consent ?? "pending",
+    siblingInvitation: state.siblingInvitation ?? "pending",
+  };
+}
 
 export interface LaunchStateStore {
   state: LaunchState;
@@ -67,7 +88,7 @@ export function LaunchStateProvider({
   const store = useMemo<LaunchStateStore>(
     () => ({
       state,
-      markSignedIn: () => setState((s) => ({ ...s, signedIn: true })),
+      markSignedIn: () => setState(withSignedIn),
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
     }),

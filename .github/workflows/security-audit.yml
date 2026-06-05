@@ -1,0 +1,37 @@
+name: security-audit
+
+# Workspace-wide JS dependency audit. `pnpm audit` covers every workspace in
+# the monorepo, so this runs on all PRs (not just desktop-touching ones) and
+# on a weekly schedule to catch newly-disclosed advisories in unchanged deps.
+# Rust/cargo auditing for the desktop app lives in desktop-audit.yml.
+
+on:
+  pull_request:
+  schedule:
+    # Mondays 07:00 UTC.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+jobs:
+  pnpm-audit:
+    name: pnpm audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high

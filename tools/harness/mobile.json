@@ -1,0 +1,57 @@
+{
+  "name": "Mobile Client",
+  "scope": "apps/mobile",
+  "aliases": ["mobile", "@intentive/mobile"],
+  "owningContextDocs": [
+    "CONTEXT-MAP.md",
+    "apps/mobile/CONTEXT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/TESTING.md"
+  ],
+  "adrDirs": ["docs/adr", "apps/mobile/docs/adr"],
+  "requiredCommands": [
+    {
+      "label": "Mobile typecheck",
+      "command": "pnpm",
+      "args": ["--dir", "apps/mobile", "typecheck"]
+    },
+    {
+      "label": "Mobile Node tests",
+      "command": "pnpm",
+      "args": ["--dir", "apps/mobile", "test"]
+    },
+    {
+      "label": "Mobile React Native tests",
+      "command": "pnpm",
+      "args": ["--dir", "apps/mobile", "test:rn"]
+    }
+  ],
+  "sensors": [
+    {
+      "label": "Impact radius sensor",
+      "command": "pnpm",
+      "args": ["sensor:impact-radius"]
+    },
+    {
+      "label": "Contract drift sensor",
+      "command": "pnpm",
+      "args": ["sensor:contract-drift"]
+    }
+  ],
+  "highRiskSharedPackages": [
+    "packages/protocol",
+    "packages/api-contract",
+    "packages/domain-types",
+    "packages/providers"
+  ],
+  "commonFailureModes": [
+    "Live Google OAuth is constrained by mobile redirect strategy; check apps/mobile/docs/adr before enabling providers.",
+    "Metro must start from apps/mobile for simulator verification.",
+    "Root pnpm test does not run the React Native/Jest harness; include test:rn for gate/chat behavior.",
+    "Launch state and auth adapters should stay under src/domains and shared providers seams."
+  ],
+  "reviewHints": [
+    "Protocol changes should trigger Mobile chat and gate assumption review.",
+    "Provider/auth changes should inspect Identity Gate and launch-state fallback behavior."
+  ]
+}

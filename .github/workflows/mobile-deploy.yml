@@ -64,6 +64,9 @@ jobs:
       - name: Typecheck mobile
         run: pnpm --filter ./apps/mobile typecheck
 
+      - name: Test mobile
+        run: pnpm --filter ./apps/mobile test
+
       - name: EAS build
         working-directory: apps/mobile
         run: eas build --non-interactive --profile ${{ github.event.inputs.profile || 'preview' }} --platform ios

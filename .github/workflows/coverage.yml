@@ -41,4 +41,8 @@ jobs:
           files: coverage/apps/desktop/lcov.info
           flags: desktop-js
           token: ${{ secrets.CODECOV_TOKEN }}
+          # The hard regression gate is vitest's coverage.thresholds, which fails
+          # the "Generate coverage" step before this. Keep upload errors
+          # non-fatal: there is no CODECOV_TOKEN secret and Codecov rejects
+          # tokenless uploads, so a true here would fail CI on every run.
           fail_ci_if_error: false

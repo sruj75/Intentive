@@ -1,7 +1,6 @@
-import { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-const IntentiveAuthProvider = lazy(() => import("./domains/auth/ui/IntentiveAuthProvider"));
+import IntentiveAuthProvider from "./domains/auth/ui/IntentiveAuthProvider";
 
 function isOnboardingSurface(): boolean {
   const params = new URLSearchParams(window.location.search);
@@ -11,7 +10,5 @@ function isOnboardingSurface(): boolean {
 const app = <App />;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <Suspense fallback={app}>
-    {isOnboardingSurface() ? app : <IntentiveAuthProvider>{app}</IntentiveAuthProvider>}
-  </Suspense>,
+  isOnboardingSurface() ? app : <IntentiveAuthProvider>{app}</IntentiveAuthProvider>,
 );

@@ -1,5 +1,5 @@
 /**
- * gates domain — Pre-Chat Gate state shapes. Typed against the shared API
+ * gates domain — Pre-Chat Gate state shapes. Typed against the shared HTTP
  * contract so the `GET /me` Account State projection, the next-gate enum, and
  * the cross-client write requests (consent, sibling-invitation skip) are
  * validated by monorepo typecheck. Behavior (cross-client vs device-local gate

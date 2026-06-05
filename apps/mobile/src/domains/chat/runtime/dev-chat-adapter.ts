@@ -43,6 +43,9 @@ export function createDevChatAdapter(options: DevChatAdapterOptions = {}): ChatM
   const { mode = "reply", delayMs = 0, chunks = DEFAULT_REPLY_CHUNKS } = options;
 
   return {
+    // ChatModelAdapter.run is an async generator. THE non-obvious vendor contract:
+    // each yield carries the *cumulative* message, not a delta — see #33 before
+    // wiring a real backend. https://www.assistant-ui.com/docs/runtimes/custom/local-runtime#streaming-responses
     async *run({ abortSignal }) {
       if (mode === "error") {
         await maybeDelay(delayMs, abortSignal);
@@ -65,7 +68,7 @@ export function createDevChatAdapter(options: DevChatAdapterOptions = {}): ChatM
       for (const chunk of chunks) {
         await maybeDelay(delayMs, abortSignal);
         if (abortSignal.aborted) return;
-        text += chunk;
+        text += chunk; // accumulate — the yield below replaces, not appends
         yield { content: [{ type: "text", text }] };
       }
     },
@@ -78,14 +81,16 @@ export function createDevChatAdapter(options: DevChatAdapterOptions = {}): ChatM
 function maybeDelay(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0 || signal.aborted) return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      // Normal completion: detach the abort listener so it doesn't linger on the
+      // signal for the rest of the run (over many chunks it would accumulate).
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }

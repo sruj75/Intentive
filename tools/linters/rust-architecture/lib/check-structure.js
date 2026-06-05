@@ -19,4 +19,13 @@ function structuralViolations(entryNames) {
   return entryNames.filter((name) => !ALLOWED_SRC_ENTRIES.has(name));
 }
 
-module.exports = { ALLOWED_SRC_ENTRIES, structuralViolations };
+function structuralMessage(offender) {
+  return (
+    `Rule violated: Rust src-tauri structure. '${offender}' cannot live directly under src-tauri/src/. ` +
+    `Owning boundary: Desktop Rust source root only allows lib.rs, main.rs, domains/, and providers/. ` +
+    `Preferred path: place product code under domains/<domain>/<layer>/ or cross-cutting code under providers/. ` +
+    `Example fix: move '${offender}' to domains/capture/service/${offender} or to the owning domain/layer that matches its responsibility.`
+  );
+}
+
+module.exports = { ALLOWED_SRC_ENTRIES, structuralMessage, structuralViolations };

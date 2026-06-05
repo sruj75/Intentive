@@ -3,9 +3,11 @@
 Server-side authority: identity, devices, gate state, agent instance registry, routing, notifications.
 
 **Always read first:**
+
 - [`CONTEXT.md`](CONTEXT.md) — Control Plane vocabulary
 - [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
+- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
 
 ## Role in V1
 
@@ -29,13 +31,13 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 ## HTTP surface (public)
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /me` | Returns Account State + next Pre-Chat Gate |
-| `POST /consent` | Records Consent Primer completion (cross-client) |
-| `POST /sibling-invitation/skip` | Records skip state (cross-client) |
-| `GET /agent` | Returns routing info (Runtime URL + JWT) |
-| `POST /devices/register` | Idempotent device + APNs token registration |
+| Endpoint                        | Purpose                                          |
+| ------------------------------- | ------------------------------------------------ |
+| `GET /me`                       | Returns Account State + next Pre-Chat Gate       |
+| `POST /consent`                 | Records Consent Primer completion (cross-client) |
+| `POST /sibling-invitation/skip` | Records skip state (cross-client)                |
+| `GET /agent`                    | Returns routing info (Runtime URL + JWT)         |
+| `POST /devices/register`        | Idempotent device + APNs token registration      |
 
 Request/response schemas live in `packages/api-contract/`.
 
