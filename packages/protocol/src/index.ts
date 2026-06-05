@@ -153,3 +153,7 @@ export const runtimeToClientEvent = z.discriminatedUnion("type", [
   runtime_error,
 ]);
 export type RuntimeToClientEvent = z.infer<typeof runtimeToClientEvent>;
+
+// ---------- Parse-at-boundary helpers ----------
+
+export * from "./parse.js";

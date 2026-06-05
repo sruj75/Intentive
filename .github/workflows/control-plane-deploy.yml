@@ -46,6 +46,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fail fast before touching GCP: nothing ships untested.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter ./services/control-plane typecheck
+
+      - name: Test
+        run: pnpm --filter ./services/control-plane test
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:

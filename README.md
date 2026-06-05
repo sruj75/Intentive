@@ -20,6 +20,33 @@ Each deployable owns its local setup notes and guardrails:
 - **Control Plane:** [`services/control-plane/AGENTS.md`](services/control-plane/AGENTS.md)
 - **Agent Runtime:** [`services/agent-runtime/AGENTS.md`](services/agent-runtime/AGENTS.md)
 
+## Local setup
+
+**Prerequisites**
+
+- **Node ≥ 20** and **pnpm ≥ 9** (`corepack enable` to get pnpm).
+- **Desktop only:** a Rust toolchain plus Tauri system deps. macOS needs the
+  Xcode Command Line Tools; Linux needs `libwebkit2gtk-4.1-dev`,
+  `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`, `libssl-dev`
+  (see `.github/workflows/monorepo-foundation.yml`).
+
+**Environment variables**
+
+- The services validate their env at startup through a Zod schema and fail fast
+  with the missing key names — see `services/control-plane/src/config/env.ts` for
+  the required variables.
+- The mobile app reads Expo env (`EXPO_PUBLIC_*`). Each deployable's
+  `AGENTS.md` (linked above) lists what it needs.
+
+**Running one deployable**
+
+```bash
+pnpm --filter ./apps/mobile dev          # Mobile Client (Expo)
+pnpm --filter ./apps/desktop dev         # Desktop Client (Tauri)
+pnpm --filter ./services/control-plane dev
+pnpm --filter ./services/agent-runtime dev
+```
+
 ## Workspace
 
 ```bash

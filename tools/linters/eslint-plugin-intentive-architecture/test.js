@@ -252,6 +252,86 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
   ],
 });
 
+// ── filename-case util ──────────────────────────────────────────────────────
+
+const { expectedCaseFor, matchesCase } = require("./lib/filename-case-util");
+
+test("desktop .tsx components expect PascalCase", () => {
+  assert.equal(
+    expectedCaseFor("/x/apps/desktop/src/domains/onboarding/ui/Onboarding.tsx"),
+    "PascalCase",
+  );
+});
+
+test("mobile, services and packages expect kebab-case", () => {
+  assert.equal(
+    expectedCaseFor("/x/apps/mobile/src/domains/chat/ui/companion-chat.tsx"),
+    "kebab-case",
+  );
+  assert.equal(
+    expectedCaseFor("/x/services/agent-runtime/src/domains/gateway/service/auth-failure.ts"),
+    "kebab-case",
+  );
+  assert.equal(expectedCaseFor("/x/packages/protocol/src/parse.ts"), "kebab-case");
+});
+
+test("desktop non-.tsx files expect kebab-case", () => {
+  assert.equal(expectedCaseFor("/x/apps/desktop/src/domains/auth/service/auth.ts"), "kebab-case");
+});
+
+test("index/main entrypoints, .d.ts and tests are exempt", () => {
+  assert.equal(expectedCaseFor("/x/apps/desktop/src/main.tsx"), null);
+  assert.equal(expectedCaseFor("/x/packages/protocol/src/index.ts"), null);
+  assert.equal(expectedCaseFor("/x/apps/desktop/src/vite-env.d.ts"), null);
+  assert.equal(expectedCaseFor("/x/apps/desktop/src/__tests__/onboarding.test.tsx"), null);
+  assert.equal(expectedCaseFor("/x/apps/mobile/test/companion-chat.rn.test.tsx"), null);
+});
+
+test("matchesCase validates Pascal and kebab", () => {
+  assert.equal(matchesCase("Onboarding", "PascalCase"), true);
+  assert.equal(matchesCase("onboarding", "PascalCase"), false);
+  assert.equal(matchesCase("companion-chat", "kebab-case"), true);
+  assert.equal(matchesCase("companionChat", "kebab-case"), false);
+  assert.equal(matchesCase("auth", "kebab-case"), true);
+});
+
+const FILENAME_CASE_MESSAGE =
+  /Rule violated: filename-case[\s\S]*Owning convention:[\s\S]*Example fix:/;
+
+ruleTester.run("filename-case", plugin.rules["filename-case"], {
+  valid: [
+    {
+      name: "desktop PascalCase component is allowed",
+      filename: `${REPO_ROOT}/apps/desktop/src/domains/onboarding/ui/Onboarding.tsx`,
+      code: "export const x = 1;",
+    },
+    {
+      name: "mobile kebab-case file is allowed",
+      filename: `${REPO_ROOT}/apps/mobile/src/domains/chat/ui/companion-chat.tsx`,
+      code: "export const x = 1;",
+    },
+    {
+      name: "index entrypoint is exempt",
+      filename: `${REPO_ROOT}/packages/protocol/src/index.ts`,
+      code: "export const x = 1;",
+    },
+  ],
+  invalid: [
+    {
+      name: "desktop kebab-case .tsx component is rejected",
+      filename: `${REPO_ROOT}/apps/desktop/src/domains/onboarding/ui/onboarding-screen.tsx`,
+      code: "export const x = 1;",
+      errors: [{ message: FILENAME_CASE_MESSAGE }],
+    },
+    {
+      name: "mobile PascalCase file is rejected",
+      filename: `${REPO_ROOT}/apps/mobile/src/domains/chat/ui/CompanionChat.tsx`,
+      code: "export const x = 1;",
+      errors: [{ message: FILENAME_CASE_MESSAGE }],
+    },
+  ],
+});
+
 // ── run ─────────────────────────────────────────────────────────────────────
 
 let pass = 0;

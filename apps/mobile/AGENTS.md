@@ -7,6 +7,7 @@ iOS Expo client. The chat surface for the **Companion**. Capture concerns and Ma
 - [`CONTEXT.md`](CONTEXT.md) — Mobile Client vocabulary
 - [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language (Companion, Pre-Chat Gate, Post-Message-Back, etc.)
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule, why this deployable is structured the way it is
+- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
 
 ## Role in V1
 

@@ -32,6 +32,7 @@ module.exports = [
       "intentive-architecture/layer-direction": "error",
       "intentive-architecture/no-cross-deployable": "error",
       "intentive-architecture/context-vocabulary": "error",
+      "intentive-architecture/filename-case": "error",
     },
   },
   {
@@ -51,6 +52,7 @@ module.exports = [
       "intentive-architecture/layer-direction": "error",
       "intentive-architecture/no-cross-deployable": "error",
       "intentive-architecture/context-vocabulary": "error",
+      "intentive-architecture/filename-case": "error",
     },
   },
   {
