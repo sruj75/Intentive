@@ -6,7 +6,7 @@ This document is the deployable-local architecture contract for `services/contro
 
 The **Control Plane** is the stateless, server-side authority for Intentive account lifecycle: identity, the Device Registry, Pre-Chat Gate state, the Agent Instance Registry, **Routing**, and notification fan-out. It deploys as a Node/TypeScript HTTP service on Google Cloud Run and holds no resident state — every fact lives in its own Neon schema.
 
-It sits **beside** the client↔runtime data path, never **on** it. It tells each signed-in Client *where* the Agent Runtime is and *who* the Client is (URL + JWT), then steps out. It never sees an in-session message.
+It sits **beside** the client↔runtime data path, never **on** it. It tells each signed-in Client _where_ the Agent Runtime is and _who_ the Client is (URL + JWT), then steps out. It never sees an in-session message.
 
 ```text
    Mobile Client                         Desktop Client
@@ -42,10 +42,16 @@ The Control Plane is the single writer of account truth. Clients render this sta
 [`docs/prd/control-plane-PRD.md`](../../../docs/prd/control-plane-PRD.md)
 : Control Plane PRD. Issues `#17`, `#23`, `#26`, `#27`, `#30`, `#49`, `#50` on [GitHub](https://github.com/sruj75/Intentive/issues).
 
-`src/index.ts`
-: Thin process entrypoint. It should delegate to domain composition, not accumulate domain logic.
+`src/main.ts`
+: Process entrypoint — composition root that wires JWKS verifier, Neon SQL, identity service, and Hono `GET /me`. Keep it construction-only.
 
-Planned domain layout:
+`src/index.ts`
+: Workspace library entry — re-exports config and contract samples for other packages; not the HTTP server boot path.
+
+`migrations/`
+: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
+
+Domain layout:
 
 ```text
 src/domains/
@@ -59,7 +65,7 @@ src/domains/
 
 Domain responsibilities:
 
-- `identity`: Neon Auth integration, User resolution from a verified JWT, first-vs-repeat sign-in.
+- `identity` (**#23, partial**): JWT verification + `control_plane.users` resolution; `GET /me` HTTP handler (`ui/get-me.ts`, `ui/app.ts`). `next_gate` / `has_agent_instance` are honest placeholders until #26 / #30.
 - `devices`: Device Registry, APNs/FCM token storage, idempotent `POST /devices/register`.
 - `gates`: Pre-Chat Gate state, Cross-Client vs Device-Local logic, `GET /me` shaping, `POST /consent`, `POST /sibling-invitation/skip`.
 - `agents`: Agent Instance Registry, Session Start calls to the Agent Runtime, `has_agent_instance` truth.
@@ -130,12 +136,12 @@ Neon boundary:
 
 - The Control Plane owns identity, device, gate, and Agent Instance Registry tables in its own schema (`control_plane`) reached through its own Postgres role (`control_plane_app`). The role holds privileges **only** on the `control_plane` schema; it has no grants on the Agent Runtime's schema, and vice versa. There are no tables shared across the two services.
 - It never reads or writes the Runtime's Conversation History, runtime events, VFS overlays, or scheduler state.
-- Migrations live under `services/control-plane/migrations/` and create their tables inside the `control_plane` schema. The schema namespace and the `control_plane_app` role + grants are provisioned in #50 (which holds Neon admin access); each behavior issue adds only its own tables. No migration runs as part of #17.
+- Migrations live under `services/control-plane/migrations/` and create their tables inside the `control_plane` schema. The schema namespace and the `control_plane_app` role + grants are provisioned in #50 (which holds Neon admin access); each behavior issue adds only its own tables. Repo integration tests create ephemeral branches and bootstrap the schema themselves (ADR-0003).
 
 Deployment boundary:
 
 - Deploys to Cloud Run because it is stateless request/response. Resident state, sockets, queues, and schedulers belong to the Agent Runtime, not here.
-- CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see the repo-root `control-plane-deploy` workflow).
+- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + test, optional Neon repo integration). Deploy CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see `control-plane-deploy` workflow).
 
 ## Cross-cutting Concerns
 
@@ -164,6 +170,7 @@ Security:
 
 Testing:
 
-- Unit-test service logic with repo/provider fakes.
-- Integration-test JWT verification paths, gate sequencing (cross-client suppression vs device-local non-suppression), idempotent writes, Session Start idempotency, runtime JWT claims, and push fan-out (with the APNs client faked).
-- Cover the no-proxy guardrail: no endpoint may carry or inspect in-session message content.
+- **Service tier:** logic with repo/provider fakes (identity service/handler tests landed in #23).
+- **Repo tier:** real SQL against a disposable Neon branch per ADR-0003 (`test/users-repo.integration.test.mjs`; skips without `NEON_API_KEY` / `NEON_PROJECT_ID`).
+- **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`).
+- Still to cover: gate sequencing, idempotent writes, Session Start, push fan-out, and the no-proxy guardrail as those domains land (#26–#30, #49).

@@ -44,8 +44,10 @@ Request/response schemas live in `packages/api-contract/`.
 ## Stack & deploy
 
 - Node / TypeScript
+- Process entry: `src/main.ts` (composition root); `src/index.ts` re-exports contract samples for workspace consumers
 - Deploys to **Google Cloud Run** (stateless HTTP, request/response only in v1)
 - Reads Neon Postgres via control-plane-owned schema (separate role from Agent Runtime)
+- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + full test suite). Repo integration tests use ephemeral Neon branches when `NEON_API_KEY` / `NEON_PROJECT_ID` are set (ADR-0003).
 
 ## Guardrails specific to this deployable
 

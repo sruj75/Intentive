@@ -6,20 +6,20 @@ For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](
 
 ## Public HTTP surface
 
-| Endpoint | Purpose |
-|---|---|
-| `GET  /me` | Returns Account State + next Pre-Chat Gate for the calling client |
-| `POST /consent` | Records Consent Primer completion |
-| `POST /sibling-invitation/skip` | Records sibling invitation skip |
-| `GET  /agent` | Issues Agent Runtime URL + JWT (Routing) |
-| `POST /devices/register` | Idempotent device registration (includes APNs token) |
+| Endpoint                        | Purpose                                                           |
+| ------------------------------- | ----------------------------------------------------------------- |
+| `GET  /me`                      | Returns Account State + next Pre-Chat Gate for the calling client |
+| `POST /consent`                 | Records Consent Primer completion                                 |
+| `POST /sibling-invitation/skip` | Records sibling invitation skip                                   |
+| `GET  /agent`                   | Issues Agent Runtime URL + JWT (Routing)                          |
+| `POST /devices/register`        | Idempotent device registration (includes APNs token)              |
 
 Schemas live in [`packages/api-contract`](../../packages/api-contract).
 
 ## Internal surface (Control Plane → Agent Runtime callbacks)
 
-| Endpoint | Purpose |
-|---|---|
+| Endpoint                            | Purpose                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------ |
 | `POST /internal/notifications/push` | Agent Runtime asks Control Plane to fan out a Push Notification via APNs |
 
 ## Development
@@ -27,11 +27,16 @@ Schemas live in [`packages/api-contract`](../../packages/api-contract).
 ```bash
 # from this directory
 pnpm install
-pnpm dev
+pnpm dev          # serves via src/main.ts (Hono + GET /me identity slice)
 pnpm typecheck
 pnpm lint
-pnpm test
+pnpm test         # build + node --test; repo integration test needs NEON_* (see ADR-0003)
 ```
+
+Pull requests that touch this deployable run `.github/workflows/control-plane-ci.yml`.
+Identity (#23) lands incrementally: `GET /me` resolves a verified JWT to `AccountState`
+via `control_plane.users`; `next_gate` and `has_agent_instance` remain placeholders until
+#26 and #30.
 
 ## Deployment
 

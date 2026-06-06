@@ -4,15 +4,15 @@
 
 ## Operating Frame
 
-- Date: 2026-06-04
-- Repo: `/Users/srujanu/Desktop/Intentive`
+- Date: 2026-06-06
+- Repo: Intentive monorepo (`sruj75/Intentive`)
 - Tracker root: [GitHub Issues](https://github.com/sruj75/Intentive/issues) on `sruj75/Intentive` (v1 backlog #7–#56); PRDs at `[docs/prd/](prd/)`
-- Closed: `#7`–`#22` — Desktop v1 foundation (`#7`–`#13`), shared protocol/api-contract + Providers auth (`#14`–`#15`), AR/CP contract roots (`#16`–`#17`, [PR #57](https://github.com/sruj75/Intentive/pull/57)), Mobile foundation lane (`#18`–`#22`, [PR #57](https://github.com/sruj75/Intentive/pull/57), [PR #58](https://github.com/sruj75/Intentive/pull/58))
-- Open: `#23`–`#56`
+- Closed: `#7`–`#23` — Desktop v1 foundation (`#7`–`#13`), shared protocol/api-contract + Providers auth (`#14`–`#15`), AR/CP contract roots (`#16`–`#17`, [PR #57](https://github.com/sruj75/Intentive/pull/57)), Mobile foundation lane (`#18`–`#22`, [PR #57](https://github.com/sruj75/Intentive/pull/57), [PR #58](https://github.com/sruj75/Intentive/pull/58)), CP Identity + mobile launch hydration (`#23`, commit `8e65c71`)
+- Open: `#24`–`#56`
 
 ## Executive Next Move
 
-Two shared roots are now landed (`#14` protocol/api-contract lock, `#15` Providers JWKS auth). Runtime and CP contract roots ([#16](https://github.com/sruj75/Intentive/issues/16), [#17](https://github.com/sruj75/Intentive/issues/17)) and the Mobile foundation lane (`#18`–`#22`) are **closed**. **Now:** [#23 CP Identity](https://github.com/sruj75/Intentive/issues/23) and [#25 AR WS gateway](https://github.com/sruj75/Intentive/issues/25) — auth blocker `#15` is cleared; both consume `createJwtVerifier` from `@intentive/providers/auth`.
+Two shared roots are now landed (`#14` protocol/api-contract lock, `#15` Providers JWKS auth). Runtime and CP contract roots ([#16](https://github.com/sruj75/Intentive/issues/16), [#17](https://github.com/sruj75/Intentive/issues/17)), the Mobile foundation lane (`#18`–`#22`), and [#23 CP Identity](https://github.com/sruj75/Intentive/issues/23) are **closed** (`8e65c71`: `GET /me`, `control_plane.users`, mobile `LaunchStateSource` wiring, `control-plane-ci.yml`). **Now:** [#25 AR WS gateway](https://github.com/sruj75/Intentive/issues/25) on the runtime critical path; [#26 CP Pre-Chat Gate state](https://github.com/sruj75/Intentive/issues/26) and [#27 CP Device Registry](https://github.com/sruj75/Intentive/issues/27) on the CP lane (both unblocked by `#23`).
 
 What it unlocks:
 
@@ -77,47 +77,47 @@ flowchart TD
 
 ### Phase 0: Closed (shipped)
 
-| #   | Deployable    | Issue                                                                                                          | Status                                                         |
-| --- | ------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| 7   | Desktop       | [Lock v1 model and Agent Interface contract](https://github.com/sruj75/Intentive/issues/7)                     | closed                                                         |
-| 8   | Desktop       | [Replace starter scaffold with Intentive menu bar shell](https://github.com/sruj75/Intentive/issues/8)         | closed                                                         |
-| 9   | Desktop       | [Add minimal Settings account shell](https://github.com/sruj75/Intentive/issues/9)                             | closed                                                         |
-| 10  | Desktop       | [Manage ScreenPipe Capture Session lifecycle end to end](https://github.com/sruj75/Intentive/issues/10)        | closed                                                         |
-| 11  | Desktop       | [Establish local snapshot store with retention](https://github.com/sruj75/Intentive/issues/11)                 | closed                                                         |
-| 12  | Desktop       | [Manage Ollama readiness and first-run setup](https://github.com/sruj75/Intentive/issues/12)                   | closed                                                         |
-| 13  | Desktop       | [Produce a Context Snapshot on fixed 10-minute heartbeat cycle](https://github.com/sruj75/Intentive/issues/13) | closed                                                         |
-| 14  | Shared        | [Lock Protocol + API-Contract V1](https://github.com/sruj75/Intentive/issues/14)                               | closed                                                         |
-| 15  | Shared        | [Providers auth (JWKS)](https://github.com/sruj75/Intentive/issues/15)                                         | closed                                                         |
-| 16  | Agent Runtime | [Resolve Runtime Contracts](https://github.com/sruj75/Intentive/issues/16)                                     | closed                                                         |
-| 17  | Control Plane | [CP Contracts + Domain Scaffolds](https://github.com/sruj75/Intentive/issues/17)                               | closed                                                         |
-| 18  | Mobile        | [Scaffold Expo App + Launch State Resolver](https://github.com/sruj75/Intentive/issues/18)                     | closed ([PR #57](https://github.com/sruj75/Intentive/pull/57)) |
-| 19  | Mobile        | [Identity Gate](https://github.com/sruj75/Intentive/issues/19)                                                 | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58)) |
-| 20  | Mobile        | [Consent Primer](https://github.com/sruj75/Intentive/issues/20)                                                | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58)) |
-| 21  | Mobile        | [Sibling Client Invitation (macOS Setup)](https://github.com/sruj75/Intentive/issues/21)                       | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58)) |
-| 22  | Mobile        | [assistant-ui/native Spike](https://github.com/sruj75/Intentive/issues/22)                                     | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58)) |
+| #   | Deployable    | Issue                                                                                                          | Status                                                           |
+| --- | ------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 7   | Desktop       | [Lock v1 model and Agent Interface contract](https://github.com/sruj75/Intentive/issues/7)                     | closed                                                           |
+| 8   | Desktop       | [Replace starter scaffold with Intentive menu bar shell](https://github.com/sruj75/Intentive/issues/8)         | closed                                                           |
+| 9   | Desktop       | [Add minimal Settings account shell](https://github.com/sruj75/Intentive/issues/9)                             | closed                                                           |
+| 10  | Desktop       | [Manage ScreenPipe Capture Session lifecycle end to end](https://github.com/sruj75/Intentive/issues/10)        | closed                                                           |
+| 11  | Desktop       | [Establish local snapshot store with retention](https://github.com/sruj75/Intentive/issues/11)                 | closed                                                           |
+| 12  | Desktop       | [Manage Ollama readiness and first-run setup](https://github.com/sruj75/Intentive/issues/12)                   | closed                                                           |
+| 13  | Desktop       | [Produce a Context Snapshot on fixed 10-minute heartbeat cycle](https://github.com/sruj75/Intentive/issues/13) | closed                                                           |
+| 14  | Shared        | [Lock Protocol + API-Contract V1](https://github.com/sruj75/Intentive/issues/14)                               | closed                                                           |
+| 15  | Shared        | [Providers auth (JWKS)](https://github.com/sruj75/Intentive/issues/15)                                         | closed                                                           |
+| 16  | Agent Runtime | [Resolve Runtime Contracts](https://github.com/sruj75/Intentive/issues/16)                                     | closed                                                           |
+| 17  | Control Plane | [CP Contracts + Domain Scaffolds](https://github.com/sruj75/Intentive/issues/17)                               | closed                                                           |
+| 18  | Mobile        | [Scaffold Expo App + Launch State Resolver](https://github.com/sruj75/Intentive/issues/18)                     | closed ([PR #57](https://github.com/sruj75/Intentive/pull/57))   |
+| 19  | Mobile        | [Identity Gate](https://github.com/sruj75/Intentive/issues/19)                                                 | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58))   |
+| 20  | Mobile        | [Consent Primer](https://github.com/sruj75/Intentive/issues/20)                                                | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58))   |
+| 21  | Mobile        | [Sibling Client Invitation (macOS Setup)](https://github.com/sruj75/Intentive/issues/21)                       | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58))   |
+| 22  | Mobile        | [assistant-ui/native Spike](https://github.com/sruj75/Intentive/issues/22)                                     | closed ([PR #58](https://github.com/sruj75/Intentive/pull/58))   |
+| 23  | Control Plane | [Identity + Neon Auth JWT](https://github.com/sruj75/Intentive/issues/23)                                      | closed (`8e65c71`) — `GET /me`, users repo, mobile launch source |
 
 ### Phase 1: Now
 
-| #   | Deployable    | Issue                                                                       | Why now                                      | Unblocks      |
-| --- | ------------- | --------------------------------------------------------------------------- | -------------------------------------------- | ------------- |
-| 23  | Control Plane | [Identity + Neon Auth JWT](https://github.com/sruj75/Intentive/issues/23)   | Foundation under every public CP endpoint    | #26/#27/#30   |
-| 24  | Agent Runtime | [Runtime Skeleton](https://github.com/sruj75/Intentive/issues/24)           | Establishes module seams before behavior     | #25           |
-| 25  | Agent Runtime | [WS Gateway + Session Start](https://github.com/sruj75/Intentive/issues/25) | First working handshake path for all clients | #28; #30; #31 |
+| #   | Deployable    | Issue                                                                                 | Why now                                      | Unblocks      |
+| --- | ------------- | ------------------------------------------------------------------------------------- | -------------------------------------------- | ------------- |
+| 24  | Agent Runtime | [Runtime Skeleton](https://github.com/sruj75/Intentive/issues/24)                     | Establishes module seams before behavior     | #25           |
+| 25  | Agent Runtime | [WS Gateway + Session Start](https://github.com/sruj75/Intentive/issues/25)           | First working handshake path for all clients | #28; #30; #31 |
+| 26  | Control Plane | [Pre-Chat Gate state + GET /me](https://github.com/sruj75/Intentive/issues/26)        | `#23` landed identity slice; gate truth next | #30           |
+| 27  | Control Plane | [Device Registry + token registration](https://github.com/sruj75/Intentive/issues/27) | `#23` landed; device rows next               | #49           |
 
 ### Phase 2: Next
 
-| #   | Deployable    | Issue                                                                                      | Blocker cleared by               | Unblocks                         |
-| --- | ------------- | ------------------------------------------------------------------------------------------ | -------------------------------- | -------------------------------- |
-| 26  | Control Plane | [Pre-Chat Gate state + GET /me](https://github.com/sruj75/Intentive/issues/26)             | #23                              | #30; gate lanes go server-driven |
-| 27  | Control Plane | [Device Registry + token registration](https://github.com/sruj75/Intentive/issues/27)      | #23                              | #49 push fan-out                 |
-| 28  | Agent Runtime | [Sessions / Ordering / Event Ledger](https://github.com/sruj75/Intentive/issues/28)        | #25                              | #29                              |
-| 29  | Agent Runtime | [Conversation History + Reconnect Snapshot](https://github.com/sruj75/Intentive/issues/29) | #28                              | #33/#44; #36/#39/#41             |
-| 30  | Control Plane | [Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30)  | #26 + #25                        | #33; #31 (keystone Routing)      |
-| 31  | Desktop       | [Routing + Protocol WS Session](https://github.com/sruj75/Intentive/issues/31)             | #25 + #30                        | #34/#35/#43                      |
-| 32  | Desktop       | [Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32)                  | none (start now)                 | #35/#55                          |
-| 33  | Mobile        | [Protocol client for Companion Chat](https://github.com/sruj75/Intentive/issues/33)        | #29 + #30 Routing                | #44/#45                          |
-| 34  | Desktop       | [Emit Context Snapshots over Protocol](https://github.com/sruj75/Intentive/issues/34)      | #31 + existing snapshot pipeline | #35/#43                          |
-| 35  | Desktop       | [Signed-in happy-path smoke](https://github.com/sruj75/Intentive/issues/35)                | #34 + #32                        | #43/#55 confidence               |
+| #   | Deployable    | Issue                                                                                      | Blocker cleared by               | Unblocks                    |
+| --- | ------------- | ------------------------------------------------------------------------------------------ | -------------------------------- | --------------------------- |
+| 28  | Agent Runtime | [Sessions / Ordering / Event Ledger](https://github.com/sruj75/Intentive/issues/28)        | #25                              | #29                         |
+| 29  | Agent Runtime | [Conversation History + Reconnect Snapshot](https://github.com/sruj75/Intentive/issues/29) | #28                              | #33/#44; #36/#39/#41        |
+| 30  | Control Plane | [Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30)  | #26 + #25                        | #33; #31 (keystone Routing) |
+| 31  | Desktop       | [Routing + Protocol WS Session](https://github.com/sruj75/Intentive/issues/31)             | #25 + #30                        | #34/#35/#43                 |
+| 32  | Desktop       | [Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32)                  | none (start now)                 | #35/#55                     |
+| 33  | Mobile        | [Protocol client for Companion Chat](https://github.com/sruj75/Intentive/issues/33)        | #29 + #30 Routing                | #44/#45                     |
+| 34  | Desktop       | [Emit Context Snapshots over Protocol](https://github.com/sruj75/Intentive/issues/34)      | #31 + existing snapshot pipeline | #35/#43                     |
+| 35  | Desktop       | [Signed-in happy-path smoke](https://github.com/sruj75/Intentive/issues/35)                | #34 + #32                        | #43/#55 confidence          |
 
 ### Phase 3: Later
 
@@ -160,11 +160,12 @@ flowchart TD
 
 - `#14` (protocol/api-contract lock) and `#15` (Providers JWKS auth) are **closed**.
 - **Next:** `#51` (telemetry/flags) and `#52` (CI rules) only depend on `#14`; run them while other lanes progress.
-- `packages/providers/src/auth.ts` now ships a real `jose`-backed `createJwtVerifier` (see `packages/providers/test/auth.test.mjs`); `#23` and `#25` consume it from `@intentive/providers/auth`.
+- `packages/providers/src/auth.ts` now ships a real `jose`-backed `createJwtVerifier` (see `packages/providers/test/auth.test.mjs`); `#23` (closed) and `#25` consume it from `@intentive/providers/auth`.
 
 ### Mobile Client (issues #18–#22 closed; #33, #44–#48 open)
 
 - Foundation lane **closed** (`#18`–`#22`): Expo scaffold + launch resolver ([PR #57](https://github.com/sruj75/Intentive/pull/57)); Identity Gate, Consent Primer, Sibling Invitation, CompanionChat / assistant-ui spike ([PR #58](https://github.com/sruj75/Intentive/pull/58)).
+- `#23` slice on mobile (`8e65c71`): `createControlPlaneLaunchStateSource` + `mapAccountStateToLaunchState` wired at boot; `EXPO_PUBLIC_CONTROL_PLANE_BASE_URL`. Remainder (real Neon OAuth redirect, cold-launch restore with live session) tracks follow-on issues.
 - **Next:** `#33` (Protocol client) once `#29` (AR Conversation History) and `#30` (CP Routing) land; then `#44`–`#48` chat and release slices.
 - Cross-project dependency: Protocol/chat slices rely on AR `#25`–`#29` and CP Routing `#30`.
 
@@ -175,10 +176,11 @@ flowchart TD
 - Snapshot emit (`#34`) and signed-in smoke (`#35`) follow `#31`.
 - Cross-project dependency: Snapshot emit and signed-in smoke need AR gateway semantics and protocol compatibility.
 
-### Control Plane (issues #17 closed; #23, #26–#27, #30, #49–#50 open)
+### Control Plane (issues #17, #23 closed; #26–#27, #30, #49–#50 open)
 
-- `#17` (CP Contracts + Domain Scaffolds) **closed** ([PR #57](https://github.com/sruj75/Intentive/pull/57)). Remaining CP behavior issues open; source is still largely scaffold.
-- **Next:** `#23` (Identity) now that `#15` (Providers auth) and `#17` are landed.
+- `#17` (CP Contracts + Domain Scaffolds) **closed** ([PR #57](https://github.com/sruj75/Intentive/pull/57)).
+- `#23` (Identity + Neon Auth JWT) **closed** (`8e65c71`): identity domain (`GET /me`, users repo, `migrations/0001_users.sql`), PR CI (`.github/workflows/control-plane-ci.yml`), ADR-0003 repo integration tests. `next_gate` / `has_agent_instance` remain placeholders until `#26` / `#30`.
+- **Next:** `#26` (gate state shaping on `GET /me`) and `#27` (Device Registry) in parallel.
 - **Keystone:** `#30` (Routing + Session Start) unblocks Mobile `#33` and Desktop `#31` — it pairs with AR `#25`.
 - Cross-project dependency: depends on `#14` (api-contract lock) and `#15` (Providers auth); calls AR `POST /internal/sessions/start` and receives `POST /internal/notifications/push`.
 

@@ -13,11 +13,11 @@ The single deep function that maps the current **Launch State** to one **Launch 
 _Avoid_: router guard, auth gate, redirect helper
 
 **Launch State**:
-The single **in-memory** store the **Launch State Resolver** reads — a transient _projection_ of the Control-Plane-owned **Pre-Chat Gate** truth, used only to drive navigation on this device. The client owns no durable gate state and persists nothing to disk; cold launch starts empty (→ `RESOLVING`) and hydrates from the source. Fields are nullable: a field is `null` while its answer is still unknown (token not yet read, `GET /me` not yet returned). Hydrated/reconciled by **Launch State Source**; a gate completing updates it optimistically. In v1 the durable source is the Control Plane's `GET /me` (post-#23); until then it is fixture-fed. See [`adr/0011`](docs/adr/0011-mobile-launch-state-as-in-memory-projection-of-cp-gate-truth.md).
+The single **in-memory** store the **Launch State Resolver** reads — a transient _projection_ of the Control-Plane-owned **Pre-Chat Gate** truth, used only to drive navigation on this device. The client owns no durable gate state and persists nothing to disk; cold launch starts empty (→ `RESOLVING`) and hydrates from the source. Fields are nullable: a field is `null` while its answer is still unknown (token not yet read, `GET /me` not yet returned). Hydrated/reconciled by **Launch State Source**; a gate completing updates it optimistically. In v1 the durable source is the Control Plane's `GET /me`; #23 wires the real source at boot (stub scenarios remain for tests). See [`adr/0011`](docs/adr/0011-mobile-launch-state-as-in-memory-projection-of-cp-gate-truth.md).
 _Avoid_: session state, app state, local gate store
 
 **Launch State Source**:
-The interface that hydrates and reconciles **Launch State** from the durable source of truth. #18 ships a swappable stub; #23 plugs in the real `GET /me` implementation. It writes _into_ the store; the resolver and layout never read it directly.
+The interface that hydrates and reconciles **Launch State** from the durable source of truth. Production boot uses `createControlPlaneLaunchStateSource` (`GET /me` + `AccountState` mapper); `createStubLaunchStateSource` remains for tests and dev scenarios. It writes _into_ the store; the resolver and layout never read it directly.
 _Avoid_: gate repo, me-client
 
 **Launch Destination**:
