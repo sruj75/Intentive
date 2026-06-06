@@ -74,6 +74,8 @@ src/domains/
   internal/{types,config,repo,service,runtime,ui}/
 ```
 
+This block is the _map_, not a build order. Per [ADR-0002](adr/0002-agent-runtime-vertical-first-progressive-layering.md), domain folders and their layers are created **lazily** — when a phase implements real behavior for that domain — not scaffolded upfront. An empty layer folder hides no design decision and only adds boundaries to read, so the architecture lives in this map plus the layer-direction lint, never in placeholder files. Do not pre-create empty `{types..ui}` trees to "match" this diagram.
+
 Domain responsibilities:
 
 - `gateway`: WebSocket server, handshake-first connect flow, JWT verification, protocol version negotiation, socket lifecycle.
