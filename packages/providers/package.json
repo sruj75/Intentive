@@ -7,21 +7,25 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     },
     "./auth": {
       "types": "./src/auth.ts",
-      "default": "./src/auth.ts"
+      "default": "./dist/auth.js"
     },
     "./telemetry": {
       "types": "./src/telemetry.ts",
-      "default": "./src/telemetry.ts"
+      "default": "./dist/telemetry.js"
     },
     "./flags": {
       "types": "./src/flags.ts",
-      "default": "./src/flags.ts"
+      "default": "./dist/flags.js"
     }
   },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc --outDir dist",
     "typecheck": "tsc --noEmit",

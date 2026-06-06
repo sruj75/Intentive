@@ -16,6 +16,7 @@ import { ConsentPrimer } from "../src/domains/onboarding/ui/consent-primer";
 import { SiblingInvitation } from "../src/domains/onboarding/ui/sibling-invitation";
 import {
   LaunchStateProvider,
+  createControlPlaneLaunchStateSource,
   createStubLaunchStateSource,
   useLaunchState,
   type LaunchStateSource,
@@ -109,6 +110,37 @@ test("signing in after a failed hydration still walks forward (never stranded on
   } finally {
     warn.mockRestore();
   }
+});
+
+test("the real Control Plane source boots to signed-out when there is no session", async () => {
+  // The #23 production wiring: no Neon session → getUserJwt null → signed-out,
+  // with no Control Plane call. This is what boots under the dev provider today.
+  const source = createControlPlaneLaunchStateSource({
+    baseUrl: "https://cp.test",
+    getUserJwt: () => Promise.resolve(null),
+    fetch: () => Promise.reject(new Error("must not be called without a session")),
+  });
+
+  renderWithSource(source);
+  await expectDestination("SIGNED_OUT");
+});
+
+test("the real Control Plane source hydrates a signed-in user through to chat", async () => {
+  // Real source → store → resolver, in the React runtime: a valid /me with no
+  // pending gate lands the user in chat.
+  const source = createControlPlaneLaunchStateSource({
+    baseUrl: "https://cp.test",
+    getUserJwt: () => Promise.resolve("jwt-123"),
+    fetch: () =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ user_id: "u_1", next_gate: null, has_agent_instance: false }),
+      }),
+  });
+
+  renderWithSource(source);
+  await expectDestination("READY_FOR_CHAT");
 });
 
 test("failed source hydration falls back to signed out instead of staying resolving", async () => {

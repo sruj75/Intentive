@@ -26,14 +26,21 @@ module.exports = {
   preset: "jest-expo",
   testMatch: ["**/test/**/*.rn.test.tsx"],
   transformIgnorePatterns: [
-    pnpmPattern.replace("(.pnpm|", "(.pnpm|@assistant-ui|assistant-stream|nanoid|"),
+    // Whitelist our own workspace packages alongside the ESM-only vendor ones:
+    // `@intentive/*` ship built ESM `dist/`, which jest must transform like app
+    // code (e.g. the launch-state source imports `@intentive/api-contract`).
+    pnpmPattern.replace("(.pnpm|", "(.pnpm|@intentive|@assistant-ui|assistant-stream|nanoid|"),
     ...restPatterns,
   ],
-  // `@assistant-ui/core` eagerly requires its cloud thread-history adapter,
-  // which imports the (uninstalled, unused) `assistant-cloud` integration.
-  // Stub it — the Intentive path uses the local runtime, not assistant cloud.
-  // Same stub Metro aliases (see metro.config.js) so both paths behave alike.
   moduleNameMapper: {
+    // TS-style explicit `.js` extensions on relative imports (required by the
+    // node:test ESM build) → strip for jest's resolver, which maps to the `.ts`
+    // source. jest-expo's resolver doesn't do this rewrite itself.
+    "^(\\.{1,2}/.*)\\.js$": "$1",
+    // `@assistant-ui/core` eagerly requires its cloud thread-history adapter,
+    // which imports the (uninstalled, unused) `assistant-cloud` integration.
+    // Stub it — the Intentive path uses the local runtime, not assistant cloud.
+    // Same stub Metro aliases (see metro.config.js) so both paths behave alike.
     "^assistant-cloud$": "<rootDir>/assistant-cloud-stub.js",
   },
 };

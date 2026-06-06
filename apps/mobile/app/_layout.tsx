@@ -18,7 +18,7 @@ import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-la
 import { routeForDestination } from "../src/domains/onboarding/service/route-for-destination";
 import {
   LaunchStateProvider,
-  createStubLaunchStateSource,
+  createControlPlaneLaunchStateSource,
   useLaunchState,
 } from "../src/providers/launch-state";
 
@@ -36,14 +36,18 @@ const authAdapter = createAuthAdapter({
 });
 
 /**
- * DEV harness source — replaced in #23 by a `GET /me`-backed LaunchStateSource.
- * The `signed-out` scenario starts signed-out with the gates pre-seeded `pending`
- * (walk-safe, see source.ts) so the whole gate walk works with no network
- * round-trip; the resolver's signed-out short-circuit hides the gate values until
- * the user signs in. One definition of every bootable Launch State lives in the
- * stub factory — never an inline literal that can drift.
+ * The real Launch State source: hydrates from Control Plane `GET /me` using the
+ * Auth Adapter's User JWT (#23). With no Neon session `getUserJwt()` returns null
+ * and the source yields signed-out without a network call — so under the dev
+ * provider (no real session) and a blank base URL the app still boots cleanly to
+ * the Identity Gate. The launch-only signed-in path arrives with real on-device
+ * sign-in (#61). `fetch` is injected (the source stays RN-free and testable).
  */
-const devSource = createStubLaunchStateSource("signed-out");
+const launchStateSource = createControlPlaneLaunchStateSource({
+  baseUrl: process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "",
+  getUserJwt: () => authAdapter.getUserJwt(),
+  fetch: (url, init) => globalThis.fetch(url, init),
+});
 
 function RootNavigator(): React.JSX.Element {
   const { state } = useLaunchState();
@@ -65,7 +69,7 @@ function RootNavigator(): React.JSX.Element {
 
 export default function RootLayout(): React.JSX.Element {
   return (
-    <LaunchStateProvider source={devSource}>
+    <LaunchStateProvider source={launchStateSource}>
       <AuthAdapterProvider adapter={authAdapter}>
         <RootNavigator />
       </AuthAdapterProvider>

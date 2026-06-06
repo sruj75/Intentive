@@ -11,6 +11,7 @@
     "src/domains/account/types/workspace.ts",
     "src/providers/launch-state/types.ts",
     "src/providers/launch-state/source.ts",
+    "src/providers/launch-state/control-plane-source.ts",
     "src/domains/onboarding/service/**/*.ts",
     "src/domains/auth/types/auth.ts",
     "src/domains/auth/service/ports.ts",
