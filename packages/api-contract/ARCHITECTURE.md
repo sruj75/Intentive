@@ -1,6 +1,6 @@
 # @intentive/api-contract Architecture
 
-This is the package-local architecture contract for `packages/api-contract/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md` → **Internal API** (and the Control Plane's own `../../services/control-plane/CONTEXT.md` → **Control Plane**).
+This is the package-local architecture contract for `packages/api-contract/`. It extends the monorepo-wide rules in `../../ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md` → **Internal API** (and the Control Plane's own `../../services/control-plane/CONTEXT.md` → **Control Plane**).
 
 ## Purpose
 

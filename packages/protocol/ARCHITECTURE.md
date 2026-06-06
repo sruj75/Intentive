@@ -1,6 +1,6 @@
 # @intentive/protocol Architecture
 
-This is the package-local architecture contract for `packages/protocol/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md` → **Protocol**. See agent-runtime ADR-0003 for the contract decision.
+This is the package-local architecture contract for `packages/protocol/`. It extends the monorepo-wide rules in `../../ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md` → **Protocol**. See agent-runtime ADR-0003 for the contract decision.
 
 ## Purpose
 

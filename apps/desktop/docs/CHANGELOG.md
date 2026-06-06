@@ -137,7 +137,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   - `menu_bar/` → `domains/menubar/service/` + `domains/menubar/ui/`
   - `port/` → `providers/port/` (Rust cross-cutting)
     No behavior changed; only file paths and module paths. Cross-domain coupling is now expressed via trait seams injected at `lib.rs`.
-- **TS domain layout** — `src/auth.ts` → `src/domains/auth/service/auth.ts`; `src/Onboarding.tsx` → `src/domains/onboarding/ui/Onboarding.tsx`; new `src/domains/auth/ui/IntentiveAuthProvider.tsx` and `src/domains/account/ui/AccountSettingsSurface.tsx`. The layer rule from `docs/ARCHITECTURE.md` now applies to both TS and Rust sides.
+- **TS domain layout** — `src/auth.ts` → `src/domains/auth/service/auth.ts`; `src/Onboarding.tsx` → `src/domains/onboarding/ui/Onboarding.tsx`; new `src/domains/auth/ui/IntentiveAuthProvider.tsx` and `src/domains/account/ui/AccountSettingsSurface.tsx`. The layer rule from `ARCHITECTURE.md` now applies to both TS and Rust sides.
 - **Issue #8 protocol-boundary hardening** — Desktop boundary semantics now align
   to the canonical protocol contract: no protocol-range negotiation fields,
   strict schema parsing, canonical snapshot/session-end naming

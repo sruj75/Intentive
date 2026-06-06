@@ -140,9 +140,20 @@ pnpm --filter ./services/control-plane typecheck
 
 The Control Plane suite includes identity service/handler unit tests, HTTP routing via Hono (`app.test.mjs`), and an opt-in repo integration test against a disposable Neon branch (ADR-0003; skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are unset). See `services/control-plane/test/helpers/neon-branch.mjs`.
 
+## Agent Runtime
+
+```bash
+pnpm --filter ./services/agent-runtime test
+pnpm --filter ./services/agent-runtime typecheck
+```
+
+The Agent Runtime suite currently exercises the shared config seam (`test/config-env.test.mjs`)
+and the gateway auth-failure mapper. Domain folders are created lazily per ADR-0002 as
+vertical slices land (#24–#25 onward).
+
 ## Scaffold Deployables
 
-`services/agent-runtime` still uses minimal scaffold tests. `services/control-plane` now exercises the identity slice (`GET /me`, users repo, `migrations/0001_users.sql`). `apps/mobile` adds auth-adapter, launch-state resolver/source, control-plane launch source, `account-state-to-launch-state`, and `route-for-destination` tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Chat Primitive Engine spike tests (`companion-chat.rn.test.tsx`, `dev-chat-adapter.test.mjs`). Protocol/runtime adapter coverage grows with #33.
+`services/control-plane` exercises the identity slice (`GET /me`, users repo, `migrations/0001_users.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` adds auth-adapter, launch-state resolver/source, control-plane launch source, `account-state-to-launch-state`, and `route-for-destination` tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Chat Primitive Engine spike tests (`companion-chat.rn.test.tsx`, `dev-chat-adapter.test.mjs`). Protocol/runtime adapter coverage grows with #33.
 
 ## CI Expectations
 

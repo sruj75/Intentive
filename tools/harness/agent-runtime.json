@@ -5,7 +5,8 @@
   "owningContextDocs": [
     "CONTEXT-MAP.md",
     "services/agent-runtime/CONTEXT.md",
-    "docs/ARCHITECTURE.md",
+    "services/agent-runtime/ARCHITECTURE.md",
+    "ARCHITECTURE.md",
     "docs/TESTING.md"
   ],
   "adrDirs": ["docs/adr", "services/agent-runtime/docs/adr"],

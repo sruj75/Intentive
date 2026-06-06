@@ -2,7 +2,7 @@
 
 The always-alive, multi-tenant service at `services/agent-runtime/` that runs Companion behavior for every user. Built on [LangChain DeepAgents (TypeScript)](https://github.com/langchain-ai/deepagentsjs) with an OpenClaw-style outer shell (gateway, sessions, channels, cron, heartbeat, workspace). Deploys to a GCE VM because it hosts long-running state and cannot run on stateless platforms.
 
-For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md)). For boundaries and layer rule, see [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
+For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md)). For deployable structure, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for monorepo-wide layer rule and topology, see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
 
 ## Reference patterns
 
@@ -19,11 +19,14 @@ node scripts/generate-reference-llms.mjs
 ```bash
 # from this directory
 pnpm install
-pnpm dev
 pnpm typecheck
-pnpm lint
-pnpm test
+pnpm test   # builds protocol + runtime, then node --test (config-env today)
 ```
+
+Configuration is validated at boot through `loadConfig` in `src/config/env.ts` (required
+env keys: `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, `NEON_DATABASE_URL`,
+`NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`, `NEON_AUTH_AUDIENCE`; defaults for `PORT` and
+`NEON_DATABASE_ROLE`). Domains must not re-parse `process.env`.
 
 ## Deployment
 

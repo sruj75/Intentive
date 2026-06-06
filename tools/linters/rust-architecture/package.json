@@ -2,7 +2,7 @@
   "name": "@intentive/rust-architecture-checker",
   "version": "0.0.1",
   "private": true,
-  "description": "Mechanical enforcement of Intentive's layered domain architecture for Rust (Tauri desktop). ESLint only parses TS/JS, so this applies the same layer order to .rs files. See docs/ARCHITECTURE.md.",
+  "description": "Mechanical enforcement of Intentive's layered domain architecture for Rust (Tauri desktop). ESLint only parses TS/JS, so this applies the same layer order to .rs files. See ARCHITECTURE.md.",
   "bin": {
     "rust-architecture-check": "check.js"
   },

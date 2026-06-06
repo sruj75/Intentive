@@ -16,7 +16,7 @@
  *   5. otherwise                → READY_FOR_CHAT
  *
  * `completed` and `skipped` are equivalent for advancing past a gate; only
- * `pending` blocks. See apps/mobile/docs/ARCHITECTURE.md (Launch State Resolver)
+ * `pending` blocks. See apps/mobile/ARCHITECTURE.md (Launch State Resolver)
  * and apps/mobile/CONTEXT.md.
  */
 import type { LaunchDestination, LaunchState } from "../../../providers/launch-state/types.js";

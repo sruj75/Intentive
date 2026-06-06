@@ -11,7 +11,8 @@
   "dependencies": {
     "@intentive/api-contract": "workspace:*",
     "@intentive/protocol": "workspace:*",
-    "@intentive/providers": "workspace:*"
+    "@intentive/providers": "workspace:*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

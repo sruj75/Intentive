@@ -6,6 +6,26 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Runtime config seam** ([Issue #24], in progress) — `src/config/env.ts` (`loadConfig`,
+  `AgentRuntimeConfig`, `AgentRuntimeConfigError`): single boot-time Zod validation for
+  `PORT`, `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, Neon connection +
+  role, and Neon Auth JWKS settings. Re-exported from `src/index.ts`. Tests:
+  `test/config-env.test.mjs`.
+
+### Removed
+
+- **Upfront domain type scaffolds** — deleted placeholder `types/scaffold.ts` files and
+  contract sample types under `src/domains/*` (lazy domain layout per ADR-0002; real
+  folders arrive with each vertical slice). Removed `test/scaffold.test.mjs`.
+
+### Changed
+
+- **`src/index.ts`** — exports `loadConfig` / `AgentRuntimeConfig` instead of protocol
+  and internal contract samples; still exports `mapJwtVerificationErrorToRuntimeError`
+  from `gateway/service/auth-failure.ts`.
+
+### Added (earlier unreleased)
+
 - **Phase 0 contracts resolved** ([Issue #10]) — all pre-implementation contracts are now
   locked in `CONTEXT.md` and `docs/adr/`, unblocking Phase 1 scaffolding:
   - **Persistence Adapter** — thin repo-owned wrapper around LangGraph's Postgres checkpoint
@@ -36,10 +56,9 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   — formalises `SessionMessage` / `session_snapshot` as a history read-projection separate
   from the live `user_message`/`companion_message` wire events.
 
-- **Domain scaffolds** — `src/domains/{bundles,cron,gateway,heartbeat,memory,protocol,
-runtime,sessions}/types/scaffold.ts` and `src/domains/internal/types/sessions.ts` added
-  so the layered domain tree is tracked by git, covered by typecheck, and visible to the
-  architecture lint before any domain logic ships.
+- **Domain scaffolds** _(superseded)_ — placeholder `types/scaffold.ts` files added during
+  Phase 0; removed when the Runtime skeleton moved to lazy domain layout (ADR-0002) and
+  the shared `src/config/` seam landed.
 
 ### Changed
 
@@ -61,6 +80,6 @@ runtime,sessions}/types/scaffold.ts` and `src/domains/internal/types/sessions.ts
 - **`AGENTS.md`** — `CONTEXT.md` added to "Always read first"; `bundles` domain entry
   corrected to list all six bundle paths with their immutable/writable designations.
 
-- **`docs/ARCHITECTURE.md`** — vocabulary pointer updated to reference both the
+- **`ARCHITECTURE.md`** — vocabulary pointer updated to reference both the
   root `CONTEXT-MAP.md` and the service-local `CONTEXT.md`; Codemap entry for
   `CONTEXT.md` added.

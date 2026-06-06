@@ -1,6 +1,6 @@
 # Control Plane Architecture
 
-This document is the deployable-local architecture contract for `services/control-plane/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read [`../CONTEXT.md`](../CONTEXT.md) (Control Plane) and the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md) first. For agent-facing working rules, read `../AGENTS.md`.
+This document is the deployable-local architecture contract for `services/control-plane/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Control Plane) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) first. For agent-facing working rules, read [`AGENTS.md`](AGENTS.md).
 
 ## Bird's-eye Overview
 
@@ -36,10 +36,10 @@ The Control Plane is the single writer of account truth. Clients render this sta
 `README.md`
 : Operator/developer entrypoint for the deployable.
 
-`docs/ARCHITECTURE.md`
+`ARCHITECTURE.md`
 : This file. Control-Plane-local architecture contract and map.
 
-[`docs/prd/control-plane-PRD.md`](../../../docs/prd/control-plane-PRD.md)
+[`docs/prd/control-plane-PRD.md`](../../docs/prd/control-plane-PRD.md)
 : Control Plane PRD. Issues `#17`, `#23`, `#26`, `#27`, `#30`, `#49`, `#50` on [GitHub](https://github.com/sruj75/Intentive/issues).
 
 `src/main.ts`
@@ -116,7 +116,7 @@ Mechanical checks should enforce:
 - No cross-deployable imports from `apps/**` or other `services/**`.
 - Provider-only access for auth, telemetry, feature flags, Neon clients, and APNs clients.
 - HTTP-contract consistency through `packages/api-contract`.
-- Forbidden vocabulary from `../CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
+- Forbidden vocabulary from `CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
 
 ## Boundaries
 

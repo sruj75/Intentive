@@ -48,17 +48,17 @@ The factory is healthy when guides and sensors reinforce each other and improve 
 
 ## Current Guides
 
-| Guide                                     | Owns                                                   | Use it when                                                                                  |
-| ----------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| [`AGENTS.md`](../AGENTS.md)               | Repo entry map, issue tracker policy, inviolable rules | Starting any change                                                                          |
-| [`CONTEXT-MAP.md`](../CONTEXT-MAP.md)     | Product-wide language and cross-context relationships  | Naming, domain language, deployable boundaries                                               |
-| Deployable `AGENTS.md`                    | Local working rules                                    | Editing `apps/mobile`, `apps/desktop`, `services/control-plane`, or `services/agent-runtime` |
-| Deployable `CONTEXT.md`                   | Context-owned vocabulary                               | Adding terms, renaming concepts, avoiding drift                                              |
-| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Layer rule, topology, package ownership                | Changing module boundaries or shared package responsibilities                                |
-| [`docs/TESTING.md`](TESTING.md)           | Verification commands and ownership                    | Choosing the right checks before handoff                                                     |
-| [`docs/ISSUE-BOARD.md`](ISSUE-BOARD.md)   | Sequenced v1 backlog and dependencies                  | Picking scope or checking whether work belongs in another issue                              |
-| [`docs/adr/`](adr/)                       | System-wide decisions                                  | Making or checking non-trivial architecture decisions                                        |
-| Deployable `docs/adr/`                    | Context-local decisions                                | Making or checking deployable-specific decisions                                             |
+| Guide                                   | Owns                                                   | Use it when                                                                                  |
+| --------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| [`AGENTS.md`](../AGENTS.md)             | Repo entry map, issue tracker policy, inviolable rules | Starting any change                                                                          |
+| [`CONTEXT-MAP.md`](../CONTEXT-MAP.md)   | Product-wide language and cross-context relationships  | Naming, domain language, deployable boundaries                                               |
+| Deployable `AGENTS.md`                  | Local working rules                                    | Editing `apps/mobile`, `apps/desktop`, `services/control-plane`, or `services/agent-runtime` |
+| Deployable `CONTEXT.md`                 | Context-owned vocabulary                               | Adding terms, renaming concepts, avoiding drift                                              |
+| [`ARCHITECTURE.md`](../ARCHITECTURE.md) | Layer rule, topology, package ownership                | Changing module boundaries or shared package responsibilities                                |
+| [`docs/TESTING.md`](TESTING.md)         | Verification commands and ownership                    | Choosing the right checks before handoff                                                     |
+| [`docs/ISSUE-BOARD.md`](ISSUE-BOARD.md) | Sequenced v1 backlog and dependencies                  | Picking scope or checking whether work belongs in another issue                              |
+| [`docs/adr/`](adr/)                     | System-wide decisions                                  | Making or checking non-trivial architecture decisions                                        |
+| Deployable `docs/adr/`                  | Context-local decisions                                | Making or checking deployable-specific decisions                                             |
 
 ## Current Sensors
 

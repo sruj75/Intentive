@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
-- `CONTEXT-MAP.md` (root) for the context map and shared product language, plus the owning deployable's own `CONTEXT.md` for context-specific vocabulary
+- `CONTEXT-MAP.md` (root) for the context map and shared product language, plus the owning deployable's own `CONTEXT.md` and `ARCHITECTURE.md` for context-specific vocabulary and structure
 - `docs/adr/` (system-wide) and the owning deployable's `docs/adr/` for architecture decisions relevant to the area being changed
 - Deployable-specific `AGENTS.md` files when working inside a specific app or service subtree
 
@@ -17,15 +17,16 @@ Multi-context repo (this repo's current layout):
 ```
 /
 ├── AGENTS.md
+├── ARCHITECTURE.md             ← monorepo structure
 ├── CONTEXT-MAP.md              ← context map + shared product language
 ├── docs/
 │   └── adr/                    ← system-wide decisions
 ├── apps/
-│   ├── mobile/{CONTEXT.md, docs/adr/}
-│   └── desktop/{CONTEXT.md, docs/adr/}
+│   ├── mobile/{CONTEXT.md, ARCHITECTURE.md, docs/adr/}
+│   └── desktop/{CONTEXT.md, ARCHITECTURE.md, docs/adr/}
 ├── services/
-│   ├── control-plane/{CONTEXT.md, docs/adr/}
-│   └── agent-runtime/{CONTEXT.md, docs/adr/}
+│   ├── control-plane/{CONTEXT.md, ARCHITECTURE.md, docs/adr/}
+│   └── agent-runtime/{CONTEXT.md, ARCHITECTURE.md, docs/adr/}
 └── packages/CONTEXT.md
 ```
 

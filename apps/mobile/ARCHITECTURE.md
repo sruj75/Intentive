@@ -1,6 +1,6 @@
 # Mobile Client Architecture
 
-For Mobile Client vocabulary, see [`CONTEXT.md`](../CONTEXT.md); for the context map and shared product language, see the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md). For the cross-deployable architecture and layer rule, see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md). This file describes Mobile Client-specific structure only.
+For Mobile Client vocabulary, see [`CONTEXT.md`](CONTEXT.md); for the context map and shared product language, see the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md). For the cross-deployable architecture and layer rule, see [`ARCHITECTURE.md`](../../ARCHITECTURE.md). This file describes Mobile Client-specific structure only.
 
 ## Bird's-eye Overview
 
@@ -20,7 +20,7 @@ Enforceable import boundaries and explicit provider interfaces are now wired at 
 
 Root shape (v1 foundation — Pre-Chat Gate screens through Sibling Invitation (#19–#21); Chat Primitive Engine spike (#22) landed as `CompanionChat` + dev adapter; resolver + launch-state provider wired):
 
-- `app/`: Expo Router routes only — thin shells grouped by UX context (`(gates)`, `(chat)`; `(account)/` when Account Surface lands). No reusable components or logic live here; a route file imports and composes a domain's `ui` export and nothing else. This is the **navigation axis**, deliberately distinct from the capability axis below (see [`adr/0010`](adr/0010-mobile-navigation-and-capability-as-orthogonal-axes.md)).
+- `app/`: Expo Router routes only — thin shells grouped by UX context (`(gates)`, `(chat)`; `(account)/` when Account Surface lands). No reusable components or logic live here; a route file imports and composes a domain's `ui` export and nothing else. This is the **navigation axis**, deliberately distinct from the capability axis below (see [`adr/0010`](docs/adr/0010-mobile-navigation-and-capability-as-orthogonal-axes.md)).
 - `src/domains/auth/`: **Auth Adapter** (`service/`) and **Identity Gate** (`ui/`) — Neon Auth and launch-only Dev providers behind one `signIn`/`signOut` boundary (ADR 0012). Session persistence is owned by the Neon Auth SDK; the Mobile Client does not verify **User JWT**s (#23). A screen lives where its logic lives, so the Identity Gate is owned here, not by `onboarding`.
 - `src/domains/chat/`: Companion Chat domain — `ui/companion-chat.tsx` (Intentive Chat Components over `@assistant-ui/react-native`, ADR 0009), `runtime/dev-chat-adapter.ts` (MVP dev seam; Protocol adapter in #33), future Runtime Adapter usage, Agent State display. Reads Conversation History from the WebSocket reconnect snapshot; does not persist messages. Routes import `CompanionChat` only — no vendor types in `app/`.
 - `src/domains/onboarding/`: the Pre-Chat Gate **sequence** — the Consent Primer and Sibling Client Invitation screens, plus the launch decision in `service/`: the **Launch State Resolver** (`resolve-launch-state.ts`, gate ordering) and **Launch Route** (`route-for-destination.ts`, `LaunchDestination →` splash or one route zone). The Identity Gate screen itself lives in `auth/`; `onboarding` only decides when to show it (by resolving to `SIGNED_OUT`). The Companion's bootstrap-guided opening message renders inside `chat/`, not here.
@@ -71,7 +71,7 @@ Agent State must be capability-honest. The UI must not imply the Companion read,
 
 `app/` may import route screens only. Route files compose domain UI but do not contain business logic, persistence, runtime calls, or reusable components.
 
-UI code may call Services or Runtime facades, not provider implementations directly. Layer direction (`types → config → repo → service → runtime → ui`) is enforced by the architecture lint rules — see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md).
+UI code may call Services or Runtime facades, not provider implementations directly. Layer direction (`types → config → repo → service → runtime → ui`) is enforced by the architecture lint rules — see [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 Repo code owns local-storage details (secure storage of auth tokens, settings, telemetry buffer). **No chat-message repo exists** — Conversation History is read from the WebSocket reconnect snapshot, not from a local DB.
 
@@ -101,7 +101,7 @@ Required contract tests:
 - Composer layout: keyboard safety, safe area, scroll inset correctness.
 - Permission behavior: notification prompt fires on first chat entry, not at launch.
 
-Mechanical checks (already wired at the repo root — see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md)):
+Mechanical checks (already wired at the repo root — see [`ARCHITECTURE.md`](../../ARCHITECTURE.md)):
 
 - Layer-direction lint (`types → config → repo → service → runtime → ui`).
 - No-cross-deployable lint (no relative imports into `apps/desktop/` or `services/`).

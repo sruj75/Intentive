@@ -14,7 +14,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **Monorepo import** — Mobile Client brought into the Intentive workspace as
   `@intentive/mobile` (Expo SDK 56, React Native, TypeScript, `expo-router`). Domain
   layout under `src/domains/{auth,onboarding,chat,…}/` with layer-direction lint;
-  mobile-specific `CONTEXT.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, and ADRs
+  mobile-specific `CONTEXT.md`, `ARCHITECTURE.md`, `docs/DESIGN.md`, and ADRs
   `0001`–`0011` (product direction: chat-first surface, remote Agent Runtime,
   navigation vs capability axes, in-memory Launch State, Liquid Glass shell intent).
 
@@ -110,7 +110,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
   (not `null`) so optimistic sign-in cannot strand on `RESOLVING` splash.
 - Pre-Chat Gate and Companion Chat routes now import real domain screens instead of
   stubs (`identity`, `consent`, `invite`, `chat`).
-- `apps/mobile/AGENTS.md`, `docs/ARCHITECTURE.md`, and root `docs/TESTING.md` synced
+- `apps/mobile/AGENTS.md`, `ARCHITECTURE.md`, and root `docs/TESTING.md` synced
   with foundation-lane test surfaces and `#22` coverage.
 - ADR 0009 extended with spike outcome table, adapter error contract, and test-harness
   findings for `#33` / `#45`.

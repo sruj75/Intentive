@@ -35,7 +35,7 @@ Agents can work productively here with human oversight on most changes. Progress
 - **CI/CD:** GitHub Actions — `monorepo-foundation.yml` (`pnpm harness:ci`), `desktop-ci.yml`, `desktop-audit.yml`, `coverage.yml`, `harness-health.yml`, deploy workflows
 - **Agent entry:** root `AGENTS.md` (66 lines) + **6** nested `AGENTS.md`; `CLAUDE.md` present (1-line `@AGENTS.md` import, currently untracked)
 - **Lint/format:** ESLint 9 + `@intentive/eslint-plugin-architecture`, Prettier, Husky + lint-staged, Rust architecture linter
-- **README:** 34 lines — delegates to `AGENTS.md`, `CONTEXT-MAP.md`, `docs/ARCHITECTURE.md`
+- **README:** 34 lines — delegates to `AGENTS.md`, `CONTEXT-MAP.md`, `ARCHITECTURE.md`
 - **Reproducibility:** `.devcontainer/devcontainer.json` (Node 20, pnpm, Rust, Tauri Linux deps)
 - **Domains on disk:** `src/domains/` present across deployables (**81** domain-related files); desktop splits TS UI domains and Rust product domains
 
@@ -142,7 +142,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 ### Documentation & Context — **88/100** (+2)
 
-- Root `AGENTS.md` as 66-line TOC; **6** nested `AGENTS.md`; `CONTEXT-MAP.md` (112 lines); `docs/ARCHITECTURE.md` (268 lines); `docs/TESTING.md` (143 lines); **17** files under `docs/`; **44** ADR markdown files repo-wide
+- Root `AGENTS.md` as 66-line TOC; **6** nested `AGENTS.md`; `CONTEXT-MAP.md` (112 lines); `ARCHITECTURE.md` (268 lines); `docs/TESTING.md` (143 lines); **17** files under `docs/`; **44** ADR markdown files repo-wide
 - CI: `docs:check` walks the whole repo validating both link targets **and** `#anchor` fragments (`process.exit(1)` on break) + `docs:context:test` (CONTEXT vocabulary, surfaces the canonical term in the error) — documentation coherence is mechanically gated, not aspirational
 - ADRs are status-curated (accepted / superseded / amended / refined) and context-partitioned, so an agent won't re-propose a rejected approach; `CONTEXT-MAP.md` records ~13 flagged/rejected approaches with rationale
 - **Gaps:** No `packages/AGENTS.md`; thin README setup; no `DEPLOYMENT.md` / `CONTRIBUTING.md`; advertised per-deployable `docs/plans/` convention is nearly empty
@@ -167,7 +167,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 ### Architecture Clarity — **76/100** (+13)
 
-- Four deployables match `docs/ARCHITECTURE.md`; domains visible in filesystem; mechanical layer + vocabulary lint
+- Four deployables match `ARCHITECTURE.md`; domains visible in filesystem; mechanical layer + vocabulary lint
 - **Gaps:** control-plane/agent-runtime aspirational vs implemented layers; desktop logic concentrated in Rust; feature flags stub only
 
 ### Change Safety — **74/100** (+4)

@@ -2,13 +2,7 @@
 
 The always-alive, multi-tenant service that runs **Companion** behavior. Built on **DeepAgents** (LangChain TypeScript: `langchain-ai/deepagentsjs`).
 
-**Always read first:**
-
-- [`CONTEXT.md`](CONTEXT.md) — Agent Runtime vocabulary (Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning)
-- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
-- [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
-- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
-- [`reference/AGENTS.md`](reference/AGENTS.md) — OpenClaw / Hermes pattern reference (start at topic cards, not raw `*-llms.txt` packs)
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), root [`AGENTS.md`](../../AGENTS.md) Start here, and [`reference/AGENTS.md`](reference/AGENTS.md) when implementing shell domains.
 
 ## Role in V1
 
@@ -36,8 +30,12 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 ## Stack & deploy
 
 - Node / TypeScript + LangChain DeepAgents
+- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; see `test/config-env.test.mjs`
+- Domain folders are **lazy** (ADR-0002): add `src/domains/<name>/…` only when implementing that slice, not empty layer trees upfront
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane)
+- Tests: `pnpm --filter ./services/agent-runtime test`; harness: `pnpm harness --scope services/agent-runtime`
+- Plans: [`docs/plans/agent-runtime-v1-implementation-plan.md`](docs/plans/agent-runtime-v1-implementation-plan.md)
 
 ## Reference patterns
 

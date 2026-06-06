@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the **structural shape** of the Intentive monorepo. For domain vocabulary, see the root [CONTEXT-MAP.md](../CONTEXT-MAP.md) and each deployable's own `CONTEXT.md`. For specific decisions and their rationale, see [adr/](adr/).
+This document describes the **structural shape** of the Intentive monorepo. For domain vocabulary, see the root [CONTEXT-MAP.md](CONTEXT-MAP.md) and each deployable's own `CONTEXT.md`. For deployable-local structure, see each deployable's `ARCHITECTURE.md` (alongside `CONTEXT.md`). For specific decisions and their rationale, see [docs/adr/](docs/adr/).
 
 Two ideas govern everything below:
 
@@ -54,7 +54,7 @@ Each business domain inside every deployable is organized into a fixed set of la
 
 ## What counts as a "business domain"
 
-A business domain is a vertical slice of product capability inside one deployable. It is **not** a deployable, and it is not a technical layer. Each domain is a cohesive concept the [CONTEXT-MAP.md](../CONTEXT-MAP.md) vocabulary (and the owning deployable's `CONTEXT.md`) already names.
+A business domain is a vertical slice of product capability inside one deployable. It is **not** a deployable, and it is not a technical layer. Each domain is a cohesive concept the [CONTEXT-MAP.md](CONTEXT-MAP.md) vocabulary (and the owning deployable's `CONTEXT.md` and `ARCHITECTURE.md`) already names.
 
 **Mobile Client domains** (`apps/mobile/src/domains/`):
 
@@ -173,6 +173,7 @@ intentive/
 │   ├── mobile/                          ← was Expo
 │   │   ├── AGENTS.md                    ← ~100 lines, table of contents only
 │   │   ├── CONTEXT.md                   ← Mobile Client vocabulary
+│   │   ├── ARCHITECTURE.md              ← Mobile Client structure
 │   │   ├── docs/adr/                    ← Mobile Client decisions
 │   │   ├── app/                         ← NAVIGATION axis: Expo Router, thin route shells
 │   │   │   ├── _layout.tsx              ← root: resolver + Launch Route → redirect effect
@@ -193,6 +194,7 @@ intentive/
 │   └── desktop/                         ← was Tauri
 │       ├── AGENTS.md
 │       ├── CONTEXT.md                   ← Desktop Client vocabulary
+│       ├── ARCHITECTURE.md              ← Desktop Client structure
 │       ├── docs/adr/                    ← Desktop Client decisions
 │       ├── src/domains/                 ← TS/React side (App.tsx/main.tsx are the exempt composition root)
 │       │   ├── auth/{service}/
@@ -207,6 +209,7 @@ intentive/
 │   ├── control-plane/
 │   │   ├── AGENTS.md
 │   │   ├── CONTEXT.md                   ← Control Plane vocabulary
+│   │   ├── ARCHITECTURE.md              ← Control Plane structure
 │   │   ├── docs/adr/                    ← Control Plane decisions
 │   │   ├── migrations/                  ← SQL migrations (control_plane schema; applied by #50)
 │   │   └── src/
@@ -221,8 +224,10 @@ intentive/
 │   └── agent-runtime/                   ← was Deep Agent
 │       ├── AGENTS.md
 │       ├── CONTEXT.md                   ← Agent Runtime vocabulary
+│       ├── ARCHITECTURE.md              ← Agent Runtime structure
 │       ├── docs/adr/                    ← Agent Runtime decisions
-│       └── src/domains/
+│       ├── src/config/                  ← single validated boot config seam (loadConfig); not a domain layer
+│       └── src/domains/                 ← domains created lazily per slice (ADR-0002); not all folders exist yet
 │           ├── gateway/{...}/
 │           ├── sessions/{...}/
 │           ├── protocol/{...}/
@@ -239,12 +244,12 @@ intentive/
 │   ├── domain-types/                    ← shared domain shapes
 │   └── providers/                       ← shared cross-cutting clients
 ├── docs/
-│   ├── ARCHITECTURE.md                  ← this file
 │   ├── adr/                             ← system-wide architectural decision records
 │   └── plans/                           ← versioned execution plans
 ├── tools/
 │   └── linters/                         ← custom mechanical enforcement
 ├── .github/workflows/                   ← per-deployable CI
+├── ARCHITECTURE.md                      ← this file (monorepo structure)
 ├── CONTEXT-MAP.md                       ← context map + shared product language
 ├── AGENTS.md                            ← root map, ~100 lines, pointers only
 ├── pnpm-workspace.yaml

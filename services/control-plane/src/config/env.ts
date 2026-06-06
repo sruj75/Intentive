@@ -21,7 +21,7 @@ import { z } from "zod";
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
 
-  // Neon (control-plane-owned schema + role; see services/control-plane/docs/ARCHITECTURE.md)
+  // Neon (control-plane-owned schema + role; see services/control-plane/ARCHITECTURE.md)
   NEON_DATABASE_URL: z.string().url(),
   NEON_DATABASE_ROLE: z.string().min(1).default("control_plane_app"),
 

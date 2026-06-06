@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md`; it does not replace them. For vocabulary, read [`../CONTEXT.md`](../CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md) (context map + shared product language) first.
+This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
 
 ## Bird's-eye Overview
 
@@ -47,19 +47,22 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 `README.md`
 : Operator/developer entrypoint for the deployable.
 
-`docs/ARCHITECTURE.md`
+`ARCHITECTURE.md`
 : This file. Runtime-local architecture contract and map.
 
-`services/agent-runtime/docs/plans/agent-runtime-v1-implementation-plan.md`
+`docs/plans/agent-runtime-v1-implementation-plan.md`
 : Deployable-local phased implementation plan for the v1 Runtime.
 
 `reference/`
 : Read-only OpenClaw/Hermes pattern library. Topic cards explain what to borrow and what to leave to DeepAgents.
 
-`src/index.ts`
-: Thin process entrypoint. It should delegate to runtime composition, not accumulate domain logic.
+`src/config/env.ts`
+: Boot-time configuration seam (`loadConfig`, `AgentRuntimeConfig`). Validates shape only; domains receive typed slices and must not re-parse `process.env`.
 
-Planned domain layout:
+`src/index.ts`
+: Workspace library entry — re-exports `loadConfig` and other public surfaces for consumers and tests. Process composition root (`main.ts`) lands with the gateway slice.
+
+Domain layout (lazy — folders appear with each vertical slice, ADR-0002):
 
 ```text
 src/domains/
@@ -74,11 +77,11 @@ src/domains/
   internal/{types,config,repo,service,runtime,ui}/
 ```
 
-This block is the _map_, not a build order. Per [ADR-0002](adr/0002-agent-runtime-vertical-first-progressive-layering.md), domain folders and their layers are created **lazily** — when a phase implements real behavior for that domain — not scaffolded upfront. An empty layer folder hides no design decision and only adds boundaries to read, so the architecture lives in this map plus the layer-direction lint, never in placeholder files. Do not pre-create empty `{types..ui}` trees to "match" this diagram.
+This block is the _map_, not a build order. Per [ADR-0002](docs/adr/0002-agent-runtime-vertical-first-progressive-layering.md), domain folders and their layers are created **lazily** — when a phase implements real behavior for that domain — not scaffolded upfront. An empty layer folder hides no design decision and only adds boundaries to read, so the architecture lives in this map plus the layer-direction lint, never in placeholder files. Do not pre-create empty `{types..ui}` trees to "match" this diagram.
 
 Domain responsibilities:
 
-- `gateway`: WebSocket server, handshake-first connect flow, JWT verification, protocol version negotiation, socket lifecycle.
+- `gateway`: WebSocket server, handshake-first connect flow, JWT verification, socket lifecycle. Protocol-version compatibility is enforced at build time by the single shared `packages/protocol` import (monorepo "one protocol version" rule), **not** negotiated per connection; `client_version` on `connect` is informational, and the `protocol_unsupported` error code is reserved/unused in v1.
 - `sessions`: Agent Instance lookup, per-`user_id` queueing, ordering, idempotency, connected-client presence.
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
 - `runtime`: DeepAgents construction/invocation, turn lifecycle, result classification, trace/run IDs.
@@ -134,7 +137,7 @@ Mechanical checks should enforce:
 - No cross-deployable imports from `apps/**` or other `services/**`.
 - Provider-only access for auth, telemetry, feature flags, Neon clients, and Control Plane clients.
 - Protocol consistency through `packages/protocol`.
-- Forbidden vocabulary from `../CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists.
+- Forbidden vocabulary from `CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists.
 
 ## Boundaries
 
@@ -204,6 +207,7 @@ Security:
 
 Testing:
 
-- Unit-test service logic with repo/provider fakes.
-- Integration-test handshake, reconnect snapshot, idempotency, multi-user isolation, Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
+- **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys (landed with #24 skeleton).
+- **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships.
+- **Integration tier:** handshake, reconnect snapshot, idempotency, multi-user isolation, Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff (#25 onward).
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

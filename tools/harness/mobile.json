@@ -5,7 +5,8 @@
   "owningContextDocs": [
     "CONTEXT-MAP.md",
     "apps/mobile/CONTEXT.md",
-    "docs/ARCHITECTURE.md",
+    "apps/mobile/ARCHITECTURE.md",
+    "ARCHITECTURE.md",
     "docs/TESTING.md"
   ],
   "adrDirs": ["docs/adr", "apps/mobile/docs/adr"],
