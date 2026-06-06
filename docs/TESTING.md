@@ -148,8 +148,10 @@ pnpm --filter ./services/agent-runtime typecheck
 ```
 
 The Agent Runtime suite currently exercises the shared config seam (`test/config-env.test.mjs`)
-and the gateway auth-failure mapper. Domain folders are created lazily per ADR-0002 as
-vertical slices land (#24–#25 onward).
+and the connection-control slice: Session Start idempotency, Internal API auth/body
+handling, gateway `connect` handshake behavior, structured auth/protocol errors, and a
+real WebSocket `hello_ok` smoke path. Domain folders are created lazily per ADR-0002 as
+vertical slices land.
 
 ## Scaffold Deployables
 

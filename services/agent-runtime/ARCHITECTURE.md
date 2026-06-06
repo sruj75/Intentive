@@ -60,7 +60,10 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Boot-time configuration seam (`loadConfig`, `AgentRuntimeConfig`). Validates shape only; domains receive typed slices and must not re-parse `process.env`.
 
 `src/index.ts`
-: Workspace library entry — re-exports `loadConfig` and other public surfaces for consumers and tests. Process composition root (`main.ts`) lands with the gateway slice.
+: Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
+
+`src/main.ts`
+: Composition root — loads config, constructs Providers, wires the in-memory Agent Instance registry, serves the private Internal API, and attaches the public WebSocket gateway.
 
 Domain layout (lazy — folders appear with each vertical slice, ADR-0002):
 
@@ -207,7 +210,7 @@ Security:
 
 Testing:
 
-- **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys (landed with #24 skeleton).
-- **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships.
-- **Integration tier:** handshake, reconnect snapshot, idempotency, multi-user isolation, Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff (#25 onward).
+- **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
+- **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path. Future slices add reconnect history, multi-user isolation, Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

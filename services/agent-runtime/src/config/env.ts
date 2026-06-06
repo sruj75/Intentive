@@ -9,6 +9,7 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
+  INTERNAL_PORT: z.coerce.number().int().positive().default(8081),
   PUBLIC_WS_URL: z.string().url(),
   INTERNAL_SECRET_FROM_CONTROL_PLANE: z.string().min(1),
   NEON_DATABASE_URL: z.string().url(),
@@ -19,9 +20,10 @@ const EnvSchema = z.object({
 });
 
 export interface AgentRuntimeConfig {
+  /** Public WebSocket ingress listens on `port`; private Internal API ingress is firewall-isolable on `internalInbound.port`. */
   readonly port: number;
   readonly publicWsUrl: string;
-  readonly internalInbound: { readonly secret: string };
+  readonly internalInbound: { readonly port: number; readonly secret: string };
   readonly neon: { readonly url: string; readonly role: string };
   readonly neonAuth: {
     readonly jwksUrl: string;
@@ -56,7 +58,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
   return Object.freeze({
     port: e.PORT,
     publicWsUrl: e.PUBLIC_WS_URL,
-    internalInbound: Object.freeze({ secret: e.INTERNAL_SECRET_FROM_CONTROL_PLANE }),
+    internalInbound: Object.freeze({
+      port: e.INTERNAL_PORT,
+      secret: e.INTERNAL_SECRET_FROM_CONTROL_PLANE,
+    }),
     neon: Object.freeze({ url: e.NEON_DATABASE_URL, role: e.NEON_DATABASE_ROLE }),
     neonAuth: Object.freeze({
       jwksUrl: e.NEON_AUTH_JWKS_URL,

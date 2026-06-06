@@ -11,6 +11,13 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   `PORT`, `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, Neon connection +
   role, and Neon Auth JWKS settings. Re-exported from `src/index.ts`. Tests:
   `test/config-env.test.mjs`.
+- **Connection control plane** ([Issue #25], in progress) — public WebSocket `connect`
+  handshake, private `POST /internal/sessions/start`, in-memory Agent Instance registry,
+  and `src/main.ts` composition root. The internal API uses `Authorization: Bearer <secret>`; the
+  successful handshake returns `hello_ok` with an intentionally empty Session Snapshot
+  until Conversation History lands. Tests cover Session Start idempotency, Internal API
+  auth/body rejection with no side effects, structured gateway errors, and a real
+  WebSocket smoke path.
 
 ### Removed
 
@@ -21,8 +28,8 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 ### Changed
 
 - **`src/index.ts`** — exports `loadConfig` / `AgentRuntimeConfig` instead of protocol
-  and internal contract samples; still exports `mapJwtVerificationErrorToRuntimeError`
-  from `gateway/service/auth-failure.ts`.
+  and internal contract samples; also exports the testable connection-control factories
+  and `mapJwtVerificationErrorToRuntimeError` from `gateway/service/auth-failure.ts`.
 
 ### Added (earlier unreleased)
 
