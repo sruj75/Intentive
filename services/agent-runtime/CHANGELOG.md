@@ -8,15 +8,18 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 - **Sessions, ordering, and event ledger** ([Issue #28], in progress) — Neon-backed
   Agent Instance registry (`agent_instances`), append-only `runtime_events` idempotency
-  ledger, per-`user_id` in-memory queue, and `ingest-event` service wiring post-connect
-  WebSocket ingress through a stub processor. Connect now threads
-  `{ userId, clientKind, agentInstanceId }` into post-handshake handlers. Migration
+  ledger, per-`user_id` in-memory queue, and write-ahead ingest wiring
+  (`createRuntimeIngressHandler`: `recordIfNew` before queue submit) for post-connect
+  WebSocket ingress through a stub processor. Session Start records
+  `{ user_id, auth_subject }`; connect resolves JWT `sub` to the internal `user_id` and
+  binds `{ userId, clientKind, agentInstanceId }` for post-handshake handlers (connect
+  does not mint Agent Instances from the token alone). Migration
   `migrations/0001_sessions.sql`; repo integration tests use ephemeral Neon branches when
   `NEON_API_KEY` and `NEON_PROJECT_ID` are set. Recorded in
   [ADR-0007](docs/adr/0007-agent-runtime-event-ledger-and-in-memory-ordering.md) and the
   "Runtime durable state is three separate concerns" decision in `CONTEXT.md`. Tests:
   `test/user-queue.test.mjs`, `test/ingest-event.test.mjs`,
-  `test/sessions-repo.integration.test.mjs`.
+  `test/runtime-event-handler.test.mjs`, `test/sessions-repo.integration.test.mjs`.
 - **Runtime config seam** ([Issue #24], [PR #62]) — `src/config/env.ts` (`loadConfig`,
   `AgentRuntimeConfig`, `AgentRuntimeConfigError`): single boot-time Zod validation for
   `PORT`, `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, Neon connection +
@@ -36,8 +39,10 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   ingest pipeline for `user_message`, `context_snapshot`, and `session_end_marker`
   ingress events.
 - **`gateway/service/connect.ts` and `gateway/ui/ws-handler.ts`** ([Issue #28]) —
-  post-connect handlers now receive a bound session `{ userId, clientKind,
-agentInstanceId }` alongside parsed Protocol events.
+  connect resolves `auth_subject → user_id` via Session Start rows; unstarted sessions
+  close with `service_unavailable`. Post-connect handlers receive the bound session
+  alongside parsed Protocol events; uncaught async failures return `service_unavailable`
+  instead of unhandled rejections.
 - **`src/index.ts`** — exports `loadConfig` / `AgentRuntimeConfig` instead of protocol
   and internal contract samples; also exports the testable connection-control factories
   and `mapJwtVerificationErrorToRuntimeError` from `gateway/service/auth-failure.ts`; #28

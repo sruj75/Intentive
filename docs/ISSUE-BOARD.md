@@ -7,16 +7,16 @@
 - Date: 2026-06-09
 - Repo: Intentive monorepo (`sruj75/Intentive`)
 - Tracker root: [GitHub Issues](https://github.com/sruj75/Intentive/issues) on `sruj75/Intentive` (v1 backlog #7–#56); PRDs at `[docs/prd/](prd/)`
-- Closed: `#7`–`#27` — Desktop v1 foundation (`#7`–`#13`), shared protocol/api-contract + Providers auth (`#14`–`#15`), AR/CP contract roots (`#16`–`#17`, [PR #57](https://github.com/sruj75/Intentive/pull/57)), Mobile foundation lane (`#18`–`#22`, [PR #57](https://github.com/sruj75/Intentive/pull/57), [PR #58](https://github.com/sruj75/Intentive/pull/58)), CP Identity + mobile launch hydration (`#23`, commit `8e65c71`), AR Runtime skeleton + WS gateway and CP Pre-Chat Gate (`#24`–`#26`, [PR #62](https://github.com/sruj75/Intentive/pull/62)), CP Device Registry + device-aware gates (`#27`, [PR #63](https://github.com/sruj75/Intentive/pull/63))
-- Open: `#28`–`#56`
+- Closed: `#7`–`#28` — Desktop v1 foundation (`#7`–`#13`), shared protocol/api-contract + Providers auth (`#14`–`#15`), AR/CP contract roots (`#16`–`#17`, [PR #57](https://github.com/sruj75/Intentive/pull/57)), Mobile foundation lane (`#18`–`#22`, [PR #57](https://github.com/sruj75/Intentive/pull/57), [PR #58](https://github.com/sruj75/Intentive/pull/58)), CP Identity + mobile launch hydration (`#23`, commit `8e65c71`), AR Runtime skeleton + WS gateway and CP Pre-Chat Gate (`#24`–`#26`, [PR #62](https://github.com/sruj75/Intentive/pull/62)), CP Device Registry + device-aware gates (`#27`, [PR #63](https://github.com/sruj75/Intentive/pull/63)), AR Sessions / Ordering / Event Ledger (`#28`, commit `ce43ad7`)
+- Open: `#29`–`#56`
 
 ## Executive Next Move
 
-The runtime and CP roots through Session Start are now landed ([PR #62](https://github.com/sruj75/Intentive/pull/62)): [#24 AR Runtime skeleton](https://github.com/sruj75/Intentive/issues/24), [#25 AR WS gateway + Session Start](https://github.com/sruj75/Intentive/issues/25), and [#26 CP Pre-Chat Gate state + GET /me](https://github.com/sruj75/Intentive/issues/26) join already-closed [#23 CP Identity](https://github.com/sruj75/Intentive/issues/23). [#27 CP Device Registry](https://github.com/sruj75/Intentive/issues/27) is also closed ([PR #63](https://github.com/sruj75/Intentive/pull/63)): idempotent `POST /devices/register`, device-aware gate sequencing (ADR-0005), and the token registry port for later push fan-out. With `#25` and `#26` closed, the runtime ordering lane and the CP Routing keystone are both unblocked. **Now:** [#28 AR Sessions / Ordering / Event Ledger](https://github.com/sruj75/Intentive/issues/28) on the runtime critical path; [#30 CP Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30) (keystone, pairs `#26` with AR `#25`); [#32 Desktop Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32) and shared [#51](https://github.com/sruj75/Intentive/issues/51)/[#52](https://github.com/sruj75/Intentive/issues/52) are independently startable.
+The runtime and CP roots through Session Start are now landed ([PR #62](https://github.com/sruj75/Intentive/pull/62)): [#24 AR Runtime skeleton](https://github.com/sruj75/Intentive/issues/24), [#25 AR WS gateway + Session Start](https://github.com/sruj75/Intentive/issues/25), and [#26 CP Pre-Chat Gate state + GET /me](https://github.com/sruj75/Intentive/issues/26) join already-closed [#23 CP Identity](https://github.com/sruj75/Intentive/issues/23). [#27 CP Device Registry](https://github.com/sruj75/Intentive/issues/27) is closed ([PR #63](https://github.com/sruj75/Intentive/pull/63)): idempotent `POST /devices/register`, device-aware gate sequencing (ADR-0005), and the token registry port for later push fan-out. [#28 AR Sessions / Ordering / Event Ledger](https://github.com/sruj75/Intentive/issues/28) is also closed (commit `ce43ad7`): Neon-backed Agent Instance registry, append-only `runtime_events` idempotency ledger, per-`user_id` in-memory queue, and write-ahead ingest wiring ([ADR-0007](https://github.com/sruj75/Intentive/blob/issue-28/services/agent-runtime/docs/adr/0007-agent-runtime-event-ledger-and-in-memory-ordering.md)). With `#28` closed, Conversation History is the next runtime invariant. **Now:** [#29 AR Conversation History + reconnect snapshot](https://github.com/sruj75/Intentive/issues/29) on the runtime critical path; [#30 CP Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30) (keystone, pairs `#26` with AR `#25`); [#32 Desktop Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32) and shared [#51](https://github.com/sruj75/Intentive/issues/51)/[#52](https://github.com/sruj75/Intentive/issues/52) are independently startable.
 
 What it unlocks:
 
-- `#28` → `#29` (Conversation History + reconnect snapshot) → Mobile `#33`/`#44` and AR `#36`/`#39`/`#41`.
+- `#29` (Conversation History + reconnect snapshot) → Mobile `#33`/`#44` and AR `#36`/`#39`/`#41`.
 - `#30` (Routing + Session Start, keystone) → Mobile `#33` and Desktop `#31`.
 - `#27` (Device Registry, closed) → `#49` (push fan-out) once AR `#41` lands.
 - Mobile **Protocol + reconnect-snapshot** slices (`#33` onward) once `#29` + `#30` land; local gates and chat primitive boundary are done (`#18`–`#22`).
@@ -37,7 +37,7 @@ flowchart TD
   N10 --> N18["#24 AR Runtime skeleton (closed)"]
   N09 --> N19
   N18 --> N19["#25 AR WS gateway + Session Start (closed)"]
-  N19 --> N22["#28 AR Per-user ordering + event ledger"]
+  N19 --> N22["#28 AR Per-user ordering + event ledger (closed)"]
   N22 --> N23["#29 AR Conversation History + reconnect snapshot"]
 
   N11 --> N17["#23 CP Identity + Neon Auth JWT (closed)"]
@@ -101,24 +101,24 @@ flowchart TD
 | 25  | Agent Runtime | [WS Gateway + Session Start](https://github.com/sruj75/Intentive/issues/25)                                    | closed ([PR #62](https://github.com/sruj75/Intentive/pull/62)) — gateway connect + WS handler, session registry |
 | 26  | Control Plane | [Pre-Chat Gate state + GET /me](https://github.com/sruj75/Intentive/issues/26)                                 | closed ([PR #62](https://github.com/sruj75/Intentive/pull/62)) — user-gates domain, `0002_user_gates`           |
 | 27  | Control Plane | [Device Registry + token registration](https://github.com/sruj75/Intentive/issues/27)                          | closed ([PR #63](https://github.com/sruj75/Intentive/pull/63)) — `devices` domain, `0003_devices`, ADR-0005     |
+| 28  | Agent Runtime | [Sessions / Ordering / Event Ledger](https://github.com/sruj75/Intentive/issues/28)                            | closed (`ce43ad7`) — event ledger, per-user queue, ingest wiring, ADR-0007                                      |
 
 ### Phase 1: Now
 
-| #   | Deployable    | Issue                                                                                     | Why now                                                  | Unblocks                    |
-| --- | ------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------- |
-| 28  | Agent Runtime | [Sessions / Ordering / Event Ledger](https://github.com/sruj75/Intentive/issues/28)       | `#25` landed; per-user ordering is the next AR invariant | #29                         |
-| 30  | Control Plane | [Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30) | `#26` + `#25` landed; keystone Routing now unblocked     | #33; #31 (keystone Routing) |
-| 32  | Desktop       | [Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32)                 | No blocker; start now                                    | #35/#55                     |
+| #   | Deployable    | Issue                                                                                      | Why now                                                   | Unblocks                    |
+| --- | ------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------- | --------------------------- |
+| 29  | Agent Runtime | [Conversation History + Reconnect Snapshot](https://github.com/sruj75/Intentive/issues/29) | `#28` closed; reconnect snapshot is the next AR invariant | #33/#44; #36/#39/#41        |
+| 30  | Control Plane | [Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30)  | `#26` + `#25` landed; keystone Routing now unblocked      | #33; #31 (keystone Routing) |
+| 32  | Desktop       | [Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32)                  | No blocker; start now                                     | #35/#55                     |
 
 ### Phase 2: Next
 
-| #   | Deployable    | Issue                                                                                      | Blocker cleared by               | Unblocks             |
-| --- | ------------- | ------------------------------------------------------------------------------------------ | -------------------------------- | -------------------- |
-| 29  | Agent Runtime | [Conversation History + Reconnect Snapshot](https://github.com/sruj75/Intentive/issues/29) | #28                              | #33/#44; #36/#39/#41 |
-| 31  | Desktop       | [Routing + Protocol WS Session](https://github.com/sruj75/Intentive/issues/31)             | #25 + #30                        | #34/#35/#43          |
-| 33  | Mobile        | [Protocol client for Companion Chat](https://github.com/sruj75/Intentive/issues/33)        | #29 + #30 Routing                | #44/#45              |
-| 34  | Desktop       | [Emit Context Snapshots over Protocol](https://github.com/sruj75/Intentive/issues/34)      | #31 + existing snapshot pipeline | #35/#43              |
-| 35  | Desktop       | [Signed-in happy-path smoke](https://github.com/sruj75/Intentive/issues/35)                | #34 + #32                        | #43/#55 confidence   |
+| #   | Deployable | Issue                                                                                 | Blocker cleared by               | Unblocks           |
+| --- | ---------- | ------------------------------------------------------------------------------------- | -------------------------------- | ------------------ |
+| 31  | Desktop    | [Routing + Protocol WS Session](https://github.com/sruj75/Intentive/issues/31)        | #25 + #30                        | #34/#35/#43        |
+| 33  | Mobile     | [Protocol client for Companion Chat](https://github.com/sruj75/Intentive/issues/33)   | #29 + #30 Routing                | #44/#45            |
+| 34  | Desktop    | [Emit Context Snapshots over Protocol](https://github.com/sruj75/Intentive/issues/34) | #31 + existing snapshot pipeline | #35/#43            |
+| 35  | Desktop    | [Signed-in happy-path smoke](https://github.com/sruj75/Intentive/issues/35)           | #34 + #32                        | #43/#55 confidence |
 
 ### Phase 3: Later
 
@@ -187,11 +187,12 @@ flowchart TD
 - **Keystone:** `#30` (Routing + Session Start) unblocks Mobile `#33` and Desktop `#31` — it pairs with closed AR `#25`.
 - Cross-project dependency: depends on `#14` (api-contract lock) and `#15` (Providers auth); calls AR `POST /internal/sessions/start` and receives `POST /internal/notifications/push`.
 
-### Agent Runtime (issues #16, #24, #25 closed; #28–#29, #36–#42 open)
+### Agent Runtime (issues #16, #24, #25, #28 closed; #29, #36–#42 open)
 
 - `#16` (Resolve Runtime Contracts) **closed** ([PR #57](https://github.com/sruj75/Intentive/pull/57)).
 - `#24` (Runtime Skeleton) and `#25` (WS Gateway + Session Start) **closed** ([PR #62](https://github.com/sruj75/Intentive/pull/62)): real connection control — gateway connect + WS handler, session start/registry, env config, `main.ts` bootstrap — replacing the prior scaffolds.
-- **Next:** `#28` (Sessions / Ordering / Event Ledger) → `#29` (Conversation History + reconnect snapshot) on the critical path.
+- `#28` (Sessions / Ordering / Event Ledger) **closed** (commit `ce43ad7`): Neon-backed Agent Instance registry, append-only `runtime_events` idempotency ledger, per-`user_id` in-memory queue, and write-ahead ingest wiring ([ADR-0007](https://github.com/sruj75/Intentive/blob/issue-28/services/agent-runtime/docs/adr/0007-agent-runtime-event-ledger-and-in-memory-ordering.md)).
+- **Next:** `#29` (Conversation History + reconnect snapshot) on the critical path.
 - Cross-project dependency: `#29` reconnect snapshot is on the critical path for mobile conversation continuity (`#33`/`#44`) and desktop snapshot delivery.
 
 ## Source Index
