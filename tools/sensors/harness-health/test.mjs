@@ -10,7 +10,7 @@ const sensorPath = new URL("./index.mjs", import.meta.url).pathname;
 const repo = mkdtempSync(path.join(tmpdir(), "intentive-harness-health-"));
 
 try {
-  write("CONTEXT-MAP.md", "**Companion**: Canonical term.\n_Avoid_: bot\n");
+  write("CONTEXT-MAP.md", "**Companion**: Canonical term.\n_Avoid_: bot, assistant\n");
   write("packages/CONTEXT.md", "");
   writePackage("packages/protocol", {
     name: "@intentive/protocol",
@@ -69,6 +69,14 @@ try {
     "apps/mobile/src/large.ts",
     `${Array.from({ length: 260 }, (_, index) => `export const l${index} = ${index};`).join("\n")}\n`,
   );
+  write(
+    "apps/mobile/src/assistant-usage.ts",
+    [
+      "// integrates the assistant cloud adapter", // allowlisted technical phrase
+      "// a lone assistant reference is real drift", // genuine vocabulary hit
+      "",
+    ].join("\n"),
+  );
 
   git(["init"]);
   git(["config", "user.email", "sensor@example.test"]);
@@ -92,6 +100,10 @@ try {
   assert.match(output, /packages\/protocol\/src\/index\.ts`: fan-in 3/);
   assert.match(output, /apps\/mobile\/src\/ignored\.ts:1`: eslint-disable/);
   assert.match(output, /packages\/protocol\/src\/events\.ts:3`: "bot" -> "Companion"/);
+  // Allowlisted technical phrase ("assistant cloud") is suppressed; the lone
+  // "assistant" on the next line is still reported as real drift.
+  assert.match(output, /apps\/mobile\/src\/assistant-usage\.ts:2`: "assistant" -> "Companion"/);
+  assert.doesNotMatch(output, /apps\/mobile\/src\/assistant-usage\.ts:1`/);
   assert.match(output, /`untestedEvent` from `packages\/protocol\/src\/events\.ts`/);
   assert.match(output, /Dependency Freshness/);
   assert.match(output, /Advisory: use this report to steer review attention/);

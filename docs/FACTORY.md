@@ -166,16 +166,16 @@ flowchart LR
 
 Read the report as a systems signal, not a checklist. Each section points at a different way the product-building system can drift:
 
-| Harness Health signal     | Systems interpretation                                              | Feedback action                                                                                  |
-| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Changed files             | Where energy entered the system                                     | Focus review on the actual change surface                                                        |
-| Stale scaffolds           | Planned structure has not become real behavior yet                  | Replace scaffold with product behavior, or create the issue that will                            |
-| Oversized files           | Local complexity is accumulating faster than boundaries are forming | Split only around named domain responsibilities or add a follow-up refactor issue                |
-| High fan-in modules       | A change has a large blast radius                                   | Increase review depth, add contract tests, or move shared knowledge to the right package         |
-| Suppressions              | The factory is tolerating rule exceptions                           | Remove stale suppressions or document why the exception remains load-bearing                     |
-| Forbidden vocabulary hits | Product language is drifting                                        | Update the source term, or update the owning context if the product language changed             |
-| Dependency freshness      | External supply chain is aging                                      | Upgrade, defer with rationale, or open a dependency-maintenance issue                            |
-| Untested public exports   | API surface is growing faster than behavioral proof                 | Add focused tests, reduce the export surface, or record why the export is intentionally untested |
+| Harness Health signal     | Systems interpretation                                              | Feedback action                                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Changed files             | Where energy entered the system                                     | Focus review on the actual change surface                                                                                                                        |
+| Stale scaffolds           | Planned structure has not become real behavior yet                  | Replace scaffold with product behavior, or create the issue that will                                                                                            |
+| Oversized files           | Local complexity is accumulating faster than boundaries are forming | Split only around named domain responsibilities or add a follow-up refactor issue                                                                                |
+| High fan-in modules       | A change has a large blast radius                                   | Increase review depth, add contract tests, or move shared knowledge to the right package                                                                         |
+| Suppressions              | The factory is tolerating rule exceptions                           | Remove stale suppressions or document why the exception remains load-bearing                                                                                     |
+| Forbidden vocabulary hits | Product language is drifting                                        | Update the source term, update the owning context if the product language changed, or allowlist a genuine technical term (npm package, vendor API) in the sensor |
+| Dependency freshness      | External supply chain is aging                                      | Upgrade, defer with rationale, or open a dependency-maintenance issue                                                                                            |
+| Untested public exports   | API surface is growing faster than behavioral proof                 | Add focused tests, reduce the export surface, or record why the export is intentionally untested                                                                 |
 
 Use two loops:
 

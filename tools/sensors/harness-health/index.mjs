@@ -33,6 +33,17 @@ const contextFiles = [
   { owner: "Agent Runtime", relPath: "services/agent-runtime/CONTEXT.md" },
 ];
 
+// Technical phrases where an otherwise-forbidden term is a legitimate reference —
+// an npm package name or a vendor's own product/API name — rather than product-
+// language drift. A vocabulary finding is suppressed when the matched term falls
+// entirely inside one of these phrases on the same line. Keep entries narrow so
+// the sensor still catches real drift; this is an allowlist, not a mute button.
+const vocabularyAllowlist = [
+  /@assistant-ui[\w/-]*/i, // the assistant-ui runtime library
+  /assistant[-\s]cloud/i, // the assistant-cloud integration the mobile app stubs out
+  /neon\s+api/i, // Neon's REST API, distinct from our Control Plane
+];
+
 const usage = `Intentive harness health sensor
 
 Builds an advisory review-triage report for a PR. Findings guide attention; they
@@ -319,6 +330,7 @@ function collectForbiddenTerms(repoRoot, sourceFiles) {
         term.pattern.lastIndex = 0;
         const match = term.pattern.exec(lines[lineIndex]);
         if (!match) continue;
+        if (isVocabularyAllowlisted(lines[lineIndex], match)) continue;
 
         findings.push({
           file,
@@ -719,6 +731,20 @@ function boundaryEscape(term) {
   const endsWord = /\w$/.test(term);
   const suffix = term.toLowerCase() === "the agent" ? "(?!\\s+Runtime)" : "";
   return `${startsWord ? "(?<![\\w-])" : ""}${escaped}${endsWord ? "(?![\\w-])" : ""}${suffix}`;
+}
+
+function isVocabularyAllowlisted(line, match) {
+  const start = match.index;
+  const end = match.index + match[0].length;
+  for (const phrase of vocabularyAllowlist) {
+    const flags = phrase.flags.includes("g") ? phrase.flags : `${phrase.flags}g`;
+    const scan = new RegExp(phrase.source, flags);
+    for (let m = scan.exec(line); m; m = scan.exec(line)) {
+      if (m.index <= start && m.index + m[0].length >= end) return true;
+      if (scan.lastIndex === m.index) scan.lastIndex += 1;
+    }
+  }
+  return false;
 }
 
 function intentivePackageName(spec) {
