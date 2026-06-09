@@ -23,7 +23,10 @@ test("POST /internal/sessions/start returns the Session Start response with the 
     }),
   });
 
-  const res = await app.request("/internal/sessions/start", jsonPost({ user_id: "user_1" }));
+  const res = await app.request(
+    "/internal/sessions/start",
+    jsonPost({ auth_subject: "sub_1", user_id: "user_1" }),
+  );
 
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), {
@@ -45,16 +48,16 @@ test("POST /internal/sessions/start rejects a missing, malformed, or wrong inter
   const missing = await app.request("/internal/sessions/start", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ user_id: "user_1" }),
+    body: JSON.stringify({ auth_subject: "sub_1", user_id: "user_1" }),
   });
   const wrong = await app.request(
     "/internal/sessions/start",
-    jsonPost({ user_id: "user_1" }, "wrong-secret"),
+    jsonPost({ auth_subject: "sub_1", user_id: "user_1" }, "wrong-secret"),
   );
   const malformed = await app.request("/internal/sessions/start", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: "Token runtime-inbound-secret" },
-    body: JSON.stringify({ user_id: "user_1" }),
+    body: JSON.stringify({ auth_subject: "sub_1", user_id: "user_1" }),
   });
 
   assert.equal(missing.status, 401);

@@ -6,30 +6,48 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
-- **Runtime config seam** ([Issue #24], in progress) — `src/config/env.ts` (`loadConfig`,
+- **Sessions, ordering, and event ledger** ([Issue #28], in progress) — Neon-backed
+  Agent Instance registry (`agent_instances`), append-only `runtime_events` idempotency
+  ledger, per-`user_id` in-memory queue, and `ingest-event` service wiring post-connect
+  WebSocket ingress through a stub processor. Connect now threads
+  `{ userId, clientKind, agentInstanceId }` into post-handshake handlers. Migration
+  `migrations/0001_sessions.sql`; repo integration tests use ephemeral Neon branches when
+  `NEON_API_KEY` and `NEON_PROJECT_ID` are set. Recorded in
+  [ADR-0007](docs/adr/0007-agent-runtime-event-ledger-and-in-memory-ordering.md) and the
+  "Runtime durable state is three separate concerns" decision in `CONTEXT.md`. Tests:
+  `test/user-queue.test.mjs`, `test/ingest-event.test.mjs`,
+  `test/sessions-repo.integration.test.mjs`.
+- **Runtime config seam** ([Issue #24], [PR #62]) — `src/config/env.ts` (`loadConfig`,
   `AgentRuntimeConfig`, `AgentRuntimeConfigError`): single boot-time Zod validation for
   `PORT`, `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, Neon connection +
   role, and Neon Auth JWKS settings. Re-exported from `src/index.ts`. Tests:
   `test/config-env.test.mjs`.
-- **Connection control plane** ([Issue #25], in progress) — public WebSocket `connect`
-  handshake, private `POST /internal/sessions/start`, in-memory Agent Instance registry,
-  and `src/main.ts` composition root. The internal API uses `Authorization: Bearer <secret>`; the
-  successful handshake returns `hello_ok` with an intentionally empty Session Snapshot
-  until Conversation History lands. Tests cover Session Start idempotency, Internal API
-  auth/body rejection with no side effects, structured gateway errors, and a real
-  WebSocket smoke path.
+- **Connection control plane** ([Issue #25], [PR #62]) — public WebSocket `connect`
+  handshake, private `POST /internal/sessions/start`, and `src/main.ts` composition root.
+  The internal API uses `Authorization: Bearer <secret>`; the successful handshake
+  returns `hello_ok` with an intentionally empty Session Snapshot until Conversation
+  History lands. Tests cover Session Start idempotency, Internal API auth/body rejection
+  with no side effects, structured gateway errors, and a real WebSocket smoke path.
+
+### Changed
+
+- **`src/main.ts` composition root** ([Issue #28]) — replaces the #25 in-memory Agent
+  Instance registry with Neon-backed repos, wires the event ledger, per-user queue, and
+  ingest pipeline for `user_message`, `context_snapshot`, and `session_end_marker`
+  ingress events.
+- **`gateway/service/connect.ts` and `gateway/ui/ws-handler.ts`** ([Issue #28]) —
+  post-connect handlers now receive a bound session `{ userId, clientKind,
+agentInstanceId }` alongside parsed Protocol events.
+- **`src/index.ts`** — exports `loadConfig` / `AgentRuntimeConfig` instead of protocol
+  and internal contract samples; also exports the testable connection-control factories
+  and `mapJwtVerificationErrorToRuntimeError` from `gateway/service/auth-failure.ts`; #28
+  adds session ledger/queue/ingest factories and ingress event types.
 
 ### Removed
 
 - **Upfront domain type scaffolds** — deleted placeholder `types/scaffold.ts` files and
   contract sample types under `src/domains/*` (lazy domain layout per ADR-0002; real
   folders arrive with each vertical slice). Removed `test/scaffold.test.mjs`.
-
-### Changed
-
-- **`src/index.ts`** — exports `loadConfig` / `AgentRuntimeConfig` instead of protocol
-  and internal contract samples; also exports the testable connection-control factories
-  and `mapJwtVerificationErrorToRuntimeError` from `gateway/service/auth-failure.ts`.
 
 ### Added (earlier unreleased)
 

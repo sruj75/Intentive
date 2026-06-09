@@ -24,6 +24,9 @@ pnpm test   # builds protocol + runtime, then node --test
 pnpm start  # serves public WebSocket + private Internal API from dist/main.js
 ```
 
+Repo-tier tests (`test/sessions-repo.integration.test.mjs`) create a disposable Neon
+branch when `NEON_API_KEY` and `NEON_PROJECT_ID` are set; without them those tests skip.
+
 Configuration is validated at boot through `loadConfig` in `src/config/env.ts` (required
 env keys: `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, `NEON_DATABASE_URL`,
 `NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`, `NEON_AUTH_AUDIENCE`; defaults for `PORT`,

@@ -14,7 +14,10 @@ export function createStartSession(deps: {
   wsUrl: string;
 }): StartSession {
   return async (request) => {
-    const instance = await deps.registry.loadOrCreate(request.user_id);
+    const instance = await deps.registry.loadOrCreate({
+      userId: request.user_id,
+      authSubject: request.auth_subject,
+    });
     return {
       agent_instance_id: instance.id,
       ws_url: deps.wsUrl,
