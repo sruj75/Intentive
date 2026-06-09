@@ -42,7 +42,7 @@ The vendor package ships native ESM and pulled in a few rough edges under the je
 - **`assistant-cloud` stub** (`apps/mobile/test/stubs/assistant-cloud.js` + `moduleNameMapper`): `@assistant-ui/core`'s barrel eagerly requires its cloud thread-history adapter, which imports the uninstalled, unused `assistant-cloud` integration. The Intentive path uses the local runtime, so it is stubbed.
 - **Macrotask-flush test helper**: the assistant-ui store (zustand-based) notifies React on a macrotask tick, so tests flush a `setTimeout` between typing and pressing send — otherwise the composer's `canSend` has not yet reflected the typed text and the press no-ops. Standard async-UI test hygiene, documented inline in the test.
 
-`pnpm test:rn` exits 0 with all suites green; jest prints a benign "a worker process has failed to exit gracefully and has been force exited" warning from a timer the vendor runtime/store leaves running. The script was deliberately **not** given `--forceExit` — jest's own worker force-exit already handles it and the suite exits clean, so adding the flag would mask the signal without fixing anything. If a future change makes the leak fatal, chase the leaked timer (`--detectOpenHandles`) rather than papering over it.
+`pnpm test:rn` exits 0 with all suites green. The harness now runs `jest --forceExit` because `@assistant-ui/tap` opens a module-scoped `MessageChannel` singleton at import time, leaving a ref'd `MessagePort` handle alive after the suite passes. This was confirmed with `--detectOpenHandles`; the rationale lives next to the script in `apps/mobile/package.json`.
 
 ### Out of scope (confirmed deferred)
 

@@ -52,6 +52,9 @@ jobs:
       - name: CONTEXT vocabulary docs contract
         run: pnpm docs:context:test
 
+      - name: Agent docs integrity contract
+        run: pnpm docs:agents:test
+
       - name: Architecture lint message contract
         run: pnpm lint:architecture:test
 
