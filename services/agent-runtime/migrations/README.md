@@ -1,0 +1,13 @@
+# Agent Runtime Migrations
+
+SQL migrations for the Runtime-owned Neon schema.
+
+## Convention
+
+- One file per migration, named `NNNN_short_description.sql` (zero-padded, sequential).
+- Every table, index, and constraint is created inside the `agent_runtime` schema. Never the `public` schema, never the Control Plane's schema.
+- Production schema and role provisioning are owned by the Runtime deploy/provisioning issue. Repo-layer tests bootstrap the schema on disposable Neon branches.
+
+## Migrations
+
+- `0001_sessions.sql` — durable Agent Instances plus the append-only Runtime event ledger (#28).

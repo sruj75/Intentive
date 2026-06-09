@@ -63,7 +63,10 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires the in-memory Agent Instance registry, serves the private Internal API, and attaches the public WebSocket gateway.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance and event-ledger repos, the per-`user_id` queue, and ingest pipeline, serves the private Internal API, and attaches the public WebSocket gateway.
+
+`migrations/`
+: Runtime-owned Neon schema migrations (`agent_runtime.*`). See `migrations/README.md`.
 
 Domain layout (lazy — folders appear with each vertical slice, ADR-0002):
 
@@ -211,6 +214,7 @@ Security:
 Testing:
 
 - **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
-- **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors.
-- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path. Future slices add reconnect history, multi-user isolation, Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
+- **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors; #28 covers per-user queue ordering/isolation and ingest idempotency.
+- **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation. Future slices add reconnect history, Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

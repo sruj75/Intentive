@@ -67,6 +67,14 @@ test("canonical request/response samples still parse", () => {
   );
 
   assert.equal(
+    contract.PostInternalSessionsStartRequest.safeParse({
+      auth_subject: "sub_1",
+      user_id: "user_1",
+    }).success,
+    true,
+  );
+
+  assert.equal(
     contract.PostInternalSessionsStartResponse.safeParse({
       agent_instance_id: "agent_1",
       ws_url: "https://runtime.example.com/ws",

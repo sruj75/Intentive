@@ -39,6 +39,7 @@ test("routing sample exposes the three Routing fields", () => {
 });
 
 test("internal samples are user-scoped", () => {
+  assert.equal(typeof sessionStartRequestSample.auth_subject, "string");
   assert.equal(typeof sessionStartRequestSample.user_id, "string");
   assert.equal(notificationsPushRequestSample.user_id, "user_stub");
   assert.equal(notificationsPushResponseSample.delivered, false);

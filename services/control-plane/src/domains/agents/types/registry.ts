@@ -7,5 +7,6 @@
 import type { PostInternalSessionsStartRequest } from "@intentive/api-contract";
 
 export const sessionStartRequestSample: PostInternalSessionsStartRequest = {
+  auth_subject: "sub_stub",
   user_id: "user_stub",
 };

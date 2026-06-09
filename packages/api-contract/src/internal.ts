@@ -5,6 +5,7 @@ import { z } from "zod";
 export const PostInternalSessionsStartRequest = z
   .object({
     user_id: z.string(),
+    auth_subject: z.string(),
   })
   .strict();
 export type PostInternalSessionsStartRequest = z.infer<typeof PostInternalSessionsStartRequest>;
