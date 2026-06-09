@@ -12,6 +12,8 @@ import { createJwtVerifier } from "@intentive/providers/auth";
 import { neon } from "@neondatabase/serverless";
 
 import { loadConfig } from "./config/env.js";
+import { createDevicesRepo } from "./domains/devices/repo/devices.js";
+import { createPostDeviceRegisterHandler } from "./domains/devices/ui/post-device-register.js";
 import { createUserGatesRepo } from "./domains/gates/repo/user-gates.js";
 import { createGatesService } from "./domains/gates/service/gates-service.js";
 import { createUsersRepo, type Sql } from "./domains/identity/repo/users.js";
@@ -34,12 +36,14 @@ const verifier = createJwtVerifier({
 const sql = neon(config.neon.url) as unknown as Sql;
 const users = createUsersRepo(sql);
 const userGates = createUserGatesRepo(sql);
+const devices = createDevicesRepo(sql);
 const gates = createGatesService({ userGates });
-const identity = createIdentityService({ verifier, users, gates });
+const identity = createIdentityService({ verifier, users, gates, devices });
 const getMe = createGetMeHandler({ identity });
 const postConsent = createPostConsentHandler({ identity, gates });
 const postSiblingInvitationSkip = createPostSiblingInvitationSkipHandler({ identity, gates });
-const app = createApp({ getMe, postConsent, postSiblingInvitationSkip });
+const postDeviceRegister = createPostDeviceRegisterHandler({ identity, devices });
+const app = createApp({ getMe, postConsent, postSiblingInvitationSkip, postDeviceRegister });
 
 serve({ fetch: app.fetch, port: config.port });
 console.info(`Control Plane listening on :${config.port}`);

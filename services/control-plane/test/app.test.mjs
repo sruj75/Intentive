@@ -19,12 +19,13 @@ const recordingHandler = (sink, result = { status: 200, body: { ok: true } }) =>
   },
 });
 
-/** All three handlers stubbed, so any single route can be exercised in isolation. */
+/** All handlers stubbed, so any single route can be exercised in isolation. */
 const appWith = (overrides) =>
   createApp({
     getMe: { handle: async () => ({ status: 200, body: {} }) },
     postConsent: { handle: async () => ({ status: 200, body: {} }) },
     postSiblingInvitationSkip: { handle: async () => ({ status: 200, body: {} }) },
+    postDeviceRegister: { handle: async () => ({ status: 200, body: {} }) },
     ...overrides,
   });
 
@@ -60,6 +61,28 @@ test("GET /me forwards the Authorization header to the handler", async () => {
 
   await app.request("/me", { headers: { authorization: "Bearer abc.def.ghi" } });
   assert.equal(seen, "Bearer abc.def.ghi");
+});
+
+test("GET /me forwards the device-signal headers to the handler", async () => {
+  let seen;
+  const app = appWith({
+    getMe: {
+      handle: async (req) => {
+        seen = req;
+        return { status: 200, body: {} };
+      },
+    },
+  });
+
+  await app.request("/me", {
+    headers: {
+      authorization: "Bearer abc.def.ghi",
+      "x-client-kind": "desktop",
+      "x-capture-permission-granted": "true",
+    },
+  });
+  assert.equal(seen.clientKind, "desktop");
+  assert.equal(seen.capturePermissionGranted, "true");
 });
 
 test("GET /me surfaces the handler's error status", async () => {
@@ -156,6 +179,72 @@ test("POST /consent maps contract parse failures to 400", async () => {
     code: "invalid_request",
     message: "Request body is invalid.",
     invalid_keys: ["unexpected"],
+  });
+});
+
+test("POST /devices/register routes to the handler with the Authorization header and body", async () => {
+  const seen = [];
+  const app = appWith({
+    postDeviceRegister: recordingHandler(seen, { status: 200, body: { device_id: "dev_1" } }),
+  });
+
+  const res = await app.request("/devices/register", {
+    method: "POST",
+    headers: { authorization: "Bearer abc.def.ghi", "content-type": "application/json" },
+    body: JSON.stringify({ device_fingerprint: "fp-1", client_kind: "mobile" }),
+  });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { device_id: "dev_1" });
+  assert.equal(seen[0].authorization, "Bearer abc.def.ghi");
+  assert.deepEqual(seen[0].body, { device_fingerprint: "fp-1", client_kind: "mobile" });
+});
+
+test("POST /devices/register rejects malformed JSON before the handler", async () => {
+  let called = false;
+  const app = appWith({
+    postDeviceRegister: {
+      handle: async () => {
+        called = true;
+        return { status: 200, body: { device_id: "dev_1" } };
+      },
+    },
+  });
+
+  const res = await app.request("/devices/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{",
+  });
+
+  assert.equal(res.status, 400);
+  assert.equal(called, false);
+  assert.deepEqual(await res.json(), {
+    code: "invalid_request",
+    message: "Request body must be valid JSON.",
+  });
+});
+
+test("POST /devices/register maps contract parse failures to 400", async () => {
+  const app = appWith({
+    postDeviceRegister: {
+      handle: async () => {
+        throw new BoundaryParseError(["device_fingerprint"]);
+      },
+    },
+  });
+
+  const res = await app.request("/devices/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_kind: "mobile" }),
+  });
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), {
+    code: "invalid_request",
+    message: "Request body is invalid.",
+    invalid_keys: ["device_fingerprint"],
   });
 });
 

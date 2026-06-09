@@ -73,6 +73,19 @@ Extra prose
   result = await checkAgentDocs({ repoRoot: repo });
   assert.match(result.failures.join("\n"), /root AGENTS\.md shared package table drift/);
 
+  writeFixture();
+  write(
+    "AGENTS.md",
+    rootAgents({
+      includeMobileGuide: true,
+      includeMobileDeployable: true,
+      includeProtocolPackage: true,
+      extraDeployable: "| [services/retired/](services/retired/) | Retired |",
+    }),
+  );
+  result = await checkAgentDocs({ repoRoot: repo });
+  assert.match(result.failures.join("\n"), /root AGENTS\.md deployable table drift/);
+
   console.log("agent-docs: fixture test passed");
 } finally {
   rmSync(repo, { recursive: true, force: true });
@@ -111,7 +124,12 @@ function writeFixture() {
   write("packages/providers/package.json", "{}\n");
 }
 
-function rootAgents({ includeMobileGuide, includeMobileDeployable, includeProtocolPackage }) {
+function rootAgents({
+  includeMobileGuide,
+  includeMobileDeployable,
+  includeProtocolPackage,
+  extraDeployable = "",
+}) {
   const deployables = [
     includeMobileDeployable
       ? "| [apps/mobile/](apps/mobile/) | [apps/mobile/AGENTS.md](apps/mobile/AGENTS.md) |"
@@ -119,6 +137,7 @@ function rootAgents({ includeMobileGuide, includeMobileDeployable, includeProtoc
     "| [apps/desktop/](apps/desktop/) | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) |",
     "| [services/control-plane/](services/control-plane/) | [services/control-plane/AGENTS.md](services/control-plane/AGENTS.md) |",
     "| [services/agent-runtime/](services/agent-runtime/) | [services/agent-runtime/AGENTS.md](services/agent-runtime/AGENTS.md) |",
+    extraDeployable,
   ]
     .filter(Boolean)
     .join("\n");

@@ -15,6 +15,7 @@ import { createIdentityService } from "../dist/domains/identity/service/resolve-
 const fakeVerifier = (sub) => ({ verify: async () => ({ user_id: sub }) });
 const fakeUsers = (userId) => ({ resolveUser: async () => ({ userId }) });
 const fakeGates = (gate) => ({ nextGate: async () => gate });
+const fakeDevices = (list = []) => ({ listDevicesForUser: async () => list });
 
 test("authenticate maps a verified subject to the internal user id", async () => {
   const seen = [];
@@ -35,6 +36,7 @@ test("authenticate maps a verified subject to the internal user id", async () =>
     verifier,
     users,
     gates: fakeGates(null),
+    devices: fakeDevices(),
   }).authenticate("tok");
 
   assert.deepEqual(result, { userId: "u_1" });
@@ -46,6 +48,7 @@ test("resolveAccount composes the gate the gates domain reports", async () => {
     verifier: fakeVerifier("sub-1"),
     users: fakeUsers("u_1"),
     gates: fakeGates("consent_primer"),
+    devices: fakeDevices(),
   }).resolveAccount("tok");
 
   assert.deepEqual(account, {
@@ -68,10 +71,71 @@ test("resolveAccount asks gates for the resolved user, not the subject", async (
     verifier: fakeVerifier("sub-1"),
     users: fakeUsers("u_1"),
     gates,
+    devices: fakeDevices(),
   }).resolveAccount("tok");
 
   assert.deepEqual(seen, ["u_1"], "gates are computed for the internal user id");
   assert.equal(account.next_gate, null);
+});
+
+test("resolveAccount derives hasSiblingDevice from the registry and forwards the device context", async () => {
+  const seen = [];
+  const gates = {
+    nextGate: async (_userId, device) => {
+      seen.push(device);
+      return null;
+    },
+  };
+
+  await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates,
+    // The caller is a Mobile client; the user also owns a Desktop → a sibling.
+    devices: fakeDevices([{ client_kind: "desktop" }]),
+  }).resolveAccount("tok", { client_kind: "mobile", capture_permission_granted: undefined });
+
+  assert.deepEqual(seen, [
+    { clientKind: "mobile", capturePermissionGranted: undefined, hasSiblingDevice: true },
+  ]);
+});
+
+test("a device of the caller's own client_kind is not a sibling", async () => {
+  const seen = [];
+  const gates = {
+    nextGate: async (_userId, device) => {
+      seen.push(device.hasSiblingDevice);
+      return null;
+    },
+  };
+
+  await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates,
+    devices: fakeDevices([{ client_kind: "mobile" }]),
+  }).resolveAccount("tok", { client_kind: "mobile" });
+
+  assert.deepEqual(seen, [false], "only a *different* client_kind counts as a sibling");
+});
+
+test("an Android device is ignored when computing the sibling for a Mobile caller", async () => {
+  const seen = [];
+  const gates = {
+    nextGate: async (_userId, device) => {
+      seen.push(device.hasSiblingDevice);
+      return null;
+    },
+  };
+
+  await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates,
+    devices: fakeDevices([{ client_kind: "android" }]),
+  }).resolveAccount("tok", { client_kind: "mobile" });
+
+  assert.deepEqual(seen, [false], "Android is ignored for sibling computation in v1");
 });
 
 test("resolveAccount propagates a verification failure and never touches repo or gates", async () => {
@@ -94,9 +158,16 @@ test("resolveAccount propagates a verification failure and never touches repo or
       return null;
     },
   };
+  let devicesCalled = false;
+  const devices = {
+    listDevicesForUser: async () => {
+      devicesCalled = true;
+      return [];
+    },
+  };
 
   await assert.rejects(
-    () => createIdentityService({ verifier, users, gates }).resolveAccount("tok"),
+    () => createIdentityService({ verifier, users, gates, devices }).resolveAccount("tok"),
     (err) => {
       assert.ok(err instanceof JwtVerificationError);
       assert.equal(err.reason, "expired");
@@ -105,4 +176,5 @@ test("resolveAccount propagates a verification failure and never touches repo or
   );
   assert.equal(repoCalled, false, "a failed verification must short-circuit before the repo");
   assert.equal(gatesCalled, false, "a failed verification must short-circuit before gates");
+  assert.equal(devicesCalled, false, "a failed verification must short-circuit before devices");
 });

@@ -19,7 +19,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `identity` — Neon Auth integration, User resolution from JWT; `resolveAccount` composes `AccountState` (ADR-0004)
 - `devices` — Device Registry, APNs token storage, idempotent registration
-- `gates` — Cross-Client Gate state + `computeNextGate` (the `identity` composer calls `gates.nextGate(userId)`; gates does not own `/me` shaping). Device-Local gates + `client_kind` deferred to #27.
+- `gates` — Pre-Chat Gate state + device-aware `computeNextGate` (the `identity` composer calls `gates.nextGate(userId, device)` with inputs from cross-client repo, live device signal, and `devices.listDevicesForUser`; gates does not own `/me` shaping). See ADR-0005.
 - `agents` — Agent Instance Registry, Session Start calls to runtime
 - `routing` — `/agent` endpoint, JWT minting for runtime
 - `notifications` — APNs client, Apple credentials, push delivery

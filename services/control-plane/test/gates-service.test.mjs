@@ -39,6 +39,22 @@ test("nextGate returns null once the repo reports both gates resolved", async ()
   assert.equal(await gates.nextGate("u_1"), null);
 });
 
+test("nextGate merges the composer's device context with the repo's cross-client state", async () => {
+  const gates = createGatesService({
+    userGates: {
+      // Cross-client gates cleared; the pending gate must come from the device context.
+      readState: async () => ({ consentCompleted: true, siblingSkipped: true }),
+      recordConsent: async () => {},
+      recordSiblingSkip: async () => {},
+    },
+  });
+
+  assert.equal(
+    await gates.nextGate("u_1", { clientKind: "desktop", capturePermissionGranted: false }),
+    "capture_permission_setup",
+  );
+});
+
 test("recordConsent forwards the user to the repo", async () => {
   const seen = [];
   const gates = createGatesService({

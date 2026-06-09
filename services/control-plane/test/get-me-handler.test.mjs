@@ -64,3 +64,41 @@ test("a valid token → 200 with a body that round-trips as AccountState", async
   assert.equal(res.status, 200);
   assert.deepEqual(AccountState.parse(res.body), skeleton);
 });
+
+test("the device-signal headers are parsed and forwarded to resolveAccount", async () => {
+  const seen = [];
+  const res = await createGetMeHandler({
+    identity: {
+      resolveAccount: async (_token, signal) => {
+        seen.push(signal);
+        return { user_id: "u_1", next_gate: "capture_permission_setup", has_agent_instance: false };
+      },
+    },
+  }).handle({
+    authorization: "Bearer good.jwt.token",
+    clientKind: "desktop",
+    capturePermissionGranted: "false",
+  });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(seen, [{ client_kind: "desktop", capture_permission_granted: false }]);
+});
+
+test("a malformed device header degrades to no signal, not a 400", async () => {
+  const seen = [];
+  const res = await createGetMeHandler({
+    identity: {
+      resolveAccount: async (_token, signal) => {
+        seen.push(signal);
+        return { user_id: "u_1", next_gate: null, has_agent_instance: false };
+      },
+    },
+  }).handle({
+    authorization: "Bearer good.jwt.token",
+    clientKind: "watch", // not a valid ClientKind
+    capturePermissionGranted: null,
+  });
+
+  assert.equal(res.status, 200, "GET /me stays answerable on a bad device header");
+  assert.deepEqual(seen, [{}], "an unparseable signal degrades to the cross-client-only sequence");
+});

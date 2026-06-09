@@ -209,9 +209,8 @@ function assertRootTableMatches({ rootContent, kind, expectedDirs, allowedPrefix
       ? extractHeadingSection(rootContent, "The four deployables")
       : extractHeadingSection(rootContent, "The shared packages");
   const rootTargets = [...extractMarkdownTargets(sectionContent)]
-    .filter((target) => allowedPrefixes.some((prefix) => target.startsWith(prefix)))
-    .map((target) => target.replace(/\/AGENTS\.md$/, "").replace(/\/$/, ""))
-    .filter((target) => expectedDirs.some((expected) => target === expected));
+    .map((target) => boundaryDirFromTableTarget(target, allowedPrefixes))
+    .filter((target) => target !== null);
   const actualDirs = [...new Set(rootTargets)].sort();
 
   const missing = expectedDirs.filter((expected) => !actualDirs.includes(expected));
@@ -224,6 +223,17 @@ function assertRootTableMatches({ rootContent, kind, expectedDirs, allowedPrefix
         `Found: ${actualDirs.join(", ") || "(none)"}.`,
     );
   }
+}
+
+function boundaryDirFromTableTarget(target, allowedPrefixes) {
+  const normalized = target.replace(/\/AGENTS\.md$/, "").replace(/\/$/, "");
+  const prefix = allowedPrefixes.find((candidate) => normalized.startsWith(candidate));
+  if (!prefix) return null;
+
+  const remainder = normalized.slice(prefix.length);
+  const [child] = remainder.split("/");
+  if (!child) return null;
+  return `${prefix}${child}`;
 }
 
 function extractHeadingSection(content, headingText) {
