@@ -12,6 +12,7 @@ import { JwtVerificationError } from "@intentive/providers/auth";
 
 import { mapJwtVerificationErrorToHttpResponse } from "../service/auth-failure.js";
 import type { IdentityService } from "../service/resolve-account.js";
+import { bearerToken } from "./require-user.js";
 
 export interface GetMeRequest {
   /** Raw `Authorization` header value, or null when absent. */
@@ -50,10 +51,4 @@ export function createGetMeHandler(deps: { identity: IdentityService }): GetMeHa
       }
     },
   };
-}
-
-function bearerToken(authorization: string | null): string | null {
-  if (!authorization) return null;
-  const match = /^Bearer (.+)$/i.exec(authorization.trim());
-  return match?.[1] ?? null;
 }

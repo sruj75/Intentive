@@ -2,7 +2,7 @@
 
 Server-side authority: identity, devices, gate state, agent instance registry, routing, notifications.
 
-**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CHANGELOG.md`](CHANGELOG.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
 
 ## Role in V1
 
@@ -17,9 +17,9 @@ Server-side authority: identity, devices, gate state, agent instance registry, r
 
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
-- `identity` — Neon Auth integration, User resolution from JWT
+- `identity` — Neon Auth integration, User resolution from JWT; `resolveAccount` composes `AccountState` (ADR-0004)
 - `devices` — Device Registry, APNs token storage, idempotent registration
-- `gates` — Pre-Chat Gate state, `/me` response shaping
+- `gates` — Cross-Client Gate state + `computeNextGate` (the `identity` composer calls `gates.nextGate(userId)`; gates does not own `/me` shaping). Device-Local gates + `client_kind` deferred to #27.
 - `agents` — Agent Instance Registry, Session Start calls to runtime
 - `routing` — `/agent` endpoint, JWT minting for runtime
 - `notifications` — APNs client, Apple credentials, push delivery

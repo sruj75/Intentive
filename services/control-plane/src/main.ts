@@ -12,10 +12,14 @@ import { createJwtVerifier } from "@intentive/providers/auth";
 import { neon } from "@neondatabase/serverless";
 
 import { loadConfig } from "./config/env.js";
+import { createUserGatesRepo } from "./domains/gates/repo/user-gates.js";
+import { createGatesService } from "./domains/gates/service/gates-service.js";
 import { createUsersRepo, type Sql } from "./domains/identity/repo/users.js";
 import { createIdentityService } from "./domains/identity/service/resolve-account.js";
 import { createApp } from "./domains/identity/ui/app.js";
 import { createGetMeHandler } from "./domains/identity/ui/get-me.js";
+import { createPostConsentHandler } from "./domains/identity/ui/post-consent.js";
+import { createPostSiblingInvitationSkipHandler } from "./domains/identity/ui/post-sibling-invitation-skip.js";
 
 const config = loadConfig();
 
@@ -29,9 +33,13 @@ const verifier = createJwtVerifier({
 
 const sql = neon(config.neon.url) as unknown as Sql;
 const users = createUsersRepo(sql);
-const identity = createIdentityService({ verifier, users });
+const userGates = createUserGatesRepo(sql);
+const gates = createGatesService({ userGates });
+const identity = createIdentityService({ verifier, users, gates });
 const getMe = createGetMeHandler({ identity });
-const app = createApp({ getMe });
+const postConsent = createPostConsentHandler({ identity, gates });
+const postSiblingInvitationSkip = createPostSiblingInvitationSkipHandler({ identity, gates });
+const app = createApp({ getMe, postConsent, postSiblingInvitationSkip });
 
 serve({ fetch: app.fetch, port: config.port });
 console.info(`Control Plane listening on :${config.port}`);

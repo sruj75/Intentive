@@ -12,6 +12,7 @@ SQL migrations for the control-plane-owned Neon schema.
 ## Migrations
 
 - `0001_users.sql` — `control_plane.users` (identity, #23).
+- `0002_user_gates.sql` — `control_plane.user_gates` (cross-client gate completion, #26).
 
 ## Scope note
 

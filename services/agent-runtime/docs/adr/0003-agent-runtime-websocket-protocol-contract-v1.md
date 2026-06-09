@@ -4,9 +4,11 @@
 # ADR 0003: WebSocket Protocol Contract (v1)
 
 ## Status
+
 Accepted (amended)
 
 ## Date
+
 2026-05-25
 
 ## Context
@@ -24,6 +26,7 @@ Intentive clients need a stable, explicit runtime protocol contract. The protoco
 ### 2) Required `connect` fields (v1)
 
 Mandatory:
+
 - `auth_token`
 - `client_kind` (`mobile` | `desktop` | `android`)
 - `client_version`
@@ -32,12 +35,13 @@ Mandatory:
 
 - Auth failure returns structured `auth_failed` and closes the socket.
 - Invalid connect shape returns structured `invalid_connect`.
-- Unsupported protocol shape returns structured `protocol_unsupported`.
+- `protocol_unsupported` is reserved for a future multi-version boundary; v1 does not negotiate protocol shape at connection time.
 - Runtime failures are emitted in the dedicated `runtime_error` envelope (see monorepo ADR-0003).
 
 ### 4) Reconnect and consistency
 
 On connect/reconnect success:
+
 - server returns snapshot first
 - live updates stream after snapshot
 

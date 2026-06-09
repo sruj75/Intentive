@@ -2,7 +2,7 @@
 
 The server-side authority at `services/control-plane/`. Owns identity, device registry, agent instance registry, Pre-Chat Gate state, routing, and notification fan-out. Stateless HTTP request/response. Deploys to Cloud Run.
 
-For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md)). For deployable structure, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for monorepo-wide layer rule and topology, see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md).
+For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md)). For deployable structure, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for monorepo-wide layer rule and topology, see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md). For per-deployable working rules, see [`AGENTS.md`](AGENTS.md). For shipped and in-progress changes, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Public HTTP surface
 
@@ -27,16 +27,15 @@ Schemas live in [`packages/api-contract`](../../packages/api-contract).
 ```bash
 # from this directory
 pnpm install
-pnpm dev          # serves via src/main.ts (Hono + GET /me identity slice)
+pnpm build && pnpm start   # src/main.ts — Hono GET /me + POST /consent + POST /sibling-invitation/skip
 pnpm typecheck
-pnpm lint
-pnpm test         # build + node --test; repo integration test needs NEON_* (see ADR-0003)
+pnpm test         # build + node --test; repo integration tests need NEON_* (see ADR-0003)
 ```
 
 Pull requests that touch this deployable run `.github/workflows/control-plane-ci.yml`.
-Identity (#23) lands incrementally: `GET /me` resolves a verified JWT to `AccountState`
-via `control_plane.users`; `next_gate` and `has_agent_instance` remain placeholders until
-#26 and #30.
+`GET /me` resolves a verified JWT to `AccountState` via `control_plane.users` (#23) and
+cross-client `next_gate` from `control_plane.user_gates` (#26). `has_agent_instance`
+remains a placeholder until #30.
 
 ## Deployment
 

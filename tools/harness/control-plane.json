@@ -6,6 +6,7 @@
     "CONTEXT-MAP.md",
     "services/control-plane/CONTEXT.md",
     "services/control-plane/ARCHITECTURE.md",
+    "services/control-plane/CHANGELOG.md",
     "ARCHITECTURE.md",
     "docs/TESTING.md"
   ],

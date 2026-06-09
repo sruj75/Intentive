@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Control Plane feature tickets (starting with #23 `identity`) test their `repo` layer two ways: `service`-layer logic against in-memory repo/provider fakes, and the `repo` layer itself against a **real, disposable Neon branch** created and dropped per test run. The branch runs the ticket's own migration (e.g. `migrations/0001_users.sql`) and exercises the real SQL — including invariants only a real database enforces, such as "the same User signing in twice produces exactly one `control_plane.users` row" (a unique constraint, not application logic). The branch is throwaway test infrastructure; it never touches production. Production schema/role provisioning and applying migrations to the live system remain #50's exclusive responsibility (see `migrations/README.md`).
+Control Plane feature tickets (starting with #23 `identity`) test their `repo` layer two ways: `service`-layer logic against in-memory repo/provider fakes, and the `repo` layer itself against a **real, disposable Neon branch** created and dropped per test run. The branch runs the ticket's own migration(s) (e.g. `migrations/0001_users.sql` for #23, `migrations/0002_user_gates.sql` for #26) and exercises the real SQL — including invariants only a real database enforces, such as "the same User signing in twice produces exactly one `control_plane.users` row" (a unique constraint, not application logic). The branch is throwaway test infrastructure; it never touches production. Production schema/role provisioning and applying migrations to the live system remain #50's exclusive responsibility (see `migrations/README.md`).
 
 **Considered Options**
 
@@ -13,5 +13,5 @@ Control Plane feature tickets (starting with #23 `identity`) test their `repo` l
 **Consequences**
 
 - CI needs credentials/permission to create and drop Neon branches for test runs. This plumbing is built once in #23 and reused across the CP lane.
-- The #50 provisioning boundary stays intact: #23's database is only ever an ephemeral test branch. #23 writes `0001_users.sql`; #50 applies it to the real `control_plane` schema with the `control_plane_app` role.
+- The #50 provisioning boundary stays intact: repo integration tests use only ephemeral branches. Each behavior ticket writes its own migration file (e.g. #23 → `0001_users.sql`, #26 → `0002_user_gates.sql`); #50 applies them to the real `control_plane` schema with the `control_plane_app` role.
 - `repo` integration tests own the database-enforced invariants (uniqueness, idempotency); `service` tests own branching logic with fakes. New CP domains follow the same split.
