@@ -7,6 +7,28 @@ import { ClientKind, PreChatGateKind } from "./shared.js";
 export const GetMeRequest = z.object({}).strict();
 export type GetMeRequest = z.infer<typeof GetMeRequest>;
 
+// The device/client signal a Client sends on `GET /me` so the Control Plane can
+// compute Device-Local Gates for the *calling device*, not just the User
+// (control-plane ADR-0005). Carried as request headers (`X-Client-Kind`,
+// `X-Capture-Permission-Granted`) and parsed at the boundary into this shape.
+//
+// Both fields are optional by design: an unregistered or legacy caller sends
+// neither and degrades to the cross-client-only gate sequence. `client_kind`
+// branches the sequence; `capture_permission_granted` is the Desktop's *live*
+// macOS Screen-Recording status (the Control Plane stores no copy of it). The
+// header arrives as the string `"true"`/`"false"` and is coerced to a boolean
+// here so the gate sequencer reasons over a real boolean.
+export const GetMeDeviceSignal = z
+  .object({
+    client_kind: ClientKind.optional(),
+    capture_permission_granted: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .optional(),
+  })
+  .strict();
+export type GetMeDeviceSignal = z.infer<typeof GetMeDeviceSignal>;
+
 export const AccountState = z
   .object({
     user_id: z.string(),

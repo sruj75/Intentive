@@ -27,15 +27,15 @@ Schemas live in [`packages/api-contract`](../../packages/api-contract).
 ```bash
 # from this directory
 pnpm install
-pnpm build && pnpm start   # src/main.ts — Hono GET /me + POST /consent + POST /sibling-invitation/skip
+pnpm build && pnpm start   # src/main.ts — Hono GET /me + POST /consent + POST /sibling-invitation/skip + POST /devices/register
 pnpm typecheck
 pnpm test         # build + node --test; repo integration tests need NEON_* (see ADR-0003)
 ```
 
 Pull requests that touch this deployable run `.github/workflows/control-plane-ci.yml`.
-`GET /me` resolves a verified JWT to `AccountState` via `control_plane.users` (#23) and
-cross-client `next_gate` from `control_plane.user_gates` (#26). `has_agent_instance`
-remains a placeholder until #30.
+`GET /me` resolves a verified JWT to `AccountState` via `control_plane.users` (#23),
+device-aware `next_gate` from cross-client state, the caller's device/client signal, and
+observed devices (#27, ADR-0005). `has_agent_instance` remains a placeholder until #30.
 
 ## Deployment
 

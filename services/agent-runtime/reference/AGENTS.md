@@ -1,6 +1,6 @@
 # Reference library map
 
-Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangChain DeepAgents (TypeScript)**. This folder is not our app code — it is read-only context for coding agents.
+Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangChain DeepAgents (TypeScript)**. This folder is not our app code — it is read-only context for coding agents. Read root [`../../../AGENTS.md`](../../../AGENTS.md) and [`../AGENTS.md`](../AGENTS.md) before applying these patterns.
 
 ## How to read (progressive disclosure)
 
@@ -11,11 +11,11 @@ Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangC
 
 ## Brain vs shell
 
-| Topic card | We implement in shell? |
-|------------|-------------------------|
-| architecture, gateway, sessions, cron, heartbeat, workspace, routing, hooks | **Yes** (TypeScript shell) |
-| channels | **Future-only in Intentive v1** — use as external-adapter reference, not as a standalone domain |
-| memory, tools, subagents, agent-runtime | **No** — parity reference only; use DeepAgents |
+| Topic card                                                                  | We implement in shell?                                                                          |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| architecture, gateway, sessions, cron, heartbeat, workspace, routing, hooks | **Yes** (TypeScript shell)                                                                      |
+| channels                                                                    | **Future-only in Intentive v1** — use as external-adapter reference, not as a standalone domain |
+| memory, tools, subagents, agent-runtime                                     | **No** — parity reference only; use DeepAgents                                                  |
 
 ## Global invariants
 
@@ -27,20 +27,20 @@ Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangC
 
 ## Topic index (1:1 with `*-llms.txt`)
 
-| Card | Load when |
-|------|-----------|
-| [architecture](topics/architecture.md) | Brain vs shell, product shape |
-| [gateway](topics/gateway.md) | WS, protocol, auth, HTTP APIs |
-| [channels](topics/channels.md) | Future external channel adapters only; not Mobile/Desktop v1 |
-| [sessions](topics/sessions.md) | Session keys, store, compaction |
-| [cron](topics/cron.md) | Scheduler, task ledger |
-| [heartbeat](topics/heartbeat.md) | Periodic wake, HEARTBEAT_OK |
-| [workspace](topics/workspace.md) | SOUL, AGENTS, SKILL layout |
-| [routing](topics/routing.md) | Multi-tenant routing |
-| [hooks](topics/hooks.md) | Hooks, event bus |
-| [memory](topics/memory.md) | Parity only — DeepAgents LTM |
-| [tools](topics/tools.md) | Parity only — DeepAgents tools |
-| [subagents](topics/subagents.md) | Parity only — DeepAgents subagents |
-| [agent-runtime](topics/agent-runtime.md) | Parity only — inner loop |
+| Card                                     | Load when                                                    |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| [architecture](topics/architecture.md)   | Brain vs shell, product shape                                |
+| [gateway](topics/gateway.md)             | WS, protocol, auth, HTTP APIs                                |
+| [channels](topics/channels.md)           | Future external channel adapters only; not Mobile/Desktop v1 |
+| [sessions](topics/sessions.md)           | Session keys, store, compaction                              |
+| [cron](topics/cron.md)                   | Scheduler, task ledger                                       |
+| [heartbeat](topics/heartbeat.md)         | Periodic wake, HEARTBEAT_OK                                  |
+| [workspace](topics/workspace.md)         | SOUL, AGENTS, SKILL layout                                   |
+| [routing](topics/routing.md)             | Multi-tenant routing                                         |
+| [hooks](topics/hooks.md)                 | Hooks, event bus                                             |
+| [memory](topics/memory.md)               | Parity only — DeepAgents LTM                                 |
+| [tools](topics/tools.md)                 | Parity only — DeepAgents tools                               |
+| [subagents](topics/subagents.md)         | Parity only — DeepAgents subagents                           |
+| [agent-runtime](topics/agent-runtime.md) | Parity only — inner loop                                     |
 
 Regenerate packs: `node scripts/generate-reference-llms.mjs` — see [README.md](README.md).

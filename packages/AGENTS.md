@@ -2,7 +2,8 @@
 
 The cross-deployable shared kernel. Before changing anything here, read
 [`CONTEXT.md`](CONTEXT.md) for the vocabulary these packages own (Protocol,
-Context Snapshot, Internal API, …) and the root [`../CONTEXT-MAP.md`](../CONTEXT-MAP.md).
+Context Snapshot, Internal API, …), root [`../AGENTS.md`](../AGENTS.md), and
+[`../CONTEXT-MAP.md`](../CONTEXT-MAP.md).
 
 ## The packages
 

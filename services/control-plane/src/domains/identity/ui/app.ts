@@ -24,6 +24,12 @@ export function createApp(deps: {
   getMe: GetMeHandler;
   postConsent: PostConsentHandler;
   postSiblingInvitationSkip: PostSiblingInvitationSkipHandler;
+  postDeviceRegister: {
+    handle(req: {
+      authorization: string | null;
+      body: unknown;
+    }): Promise<{ status: number; body: unknown }>;
+  };
 }): Hono {
   const app = new Hono();
 
@@ -33,6 +39,8 @@ export function createApp(deps: {
   app.get("/me", async (c) => {
     const result = await deps.getMe.handle({
       authorization: c.req.header("authorization") ?? null,
+      clientKind: c.req.header("x-client-kind") ?? null,
+      capturePermissionGranted: c.req.header("x-capture-permission-granted") ?? null,
     });
     return json(result.body, result.status);
   });
@@ -56,6 +64,19 @@ export function createApp(deps: {
 
     return handleBoundaryErrors(async () => {
       const result = await deps.postSiblingInvitationSkip.handle({
+        authorization: c.req.header("authorization") ?? null,
+        body: body.value,
+      });
+      return json(result.body, result.status);
+    });
+  });
+
+  app.post("/devices/register", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body.ok) return json(body.body, body.status);
+
+    return handleBoundaryErrors(async () => {
+      const result = await deps.postDeviceRegister.handle({
         authorization: c.req.header("authorization") ?? null,
         body: body.value,
       });

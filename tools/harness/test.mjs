@@ -5,6 +5,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 const harnessPath = new URL("./run-harness.mjs", import.meta.url).pathname;
 
+const rootDryRunOutput = run(["--dry-run"]);
+assert.match(rootDryRunOutput, /pnpm docs:agents:test/);
+assert.match(rootDryRunOutput, /Root harness dry run completed/);
+
 const scopesOutput = run(["--list-scopes"]);
 for (const scope of [
   "apps/mobile",

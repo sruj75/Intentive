@@ -12,6 +12,7 @@ const rootChecks = [
   { label: "Format check", command: "pnpm", args: ["format:check"] },
   { label: "Harness template fixture tests", command: "pnpm", args: ["harness:test"] },
   { label: "CONTEXT vocabulary docs tests", command: "pnpm", args: ["docs:context:test"] },
+  { label: "Agent docs integrity tests", command: "pnpm", args: ["docs:agents:test"] },
   { label: "Architecture lint plugin tests", command: "pnpm", args: ["lint:architecture:test"] },
   {
     label: "Architecture lint (Rust layer + structure)",
