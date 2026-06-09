@@ -2,12 +2,7 @@
 
 iOS Expo client. The chat surface for the **Companion**. Capture concerns and Mac-specific work live in `apps/desktop/`.
 
-**Always read first:**
-
-- [`CONTEXT.md`](CONTEXT.md) — Mobile Client vocabulary
-- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language (Companion, Pre-Chat Gate, Post-Message-Back, etc.)
-- [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule, why this deployable is structured the way it is
-- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
 
 ## Role in V1
 
@@ -32,14 +27,14 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 ## Working docs
 
 - [`../../docs/prd/mobile-PRD.md`](../../docs/prd/mobile-PRD.md) — Mobile PRD
-- [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Mobile-specific design and architecture
+- [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Mobile-specific design and architecture
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — shipped and in-progress Mobile Client changes
 - [`docs/adr/`](docs/adr/) — Mobile Client ADRs (system-wide → [`docs/adr/`](../../docs/adr/))
 
 ## Stack & deploy
 
 - Expo / React Native, TypeScript
-- Local dev: `pnpm --dir apps/mobile dev` (or `ios` / `android`); tests: `pnpm --dir apps/mobile test` (Node) and `pnpm --dir apps/mobile test:rn` (Jest / RN harness)
+- Local dev: `pnpm --dir apps/mobile dev` (or `ios` / `android`); tests: `pnpm --dir apps/mobile test` (Node) and `pnpm --dir apps/mobile test:rn` (Jest / RN harness); harness: `pnpm harness --scope apps/mobile`
 - iOS Simulator verification (start Metro from `apps/mobile`; wipe DerivedData on `clang`/`swift-frontend` crashes): see [`docs/TESTING.md` → Mobile Client → iOS simulator verification](../../docs/TESTING.md#ios-simulator-verification-visual-on-device)
 - Deploys to TestFlight / App Store via **EAS Build** (Git-based)
 - `@assistant-ui/react-native` is the **Chat Primitive Engine** behind Intentive Chat Components — keep it replaceable (ADR 0009 spike: KEEP)

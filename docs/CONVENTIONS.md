@@ -2,7 +2,7 @@
 
 House conventions that are **not** already covered by the layer rule, the
 architecture lint, or `CONTEXT.md` vocabulary. Read
-[`ARCHITECTURE.md`](ARCHITECTURE.md) and the relevant `CONTEXT.md` first; this
+[`ARCHITECTURE.md`](../ARCHITECTURE.md) and the relevant `CONTEXT.md` first; this
 file only fills the gaps an agent would otherwise have to guess.
 
 ## Filenames
@@ -43,7 +43,7 @@ follows this rule.
 ## See also
 
 - Layer direction, deployable topology, the five inviolable rules →
-  [`ARCHITECTURE.md`](ARCHITECTURE.md)
+  [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - Domain vocabulary and `_Avoid_` lists → each context's `CONTEXT.md`
   (start at [`../CONTEXT-MAP.md`](../CONTEXT-MAP.md))
 - Verification commands and test ownership → [`TESTING.md`](TESTING.md)

@@ -3,7 +3,7 @@
 /**
  * The canonical layer order, lowest to highest. A file at layer N may import
  * from layers 0..N (same layer is allowed). Imports at N+1 or above are
- * forbidden — that's the "depend forward" rule from docs/ARCHITECTURE.md.
+ * forbidden — that's the "depend forward" rule from ARCHITECTURE.md.
  *
  *   types  →  config  →  repo  →  service  →  runtime  →  ui
  *

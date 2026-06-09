@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "tsc --outDir dist",
-    "test": "pnpm run build && node --test",
+    "start": "node dist/main.js",
+    "test": "pnpm --filter \"@intentive/control-plane...\" run build && node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@intentive/api-contract": "workspace:*",
     "@intentive/providers": "workspace:*",
+    "@neondatabase/serverless": "^1.1.0",
+    "@hono/node-server": "^2.0.4",
+    "hono": "^4.12.23",
     "zod": "^3.23.0"
   },
   "devDependencies": {

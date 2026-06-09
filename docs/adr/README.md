@@ -72,10 +72,12 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 
 ### Control Plane — `services/control-plane/docs/adr/`
 
-| #    | Title                                           | Status   |
-| ---- | ----------------------------------------------- | -------- |
-| 0001 | Control Plane as source of truth                | accepted |
-| 0002 | Runtime JWT is the pass-through Neon Auth token | accepted |
+| #    | Title                                                | Status   |
+| ---- | ---------------------------------------------------- | -------- |
+| 0001 | Control Plane as source of truth                     | accepted |
+| 0002 | Runtime JWT is the pass-through Neon Auth token      | accepted |
+| 0003 | Repo-layer tests run against ephemeral Neon branches | accepted |
+| 0004 | AccountState assembled by the identity composer      | accepted |
 
 ### Agent Runtime — `services/agent-runtime/docs/adr/`
 

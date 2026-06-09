@@ -1,6 +1,6 @@
 # @intentive/domain-types Architecture
 
-This is the package-local architecture contract for `packages/domain-types/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md`.
+This is the package-local architecture contract for `packages/domain-types/`. It extends the monorepo-wide rules in `../../ARCHITECTURE.md` and the vocabulary in `../CONTEXT.md`.
 
 ## Purpose
 
@@ -27,7 +27,7 @@ Defined in `src/index.ts`:
 - **Consumers:** any deployable that needs a shared domain shape — typically `services/control-plane` and `services/agent-runtime`, and Clients where a shared shape is useful.
 - **Sibling contracts:** `@intentive/protocol` and `@intentive/api-contract` own the wire shapes. Where a domain concept also has a wire representation, this package holds the in-process form and the contract packages hold the serialized form — they are reconciled, not duplicated.
 
-> Note: `../../docs/ARCHITECTURE.md` lists `ContextSnapshot` and `AccountState` as examples for this package, but in the current code `ContextSnapshot` lives in `@intentive/protocol` and `AccountState` lives in `@intentive/api-contract` because both are wire shapes. This package holds only the non-wire shapes above.
+> Note: `../../ARCHITECTURE.md` lists `ContextSnapshot` and `AccountState` as examples for this package, but in the current code `ContextSnapshot` lives in `@intentive/protocol` and `AccountState` lives in `@intentive/api-contract` because both are wire shapes. This package holds only the non-wire shapes above.
 
 ## Change protocol
 

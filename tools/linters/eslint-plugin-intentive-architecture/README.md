@@ -1,6 +1,6 @@
 # @intentive/eslint-plugin-architecture
 
-Mechanical enforcement of Intentive's layered domain architecture. The rules in this plugin are the cash value of [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) — without them, the architecture is a wish, not a constraint.
+Mechanical enforcement of Intentive's layered domain architecture. The rules in this plugin are the cash value of [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) — without them, the architecture is a wish, not a constraint.
 
 ## Rules
 
@@ -15,6 +15,7 @@ types  →  config  →  repo  →  service  →  runtime  →  ui
 `providers/` is cross-cutting and may be imported from any layer.
 
 **Reports:**
+
 - Backward imports (e.g. `service/foo.ts` importing from `runtime/bar.ts`).
 - Cross-domain imports (one domain reaching into another domain's internals).
 

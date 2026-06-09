@@ -1,6 +1,6 @@
 # @intentive/providers Architecture
 
-This is the package-local architecture contract for `packages/providers/`. It extends the monorepo-wide rules in `../../docs/ARCHITECTURE.md` → "Cross-cutting via Providers." For vocabulary, see `../CONTEXT.md` and the root `CONTEXT-MAP.md`.
+This is the package-local architecture contract for `packages/providers/`. It extends the monorepo-wide rules in `../../ARCHITECTURE.md` → "Cross-cutting via Providers." For vocabulary, see `../CONTEXT.md` and the root `CONTEXT-MAP.md`.
 
 ## Purpose
 

@@ -17,7 +17,7 @@ Infer the repo from `git remote -v` — `gh` does this automatically when run in
 
 ## Numbering
 
-[`docs/ISSUE-BOARD.md`](../ISSUE-BOARD.md) and navigation use **GitHub issue numbers** (#7–#56 for the v1 backlog). PRs #1–#6 occupy GitHub numbers 1–6 and are not issues.
+[`docs/ISSUE-BOARD.md`](../ISSUE-BOARD.md) is the sequenced backlog source — use GitHub issue numbers from there. PRs #1–#6 occupy GitHub numbers 1–6 and are not issues.
 
 ## Deployable labels
 

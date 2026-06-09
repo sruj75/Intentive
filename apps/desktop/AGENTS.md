@@ -2,12 +2,7 @@
 
 macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile Client.
 
-**Always read first:**
-
-- [`CONTEXT.md`](CONTEXT.md) — Desktop Client vocabulary
-- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
-- [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
-- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
 
 ## Role in V1
 
@@ -38,14 +33,15 @@ Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/provider
 ## Working docs
 
 - [`../../docs/prd/desktop-PRD.md`](../../docs/prd/desktop-PRD.md) — Desktop PRD
-- [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Desktop-specific product/design/architecture
+- [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)
-- [`../../docs/agents/issue-tracker.md`](../../docs/agents/issue-tracker.md), [`../../docs/agents/triage-labels.md`](../../docs/agents/triage-labels.md), [`../../docs/agents/domain.md`](../../docs/agents/domain.md) — root agent workflow rules for tracking, labels, and vocabulary
 
 ## Stack & deploy
 
 - React + Vite (frontend), Rust + Tauri (backend), TypeScript + sqlx
+- Local dev: `pnpm --filter ./apps/desktop dev`; tests: `pnpm --filter ./apps/desktop test` (Vitest + Rust; see [`docs/TESTING.md` § Desktop](../../docs/TESTING.md#desktop))
+- `pnpm lint:architecture:rust` when touching `src-tauri/`
 - **Apple Silicon only in V1** (Intel deferred)
 - Builds, signs (Developer ID), notarizes to `.dmg` via GitHub Actions → uploads to GitHub Releases / R2 → linked from landing page
 - Tauri built-in updater for in-app auto-update

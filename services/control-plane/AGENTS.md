@@ -2,12 +2,7 @@
 
 Server-side authority: identity, devices, gate state, agent instance registry, routing, notifications.
 
-**Always read first:**
-
-- [`CONTEXT.md`](CONTEXT.md) — Control Plane vocabulary
-- [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md) — context map + shared product language
-- [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — layer rule
-- [`../../docs/TESTING.md`](../../docs/TESTING.md) — verification commands, harness scopes, and CI expectations
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CHANGELOG.md`](CHANGELOG.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
 
 ## Role in V1
 
@@ -22,9 +17,9 @@ Server-side authority: identity, devices, gate state, agent instance registry, r
 
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
-- `identity` — Neon Auth integration, User resolution from JWT
+- `identity` — Neon Auth integration, User resolution from JWT; `resolveAccount` composes `AccountState` (ADR-0004)
 - `devices` — Device Registry, APNs token storage, idempotent registration
-- `gates` — Pre-Chat Gate state, `/me` response shaping
+- `gates` — Cross-Client Gate state + `computeNextGate` (the `identity` composer calls `gates.nextGate(userId)`; gates does not own `/me` shaping). Device-Local gates + `client_kind` deferred to #27.
 - `agents` — Agent Instance Registry, Session Start calls to runtime
 - `routing` — `/agent` endpoint, JWT minting for runtime
 - `notifications` — APNs client, Apple credentials, push delivery
@@ -44,8 +39,13 @@ Request/response schemas live in `packages/api-contract/`.
 ## Stack & deploy
 
 - Node / TypeScript
+- Process entry: `src/main.ts` (composition root); `src/index.ts` re-exports contract samples for workspace consumers
+- Tests: `pnpm --filter ./services/control-plane test`; run: `pnpm --filter ./services/control-plane start` (after build)
+- Boot config: `src/config/env.ts` (`loadConfig`); see `test/config.test.mjs`
+- Harness: `pnpm harness --scope services/control-plane`
 - Deploys to **Google Cloud Run** (stateless HTTP, request/response only in v1)
 - Reads Neon Postgres via control-plane-owned schema (separate role from Agent Runtime)
+- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + full test suite). Repo integration tests use ephemeral Neon branches when `NEON_API_KEY` / `NEON_PROJECT_ID` are set (ADR-0003).
 
 ## Guardrails specific to this deployable
 

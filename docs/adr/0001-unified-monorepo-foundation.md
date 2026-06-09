@@ -8,7 +8,7 @@ Until May 2026, Intentive lived as four separate repositories — `v1-expo`, `v1
 
 ## Decision
 
-Collapse the four repositories into one monorepo at this root. Adopt one ubiquitous language ([`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) plus per-deployable and `packages/CONTEXT.md` files; vocabulary is no longer a single `docs/CONTEXT.md`) and one architectural rule ([`docs/ARCHITECTURE.md`](../ARCHITECTURE.md)). All future ADRs live in this single `docs/adr/` directory and are numbered globally.
+Collapse the four repositories into one monorepo at this root. Adopt one ubiquitous language ([`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) plus per-deployable and `packages/CONTEXT.md` files; vocabulary is no longer a single `docs/CONTEXT.md`) and one architectural rule ([`ARCHITECTURE.md`](../../ARCHITECTURE.md)). All future ADRs live in this single `docs/adr/` directory and are numbered globally.
 
 Key boundary decisions established by this ADR (full vocabulary in CONTEXT.md):
 
@@ -21,7 +21,7 @@ Key boundary decisions established by this ADR (full vocabulary in CONTEXT.md):
 - **Pre-Chat Gates** are Control-Plane-owned, with two kinds: Cross-Client (Identity, Consent, Sibling Invitation skip) and Device-Local (Capture Permission Setup).
 - **Desktop is capture-only in v1.** No chat UI. Chat lives on Mobile (and future Android).
 - **GCP Provisioner is removed** from v1 vocabulary. The Runtime is one always-on GCE VM deployed by CI/CD.
-- **Layered domain architecture:** within each business domain, code depends forward through `types → config → repo → service → runtime → ui`. Cross-cutting concerns enter via `providers/`. Enforced mechanically via custom lints. See [ARCHITECTURE.md](../ARCHITECTURE.md).
+- **Layered domain architecture:** within each business domain, code depends forward through `types → config → repo → service → runtime → ui`. Cross-cutting concerns enter via `providers/`. Enforced mechanically via custom lints. See [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 ## Consequences
 

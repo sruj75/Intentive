@@ -4,14 +4,14 @@ Intentive is one product spanning a Mobile Client, a Desktop Client, a server-si
 
 ## Contexts
 
-| Context                  | Vocabulary                                                               | Decisions (ADRs)                                                       |
-| ------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| **Shared** (`packages/`) | [`packages/CONTEXT.md`](packages/CONTEXT.md)                             | system-wide → [`docs/adr/`](docs/adr/)                                 |
-| **Mobile Client**        | [`apps/mobile/CONTEXT.md`](apps/mobile/CONTEXT.md)                       | [`apps/mobile/docs/adr/`](apps/mobile/docs/adr/)                       |
-| **Desktop Client**       | [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md)                     | [`apps/desktop/docs/adr/`](apps/desktop/docs/adr/)                     |
-| **Control Plane**        | [`services/control-plane/CONTEXT.md`](services/control-plane/CONTEXT.md) | [`services/control-plane/docs/adr/`](services/control-plane/docs/adr/) |
-| **Agent Runtime**        | [`services/agent-runtime/CONTEXT.md`](services/agent-runtime/CONTEXT.md) | [`services/agent-runtime/docs/adr/`](services/agent-runtime/docs/adr/) |
-| **System-wide**          | this map                                                                 | [`docs/adr/`](docs/adr/)                                               |
+| Context                  | Vocabulary                                                               | Structure                                                                          | Decisions (ADRs)                                                       |
+| ------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Shared** (`packages/`) | [`packages/CONTEXT.md`](packages/CONTEXT.md)                             | [`ARCHITECTURE.md`](ARCHITECTURE.md) + `packages/*/ARCHITECTURE.md`                | system-wide → [`docs/adr/`](docs/adr/)                                 |
+| **Mobile Client**        | [`apps/mobile/CONTEXT.md`](apps/mobile/CONTEXT.md)                       | [`apps/mobile/ARCHITECTURE.md`](apps/mobile/ARCHITECTURE.md)                       | [`apps/mobile/docs/adr/`](apps/mobile/docs/adr/)                       |
+| **Desktop Client**       | [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md)                     | [`apps/desktop/ARCHITECTURE.md`](apps/desktop/ARCHITECTURE.md)                     | [`apps/desktop/docs/adr/`](apps/desktop/docs/adr/)                     |
+| **Control Plane**        | [`services/control-plane/CONTEXT.md`](services/control-plane/CONTEXT.md) | [`services/control-plane/ARCHITECTURE.md`](services/control-plane/ARCHITECTURE.md) | [`services/control-plane/docs/adr/`](services/control-plane/docs/adr/) |
+| **Agent Runtime**        | [`services/agent-runtime/CONTEXT.md`](services/agent-runtime/CONTEXT.md) | [`services/agent-runtime/ARCHITECTURE.md`](services/agent-runtime/ARCHITECTURE.md) | [`services/agent-runtime/docs/adr/`](services/agent-runtime/docs/adr/) |
+| **System-wide**          | this map                                                                 | [`ARCHITECTURE.md`](ARCHITECTURE.md)                                               | [`docs/adr/`](docs/adr/)                                               |
 
 ## Maintaining these docs (read before editing — esp. with `/grill-with-docs`)
 

@@ -59,7 +59,7 @@ pnpm --dir packages/providers test
 ## Mobile Client
 
 ```bash
-pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch resolver/source/route, route-for-destination)
+pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch resolver/source/route, control-plane source, account-state mapper, route-for-destination)
 pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat / Chat Primitive Engine spike #22)
 pnpm --dir apps/mobile typecheck
 ```
@@ -131,13 +131,36 @@ ls -d ~/Library/Developer/XcodeBuildMCP/workspaces/*/DerivedData \
 
 (Plain Xcode users, not XcodeBuildMCP: `rm -rf ~/Library/Developer/Xcode/DerivedData`.)
 
+## Control Plane
+
+```bash
+pnpm --filter ./services/control-plane test
+pnpm --filter ./services/control-plane typecheck
+```
+
+The Control Plane suite includes identity and gates service/handler unit tests, HTTP routing via Hono (`app.test.mjs`), and opt-in repo integration tests against a disposable Neon branch (ADR-0003; skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are unset). See `services/control-plane/test/helpers/neon-branch.mjs`.
+
+## Agent Runtime
+
+```bash
+pnpm --filter ./services/agent-runtime test
+pnpm --filter ./services/agent-runtime typecheck
+```
+
+The Agent Runtime suite currently exercises the shared config seam (`test/config-env.test.mjs`)
+and the connection-control slice: Session Start idempotency, Internal API auth/body
+handling, gateway `connect` handshake behavior, structured auth/protocol errors, and a
+real WebSocket `hello_ok` smoke path. Domain folders are created lazily per ADR-0002 as
+vertical slices land.
+
 ## Scaffold Deployables
 
-`services/control-plane` and `services/agent-runtime` still use minimal scaffold tests. `apps/mobile` adds auth-adapter, launch-state resolver/source, and `route-for-destination` tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Chat Primitive Engine spike tests (`companion-chat.rn.test.tsx`, `dev-chat-adapter.test.mjs`). Protocol/runtime adapter coverage grows with #33.
+`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` adds auth-adapter, launch-state resolver/source, control-plane launch source, `account-state-to-launch-state`, and `route-for-destination` tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Chat Primitive Engine spike tests (`companion-chat.rn.test.tsx`, `dev-chat-adapter.test.mjs`). Protocol/runtime adapter coverage grows with #33.
 
 ## CI Expectations
 
 - `.github/workflows/monorepo-foundation.yml` is the root PR gate for typecheck, lint, architecture lint tests, and `pnpm test`.
+- `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite (including the opt-in Neon repo integration test when repository secrets are set) on pull requests that touch `services/control-plane/` or its shared-package dependencies.
 - `.github/workflows/desktop-ci.yml` runs desktop frontend and Rust checks when desktop-relevant paths change.
 - `.github/workflows/desktop-audit.yml` runs dependency audits for pnpm and Cargo.
 - `.github/workflows/coverage.yml` uploads desktop JS coverage as a GitHub Actions artifact and sends LCOV to Codecov when configured.

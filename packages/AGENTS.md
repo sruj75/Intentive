@@ -17,7 +17,8 @@ Context Snapshot, Internal API, …) and the root [`../CONTEXT-MAP.md`](../CONTE
 
 1. **`protocol/` is the source of truth for the wire format.** Change a WebSocket
    event here first; clients and the Agent Runtime follow. One protocol version is
-   imported across the whole monorepo — stale imports fail typecheck.
+   imported across the whole monorepo — stale imports fail typecheck. After changing
+   `protocol/` or `api-contract/`, run `pnpm sensor:contract-drift` (hard CI gate).
 2. **`api-contract/` changes before Control Plane implementation.** Add or change
    the request/response schema here first, then implement the endpoint.
 3. **Decode at the boundary.** Both contract packages export parse-at-boundary

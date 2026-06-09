@@ -2,7 +2,7 @@
  * @intentive/protocol — WebSocket message contract.
  *
  * Single source of truth for the Protocol between every Client and the
- * Agent Runtime. See packages/CONTEXT.md → "Protocol" and docs/ARCHITECTURE.md.
+ * Agent Runtime. See packages/CONTEXT.md → "Protocol" and ARCHITECTURE.md.
  */
 
 import { z } from "zod";

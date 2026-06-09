@@ -96,12 +96,11 @@ Exit criteria:
 - Context, ADRs, and this plan agree on tenancy, protocol, and no standalone channels.
 - The first implementation issues can be cut without reopening product boundaries.
 
-## Phase 1: Runtime skeleton and domain scaffolds
+## Phase 1: Runtime skeleton (lazy domains)
 
-1. Add `services/agent-runtime/src/domains/*/{types,config,repo,service,runtime,ui}` scaffolds for `gateway`, `sessions`, `protocol`, `runtime`, `memory`, `bundles`, `cron`, `heartbeat`, and `internal`.
-2. Add Runtime config validation for ports, public WebSocket URL, internal API secret, Neon connection string, JWKS config, protocol version, and model/provider config.
-3. Add domain test harnesses and simple in-memory fakes before wiring Neon.
-4. Keep `src/index.ts` as a thin process entrypoint that delegates into runtime composition.
+1. Add the shared Runtime config seam at `src/config/env.ts` (`loadConfig`) — ports, public WebSocket URL, internal API secret, Neon connection string, JWKS config. Do **not** pre-create empty domain layer trees; per ADR-0002, add `src/domains/<name>/…` only when a vertical slice implements real behavior.
+2. Add config tests (`test/config-env.test.mjs`) and domain test harnesses / in-memory fakes before wiring Neon.
+3. Keep `src/index.ts` as a thin workspace entry that re-exports service surfaces; add `src/main.ts` as the process composition root when the HTTP/WebSocket server lands.
 
 Exit criteria:
 
@@ -112,11 +111,12 @@ Exit criteria:
 ## Phase 2: WebSocket gateway and internal session start
 
 1. Implement `POST /internal/sessions/start` behind shared-secret auth.
-2. Create or load the `agent_instances` row for `user_id`.
+2. Create or load the Agent Instance for `user_id` behind a repo interface; use an
+   in-memory registry until the Neon-backed repo lands with durable Runtime state.
 3. Implement WebSocket server with handshake-first behavior.
 4. Verify JWT locally through `packages/providers`.
-5. Accept only `connect` before handshake; reject invalid protocol versions and auth failures with structured errors.
-6. Return `hello_ok` with negotiated protocol and authoritative reconnect snapshot.
+5. Accept only `connect` before handshake; reject malformed pre-handshake events and auth failures with structured errors. Protocol compatibility is enforced at build time by the monorepo's single shared `packages/protocol` version, not negotiated per connection.
+6. Return `hello_ok` with the Session Snapshot shape. The snapshot is empty until Conversation History owns the projection.
 
 Exit criteria:
 
@@ -253,7 +253,7 @@ Exit criteria:
 ## Reference sources
 
 - Intentive vocabulary: `CONTEXT-MAP.md`, `services/agent-runtime/CONTEXT.md`, `packages/CONTEXT.md`
-- Intentive architecture: `docs/ARCHITECTURE.md`
+- Intentive architecture: `ARCHITECTURE.md` (monorepo) + `services/agent-runtime/ARCHITECTURE.md` (deployable)
 - OpenClaw pattern default: `docs/adr/0003-agent-runtime-openclaw-patterns-default.md`
 - WebSocket Protocol: `docs/adr/0005-agent-runtime-websocket-protocol-contract-v1.md`
 - DB-backed VFS: `docs/adr/0006-agent-runtime-db-backed-vfs-overlay-model-v1.md`

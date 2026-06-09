@@ -5,16 +5,22 @@
   "type": "module",
   "scripts": {
     "build": "tsc --outDir dist",
-    "test": "pnpm --filter @intentive/protocol build && pnpm run build && node --test",
+    "start": "node dist/main.js",
+    "test": "pnpm --filter \"@intentive/agent-runtime...\" run build && node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.4",
     "@intentive/api-contract": "workspace:*",
     "@intentive/protocol": "workspace:*",
-    "@intentive/providers": "workspace:*"
+    "@intentive/providers": "workspace:*",
+    "hono": "^4.12.23",
+    "ws": "^8.21.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.5.0"
   }
 }

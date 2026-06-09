@@ -19,7 +19,11 @@ const ignoredDirs = new Set([
 const mdFiles = [];
 
 function shouldCheckFile(relativePath) {
-  if (relativePath === "README.md" || relativePath === "AGENTS.md") {
+  if (
+    relativePath === "README.md" ||
+    relativePath === "AGENTS.md" ||
+    relativePath === "ARCHITECTURE.md"
+  ) {
     return true;
   }
 
@@ -27,7 +31,15 @@ function shouldCheckFile(relativePath) {
     return true;
   }
 
-  if (/^(apps|services)\/[^/]+\/AGENTS\.md$/.test(relativePath)) {
+  if (/^(apps|services)\/[^/]+\/(AGENTS|ARCHITECTURE)\.md$/.test(relativePath)) {
+    return true;
+  }
+
+  if (relativePath === "packages/AGENTS.md") {
+    return true;
+  }
+
+  if (relativePath === "services/agent-runtime/reference/AGENTS.md") {
     return true;
   }
 

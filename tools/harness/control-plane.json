@@ -5,7 +5,9 @@
   "owningContextDocs": [
     "CONTEXT-MAP.md",
     "services/control-plane/CONTEXT.md",
-    "docs/ARCHITECTURE.md",
+    "services/control-plane/ARCHITECTURE.md",
+    "services/control-plane/CHANGELOG.md",
+    "ARCHITECTURE.md",
     "docs/TESTING.md"
   ],
   "adrDirs": ["docs/adr", "services/control-plane/docs/adr"],

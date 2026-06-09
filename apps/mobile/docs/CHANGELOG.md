@@ -14,7 +14,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **Monorepo import** — Mobile Client brought into the Intentive workspace as
   `@intentive/mobile` (Expo SDK 56, React Native, TypeScript, `expo-router`). Domain
   layout under `src/domains/{auth,onboarding,chat,…}/` with layer-direction lint;
-  mobile-specific `CONTEXT.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, and ADRs
+  mobile-specific `CONTEXT.md`, `ARCHITECTURE.md`, `docs/DESIGN.md`, and ADRs
   `0001`–`0011` (product direction: chat-first surface, remote Agent Runtime,
   navigation vs capability axes, in-memory Launch State, Liquid Glass shell intent).
 
@@ -66,6 +66,19 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
   self-attests `completed`) ([ADR 0014](adr/0014-mobile-sibling-invitation-skippable-invite-screen.md)).
   `sibling-invitation.rn.test.tsx`.
 
+- **Account state launch flow** ([Issue #23]) —
+  - `src/providers/launch-state/control-plane-source.ts` — real `LaunchStateSource`
+    hydrates from Control Plane `GET /me` via injected `getUserJwt` + `fetch`; missing
+    session returns signed-out without a network call.
+  - `src/domains/onboarding/service/account-state-to-launch-state.ts` — pure
+    `AccountState → LaunchState` mapper (`next_gate` → gate positions).
+  - `app/_layout.tsx` — composition root wires `createControlPlaneLaunchStateSource`
+    (replaces the stub for production boot).
+  - `.env.example` — `EXPO_PUBLIC_CONTROL_PLANE_BASE_URL` for the CP base URL.
+  - Tests: `account-state-to-launch-state.test.mjs`,
+    `control-plane-launch-state-source.test.mjs`; `launch-flow.rn.test.tsx` covers the
+    signed-out path with production wiring.
+
 - **Chat Primitive Engine spike (KEEP)** ([Issue #22]) — _uncommitted on branch
   `issue-19to22` at time of writing; included here so the log matches the working
   tree._
@@ -97,7 +110,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
   (not `null`) so optimistic sign-in cannot strand on `RESOLVING` splash.
 - Pre-Chat Gate and Companion Chat routes now import real domain screens instead of
   stubs (`identity`, `consent`, `invite`, `chat`).
-- `apps/mobile/AGENTS.md`, `docs/ARCHITECTURE.md`, and root `docs/TESTING.md` synced
+- `apps/mobile/AGENTS.md`, `ARCHITECTURE.md`, and root `docs/TESTING.md` synced
   with foundation-lane test surfaces and `#22` coverage.
 - ADR 0009 extended with spike outcome table, adapter error contract, and test-harness
   findings for `#33` / `#45`.
@@ -133,8 +146,9 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Deferred (not in this changelog as shipped behavior)
 
-- **#23** — `GET /me`-backed `LaunchStateSource`, cold-launch session restore, real
-  Neon OAuth redirect / enabled providers.
+- **#23 (remainder)** — cold-launch session restore against a real Neon session,
+  https OAuth redirect / enabled providers (`NEON_ENABLED_PROVIDERS` still empty; dev
+  provider remains the working path until #61).
 - **#33** — Protocol WebSocket Runtime Adapter; replace dev chat adapter; Conversation
   History reconnect snapshot.
 - **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard.
