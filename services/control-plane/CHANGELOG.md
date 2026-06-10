@@ -6,6 +6,21 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
 
 ### Added
 
+- **Routing + Agent Instance Registry + Session Start** ([Issue #30]) —
+  `agents` domain with idempotent `control_plane.agent_instances` registry
+  (`migrations/0004_agent_instances.sql`, one row per `user_id`), Runtime Session
+  Start client (`POST /internal/sessions/start` via Directional Secret), and
+  `AgentsService.ensureAgentInstance` / `hasAgentInstance`. `GET /agent`
+  (`routing/ui/get-agent.ts`) authenticates with the same Neon Auth bearer path as
+  `/me`, enforces gate satisfaction server-side (`403 gate_required`), calls Session
+  Start on every request (live `ws_url`; registry stores only `agent_instance_id`),
+  and returns `GetAgentResponse` with the **pass-through** Neon Auth `runtime_jwt`
+  (ADR-0002 — never CP-signed). Retryable `503 service_unavailable` when JWKS or
+  Session Start is unreachable. `identity.resolveAccount` now reads
+  `has_agent_instance` from the injected agents read port. Tests:
+  `test/agent-instances-repo.integration.test.mjs`, `test/agents-service.test.mjs`,
+  `test/runtime-session-start.test.mjs`, `test/get-agent-handler.test.mjs`, plus
+  extended `app.test.mjs` and `identity-service.test.mjs`.
 - **Device Registry + device-aware gates** ([Issue #27]) — `devices` domain with
   idempotent `POST /devices/register` (upsert keyed `UNIQUE(user_id,
 device_fingerprint)`, non-destructive APNs/FCM token rotation) and the token-free
@@ -38,8 +53,12 @@ device_fingerprint)`, non-destructive APNs/FCM token rotation) and the token-fre
   now also composes from `devices`: it derives `hasSiblingDevice` from
   `listDevicesForUser` and passes the device context into `gates.nextGate(userId,
 device)`. `gates` gains no dependency on `devices` (the composer does the
-  cross-domain read); `computeNextGate` stays a pure function. `has_agent_instance`
-  remains an honest `false` placeholder until [Issue #30].
+  cross-domain read); `computeNextGate` stays a pure function. [Issue #30] wires
+  the third composer collaborator (`agents.hasAgentInstance`) so
+  `has_agent_instance` reflects the Agent Instance Registry.
+- **`src/main.ts` composition root** ([Issue #30]) — wires `agentInstances` repo,
+  Runtime Session Start client, `agents` service, and `GET /agent` handler; identity
+  receives the narrow agents read port only (no Session Start dependency cycle).
 - **`ARCHITECTURE.md`** — moved to the deployable root (`services/control-plane/ARCHITECTURE.md`);
   codemap and domain responsibilities updated for the identity composer and gates seam.
 

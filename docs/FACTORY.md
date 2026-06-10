@@ -50,7 +50,7 @@ The factory is healthy when guides and sensors reinforce each other and improve 
 
 ## Guides and Sensors
 
-**Guides** tell agents where to start and what constraints apply. Entry map: [`AGENTS.md`](../AGENTS.md). Product language: [`CONTEXT-MAP.md`](../CONTEXT-MAP.md) and deployable `CONTEXT.md`. Structure and boundaries: [`ARCHITECTURE.md`](../ARCHITECTURE.md). Decisions: [`docs/adr/`](adr/) and deployable `docs/adr/`.
+**Guides** tell agents where to start and what constraints apply. Entry map: [`AGENTS.md`](../AGENTS.md). Product language: [`CONTEXT-MAP.md`](../CONTEXT-MAP.md) and deployable `CONTEXT.md`. Structure and boundaries: [`ARCHITECTURE.md`](../ARCHITECTURE.md). Decisions: [`docs/adr/`](adr/) and deployable `docs/adr/`. Sequenced backlog and dependencies: [`docs/ISSUE-BOARD.md`](ISSUE-BOARD.md) — update it when closing or re-scoping issues so the next agent starts from current factory state.
 
 **Sensors** give fast feedback on what changed. Command catalog, timing, and CI expectations: [`docs/TESTING.md`](TESTING.md).
 
@@ -114,6 +114,12 @@ flowchart LR
 ```
 
 Read the report as a systems signal, not a checklist. Each section points at a different way the product-building system can drift:
+
+Start with **Factory Focus**. It ranks the report by likely PR action: changed-file findings first, then changed-workspace findings, repeated unclassified findings, returned findings, and finally repo-wide maintenance. The raw sensor sections remain below it for auditability, but Factory Focus is the handoff surface agents and reviewers should read first.
+
+Use **Factory Learning Metrics** to ask whether the factory is learning. PR-tied findings should usually get immediate attention. Repeated unclassified or returned findings suggest the guide, sensor, fixture, or backlog path needs improvement. Accepted, backlogged, and factory-improved counts show where human decisions have already shaped the factory.
+
+Use **Behavior Proof** to check whether changed workspaces have product-behavior slices represented in the existing scoped harness templates. The first version points only at existing commands; it is not a new E2E system and it does not add a new gate.
 
 | Harness Health signal     | Systems interpretation                                              | Feedback action                                                                                                                                                  |
 | ------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |

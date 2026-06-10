@@ -28,6 +28,12 @@ pnpm factory:recommend --report factory-report.md
 
 Then open `.context/factory-recommendations.md`, approve what you want, and tell the agent to implement only those items.
 
+The report starts with **Factory Focus**: the short action list ranked by changed files, changed workspaces, repeated drift, returned drift, and repo-wide maintenance. Read that before the raw sensor sections. Dependency freshness is grouped by workspace so it becomes one maintenance decision instead of a long list of package chores.
+
+**Factory Learning Metrics** count PR-tied, repo-wide, new, repeated, returned, accepted, backlogged, and factory-improved findings. Treat the counts as a learning signal, not a score.
+
+**Behavior Proof** checks `tools/harness/behavior-proof.json` against the scoped harness templates. A present proof means the changed workspace has an existing product-behavior test slice in its harness template; it does not add a new gate by itself.
+
 ## Files in this folder
 
 | File                                         | Purpose                                                                         |
@@ -53,7 +59,7 @@ pnpm docs:factory:test
 
 - `pnpm sensor:factory-report` creates the sticky PR comment input.
 - `pnpm factory:ledger` refreshes finding counts in `LEDGER.md` without overwriting human classifications stored in the JSON `entries` block.
-- `pnpm factory:recommend --report <file>` writes `.context/factory-recommendations.md` for the recommendation-only agent pass.
+- `pnpm factory:recommend --report <file>` writes grouped, recommendation-only output to `.context/factory-recommendations.md`.
 
 ## Finding IDs
 

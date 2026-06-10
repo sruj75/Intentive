@@ -21,7 +21,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - `devices` — Device Registry, APNs token storage, idempotent registration
 - `gates` — Pre-Chat Gate state + device-aware `computeNextGate` (the `identity` composer calls `gates.nextGate(userId, device)` with inputs from cross-client repo, live device signal, and `devices.listDevicesForUser`; gates does not own `/me` shaping). See ADR-0005.
 - `agents` — Agent Instance Registry, Session Start calls to runtime
-- `routing` — `/agent` endpoint, JWT minting for runtime
+- `routing` — `/agent` endpoint; returns Routing with the **pass-through** Neon Auth `runtime_jwt` (never a CP-signed token — ADR-0002), enforces gate state server-side (`403` if a gate is unsatisfied), and surfaces a retryable `503` when Session Start can't reach the Agent Runtime
 - `notifications` — APNs client, Apple credentials, push delivery
 
 ## HTTP surface (public)

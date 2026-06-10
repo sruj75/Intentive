@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger } from "./ledger.mjs";
-import { parseReportInput } from "./parse-report.mjs";
+import { parseReportContext, parseReportInput } from "./parse-report.mjs";
 import { buildRecommendations, formatRecommendationsMarkdown } from "./recommend.mjs";
 
 const usage = `Intentive factory recommendations
@@ -36,10 +36,12 @@ if (isMainModule(import.meta.url)) {
     const reportPath = path.resolve(options.repo, options.report);
     const content = readFileSync(reportPath, "utf8");
     const findings = parseReportInput({ content });
+    const reportContext = parseReportContext(content);
     const ledger = readLedgerSafe(path.resolve(options.repo, options.ledger));
     const recommendations = buildRecommendations({
       findings,
       ledgerEntries: ledger.entries,
+      changedFiles: reportContext.changedFiles,
     });
     const output = formatRecommendationsMarkdown(recommendations, {
       source: path.relative(options.repo, reportPath),

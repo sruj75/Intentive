@@ -46,13 +46,13 @@ The Control Plane is the single writer of account truth. Clients render this sta
 : Control Plane PRD. Issues `#17`, `#23`, `#26`, `#27`, `#30`, `#49`, `#50` on [GitHub](https://github.com/sruj75/Intentive/issues).
 
 `src/main.ts`
-: Process entrypoint — composition root that wires JWKS verifier, Neon SQL, identity + devices + gates services, and the Hono app (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, `POST /devices/register`). Keep it construction-only.
+: Process entrypoint — composition root that wires JWKS verifier, Neon SQL, identity + devices + gates + agents services, Runtime Session Start client, and the Hono app (`GET /me`, `GET /agent`, `POST /consent`, `POST /sibling-invitation/skip`, `POST /devices/register`). Keep it construction-only.
 
 `src/index.ts`
 : Workspace library entry — re-exports config and contract samples for other packages; not the HTTP server boot path.
 
 `migrations/`
-: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
+: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27; `0004_agent_instances.sql` for Agent Instance Registry, #30). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
 
 [`docs/adr/0004-account-state-assembled-by-identity-composer.md`](docs/adr/0004-account-state-assembled-by-identity-composer.md)
 : ADR — `identity.resolveAccount` is the sole assembler of `AccountState`; `gates` exposes `nextGate`, not `/me` shaping.
@@ -74,11 +74,11 @@ src/domains/
 
 Domain responsibilities:
 
-- `identity` (**#23, partial**): JWT verification + `control_plane.users` resolution; `GET /me` HTTP handler (`ui/get-me.ts`, `ui/app.ts`). `resolveAccount` is the `AccountState` **composer** — it assembles `user_id` (identity), `next_gate` (gates, #26/#27), and `has_agent_instance` (agents, #30) by calling those domains' services and the token-free `devices.listDevicesForUser` read, rather than each domain owning the `/me` response. `has_agent_instance` remains an honest placeholder until #30.
+- `identity` (**#23/#30**): JWT verification + `control_plane.users` resolution; `GET /me` HTTP handler (`ui/get-me.ts`, `ui/app.ts`). `resolveAccount` is the `AccountState` **composer** — it assembles `user_id` (identity), `next_gate` (gates, #26/#27), and `has_agent_instance` (agents, #30) by calling those domains' services and the token-free `devices.listDevicesForUser` read, rather than each domain owning the `/me` response. `resolveRoutingContext` exposes the principal + gate slice for `GET /agent` without assembling full Account State.
 - `devices` (**#27**): Device Registry (`control_plane.devices`), APNs/FCM token storage, idempotent `POST /devices/register`, and the token-free `listDevicesForUser` read port for the identity composer.
 - `gates` (**#26/#27**): Cross-Client Gate persistence (Consent Primer, Sibling Invitation skip) and the pure `computeNextGate(inputs) → PreChatGateKind | null` sequencer (consent → sibling skip or observed sibling device → Desktop-only capture permission), exposed to the identity composer as `nextGate(userId, device)`; the idempotent writes `POST /consent` and `POST /sibling-invitation/skip`. **Identity** is satisfied by the auth boundary (a 200 from `GET /me` means signed in), so `computeNextGate` never returns `identity`. gates does not depend on `devices` — the composer gathers inputs. gates does not own `GET /me` shaping; the identity composer does (ADR-0004, ADR-0005).
-- `agents`: Agent Instance Registry, Session Start calls to the Agent Runtime, `has_agent_instance` truth.
-- `routing`: `GET /agent`, runtime JWT minting, Routing issuance.
+- `agents` (**#30**): Agent Instance Registry (`control_plane.agent_instances`, one row per `user_id`), Runtime Session Start client (`POST /internal/sessions/start`), `ensureAgentInstance` (idempotent get-or-create via live Session Start + local record), and `hasAgentInstance` read port for the identity composer. Registry stores `agent_instance_id` only — `ws_url` is re-derived from Session Start on every `GET /agent`.
+- `routing` (**#30**): `GET /agent` handler (`ui/get-agent.ts`); authenticates, enforces gate satisfaction server-side (`403`), calls `agents.ensureAgentInstance`, returns `GetAgentResponse` with pass-through Neon Auth `runtime_jwt` (ADR-0002 — never CP-signed). Surfaces retryable `503` when JWKS or Session Start is unavailable.
 - `notifications`: APNs client, Apple credentials, push delivery, `POST /internal/notifications/push` ingress.
 
 Shared package dependencies:
@@ -179,7 +179,7 @@ Security:
 
 Testing:
 
-- **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, gate write-handler tests).
-- **Repo tier:** real SQL against a disposable Neon branch per ADR-0003 (`test/users-repo.integration.test.mjs`, `test/user-gates-repo.integration.test.mjs`, `test/devices-repo.integration.test.mjs`; skips without `NEON_API_KEY` / `NEON_PROJECT_ID`).
-- **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`, `test/get-me-handler.test.mjs`, `test/post-device-register-handler.test.mjs`).
-- Still to cover: Session Start, push fan-out, and the no-proxy guardrail as those domains land (#30, #49).
+- **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, `test/agents-service.test.mjs`, `test/runtime-session-start.test.mjs`, gate write-handler tests).
+- **Repo tier:** real SQL against a disposable Neon branch per ADR-0003 (`test/users-repo.integration.test.mjs`, `test/user-gates-repo.integration.test.mjs`, `test/devices-repo.integration.test.mjs`, `test/agent-instances-repo.integration.test.mjs`; skips without `NEON_API_KEY` / `NEON_PROJECT_ID`).
+- **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`, `test/get-me-handler.test.mjs`, `test/get-agent-handler.test.mjs`, `test/post-device-register-handler.test.mjs`).
+- Still to cover: push fan-out and the no-proxy guardrail as those domains land (#49).
