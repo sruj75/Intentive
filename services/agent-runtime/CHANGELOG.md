@@ -6,6 +6,20 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Conversation History, reconnect snapshot, and history backfill** ([Issue #29]) —
+  dedicated `conversation` domain (ADR-0008) with Neon-backed `conversation_messages`,
+  `append` / `readSnapshot` projection, and migration `migrations/0002_conversation.sql`.
+  Connect returns the authoritative Session Snapshot in `hello_ok`; post-connect accepts
+  `history_backfill_request` and replies with `history_backfill_response` (ADR-0006
+  amended). `packages/protocol` exports the new wire events. User-authored ingress
+  (`user_message`) is transactionally projected into Conversation History together with
+  the `runtime_events` idempotency marker (ADR-0009); snapshot/backfill reads serialize
+  behind the per-`user_id` queue. Companion-message persistence and live outbound
+  delivery remain deferred to #36 and #41. Tests: `test/conversation-repo.integration.test.mjs`,
+  `test/project-ingress.test.mjs`, `test/post-connect-router.test.mjs`,
+  `test/session-snapshot-reader.test.mjs`,
+  `test/runtime-ingress-projection.integration.test.mjs`, plus extended connect/ws-handler
+  coverage.
 - **Sessions, ordering, and event ledger** ([Issue #28], in progress) — Neon-backed
   Agent Instance registry (`agent_instances`), append-only `runtime_events` idempotency
   ledger, per-`user_id` in-memory queue, and write-ahead ingest wiring
@@ -28,12 +42,19 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 - **Connection control plane** ([Issue #25], [PR #62]) — public WebSocket `connect`
   handshake, private `POST /internal/sessions/start`, and `src/main.ts` composition root.
   The internal API uses `Authorization: Bearer <secret>`; the successful handshake
-  returns `hello_ok` with an intentionally empty Session Snapshot until Conversation
-  History lands. Tests cover Session Start idempotency, Internal API auth/body rejection
+  returns `hello_ok` with a Session Snapshot (empty until #29 Conversation History
+  projection). Tests cover Session Start idempotency, Internal API auth/body rejection
   with no side effects, structured gateway errors, and a real WebSocket smoke path.
 
 ### Changed
 
+- **`src/main.ts` composition root** ([Issue #29]) — wires the `conversation` repo,
+  transactional ingress projection (`ingest.queriesFor` + `sql.transaction`), and
+  queue-serialized `readSnapshot` for connect/backfill.
+- **`gateway/service/connect.ts`, `gateway/ui/post-connect-router.ts`, and
+  `gateway/ui/ws-handler.ts`** ([Issue #29]) — connect emits the Session Snapshot
+  from `conversation.readSnapshot`; post-connect routes `history_backfill_request`
+  through the same reader; history-unavailable paths return `service_unavailable`.
 - **`src/main.ts` composition root** ([Issue #28]) — replaces the #25 in-memory Agent
   Instance registry with Neon-backed repos, wires the event ledger, per-user queue, and
   ingest pipeline for `user_message`, `context_snapshot`, and `session_end_marker`
