@@ -79,7 +79,7 @@ export type SessionEndMarker = z.infer<typeof session_end_marker>;
 export const history_backfill_request = z
   .object({
     type: z.literal("history_backfill_request"),
-    before_cursor: z.string(),
+    before_cursor: z.string().regex(/^\d+$/),
     limit: z.number().int().positive().optional(),
   })
   .strict();

@@ -11,3 +11,5 @@ export interface Sql {
     ...values: unknown[]
   ): Promise<Row[]>;
 }
+
+export type SqlQuery<Row = unknown> = Promise<Row[]>;

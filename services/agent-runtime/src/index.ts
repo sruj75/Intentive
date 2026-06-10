@@ -30,13 +30,13 @@ export {
   createInMemoryAgentInstanceRegistry,
 } from "./domains/sessions/repo/instance-registry.js";
 export type { AgentInstanceRegistry } from "./domains/sessions/repo/instance-registry.js";
-export type { Sql } from "./domains/sessions/repo/sql.js";
+export type { Sql, SqlQuery, TransactionalSql } from "./domains/sessions/repo/sql.js";
 export { createRuntimeIngressHandler } from "./domains/sessions/runtime/event-handler.js";
 export type { RuntimeIngressHandler } from "./domains/sessions/runtime/event-handler.js";
 export { createUserQueue } from "./domains/sessions/runtime/user-queue.js";
 export type { UserQueue } from "./domains/sessions/runtime/user-queue.js";
 export { createIngestEvent } from "./domains/sessions/service/ingest-event.js";
-export type { IngestEvent, RecordedRuntimeEvent } from "./domains/sessions/service/ingest-event.js";
+export type { IngestEvent } from "./domains/sessions/service/ingest-event.js";
 export { createStartSession } from "./domains/sessions/service/start-session.js";
 export type { StartSession } from "./domains/sessions/service/start-session.js";
 export { isRuntimeIngressEvent } from "./domains/sessions/types/event.js";

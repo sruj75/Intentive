@@ -60,23 +60,32 @@ export function createConnectHandler(deps: {
         return { response: invalidConnect, closeSocket: true };
       }
 
+      let session: GatewaySession | null;
       try {
         const principal = await deps.verifier.verify(parsed.data.auth_token);
-        const session = await deps.sessions.loadSessionByAuthSubject({
+        session = await deps.sessions.loadSessionByAuthSubject({
           authSubject: principal.user_id,
           clientKind: parsed.data.client_kind,
         });
-        if (!session) {
-          return {
-            response: {
-              type: "runtime_error",
-              code: "service_unavailable",
-              message: "Session has not been started.",
-            },
-            closeSocket: true,
-          };
-        }
+      } catch (error) {
+        return {
+          response: mapJwtVerificationErrorToRuntimeError(toJwtVerificationFailure(error)),
+          closeSocket: true,
+        };
+      }
 
+      if (!session) {
+        return {
+          response: {
+            type: "runtime_error",
+            code: "service_unavailable",
+            message: "Session has not been started.",
+          },
+          closeSocket: true,
+        };
+      }
+
+      try {
         return {
           response: {
             type: "hello_ok",
@@ -85,9 +94,13 @@ export function createConnectHandler(deps: {
           closeSocket: false,
           session,
         };
-      } catch (error) {
+      } catch {
         return {
-          response: mapJwtVerificationErrorToRuntimeError(toJwtVerificationFailure(error)),
+          response: {
+            type: "runtime_error",
+            code: "service_unavailable",
+            message: "Conversation history is temporarily unavailable.",
+          },
           closeSocket: true,
         };
       }

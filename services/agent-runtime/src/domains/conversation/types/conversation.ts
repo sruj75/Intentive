@@ -14,6 +14,8 @@ export interface ConversationEntry {
   readonly viaPostMessageBack: boolean;
 }
 
+export type ConversationQuery = Promise<unknown[]>;
+
 /**
  * The Conversation History store. A deep, two-method interface: `append` writes
  * one entry write-once; `readSnapshot` hides the whole Session Snapshot
@@ -21,6 +23,12 @@ export interface ConversationEntry {
  * `before_cursor` "older history exists" detection. See ADR-0006 / ADR-0008.
  */
 export interface ConversationRepo {
+  /**
+   * Returns the composable write-once append query. Composition roots can batch
+   * this with the Agent Runtime event ledger insert in one transaction.
+   */
+  appendQuery(entry: ConversationEntry): ConversationQuery;
+
   append(entry: ConversationEntry): Promise<void>;
 
   /**

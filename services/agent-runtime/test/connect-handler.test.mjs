@@ -91,6 +91,53 @@ test("connect handshake maps JWT verification failures to structured runtime err
   }
 });
 
+test("connect handshake maps Session Snapshot read failures to the history failure domain", async () => {
+  const handler = createConnectHandler({
+    sessions: sessionRegistry({
+      authSubject: "auth-sub-1",
+      userId: "00000000-0000-4000-8000-000000000001",
+      agentInstanceId: "agent_instance_1",
+    }),
+    verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    conversation: {
+      readSnapshot: async () => {
+        throw new Error("history unavailable");
+      },
+    },
+  });
+
+  const result = await handler.handle(validConnect);
+
+  assert.equal(result.closeSocket, true);
+  assert.deepEqual(result.response, {
+    type: "runtime_error",
+    code: "service_unavailable",
+    message: "Conversation history is temporarily unavailable.",
+  });
+});
+
+test("connect handshake still maps JWT failures through the auth taxonomy", async () => {
+  const handler = createConnectHandler({
+    sessions: sessionRegistry({
+      authSubject: "auth-sub-1",
+      userId: "00000000-0000-4000-8000-000000000001",
+      agentInstanceId: "agent_instance_1",
+    }),
+    verifier: { verify: async () => Promise.reject({ reason: "invalid_signature" }) },
+    conversation: {
+      readSnapshot: async () => {
+        throw new Error("must not read history after auth failure");
+      },
+    },
+  });
+
+  const result = await handler.handle(validConnect);
+
+  assert.equal(result.closeSocket, true);
+  assert.equal(result.response.type, "runtime_error");
+  assert.equal(result.response.code, "auth_failed");
+});
+
 test("pre-handshake non-connect events are rejected before JWT verification", async () => {
   let verifierCalls = 0;
   const handler = createConnectHandler({

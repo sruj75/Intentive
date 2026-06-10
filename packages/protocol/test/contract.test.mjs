@@ -107,6 +107,20 @@ test("history_backfill_request rejects bad limits and unknown keys", () => {
   assert.equal(unknownField.success, false);
 });
 
+test("history_backfill_request rejects malformed cursors at the protocol boundary", () => {
+  const valid = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+  });
+  assert.equal(valid.success, true);
+
+  const malformed = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "abc",
+  });
+  assert.equal(malformed.success, false);
+});
+
 test("history_backfill_request is a member of clientToRuntimeEvent", () => {
   const result = protocol.clientToRuntimeEvent.safeParse({
     type: "history_backfill_request",

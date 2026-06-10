@@ -174,6 +174,69 @@ test("post-handshake async handler failures are sent as runtime_error frames", a
   }
 });
 
+test("malformed post-handshake events return invalid_connect without closing the socket", async () => {
+  const server = new WebSocketServer({ port: 0 });
+  let seenEvent;
+  const connectHandler = createConnectHandler({
+    sessions: sessionRegistry("agent_instance_1"),
+    verifier: { verify: async () => ({ user_id: "user_1" }) },
+    conversation: emptyConversation,
+  });
+
+  server.on("connection", (socket) => {
+    attachGatewayWebSocketHandler(socket, connectHandler, (_session, event) => {
+      seenEvent = event;
+    });
+  });
+
+  await new Promise((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  assert.equal(typeof address, "object");
+  assert.notEqual(address, null);
+
+  const client = new WebSocket(`ws://127.0.0.1:${address.port}`);
+  try {
+    await new Promise((resolve) => client.once("open", resolve));
+    client.send(
+      JSON.stringify({
+        type: "connect",
+        auth_token: "jwt_1",
+        client_kind: "mobile",
+        client_version: "1.0.0",
+      }),
+    );
+    await new Promise((resolve) => client.once("message", resolve));
+
+    client.send(
+      JSON.stringify({
+        type: "history_backfill_request",
+        before_cursor: "not-a-seq",
+      }),
+    );
+
+    const raw = await new Promise((resolve) => client.once("message", resolve));
+    assert.deepEqual(JSON.parse(raw.toString()), {
+      type: "runtime_error",
+      code: "invalid_connect",
+      message: "WebSocket event is invalid for this connection state.",
+    });
+    assert.equal(client.readyState, WebSocket.OPEN);
+
+    client.send(
+      JSON.stringify({
+        type: "presence_update",
+        foreground: true,
+      }),
+    );
+
+    await waitFor(() => seenEvent?.type === "presence_update");
+    assert.deepEqual(seenEvent, { type: "presence_update", foreground: true });
+  } finally {
+    client.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 function sessionRegistry(agentInstanceId) {
   return {
     loadSessionByAuthSubject: async ({ authSubject, clientKind }) => ({
@@ -182,4 +245,12 @@ function sessionRegistry(agentInstanceId) {
       agentInstanceId,
     }),
   };
+}
+
+async function waitFor(predicate) {
+  for (let i = 0; i < 20; i += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  assert.equal(predicate(), true);
 }

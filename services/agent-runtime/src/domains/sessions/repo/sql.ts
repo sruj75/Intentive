@@ -9,3 +9,9 @@ export interface Sql {
     ...values: unknown[]
   ): Promise<Row[]>;
 }
+
+export type SqlQuery<Row = unknown> = Promise<Row[]>;
+
+export interface TransactionalSql extends Sql {
+  transaction(queries: SqlQuery[]): Promise<unknown[]>;
+}

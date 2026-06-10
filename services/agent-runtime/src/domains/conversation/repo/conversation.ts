@@ -21,10 +21,10 @@ interface ConversationRow {
 
 export function createConversationRepo(sql: Sql): ConversationRepo {
   return {
-    async append(entry: ConversationEntry) {
+    appendQuery(entry: ConversationEntry) {
       // Write-once: a replayed message_id for the same User is silently dropped.
       // `seq` and `at` are assigned by the database.
-      await sql`
+      return sql`
         INSERT INTO agent_runtime.conversation_messages
           (user_id, message_id, author, body, via_post_message_back)
         VALUES (
@@ -36,6 +36,10 @@ export function createConversationRepo(sql: Sql): ConversationRepo {
         )
         ON CONFLICT (user_id, message_id) DO NOTHING
       `;
+    },
+
+    async append(entry: ConversationEntry) {
+      await this.appendQuery(entry);
     },
 
     async readSnapshot(userId, before, limit = DEFAULT_LIMIT) {

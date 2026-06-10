@@ -96,7 +96,6 @@ async function handlePostConnectMessage(
         message: "WebSocket event is invalid for this connection state.",
       }),
     );
-    socket.close();
     return;
   }
 
