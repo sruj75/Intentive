@@ -447,11 +447,13 @@ function collectBoundaryImports(modules) {
 
   for (const [file, module] of modules.entries()) {
     if (!module.workspace) continue;
+    if (!isDeployableWorkspace(module.workspace.relRoot)) continue;
 
     for (const imported of module.imports) {
       const targetWorkspace = modules.get(imported)?.workspace;
       if (!targetWorkspace) continue;
       if (targetWorkspace.relRoot === module.workspace.relRoot) continue;
+      if (!isDeployableWorkspace(targetWorkspace.relRoot)) continue;
 
       findings.push({
         from: file,
@@ -463,6 +465,10 @@ function collectBoundaryImports(modules) {
   }
 
   return findings.sort(compareByFields(["from", "to"]));
+}
+
+function isDeployableWorkspace(relRoot) {
+  return relRoot.startsWith("apps/") || relRoot.startsWith("services/");
 }
 
 function collectTouchedPublicExports({
