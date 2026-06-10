@@ -11,9 +11,18 @@ export type {
   ConnectHandlerResult,
   GatewaySession,
   GatewaySessionRegistry,
+  SessionSnapshotReader,
 } from "./domains/gateway/service/connect.js";
+export { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 export { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
+export type { GatewayEventHandler } from "./domains/gateway/ui/ws-handler.js";
 export { createInternalApp } from "./domains/internal/ui/app.js";
+export { createConversationRepo } from "./domains/conversation/repo/conversation.js";
+export { toConversationEntry } from "./domains/conversation/service/project-ingress.js";
+export type {
+  ConversationEntry,
+  ConversationRepo,
+} from "./domains/conversation/types/conversation.js";
 export { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 export type { EventLedger } from "./domains/sessions/repo/event-ledger.js";
 export {

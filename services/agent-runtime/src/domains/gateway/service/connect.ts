@@ -3,6 +3,7 @@ import {
   safeParseClientToRuntimeEvent,
   type RuntimeError,
   type RuntimeToClientEvent,
+  type SessionSnapshot,
 } from "@intentive/protocol";
 import type { JwtVerificationFailure, JwtVerifier } from "@intentive/providers/auth";
 
@@ -31,6 +32,16 @@ export interface ConnectHandler {
   handle(raw: unknown): Promise<ConnectHandlerResult>;
 }
 
+/**
+ * Reads a Session Snapshot for a User. The connect handshake calls it with no
+ * cursor (the newest window); History Backfill calls it with a cursor for the
+ * older page. Injected so the gateway never reaches into the `conversation`
+ * domain directly. See ADR-0008 / ADR-0006.
+ */
+export interface SessionSnapshotReader {
+  readSnapshot(userId: string, before?: string, limit?: number): Promise<SessionSnapshot>;
+}
+
 const invalidConnect: RuntimeError = {
   type: "runtime_error",
   code: "invalid_connect",
@@ -40,6 +51,7 @@ const invalidConnect: RuntimeError = {
 export function createConnectHandler(deps: {
   verifier: JwtVerifier;
   sessions: GatewaySessionRegistry;
+  conversation: SessionSnapshotReader;
 }): ConnectHandler {
   return {
     async handle(raw: unknown): Promise<ConnectHandlerResult> {
@@ -68,8 +80,7 @@ export function createConnectHandler(deps: {
         return {
           response: {
             type: "hello_ok",
-            // TODO(#29): Replace the intentionally empty projection with Conversation History.
-            session_snapshot: { messages: [], before_cursor: null },
+            session_snapshot: await deps.conversation.readSnapshot(session.userId),
           },
           closeSocket: false,
           session,

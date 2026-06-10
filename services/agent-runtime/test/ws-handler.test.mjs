@@ -5,11 +5,16 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { attachGatewayWebSocketHandler, createConnectHandler } from "../dist/index.js";
 
+const emptyConversation = {
+  readSnapshot: async () => ({ messages: [], before_cursor: null }),
+};
+
 test("a real WebSocket connection receives hello_ok after connect", async () => {
   const server = new WebSocketServer({ port: 0 });
   const connectHandler = createConnectHandler({
     sessions: sessionRegistry("agent_instance_1"),
     verifier: { verify: async () => ({ user_id: "user_1" }) },
+    conversation: emptyConversation,
   });
 
   server.on("connection", (socket) => {
@@ -57,6 +62,7 @@ test("post-handshake client events are parsed and delegated without re-running c
         return { user_id: "user_1" };
       },
     },
+    conversation: emptyConversation,
   });
 
   server.on("connection", (socket) => {
@@ -120,6 +126,7 @@ test("post-handshake async handler failures are sent as runtime_error frames", a
   const connectHandler = createConnectHandler({
     sessions: sessionRegistry("agent_instance_1"),
     verifier: { verify: async () => ({ user_id: "user_1" }) },
+    conversation: emptyConversation,
   });
 
   server.on("connection", (socket) => {

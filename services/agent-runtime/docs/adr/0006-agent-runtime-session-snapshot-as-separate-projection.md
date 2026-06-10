@@ -60,7 +60,7 @@ What changed the call:
 Wire shape, deliberately reuse-heavy to minimise contract churn while there is no UI consumer yet to validate the shape:
 
 - Client → Runtime: `history_backfill_request = { type, before_cursor: string, limit?: number }` — a cursor and an optional page size, nothing else.
-- Runtime → Client: reuse the **existing `session_snapshot` shape** (`{ messages: SessionMessage[], before_cursor }`) for the response. A backfill page _is_ a snapshot positioned further back: same projection, same `SessionMessage`, same cursor semantics. No new message shape.
+- Runtime → Client: `history_backfill_response = { type, session_snapshot }`, embedding the **existing `session_snapshot` shape** (`{ messages: SessionMessage[], before_cursor }`) wholesale — exactly as `hello_ok` embeds it. A backfill page _is_ a snapshot positioned further back: same projection, same `SessionMessage`, same cursor semantics, no new _snapshot/message_ shape. The thin `type`-tagged envelope is required only because every Runtime → Client frame is a member of the `runtimeToClientEvent` discriminated union and so must carry a `type` discriminator; a bare `session_snapshot` object is not a sendable frame.
 
 Ordering and cursor mechanics: a database-assigned monotonic sequence (`seq`) per appended message is the stable total sort order and the cursor basis; `at` (the server record time — not the client `sent_at`) is for display. `before_cursor` is the `seq` of the oldest message in the returned window, non-null when older history exists.
 
