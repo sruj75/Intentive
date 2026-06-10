@@ -76,8 +76,11 @@ The authoritative read projection of Conversation History returned in `hello_ok.
 _Avoid_: reconnect payload, hello payload, message backlog
 
 **Session Message**:
-A single uniform timeline entry inside a Session Snapshot, built for rendering: `{ message_id, author: "user" | "companion", body, at (datetime), via_post_message_back: boolean }`. Distinct from the live `user_message`/`companion_message` wire events — it is a history projection with its own axis of change. `via_post_message_back` is always present and `false` for user-authored entries.
-_Avoid_: reusing user_message/companion_message for history, timeline event, history row
+A single uniform timeline entry inside a Session Snapshot, built for rendering: `{ message_id, author: "user" | "companion", body, at (datetime), via_post_message_back: boolean }`. Distinct from the live `user_message`/`companion_message` wire events — it is a history projection with its own axis of change. `via_post_message_back` is always present and `false` for user-authored entries. `at` is the **server record time** (when the Runtime durably accepted the message), not the client's `sent_at`; ordering uses a monotonic per-message sequence so equal `at` values never tie.
+
+**History Backfill**:
+A **read** request for the page of Conversation History older than a cursor, served by the same projection as the reconnect snapshot via a generalized `readSnapshot(userId, before?)`. The response reuses the **Session Snapshot** shape. Backfill is a pure read: it does **not** enter the `runtime_events` ledger or the per-`user_id` ordering queue (those serialize state-mutating ingress only). See ADR-0006 (Amendment).
+_Avoid_: pagination event (too generic), load-more (UI term), history sync
 
 ## Relationships
 
@@ -117,3 +120,5 @@ Decided 2026-06-09. Everything the Runtime persists lands in Neon, but it splits
 - **Agent mid-turn state (Checkpoints)** — opaque per-step serialized state, managed by the **Persistence Adapter** over LangGraph's Postgres checkpoint store.
 
 The event log is deliberately **not** a VFS file: idempotency (unique constraint) and ordering are relational powers a path-keyed store cannot give, and they are exactly what the per-user serialization invariant depends on. OpenClaw splits the same way (transcript dir vs workspace files vs agent state); we back all three with Neon instead of local disk. `runtime_events` (#28) touches only the first concern.
+
+This grouping is by **storage family** (relational, Neon, shell-owned), **not** by module ownership. Within the event/conversation log family, `runtime_events` and `conversation_messages` live in **different domains** because they hide independently-varying decisions: `sessions` owns ordering + idempotency (`runtime_events`), and `conversation` owns the readable transcript + Session Snapshot projection (`conversation_messages`). See ADR-0008. Do not read "one storage family" as "one domain."
