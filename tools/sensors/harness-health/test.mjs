@@ -12,6 +12,7 @@ const repo = mkdtempSync(path.join(tmpdir(), "intentive-harness-health-"));
 try {
   write("CONTEXT-MAP.md", "**Companion**: Canonical term.\n_Avoid_: bot, assistant\n");
   write("packages/CONTEXT.md", "");
+  write("apps/mobile/CONTEXT.md", "**Launch Destination**: Canonical term.\n_Avoid_: screen\n");
   writePackage("packages/protocol", {
     name: "@intentive/protocol",
     exports: {
@@ -77,6 +78,10 @@ try {
       "",
     ].join("\n"),
   );
+  write(
+    "apps/mobile/app/index.tsx",
+    "// expo-router screen entry\nexport default function Index() { return null; }\n",
+  );
 
   git(["init"]);
   git(["config", "user.email", "sensor@example.test"]);
@@ -97,13 +102,15 @@ try {
   assert.match(output, /`apps\/mobile\/src\/changed\.ts`/);
   assert.match(output, /apps\/mobile\/test\/scaffold\.test\.mjs/);
   assert.match(output, /apps\/mobile\/src\/large\.ts`: 261 lines \(threshold 250\)/);
-  assert.match(output, /packages\/protocol\/src\/index\.ts`: fan-in 3/);
+  assert.match(output, /packages\/protocol\/src\/events\.ts`: fan-in 1/);
+  assert.doesNotMatch(output, /packages\/protocol\/src\/index\.ts`: fan-in/);
   assert.match(output, /apps\/mobile\/src\/ignored\.ts:1`: eslint-disable/);
   assert.match(output, /packages\/protocol\/src\/events\.ts:3`: "bot" -> "Companion"/);
   // Allowlisted technical phrase ("assistant cloud") is suppressed; the lone
   // "assistant" on the next line is still reported as real drift.
   assert.match(output, /apps\/mobile\/src\/assistant-usage\.ts:2`: "assistant" -> "Companion"/);
   assert.doesNotMatch(output, /apps\/mobile\/src\/assistant-usage\.ts:1`/);
+  assert.doesNotMatch(output, /apps\/mobile\/app\/index\.tsx.*"screen"/);
   assert.match(output, /`untestedEvent` from `packages\/protocol\/src\/events\.ts`/);
   assert.match(output, /Dependency Freshness/);
   assert.match(output, /Advisory: use this report to steer review attention/);

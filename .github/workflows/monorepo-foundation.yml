@@ -49,6 +49,15 @@ jobs:
       - name: Harness health report contract
         run: pnpm sensor:harness-health:test
 
+      - name: Factory report contract
+        run: pnpm sensor:factory-report:test
+
+      - name: Factory self-improvement contract
+        run: pnpm factory:test
+
+      - name: Factory docs integrity contract
+        run: pnpm docs:factory:test
+
       - name: CONTEXT vocabulary docs contract
         run: pnpm docs:context:test
 

@@ -1,4 +1,4 @@
-name: harness-health
+name: factory-report
 
 on:
   pull_request:
@@ -36,19 +36,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build harness health report
-        run: pnpm sensor:harness-health --format markdown --base origin/main --output harness-health.md
+      - name: Build factory report
+        run: pnpm sensor:factory-report --format markdown --base origin/main --ledger docs/factory/LEDGER.md --output factory-report.md
 
       - name: Add job summary
-        run: cat harness-health.md >> "$GITHUB_STEP_SUMMARY"
+        run: cat factory-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post sticky PR comment
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require("fs");
-            const marker = "<!-- intentive:harness-health -->";
-            const body = fs.readFileSync("harness-health.md", "utf8");
+            const marker = "<!-- intentive:factory-report -->";
+            const legacyMarker = "<!-- intentive:harness-health -->";
+            const body = fs.readFileSync("factory-report.md", "utf8");
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
 
@@ -58,7 +59,9 @@ jobs:
               issue_number,
               per_page: 100,
             });
-            const existing = comments.find((comment) => comment.body?.includes(marker));
+            const existing = comments.find(
+              (comment) => comment.body?.includes(marker) || comment.body?.includes(legacyMarker)
+            );
 
             if (existing) {
               await github.rest.issues.updateComment({

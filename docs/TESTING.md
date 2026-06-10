@@ -12,6 +12,11 @@ pnpm harness --scope apps/mobile
 pnpm sensor:impact-radius
 pnpm sensor:contract-drift
 pnpm sensor:harness-health
+pnpm sensor:factory-report
+pnpm factory:ledger
+pnpm factory:recommend --report factory-report.md
+pnpm factory:test
+pnpm docs:factory:test
 pnpm docs:agents:test
 pnpm typecheck
 pnpm lint
@@ -25,12 +30,30 @@ pnpm coverage
 - `pnpm sensor:impact-radius` is the preferred pre-review triage sensor. It reports coupling and affected workspace hints for the current change set, and remains advisory in CI.
 - `pnpm sensor:contract-drift` is a hard-gated architecture sensor. It fails when deployables redefine `@intentive/protocol` wire events or `@intentive/api-contract` HTTP contracts locally.
 - `pnpm sensor:harness-health` emits the advisory Ready-for-review drift report used by the PR sticky comment workflow. Treat the sticky comment as a factory feedback loop: fix current drift when it belongs in the change, improve the harness when the finding repeats, or backlog/accept the finding with rationale.
+- `pnpm sensor:factory-report` aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and prints the factory-steward classification table for material findings.
+- `pnpm factory:ledger` refreshes finding counts in `docs/factory/LEDGER.md` from the current change set or a saved report. It preserves human statuses such as accepted, backlogged, and factory-improved.
+- `pnpm factory:recommend --report <file>` reads a saved sticky comment or factory report, compares it against the ledger, and writes `.context/factory-recommendations.md` for the recommendation-only Conductor agent pass described in `docs/factory/SELF-IMPROVEMENT.md`.
+- `pnpm factory:test` runs fixture tests for finding IDs, ledger updates, and recommendation generation.
+- `pnpm docs:factory:test` fixture-tests the structural contracts for `docs/factory/` files that run inside `pnpm docs:check`.
 - `pnpm docs:agents:test` fixture-tests the structural `AGENTS.md` / `CLAUDE.md` integrity checker that runs inside `pnpm docs:check`.
 - `pnpm typecheck` runs every workspace typecheck through Turbo.
 - `pnpm lint` checks documentation links and architecture lint rules (TS).
 - `pnpm lint:architecture:rust` runs the custom Rust layer + structure checker (`tools/linters/rust-architecture/`) over every `apps/*/src-tauri/src/` tree as a hard gate. ESLint never parses `.rs`, so this is how the layered-domain rule reaches the Rust side. The fixture tests for both checkers run via `pnpm lint:architecture:test`.
 - `pnpm test` runs every workspace with a `test` script, including desktop Vitest, desktop Rust tests, shared contract tests, architecture lint tests, and scaffold tests for deployables that are not implemented yet.
 - `pnpm coverage` runs desktop Vitest coverage and writes LCOV output under `coverage/apps/desktop/`.
+
+## Sensor Timing
+
+| Moment                           | Run                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| While diagnosing                 | Small focused tests, typecheck for the touched workspace, relevant sensor scripts |
+| Before handoff                   | `pnpm harness`                                                                    |
+| Before review on broad changes   | `pnpm sensor:impact-radius` plus `pnpm harness`                                   |
+| When touching shared contracts   | `pnpm sensor:contract-drift`, package tests, then `pnpm harness`                  |
+| When changing architecture rules | Architecture linter fixture tests, affected lints, then `pnpm harness`            |
+| In CI                            | Re-run the deterministic factory on clean infrastructure                          |
+
+Factory philosophy and how to read harness-health signals: [`docs/FACTORY.md`](FACTORY.md). Self-improvement loop: [`docs/factory/README.md`](factory/README.md).
 
 ## Desktop
 
@@ -165,6 +188,7 @@ vertical slices land.
 ## CI Expectations
 
 - `.github/workflows/monorepo-foundation.yml` is the root PR gate. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness` and includes typecheck, lint, format check, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests.
+- `.github/workflows/harness-health.yml` posts the non-blocking factory report sticky comment on non-draft pull requests. It uses `pnpm sensor:factory-report`, which folds impact-radius and harness-health into one review handoff and includes the Fixed now / Factory improved / Backlogged / Accepted classification prompt.
 - `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite (including the opt-in Neon repo integration test when repository secrets are set) on pull requests that touch `services/control-plane/` or its shared-package dependencies.
 - `.github/workflows/desktop-ci.yml` runs desktop frontend and Rust checks when desktop-relevant paths change.
 - `.github/workflows/desktop-audit.yml` runs dependency audits for pnpm and Cargo.

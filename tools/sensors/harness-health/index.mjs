@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const parser = require("@typescript-eslint/parser");
@@ -42,6 +43,7 @@ const vocabularyAllowlist = [
   /@assistant-ui[\w/-]*/i, // the assistant-ui runtime library
   /assistant[-\s]cloud/i, // the assistant-cloud integration the mobile app stubs out
   /neon\s+api/i, // Neon's REST API, distinct from our Control Plane
+  /\bassistant-ui\b/i, // npm package and test references
 ];
 
 const usage = `Intentive harness health sensor
@@ -61,24 +63,26 @@ Options:
   --help             Show this help.
 `;
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  if (options.help) {
-    console.log(usage);
-    process.exit(0);
-  }
+if (isMainModule(import.meta.url)) {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      console.log(usage);
+      process.exit(0);
+    }
 
-  const report = analyzeHarnessHealth(options);
-  const output = formatMarkdownReport(report);
-  if (options.output) {
-    const outPath = path.resolve(options.repo, options.output);
-    mkdirSync(path.dirname(outPath), { recursive: true });
-    writeFileSync(outPath, output);
+    const report = analyzeHarnessHealth(options);
+    const output = formatMarkdownReport(report);
+    if (options.output) {
+      const outPath = path.resolve(options.repo, options.output);
+      mkdirSync(path.dirname(outPath), { recursive: true });
+      writeFileSync(outPath, output);
+    }
+    console.log(output);
+  } catch (error) {
+    console.error(`harness-health: ${error.message}`);
+    process.exit(1);
   }
-  console.log(output);
-} catch (error) {
-  console.error(`harness-health: ${error.message}`);
-  process.exit(1);
 }
 
 export function analyzeHarnessHealth({ repo = process.cwd(), base = "HEAD" } = {}) {
@@ -273,8 +277,12 @@ function buildReverseImports(modules) {
 function collectHighFanIn(reverseImports) {
   return [...reverseImports.entries()]
     .map(([file, importers]) => ({ file, fanIn: importers.size }))
-    .filter((entry) => entry.fanIn > 0)
+    .filter((entry) => entry.fanIn > 0 && !isSharedPackageEntrypoint(entry.file))
     .sort((left, right) => right.fanIn - left.fanIn || left.file.localeCompare(right.file));
+}
+
+function isSharedPackageEntrypoint(file) {
+  return /^packages\/[^/]+\/src\/index\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(file);
 }
 
 function collectSuppressions(repoRoot, sourceFiles) {
@@ -331,6 +339,7 @@ function collectForbiddenTerms(repoRoot, sourceFiles) {
         const match = term.pattern.exec(lines[lineIndex]);
         if (!match) continue;
         if (isVocabularyAllowlisted(lines[lineIndex], match)) continue;
+        if (isVocabularyPathAllowlisted(file, term.forbidden, term.canonical)) continue;
 
         findings.push({
           file,
@@ -387,28 +396,26 @@ function collectDependencyFreshness(repoRoot) {
     timeout: 30000,
   });
 
-  if (!result.stdout.trim()) {
+  const stdout = result.stdout?.trim() ?? "";
+  if (!stdout || stdout.startsWith("[ERR_") || stdout.startsWith("ERR_")) {
     return {
       available: false,
-      reason: firstLine(result.stderr) || `pnpm outdated exited ${result.status ?? "unknown"}`,
+      reason:
+        firstLine(result.stderr) ||
+        firstLine(stdout) ||
+        `pnpm outdated exited ${result.status ?? "unknown"}`,
       outdated: [],
     };
   }
 
   try {
-    const parsed = JSON.parse(result.stdout);
-    const entries = Array.isArray(parsed) ? parsed : Object.values(parsed).flat();
+    const parsed = JSON.parse(stdout);
     return {
       available: true,
       reason: null,
-      outdated: entries
-        .map((entry) => ({
-          packageName: entry.packageName ?? entry.name ?? entry.package ?? "(unknown)",
-          current: entry.current ?? entry.currentVersion ?? "?",
-          latest: entry.latest ?? entry.latestVersion ?? "?",
-          workspace: entry.dependentPackageName ?? entry.path ?? entry.location ?? "workspace",
-        }))
-        .sort(compareByFields(["workspace", "packageName"])),
+      outdated: normalizeOutdatedEntries(parsed, repoRoot).sort(
+        compareByFields(["workspace", "packageName"]),
+      ),
     };
   } catch (error) {
     return {
@@ -417,6 +424,35 @@ function collectDependencyFreshness(repoRoot) {
       outdated: [],
     };
   }
+}
+
+function normalizeOutdatedEntries(parsed, repoRoot) {
+  if (Array.isArray(parsed)) {
+    return parsed.map((entry) => normalizeOutdatedEntry(entry, repoRoot));
+  }
+
+  return Object.entries(parsed).map(([packageName, info]) =>
+    normalizeOutdatedEntry({ packageName, ...info }, repoRoot),
+  );
+}
+
+function normalizeOutdatedEntry(entry, repoRoot) {
+  const dependent = entry.dependentPackages?.[0];
+  let workspace = entry.dependentPackageName ?? entry.path ?? entry.location ?? "workspace";
+
+  if (dependent?.location) {
+    const relative = path.relative(repoRoot, dependent.location).replace(/\\/g, "/");
+    workspace = relative && !relative.startsWith("..") ? relative : (dependent.name ?? workspace);
+  } else if (dependent?.name) {
+    workspace = dependent.name;
+  }
+
+  return {
+    packageName: entry.packageName ?? entry.name ?? entry.package ?? "(unknown)",
+    current: entry.current ?? entry.currentVersion ?? "?",
+    latest: entry.latest ?? entry.latestVersion ?? "?",
+    workspace,
+  };
 }
 
 function collectPublicExports(workspaces, modules, sourceFileSet) {
@@ -648,7 +684,7 @@ function runGit(repoRoot, args) {
   return result.stdout;
 }
 
-function formatMarkdownReport(report) {
+export function formatMarkdownReport(report) {
   const lines = [];
 
   lines.push("<!-- intentive:harness-health -->");
@@ -747,6 +783,32 @@ function isVocabularyAllowlisted(line, match) {
   return false;
 }
 
+function isVocabularyPathAllowlisted(file, forbidden, canonical) {
+  const term = forbidden.toLowerCase();
+
+  if (term === "screen" && canonical === "Launch Destination") {
+    return (
+      /^apps\/mobile\/(?:app\/|test\/)/.test(file) ||
+      /^apps\/mobile\/src\/domains\/.+\/ui\//.test(file)
+    );
+  }
+
+  if (term === "assistant") {
+    if (/^apps\/mobile\/test\//.test(file)) return true;
+    if (file.includes("/prompt.rs")) return true;
+  }
+
+  if (term === "the agent" && file.startsWith("apps/desktop/src-tauri/")) {
+    return true;
+  }
+
+  if (term === "the runtime" && (isTestFile(file) || file.includes("/test/"))) {
+    return true;
+  }
+
+  return false;
+}
+
 function intentivePackageName(spec) {
   const match = spec.match(/^(@intentive\/[^/]+)/);
   return match?.[1] ?? null;
@@ -809,4 +871,8 @@ function compareByFields(fields) {
 
 function toRepoPath(repoRoot, absPath) {
   return path.relative(repoRoot, absPath).replace(/\\/g, "/");
+}
+
+function isMainModule(metaUrl) {
+  return process.argv[1] && fileURLToPath(metaUrl) === path.resolve(process.argv[1]);
 }

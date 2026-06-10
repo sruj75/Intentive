@@ -79,6 +79,14 @@ try {
     output,
     /services\/agent-runtime\/src\/cross\.ts \(services\/agent-runtime\) -> apps\/mobile\/src\/index\.ts \(apps\/mobile\)/,
   );
+  assert.doesNotMatch(
+    output,
+    /apps\/mobile\/src\/index\.ts \(apps\/mobile\) -> packages\/protocol/,
+  );
+  assert.doesNotMatch(
+    output,
+    /services\/agent-runtime\/src\/index\.ts \(services\/agent-runtime\) -> packages\/protocol/,
+  );
   assert.match(output, /packages\/protocol\/src\/events\.ts \(packages\/protocol\): connect/);
   assert.match(output, /apps\/mobile: .*packages\/protocol review hint/);
   assert.match(output, /apps\/desktop: .*depends on @intentive\/protocol/);
