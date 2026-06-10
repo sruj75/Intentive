@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile, readlink } from "node:fs/promises";
 import path from "node:path";
 
 const ignoredDirs = new Set([
@@ -95,12 +95,12 @@ export async function checkAgentDocs({ repoRoot = process.cwd() } = {}) {
   }
 
   for (const relPath of claudeDocs) {
-    const content = await readRequiredFile(path.join(repoRoot, relPath), relPath, failures);
-    if (content === null) continue;
-
-    if (content.trim() !== "@AGENTS.md") {
-      failures.push(`${relPath} must contain exactly one pointer line: @AGENTS.md`);
-    }
+    await assertClaudeSymlink({
+      repoRoot,
+      relPath,
+      agentDocs,
+      failures,
+    });
   }
 
   return {
@@ -135,7 +135,7 @@ async function findNamedFiles(repoRoot, fileName) {
         continue;
       }
 
-      if (entry.isFile() && entry.name === fileName) {
+      if ((entry.isFile() || entry.isSymbolicLink()) && entry.name === fileName) {
         results.push(toPosix(path.relative(repoRoot, path.join(dir, entry.name))));
       }
     }
@@ -143,6 +143,41 @@ async function findNamedFiles(repoRoot, fileName) {
 
   await walk(repoRoot);
   return results.sort();
+}
+
+async function assertClaudeSymlink({ repoRoot, relPath, agentDocs, failures }) {
+  const absPath = path.join(repoRoot, relPath);
+  let stat;
+  try {
+    stat = await lstat(absPath);
+  } catch {
+    failures.push(`${relPath} missing`);
+    return;
+  }
+
+  if (!stat.isSymbolicLink()) {
+    failures.push(`${relPath} must be a symlink to sibling AGENTS.md`);
+    return;
+  }
+
+  let target;
+  try {
+    target = await readlink(absPath);
+  } catch {
+    failures.push(`${relPath} symlink target could not be read`);
+    return;
+  }
+
+  const normalizedTarget = path.posix.normalize(toPosix(target));
+  if (normalizedTarget !== "AGENTS.md") {
+    failures.push(`${relPath} must point to sibling AGENTS.md, found ${target}`);
+    return;
+  }
+
+  const siblingAgents = toPosix(path.posix.join(path.posix.dirname(relPath), normalizedTarget));
+  if (!agentDocs.includes(siblingAgents)) {
+    failures.push(`${relPath} points to ${siblingAgents}, but that AGENTS.md is missing`);
+  }
 }
 
 async function listStableChildren(repoRoot, parentDirs) {

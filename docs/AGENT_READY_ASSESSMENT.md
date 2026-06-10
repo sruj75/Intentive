@@ -33,7 +33,7 @@ Agents can work productively here with human oversight on most changes. Progress
 - **Commit count:** 98 | **Contributors:** 2
 - **Source files:** 190 | **Test files:** 60 (~31.6% test-to-source file ratio)
 - **CI/CD:** GitHub Actions — `monorepo-foundation.yml` (`pnpm harness:ci`), `desktop-ci.yml`, `desktop-audit.yml`, `coverage.yml`, `harness-health.yml`, deploy workflows
-- **Agent entry:** root `AGENTS.md` (66 lines) + **6** nested `AGENTS.md`; `CLAUDE.md` present (1-line `@AGENTS.md` import, currently untracked)
+- **Agent entry:** root `AGENTS.md` (66 lines) + **6** nested `AGENTS.md`; `CLAUDE.md` companions are symlinks to sibling `AGENTS.md` files
 - **Lint/format:** ESLint 9 + `@intentive/eslint-plugin-architecture`, Prettier, Husky + lint-staged, Rust architecture linter
 - **README:** 34 lines — delegates to `AGENTS.md`, `CONTEXT-MAP.md`, `ARCHITECTURE.md`
 - **Reproducibility:** `.devcontainer/devcontainer.json` (Node 20, pnpm, Rust, Tauri Linux deps)
