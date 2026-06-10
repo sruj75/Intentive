@@ -38,6 +38,14 @@ _Avoid_: Agent Instance Creation + Conversation Start Trigger as separate calls,
 The one-time, idempotent-per-User signal that tells the Agent Runtime to begin the first conversation. Fires as part of **Session Start**, not as a separate call.
 _Avoid_: standalone endpoint, client-issued trigger, repeated triggers across reconnects
 
+**Agent Instance Registry**:
+The Control Plane's own record that a User has provisioned an **Agent Instance** — one row per `user_id`, written idempotently the first time **Session Start** succeeds. It exists so `GET /me` can answer `has_agent_instance` cheaply and independently of Agent Runtime availability; the Control Plane never phones the Runtime to answer `/me`. The Agent Runtime owns the authoritative instance and its lifecycle; this registry is the Control Plane's local denormalized copy of "this User has ever provisioned."
+_Avoid_: agent table, session table, live-session tracker
+
+**has_agent_instance**:
+The `Account State` field meaning **"this User has ever provisioned an Agent Instance"** (i.e. has entered chat at least once), read from the **Agent Instance Registry**. It is _not_ a liveness signal: `true` does not promise a running session right now — connection liveness is confirmed only at the Agent Runtime's WebSocket handshake. Once `true`, it stays `true` (v1 has no de-provisioning).
+_Avoid_: has live session, is connected, session active
+
 **Push Notification**:
 An APNs (or later FCM) push delivered to a User's device(s). Always originates from **Post-Message-Back**. The Agent Runtime does not call APNs directly — it asks the Control Plane, which owns device tokens and Apple credentials.
 _Avoid_: in-app banner, toast, transport ping
