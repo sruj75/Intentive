@@ -1,14 +1,23 @@
-import { safeParseClientToRuntimeEvent, type ClientToRuntimeEvent } from "@intentive/protocol";
+import {
+  safeParseClientToRuntimeEvent,
+  type ClientToRuntimeEvent,
+  type RuntimeToClientEvent,
+} from "@intentive/protocol";
 import type { RawData, WebSocket } from "ws";
 
 import type { ConnectHandler, GatewaySession } from "../service/connect.js";
 
-type PostConnectEvent = Exclude<ClientToRuntimeEvent, { type: "connect" }>;
+export type PostConnectEvent = Exclude<ClientToRuntimeEvent, { type: "connect" }>;
 
+/**
+ * Handles one post-connect inbound event. May return a single
+ * runtime→client event to send straight back (e.g. a History Backfill response);
+ * returning nothing means the event was handled without a direct reply.
+ */
 export type GatewayEventHandler = (
   session: GatewaySession,
   event: PostConnectEvent,
-) => Promise<void> | void;
+) => Promise<RuntimeToClientEvent | void> | RuntimeToClientEvent | void;
 
 export function attachGatewayWebSocketHandler(
   socket: WebSocket,
@@ -87,11 +96,13 @@ async function handlePostConnectMessage(
         message: "WebSocket event is invalid for this connection state.",
       }),
     );
-    socket.close();
     return;
   }
 
-  await onEvent(session, parsed.data);
+  const response = await onEvent(session, parsed.data);
+  if (response) {
+    socket.send(JSON.stringify(response));
+  }
 }
 
 function parseFrame(data: RawData): unknown {

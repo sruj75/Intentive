@@ -71,6 +71,20 @@ export const session_end_marker = z
   .strict();
 export type SessionEndMarker = z.infer<typeof session_end_marker>;
 
+// A read request for the page of Conversation History older than `before_cursor`
+// (the opaque cursor previously returned in a `session_snapshot`). The response
+// reuses the `session_snapshot` shape — a backfill page is just a snapshot
+// positioned further back. `limit` is an optional page size. See ADR-0006
+// (Amendment: backfill is built in v1).
+export const history_backfill_request = z
+  .object({
+    type: z.literal("history_backfill_request"),
+    before_cursor: z.string().regex(/^\d+$/),
+    limit: z.number().int().positive().optional(),
+  })
+  .strict();
+export type HistoryBackfillRequest = z.infer<typeof history_backfill_request>;
+
 export const clientToRuntimeEvent = z.discriminatedUnion("type", [
   connect,
   user_message,
@@ -78,6 +92,7 @@ export const clientToRuntimeEvent = z.discriminatedUnion("type", [
   delivery_ack,
   context_snapshot,
   session_end_marker,
+  history_backfill_request,
 ]);
 export type ClientToRuntimeEvent = z.infer<typeof clientToRuntimeEvent>;
 
@@ -118,6 +133,19 @@ export const hello_ok = z
   .strict();
 export type HelloOk = z.infer<typeof hello_ok>;
 
+// The response to a `history_backfill_request`: the page of Conversation History
+// older than the requested cursor. It reuses the `session_snapshot` shape
+// wholesale (a backfill page is just a snapshot positioned further back),
+// embedding it under a `type` tag exactly as `hello_ok` does. See ADR-0006
+// (Amendment: backfill is built in v1).
+export const history_backfill_response = z
+  .object({
+    type: z.literal("history_backfill_response"),
+    session_snapshot: session_snapshot,
+  })
+  .strict();
+export type HistoryBackfillResponse = z.infer<typeof history_backfill_response>;
+
 export const companion_message = z
   .object({
     type: z.literal("companion_message"),
@@ -149,6 +177,7 @@ export type RuntimeError = z.infer<typeof runtime_error>;
 
 export const runtimeToClientEvent = z.discriminatedUnion("type", [
   hello_ok,
+  history_backfill_response,
   companion_message,
   runtime_error,
 ]);

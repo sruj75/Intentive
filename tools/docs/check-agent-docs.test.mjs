@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { checkAgentDocs } from "./check-agent-docs.mjs";
@@ -39,15 +39,11 @@ No backlink here.
   write(
     "apps/mobile/CLAUDE.md",
     `
-@AGENTS.md
 Extra prose
 `,
   );
   result = await checkAgentDocs({ repoRoot: repo });
-  assert.match(
-    result.failures.join("\n"),
-    /apps\/mobile\/CLAUDE\.md must contain exactly one pointer line/,
-  );
+  assert.match(result.failures.join("\n"), /apps\/mobile\/CLAUDE\.md must be a symlink/);
 
   writeFixture();
   write(
@@ -103,20 +99,20 @@ function writeFixture() {
       includeProtocolPackage: true,
     }),
   );
-  write("CLAUDE.md", "@AGENTS.md\n");
+  symlink("CLAUDE.md");
 
   writeScopedAgent("apps/mobile/AGENTS.md", "../../AGENTS.md");
-  write("apps/mobile/CLAUDE.md", "@AGENTS.md\n");
+  symlink("apps/mobile/CLAUDE.md");
   writeScopedAgent("apps/desktop/AGENTS.md", "../../AGENTS.md");
-  write("apps/desktop/CLAUDE.md", "@AGENTS.md\n");
+  symlink("apps/desktop/CLAUDE.md");
   writeScopedAgent("services/control-plane/AGENTS.md", "../../AGENTS.md");
-  write("services/control-plane/CLAUDE.md", "@AGENTS.md\n");
+  symlink("services/control-plane/CLAUDE.md");
   writeScopedAgent("services/agent-runtime/AGENTS.md", "../../AGENTS.md");
-  write("services/agent-runtime/CLAUDE.md", "@AGENTS.md\n");
+  symlink("services/agent-runtime/CLAUDE.md");
   writeScopedAgent("services/agent-runtime/reference/AGENTS.md", "../../../AGENTS.md");
-  write("services/agent-runtime/reference/CLAUDE.md", "@AGENTS.md\n");
+  symlink("services/agent-runtime/reference/CLAUDE.md");
   writeScopedAgent("packages/AGENTS.md", "../AGENTS.md");
-  write("packages/CLAUDE.md", "@AGENTS.md\n");
+  symlink("packages/CLAUDE.md");
 
   write("packages/protocol/package.json", "{}\n");
   write("packages/api-contract/package.json", "{}\n");
@@ -191,5 +187,12 @@ Read root [AGENTS.md](${rootTarget}).
 function write(relPath, contents) {
   const absPath = path.join(repo, relPath);
   mkdirSync(path.dirname(absPath), { recursive: true });
+  rmSync(absPath, { force: true });
   writeFileSync(absPath, contents.trimStart());
+}
+
+function symlink(relPath) {
+  const absPath = path.join(repo, relPath);
+  mkdirSync(path.dirname(absPath), { recursive: true });
+  symlinkSync("AGENTS.md", absPath);
 }

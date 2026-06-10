@@ -19,6 +19,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
 - `sessions` — per-user session queue, ordering, message idempotency
+- `conversation` — durable Conversation History transcript (`conversation_messages`), Session Snapshot projection (`readSnapshot`), history backfill reads (ADR-0008)
 - `protocol` — inbound/outbound event handling (every event type in `packages/protocol/`)
 - `runtime` — DeepAgents loop, Agent Instance lifecycle
 - `cron` — scheduled-trigger primitive

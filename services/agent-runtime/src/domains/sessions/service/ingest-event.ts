@@ -1,46 +1,25 @@
 import { randomUUID } from "node:crypto";
 
 import type { EventLedger } from "../repo/event-ledger.js";
-import type {
-  BoundSession,
-  EventProcessor,
-  LedgerRecord,
-  RuntimeIngressEvent,
-} from "../types/event.js";
+import type { SqlQuery } from "../repo/sql.js";
+import type { BoundSession, LedgerRecord, RuntimeIngressEvent } from "../types/event.js";
 
 export interface IngestEvent {
-  recordIfNew(
-    session: BoundSession,
-    event: RuntimeIngressEvent,
-  ): Promise<RecordedRuntimeEvent | null>;
-  process(recorded: RecordedRuntimeEvent): Promise<void>;
-}
-
-export interface RecordedRuntimeEvent {
-  readonly session: BoundSession;
-  readonly event: RuntimeIngressEvent;
+  queriesFor(session: BoundSession, event: RuntimeIngressEvent): SqlQuery[];
 }
 
 export function createIngestEvent(deps: {
   ledger: EventLedger;
-  processor: EventProcessor;
+  project?: (session: BoundSession, event: RuntimeIngressEvent) => SqlQuery[];
   newDedupKey?: () => string;
 }): IngestEvent {
   const newDedupKey = deps.newDedupKey ?? randomUUID;
+  const project = deps.project ?? (() => []);
 
   return {
-    async recordIfNew(session, event) {
+    queriesFor(session, event) {
       const record = toLedgerRecord(session, event, newDedupKey);
-      const { isNew } = await deps.ledger.recordIfNew(record);
-      if (!isNew) {
-        return null;
-      }
-
-      return { session, event };
-    },
-
-    async process(recorded) {
-      await deps.processor(recorded.session, recorded.event);
+      return [deps.ledger.recordQuery(record), ...project(session, event)];
     },
   };
 }

@@ -11,3 +11,4 @@ SQL migrations for the Runtime-owned Neon schema.
 ## Migrations
 
 - `0001_sessions.sql` — durable Agent Instances plus the append-only Runtime event ledger (#28).
+- `0002_conversation.sql` — durable `conversation_messages` transcript and Session Snapshot projection indexes (#29).

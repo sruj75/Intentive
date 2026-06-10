@@ -76,6 +76,83 @@ test("runtime_error validates canonical envelope and codes", () => {
   assert.equal(unknownField.success, false);
 });
 
+test("history_backfill_request accepts a cursor and optional limit", () => {
+  const withLimit = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+    limit: 50,
+  });
+  assert.equal(withLimit.success, true);
+
+  const withoutLimit = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+  });
+  assert.equal(withoutLimit.success, true);
+});
+
+test("history_backfill_request rejects bad limits and unknown keys", () => {
+  const negativeLimit = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+    limit: -1,
+  });
+  assert.equal(negativeLimit.success, false);
+
+  const unknownField = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+    extra: true,
+  });
+  assert.equal(unknownField.success, false);
+});
+
+test("history_backfill_request rejects malformed cursors at the protocol boundary", () => {
+  const valid = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+  });
+  assert.equal(valid.success, true);
+
+  const malformed = protocol.history_backfill_request.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "abc",
+  });
+  assert.equal(malformed.success, false);
+});
+
+test("history_backfill_request is a member of clientToRuntimeEvent", () => {
+  const result = protocol.clientToRuntimeEvent.safeParse({
+    type: "history_backfill_request",
+    before_cursor: "1024",
+  });
+  assert.equal(result.success, true);
+});
+
+test("history_backfill_response reuses the session_snapshot shape under a type tag", () => {
+  const valid = protocol.runtimeToClientEvent.safeParse({
+    type: "history_backfill_response",
+    session_snapshot: {
+      messages: [
+        {
+          message_id: "m1",
+          author: "user",
+          body: "hello",
+          at: new Date().toISOString(),
+          via_post_message_back: false,
+        },
+      ],
+      before_cursor: "7",
+    },
+  });
+  assert.equal(valid.success, true);
+
+  const missingSnapshot = protocol.runtimeToClientEvent.safeParse({
+    type: "history_backfill_response",
+  });
+  assert.equal(missingSnapshot.success, false);
+});
+
 test("wire event objects are strict", () => {
   const result = protocol.user_message.safeParse({
     type: "user_message",

@@ -116,7 +116,7 @@ Exit criteria:
 3. Implement WebSocket server with handshake-first behavior.
 4. Verify JWT locally through `packages/providers`.
 5. Accept only `connect` before handshake; reject malformed pre-handshake events and auth failures with structured errors. Protocol compatibility is enforced at build time by the monorepo's single shared `packages/protocol` version, not negotiated per connection.
-6. Return `hello_ok` with the Session Snapshot shape. The snapshot is empty until Conversation History owns the projection.
+6. Return `hello_ok` with the Session Snapshot shape. #29 fills the projection from `conversation.readSnapshot`; until then the snapshot is empty.
 
 Exit criteria:
 
@@ -140,10 +140,11 @@ Exit criteria:
 
 ## Phase 4: Conversation History and reconnect snapshot
 
-1. Persist `user_message`, `companion_message`, and system-visible timeline entries in `conversation_messages`.
-2. Define the reconnect snapshot shape in `packages/protocol` instead of leaving it as `unknown`.
-3. Stream new outbound messages to connected Mobile clients.
-4. Return delivery acks/status only where useful for Desktop capture events.
+1. Persist the **user-authored** half of the timeline in `conversation_messages` via the `conversation` domain (#29). `companion_message` persistence is one `conversation.append` call in #36; live outbound delivery is #41.
+2. Define the reconnect snapshot shape in `packages/protocol` instead of leaving it as `unknown` (done in Phase 0 / ADR-0006).
+3. Serve reconnect snapshot and `history_backfill_request` / `history_backfill_response` over the WebSocket (#29).
+4. Stream new outbound messages to connected Mobile clients (#41).
+5. Return delivery acks/status only where useful for Desktop capture events.
 
 Exit criteria:
 

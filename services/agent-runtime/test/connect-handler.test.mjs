@@ -10,8 +10,27 @@ const validConnect = {
   client_version: "1.0.0",
 };
 
-test("connect handshake verifies the JWT and returns hello_ok with an empty Session Snapshot", async () => {
+const emptySnapshot = { messages: [], before_cursor: null };
+
+function snapshotReader(snapshot = emptySnapshot) {
+  return { readSnapshot: async () => snapshot };
+}
+
+test("connect handshake verifies the JWT and returns hello_ok with the User's reconnect Session Snapshot", async () => {
   let seenToken;
+  let seenUserId;
+  const snapshot = {
+    messages: [
+      {
+        message_id: "m1",
+        author: "user",
+        body: "hello",
+        at: "2026-06-10T00:00:00.000Z",
+        via_post_message_back: false,
+      },
+    ],
+    before_cursor: "7",
+  };
   const handler = createConnectHandler({
     sessions: sessionRegistry({
       authSubject: "auth-sub-1",
@@ -24,15 +43,22 @@ test("connect handshake verifies the JWT and returns hello_ok with an empty Sess
         return { user_id: "auth-sub-1" };
       },
     },
+    conversation: {
+      readSnapshot: async (userId) => {
+        seenUserId = userId;
+        return snapshot;
+      },
+    },
   });
 
   const result = await handler.handle(validConnect);
 
   assert.equal(seenToken, "jwt_1");
+  assert.equal(seenUserId, "00000000-0000-4000-8000-000000000001");
   assert.equal(result.closeSocket, false);
   assert.deepEqual(result.response, {
     type: "hello_ok",
-    session_snapshot: { messages: [], before_cursor: null },
+    session_snapshot: snapshot,
   });
   assert.deepEqual(result.session, {
     userId: "00000000-0000-4000-8000-000000000001",
@@ -54,6 +80,7 @@ test("connect handshake maps JWT verification failures to structured runtime err
         agentInstanceId: "agent_instance_1",
       }),
       verifier: { verify: async () => Promise.reject({ reason }) },
+      conversation: snapshotReader(),
     });
 
     const result = await handler.handle(validConnect);
@@ -62,6 +89,53 @@ test("connect handshake maps JWT verification failures to structured runtime err
     assert.equal(result.response.type, "runtime_error");
     assert.equal(result.response.code, code);
   }
+});
+
+test("connect handshake maps Session Snapshot read failures to the history failure domain", async () => {
+  const handler = createConnectHandler({
+    sessions: sessionRegistry({
+      authSubject: "auth-sub-1",
+      userId: "00000000-0000-4000-8000-000000000001",
+      agentInstanceId: "agent_instance_1",
+    }),
+    verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    conversation: {
+      readSnapshot: async () => {
+        throw new Error("history unavailable");
+      },
+    },
+  });
+
+  const result = await handler.handle(validConnect);
+
+  assert.equal(result.closeSocket, true);
+  assert.deepEqual(result.response, {
+    type: "runtime_error",
+    code: "service_unavailable",
+    message: "Conversation history is temporarily unavailable.",
+  });
+});
+
+test("connect handshake still maps JWT failures through the auth taxonomy", async () => {
+  const handler = createConnectHandler({
+    sessions: sessionRegistry({
+      authSubject: "auth-sub-1",
+      userId: "00000000-0000-4000-8000-000000000001",
+      agentInstanceId: "agent_instance_1",
+    }),
+    verifier: { verify: async () => Promise.reject({ reason: "invalid_signature" }) },
+    conversation: {
+      readSnapshot: async () => {
+        throw new Error("must not read history after auth failure");
+      },
+    },
+  });
+
+  const result = await handler.handle(validConnect);
+
+  assert.equal(result.closeSocket, true);
+  assert.equal(result.response.type, "runtime_error");
+  assert.equal(result.response.code, "auth_failed");
 });
 
 test("pre-handshake non-connect events are rejected before JWT verification", async () => {
@@ -78,6 +152,7 @@ test("pre-handshake non-connect events are rejected before JWT verification", as
         return { user_id: "auth-sub-1" };
       },
     },
+    conversation: snapshotReader(),
   });
 
   const result = await handler.handle({
@@ -110,6 +185,7 @@ test("malformed inbound events are rejected as invalid_connect", async () => {
         return { user_id: "auth-sub-1" };
       },
     },
+    conversation: snapshotReader(),
   });
 
   const result = await handler.handle({ type: "connect", client_kind: "mobile" });
@@ -134,6 +210,7 @@ test("connect resolves the WebSocket session from the verified auth subject, not
       },
     },
     verifier: { verify: async () => ({ user_id: "auth-sub-not-a-uuid" }) },
+    conversation: snapshotReader(),
   });
 
   const result = await handler.handle(validConnect);
@@ -151,6 +228,7 @@ test("connect rejects valid JWTs that have not gone through Session Start", asyn
   const handler = createConnectHandler({
     sessions: { loadSessionByAuthSubject: async () => null },
     verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    conversation: snapshotReader(),
   });
 
   const result = await handler.handle(validConnect);

@@ -87,7 +87,8 @@ A business domain is a vertical slice of product capability inside one deployabl
 
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
 - `sessions` — per-user session queue, ordering, idempotency
-- `protocol` — inbound/outbound event handling (`user_message`, `context_snapshot`, `session_end_marker`, `companion_message`, `presence_update`, `delivery_ack`)
+- `conversation` — durable Conversation History transcript, Session Snapshot projection, history backfill reads
+- `protocol` — inbound/outbound event handling (`user_message`, `context_snapshot`, `session_end_marker`, `history_backfill_request`, `companion_message`, `presence_update`, `delivery_ack`)
 - `runtime` — DeepAgents loop integration, Agent Instance lifecycle
 - `cron` — scheduled-trigger primitive
 - `heartbeat` — interval-trigger primitive

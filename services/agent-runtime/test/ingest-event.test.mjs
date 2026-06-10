@@ -9,24 +9,21 @@ const session = {
   agentInstanceId: "00000000-0000-4000-8000-000000000010",
 };
 
-test("ingest processes a newly recorded event once", async () => {
+test("ingest builds the ledger query before projection queries", async () => {
   const records = [];
-  const processed = [];
+  const projectionQueries = [Promise.resolve([{ projection: true }])];
   const ingest = createIngestEvent({
     ledger: {
-      recordIfNew: async (record) => {
+      recordQuery: (record) => {
         records.push(record);
-        return { isNew: true };
+        return Promise.resolve([{ id: "ledger_1" }]);
       },
     },
-    processor: async (seenSession, event) => {
-      processed.push({ seenSession, event });
-    },
+    project: () => projectionQueries,
   });
 
   const event = userMessage("message_1");
-  const recorded = await ingest.recordIfNew(session, event);
-  await ingest.process(recorded);
+  const queries = ingest.queriesFor(session, event);
 
   assert.deepEqual(records, [
     {
@@ -36,22 +33,8 @@ test("ingest processes a newly recorded event once", async () => {
       payload: event,
     },
   ]);
-  assert.deepEqual(processed, [{ seenSession: session, event }]);
-});
-
-test("ingest drops duplicate events before processing", async () => {
-  let processorCalls = 0;
-  const ingest = createIngestEvent({
-    ledger: { recordIfNew: async () => ({ isNew: false }) },
-    processor: async () => {
-      processorCalls += 1;
-    },
-  });
-
-  const recorded = await ingest.recordIfNew(session, userMessage("message_1"));
-
-  assert.equal(recorded, null);
-  assert.equal(processorCalls, 0);
+  assert.equal(queries.length, 2);
+  assert.equal(queries[1], projectionQueries[0]);
 });
 
 test("ingest derives stable keys for message and snapshot events and minted keys for end markers", async () => {
@@ -63,13 +46,16 @@ test("ingest derives stable keys for message and snapshot events and minted keys
         records.push(record);
         return { isNew: true };
       },
+      recordQuery: (record) => {
+        records.push(record);
+        return Promise.resolve([{ id: "ledger_1" }]);
+      },
     },
-    processor: async () => undefined,
     newDedupKey: () => keys.shift(),
   });
 
-  await ingest.recordIfNew(session, userMessage("message_1"));
-  await ingest.recordIfNew(session, {
+  ingest.queriesFor(session, userMessage("message_1"));
+  ingest.queriesFor(session, {
     type: "context_snapshot",
     snapshot_id: "snapshot_1",
     captured_at: "2026-06-09T00:00:00.000Z",
@@ -77,12 +63,12 @@ test("ingest derives stable keys for message and snapshot events and minted keys
     period_end: "2026-06-09T00:00:00.000Z",
     summary: "screen summary",
   });
-  await ingest.recordIfNew(session, {
+  ingest.queriesFor(session, {
     type: "session_end_marker",
     ended_at: "2026-06-09T00:01:00.000Z",
     reason: "quit",
   });
-  await ingest.recordIfNew(session, {
+  ingest.queriesFor(session, {
     type: "session_end_marker",
     ended_at: "2026-06-09T00:02:00.000Z",
     reason: "quit",
