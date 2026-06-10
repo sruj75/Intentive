@@ -37,7 +37,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build factory report
-        run: pnpm sensor:factory-report --format markdown --base origin/main --output factory-report.md
+        run: pnpm sensor:factory-report --format markdown --base origin/main --ledger docs/factory/LEDGER.md --output factory-report.md
 
       - name: Add job summary
         run: cat factory-report.md >> "$GITHUB_STEP_SUMMARY"

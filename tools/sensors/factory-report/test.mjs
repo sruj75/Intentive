@@ -91,7 +91,11 @@ try {
   assert.match(output, /apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts/);
   assert.match(output, /`untestedEvent` from `packages\/protocol\/src\/events\.ts`/);
   assert.match(output, /### Factory Steward Handoff/);
-  assert.match(output, /Fixed now \/ Factory improved \/ Backlogged \/ Accepted/);
+  assert.match(output, /Factory improved/);
+  assert.match(output, /Backlogged/);
+  assert.match(output, /`stale-scaffold:apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts`/);
+  assert.match(output, /`untested-export:packages\/protocol\/src\/events\.ts:untestedevent`/);
+  assert.match(output, /### Finding Memory/);
 
   console.log("factory-report: fixture test passed");
 } finally {

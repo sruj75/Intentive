@@ -71,6 +71,8 @@ Run sensors as close to the change as possible. Cheap deterministic checks belon
 | Contract drift         | `pnpm sensor:contract-drift`  | Detects local redefinitions of shared protocol/API contracts                                       |
 | Harness health         | `pnpm sensor:harness-health`  | Advisory ready-for-review drift report                                                             |
 | Factory report         | `pnpm sensor:factory-report`  | Aggregates advisory signals into the PR sticky comment and prompts steward classification          |
+| Factory ledger         | `pnpm factory:ledger`         | Refreshes recurring finding memory in `docs/factory/LEDGER.md` without overwriting human statuses  |
+| Factory recommend      | `pnpm factory:recommend`      | Writes recommendation-only output from a saved report for the self-improvement agent pass          |
 | Typecheck              | `pnpm typecheck`              | Workspace TypeScript contract health                                                               |
 | Lint                   | `pnpm lint`                   | Docs links, context vocabulary, TS architecture rules, ESLint                                      |
 | Rust architecture lint | `pnpm lint:architecture:rust` | Desktop Rust layer and structure rules                                                             |
@@ -193,6 +195,47 @@ The PR sticky comment is the loop handoff. Before merging a non-trivial change, 
 - **Accepted**: the finding is intentionally tolerated, and the rationale is documented where future agents will see it.
 
 The loop is working when repeated findings become rarer, not when every PR comment is empty. An empty report can mean a healthy system, but it can also mean the sensor is not looking for the right failure modes yet.
+
+## Factory Self-Improvement Loop
+
+The sticky PR comment is the handoff into a human-approved self-improvement loop.
+
+```text
+PR sticky comment
+-> Conductor agent reads docs/factory/SELF-IMPROVEMENT.md
+-> agent writes .context/factory-recommendations.md
+-> human approves selected items
+-> agent updates docs, tests, sensors, backlog, or ledger
+-> future PRs inherit the better factory
+```
+
+Factory memory lives in [`docs/factory/`](factory/):
+
+| File                                                              | Purpose                                         |
+| ----------------------------------------------------------------- | ----------------------------------------------- |
+| [`docs/factory/README.md`](factory/README.md)                     | Plain-English overview of the loop              |
+| [`docs/factory/SELF-IMPROVEMENT.md`](factory/SELF-IMPROVEMENT.md) | Agent runbook / skill for Conductor             |
+| [`docs/factory/LEDGER.md`](factory/LEDGER.md)                     | Recurring findings, statuses, owners, rationale |
+| [`docs/factory/BACKLOG.md`](factory/BACKLOG.md)                   | Approved factory work not done yet              |
+| [`docs/factory/decisions/`](factory/decisions/)                   | ADR-style factory decision records              |
+
+Commands:
+
+```bash
+pnpm sensor:factory-report
+pnpm factory:ledger
+pnpm factory:recommend --report factory-report.md
+```
+
+Finding IDs are stable across PRs, for example:
+
+```text
+stale-scaffold:apps/mobile/src/scaffold.ts
+vocabulary:apps/mobile/app/index.tsx:bot:companion
+untested-export:packages/protocol/src/index.ts:sessionmessage
+```
+
+The report uses those IDs plus ledger memory to show whether a finding is new, repeated, accepted, backlogged, or already handled. The recommendation command turns that into an approval-ready plan without editing tracked files.
 
 ## Factory Assets
 
