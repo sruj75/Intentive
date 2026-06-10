@@ -64,6 +64,8 @@ try {
   });
   const recommendationMarkdown = formatRecommendationsMarkdown(recommendations);
   assert.match(recommendationMarkdown, /Recommendation-only output/);
+  assert.match(recommendationMarkdown, /Observed signal/);
+  assert.match(recommendationMarkdown, /Recommended classification/);
   assert.match(recommendationMarkdown, /Approval needed/);
 
   const sampleReportPath = path.join(repo, "sample-report.md");
@@ -93,6 +95,7 @@ try {
     "utf8",
   );
   assert.match(recommendationOutput, /Factory Recommendations/);
+  assert.match(recommendationOutput, /Recommended classification/);
 
   console.log("factory ledger/recommend: fixture test passed");
 } finally {

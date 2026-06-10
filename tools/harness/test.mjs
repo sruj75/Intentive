@@ -2,8 +2,11 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const harnessPath = new URL("./run-harness.mjs", import.meta.url).pathname;
+const harnessDir = new URL(".", import.meta.url).pathname;
 
 const rootDryRunOutput = run(["--dry-run"]);
 assert.match(rootDryRunOutput, /pnpm docs:agents:test/);
@@ -53,6 +56,31 @@ for (const [scopeFlag, scope, dryRunFlag, titlePattern, commandPattern] of dryRu
   assert.match(output, /dry run completed/);
 }
 
+const manifest = readJson("behavior-proof.json");
+assert.ok(Array.isArray(manifest.slices));
+assert.ok(manifest.slices.length >= 4);
+
+for (const slice of manifest.slices) {
+  assert.ok(slice.id);
+  assert.ok(slice.workspace);
+  assert.ok(slice.label);
+  assert.ok(Array.isArray(slice.commands));
+  assert.ok(slice.commands.length > 0);
+
+  const template = templateForWorkspace(slice.workspace);
+  assert.ok(template, `No harness template found for ${slice.workspace}`);
+  const templateCommands = [...template.sensors, ...template.requiredCommands];
+
+  for (const command of slice.commands) {
+    assert.ok(command.command);
+    assert.ok(Array.isArray(command.args));
+    assert.ok(
+      templateCommands.some((candidate) => commandsEqual(candidate, command)),
+      `${slice.id} command is not present in ${slice.workspace} harness template`,
+    );
+  }
+}
+
 const invalid = spawnSync(
   process.execPath,
   [harnessPath, "--scope", "does-not-exist", "--dry-run"],
@@ -72,4 +100,25 @@ function run(args) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readJson(fileName) {
+  return JSON.parse(readFileSync(path.join(harnessDir, fileName), "utf8"));
+}
+
+function templateForWorkspace(workspace) {
+  for (const fileName of [
+    "mobile.json",
+    "desktop.json",
+    "control-plane.json",
+    "agent-runtime.json",
+  ]) {
+    const template = readJson(fileName);
+    if (template.scope === workspace || template.aliases.includes(workspace)) return template;
+  }
+  return null;
+}
+
+function commandsEqual(left, right) {
+  return left.command === right.command && JSON.stringify(left.args) === JSON.stringify(right.args);
 }

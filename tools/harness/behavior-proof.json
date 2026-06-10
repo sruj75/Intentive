@@ -1,0 +1,48 @@
+{
+  "slices": [
+    {
+      "id": "mobile-launch-gates-chat",
+      "workspace": "apps/mobile",
+      "label": "Mobile launch, gates, and chat behavior",
+      "commands": [
+        {
+          "command": "pnpm",
+          "args": ["--dir", "apps/mobile", "test:rn"]
+        }
+      ]
+    },
+    {
+      "id": "control-plane-identity-gates-agents",
+      "workspace": "services/control-plane",
+      "label": "Control Plane identity, gates, and agent handlers",
+      "commands": [
+        {
+          "command": "pnpm",
+          "args": ["--dir", "services/control-plane", "test"]
+        }
+      ]
+    },
+    {
+      "id": "agent-runtime-connect-session-message",
+      "workspace": "services/agent-runtime",
+      "label": "Agent Runtime connect, session, and message flow",
+      "commands": [
+        {
+          "command": "pnpm",
+          "args": ["--dir", "services/agent-runtime", "test"]
+        }
+      ]
+    },
+    {
+      "id": "desktop-smoke-onboarding-auth",
+      "workspace": "apps/desktop",
+      "label": "Desktop smoke, onboarding, and auth behavior",
+      "commands": [
+        {
+          "command": "pnpm",
+          "args": ["--dir", "apps/desktop", "test"]
+        }
+      ]
+    }
+  ]
+}

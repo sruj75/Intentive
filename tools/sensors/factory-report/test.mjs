@@ -60,6 +60,37 @@ try {
     "apps/mobile/test/events.test.ts",
     "import { publicEvent } from '@intentive/protocol';\npublicEvent;\n",
   );
+  write(
+    "tools/harness/behavior-proof.json",
+    JSON.stringify(
+      {
+        slices: [
+          {
+            id: "mobile-behavior",
+            workspace: "apps/mobile",
+            label: "Mobile behavior",
+            commands: [{ command: "pnpm", args: ["--dir", "apps/mobile", "test"] }],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+  write(
+    "tools/harness/mobile.json",
+    JSON.stringify(
+      {
+        name: "Mobile",
+        scope: "apps/mobile",
+        aliases: ["mobile"],
+        sensors: [],
+        requiredCommands: [{ command: "pnpm", args: ["--dir", "apps/mobile", "test"] }],
+      },
+      null,
+      2,
+    ),
+  );
 
   git(["init"]);
   git(["config", "user.email", "sensor@example.test"]);
@@ -83,6 +114,12 @@ try {
 
   assert.match(output, /<!-- intentive:factory-report -->/);
   assert.match(output, /## Factory Report/);
+  assert.match(output, /### Factory Focus/);
+  assert.match(output, /#### PR-Tied And Learning Findings/);
+  assert.match(output, /### Factory Learning Metrics/);
+  assert.match(output, /\| PR-tied findings \|/);
+  assert.match(output, /### Behavior Proof/);
+  assert.match(output, /apps\/mobile: Mobile behavior \(present\)/);
   assert.match(output, /### Impact Radius/);
   assert.match(output, /`apps\/mobile\/src\/untracked\.ts`/);
   assert.match(output, /`packages\/protocol\/src\/events\.ts`: fan-in 1, fan-out 0/);
@@ -91,6 +128,7 @@ try {
   assert.match(output, /apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts/);
   assert.match(output, /`untestedEvent` from `packages\/protocol\/src\/events\.ts`/);
   assert.match(output, /### Factory Steward Handoff/);
+  assert.match(output, /dependencies in apps\/mobile|Dependency Maintenance Groups/);
   assert.match(output, /Factory improved/);
   assert.match(output, /Backlogged/);
   assert.match(output, /`stale-scaffold:apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts`/);

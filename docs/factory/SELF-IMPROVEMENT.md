@@ -28,10 +28,12 @@ Do not treat this as "fix today's code only." The point is to improve the system
 
 Read the pasted factory comment and identify:
 
+- Factory Focus items tied to changed files or changed workspaces
 - new findings
 - repeated findings
 - findings already classified in the ledger
 - findings waiting for classification
+- behavior-proof gaps for changed workspaces
 
 If helpful, run:
 
@@ -47,13 +49,21 @@ For each material finding, write:
 
 ```text
 Finding
+Observed signal
 Why it matters
 What has happened before
+Recommended classification
 Recommended action
 Risk
 Approval needed
 Files likely affected
 ```
+
+Use grouped recommendations when the report already groups the decision:
+
+- dependency freshness: one maintenance recommendation per workspace
+- repo-wide high fan-in or oversized-file findings: review attention unless the current PR touched the file
+- changed stale scaffolds, forbidden vocabulary, boundary imports, suppressions, and changed untested exports: keep as individual recommendations
 
 Use these approval levels:
 

@@ -30,9 +30,9 @@ pnpm coverage
 - `pnpm sensor:impact-radius` is the preferred pre-review triage sensor. It reports coupling and affected workspace hints for the current change set, and remains advisory in CI.
 - `pnpm sensor:contract-drift` is a hard-gated architecture sensor. It fails when deployables redefine `@intentive/protocol` wire events or `@intentive/api-contract` HTTP contracts locally.
 - `pnpm sensor:harness-health` emits the advisory Ready-for-review drift report used by the PR sticky comment workflow. Treat the sticky comment as a factory feedback loop: fix current drift when it belongs in the change, improve the harness when the finding repeats, or backlog/accept the finding with rationale.
-- `pnpm sensor:factory-report` aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and prints the factory-steward classification table for material findings.
+- `pnpm sensor:factory-report` aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and prints Factory Focus, Factory Learning Metrics, Behavior Proof, and the factory-steward classification table for material findings.
 - `pnpm factory:ledger` refreshes finding counts in `docs/factory/LEDGER.md` from the current change set or a saved report. It preserves human statuses such as accepted, backlogged, and factory-improved.
-- `pnpm factory:recommend --report <file>` reads a saved sticky comment or factory report, compares it against the ledger, and writes `.context/factory-recommendations.md` for the recommendation-only Conductor agent pass described in `docs/factory/SELF-IMPROVEMENT.md`.
+- `pnpm factory:recommend --report <file>` reads a saved sticky comment or factory report, compares it against the ledger, and writes grouped recommendations to `.context/factory-recommendations.md` for the recommendation-only Conductor agent pass described in `docs/factory/SELF-IMPROVEMENT.md`.
 - `pnpm factory:test` runs fixture tests for finding IDs, ledger updates, and recommendation generation.
 - `pnpm docs:factory:test` fixture-tests the structural contracts for `docs/factory/` files that run inside `pnpm docs:check`.
 - `pnpm docs:agents:test` fixture-tests the structural `AGENTS.md` / `CLAUDE.md` integrity checker that runs inside `pnpm docs:check`.
@@ -54,6 +54,10 @@ pnpm coverage
 | In CI                            | Re-run the deterministic factory on clean infrastructure                          |
 
 Factory philosophy and how to read harness-health signals: [`docs/FACTORY.md`](FACTORY.md). Self-improvement loop: [`docs/factory/README.md`](factory/README.md).
+
+## Behavior Proof
+
+`tools/harness/behavior-proof.json` maps product-critical behavior slices to existing scoped harness commands. `pnpm sensor:factory-report` checks the manifest against the scoped harness templates and reports whether changed workspaces have behavior proof present. This is an advisory factory signal; the commands still run through `pnpm harness` and the deployable harness templates.
 
 ## Desktop
 

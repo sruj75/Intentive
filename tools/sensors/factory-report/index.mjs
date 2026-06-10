@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { analyzeHarnessHealth } from "../harness-health/index.mjs";
 import { analyzeImpactRadius } from "../impact-radius/index.mjs";
 import { extractFindingsFromReport } from "../../factory/extract-findings.mjs";
+import {
+  actionLabel,
+  buildFactoryContext,
+  recommendedClassification,
+  workspaceForPath,
+} from "../../factory/focus.mjs";
 import { ledgerStatusForFinding, readLedger } from "../../factory/ledger.mjs";
 
 const maxListItems = 20;
@@ -53,16 +59,26 @@ if (isMainModule(import.meta.url)) {
 }
 
 export function analyzeFactoryReport({ repo = process.cwd(), base = "HEAD" } = {}) {
+  const impactRadius = analyzeImpactRadius({ repo, base });
+  const harnessHealth = analyzeHarnessHealth({ repo, base });
+
   return {
     base,
-    impactRadius: analyzeImpactRadius({ repo, base }),
-    harnessHealth: analyzeHarnessHealth({ repo, base }),
+    impactRadius,
+    harnessHealth,
+    behaviorProof: analyzeBehaviorProof({ repo, impactRadius }),
   };
 }
 
 export function formatMarkdownReport(report, { ledgerEntries = {} } = {}) {
   const findings = extractFindingsFromReport(report);
   const findingsByCategory = groupFindings(findings);
+  const factoryContext = buildFactoryContext({
+    findings,
+    ledgerEntries,
+    changedFiles: report.impactRadius.changedFiles,
+    affectedWorkspaces: report.impactRadius.affectedWorkspaces,
+  });
   const lines = [];
 
   lines.push("<!-- intentive:factory-report -->");
@@ -79,12 +95,108 @@ export function formatMarkdownReport(report, { ledgerEntries = {} } = {}) {
   );
   lines.push("");
 
+  factoryFocusSection(lines, factoryContext);
+  learningMetricsSection(lines, factoryContext.metrics);
+  behaviorProofSection(lines, report.behaviorProof);
   impactRadiusSection(lines, report.impactRadius, findingsByCategory);
   harnessHealthSection(lines, report.harnessHealth, findingsByCategory, ledgerEntries);
   findingsSummarySection(lines, findings, ledgerEntries);
-  classificationSection(lines, findings, ledgerEntries);
+  classificationSection(lines, findings, ledgerEntries, factoryContext);
 
   return lines.join("\n");
+}
+
+function factoryFocusSection(lines, context) {
+  const actionable = context.items.filter((item) => {
+    if (item.finding.category === "dependency") return false;
+    return (
+      item.isChangedFile ||
+      item.isChangedWorkspace ||
+      item.isRepeatedUnclassified ||
+      item.isReturned
+    );
+  });
+
+  lines.push("### Factory Focus");
+  lines.push("");
+  lines.push(
+    "Start here. These are the findings most likely to need PR-time action before reading the raw sensor sections.",
+  );
+  lines.push("");
+
+  section(lines, "PR-Tied And Learning Findings", actionable, (item) => {
+    return `- \`${item.finding.id}\` (${actionLabel(item)}): ${item.finding.title}; recommended classification: ${recommendedClassification(item)}`;
+  });
+
+  dependencyMaintenanceSection(lines, context.dependencyGroups);
+}
+
+function learningMetricsSection(lines, metrics) {
+  lines.push("### Factory Learning Metrics");
+  lines.push("");
+  lines.push(
+    "Use these counts to judge whether the factory is learning. They are advisory signals, not a CI gate.",
+  );
+  lines.push("");
+  lines.push("| Metric | Count |");
+  lines.push("| --- | ---: |");
+  lines.push(`| PR-tied findings | ${metrics.prTiedFindings} |`);
+  lines.push(`| Repo-wide findings | ${metrics.repoWideFindings} |`);
+  lines.push(`| New findings | ${metrics.newFindings} |`);
+  lines.push(`| Repeated unclassified findings | ${metrics.repeatedUnclassifiedFindings} |`);
+  lines.push(`| Returned findings | ${metrics.returnedFindings} |`);
+  lines.push(`| Accepted findings | ${metrics.acceptedFindings} |`);
+  lines.push(`| Backlogged findings | ${metrics.backloggedFindings} |`);
+  lines.push(`| Factory-improved findings | ${metrics.factoryImprovedFindings} |`);
+  lines.push("");
+}
+
+function dependencyMaintenanceSection(lines, groups) {
+  lines.push("#### Dependency Maintenance Groups");
+
+  if (groups.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const group of groups.slice(0, maxListItems)) {
+      const scope = group.isPrTied ? "changed workspace" : "repo-wide";
+      lines.push(
+        `- \`dependency-maintenance:${group.workspace}\`: ${group.items.length} outdated direct dependenc${group.items.length === 1 ? "y" : "ies"} (${scope}); recommended classification: Backlogged`,
+      );
+    }
+    if (groups.length > maxListItems) {
+      lines.push(`- ...and ${groups.length - maxListItems} more`);
+    }
+  }
+
+  lines.push("");
+}
+
+function behaviorProofSection(lines, behaviorProof) {
+  lines.push("### Behavior Proof");
+  lines.push("");
+  lines.push(
+    "This checks whether changed workspaces have product-behavior slices represented in the existing scoped harness templates.",
+  );
+  lines.push("");
+
+  if (!behaviorProof.available) {
+    lines.push(`- not available: ${behaviorProof.reason}`);
+    lines.push("");
+    return;
+  }
+
+  if (behaviorProof.slices.length === 0) {
+    lines.push("- no changed workspace has a configured behavior-proof slice");
+    lines.push("");
+    return;
+  }
+
+  for (const slice of behaviorProof.slices) {
+    const status = slice.present ? "present" : "missing";
+    const commands = slice.commands.map(formatCommandObject).join("; ");
+    lines.push(`- ${slice.workspace}: ${slice.label} (${status}) via ${commands}`);
+  }
+  lines.push("");
 }
 
 function parseArgs(args) {
@@ -279,7 +391,7 @@ function printBucket(lines, title, findings) {
   lines.push("");
 }
 
-function classificationSection(lines, findings, ledgerEntries) {
+function classificationSection(lines, findings, ledgerEntries, factoryContext) {
   lines.push("### Factory Steward Handoff");
   lines.push("");
   lines.push(
@@ -289,21 +401,39 @@ function classificationSection(lines, findings, ledgerEntries) {
   lines.push("| Finding ID | Finding | Classification | Durable action |");
   lines.push("| --- | --- | --- | --- |");
 
-  const materialFindings = findings.filter((finding) => isMaterialFinding(finding.category));
+  const materialFindings = factoryContext.items.filter((item) => {
+    if (!isMaterialFinding(item.finding.category)) return false;
+    return item.finding.category !== "dependency";
+  });
 
-  if (materialFindings.length === 0) {
+  const groupedRows = [
+    ...factoryContext.dependencyGroups.map((group) => ({
+      id: `dependencies in ${group.workspace}`,
+      title: `${group.items.length} dependency freshness finding(s)`,
+      classification: group.isPrTied ? "Backlogged / Fixed now" : "Backlogged",
+      action: "Group as one dependency-maintenance item for the workspace.",
+    })),
+    ...materialFindings.map((item) => {
+      const status = ledgerStatusForFinding(ledgerEntries[item.finding.id]);
+      return {
+        id: `\`${item.finding.id}\``,
+        title: `${item.finding.title} (${status.label}, seen ${status.seenCount}x)`,
+        classification: recommendedClassification(item),
+        action: actionLabel(item),
+      };
+    }),
+  ];
+
+  if (groupedRows.length === 0) {
     lines.push(
       "| _none material_ | | Fixed now / Factory improved / Backlogged / Accepted | Guide, sensor, test, workflow, issue, or rationale |",
     );
   } else {
-    for (const finding of materialFindings.slice(0, maxListItems)) {
-      const status = ledgerStatusForFinding(ledgerEntries[finding.id]);
-      lines.push(
-        `| \`${finding.id}\` | ${finding.title} (${status.label}, seen ${status.seenCount}x) | | |`,
-      );
+    for (const row of groupedRows.slice(0, maxListItems)) {
+      lines.push(`| ${row.id} | ${row.title} | ${row.classification} | ${row.action} |`);
     }
-    if (materialFindings.length > maxListItems) {
-      lines.push(`| _truncated_ | ...and ${materialFindings.length - maxListItems} more | | |`);
+    if (groupedRows.length > maxListItems) {
+      lines.push(`| _truncated_ | ...and ${groupedRows.length - maxListItems} more | | |`);
     }
   }
 
@@ -319,6 +449,60 @@ function classificationSection(lines, findings, ledgerEntries) {
   lines.push(
     "After merge review, run `pnpm factory:recommend --report <saved-report.md>` and follow `docs/factory/SELF-IMPROVEMENT.md`.",
   );
+}
+
+function analyzeBehaviorProof({ repo, impactRadius }) {
+  const repoRoot = path.resolve(repo);
+  const manifestPath = path.join(repoRoot, "tools/harness/behavior-proof.json");
+  if (!existsSync(manifestPath)) {
+    return { available: false, reason: "tools/harness/behavior-proof.json is missing", slices: [] };
+  }
+
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const changedWorkspaces = new Set([
+    ...impactRadius.changedFiles.map(workspaceForPath).filter(Boolean),
+    ...impactRadius.affectedWorkspaces.map((entry) => entry.workspace),
+  ]);
+
+  const slices = [];
+  for (const slice of manifest.slices ?? []) {
+    if (!changedWorkspaces.has(slice.workspace)) continue;
+    const template = readHarnessTemplate(repoRoot, slice.workspace);
+    const templateCommands = template
+      ? [...(template.sensors ?? []), ...(template.requiredCommands ?? [])]
+      : [];
+    const present =
+      Boolean(template) &&
+      slice.commands.every((command) => {
+        return templateCommands.some((candidate) => commandsEqual(candidate, command));
+      });
+
+    slices.push({
+      ...slice,
+      present,
+    });
+  }
+
+  return { available: true, slices };
+}
+
+function readHarnessTemplate(repoRoot, workspace) {
+  const templateNames = ["mobile", "desktop", "control-plane", "agent-runtime"];
+  for (const name of templateNames) {
+    const filePath = path.join(repoRoot, "tools/harness", `${name}.json`);
+    if (!existsSync(filePath)) continue;
+    const template = JSON.parse(readFileSync(filePath, "utf8"));
+    if (template.scope === workspace || template.aliases?.includes(workspace)) return template;
+  }
+  return null;
+}
+
+function commandsEqual(left, right) {
+  return left.command === right.command && JSON.stringify(left.args) === JSON.stringify(right.args);
+}
+
+function formatCommandObject(command) {
+  return `\`${[command.command, ...command.args].join(" ")}\``;
 }
 
 function section(lines, title, values, format) {
