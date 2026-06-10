@@ -1,8 +1,10 @@
-# Factory
+# Factory Operations
 
 This folder is the long-term memory and runbook for Intentive's self-improving factory.
 
 The factory is not just the checks that run on pull requests. It is the system that remembers repeated problems, recommends durable improvements, and lets humans approve the changes that make future agent work easier.
+
+For purpose, mental model, and factory rules, see [`docs/FACTORY.md`](../FACTORY.md). For command reference and sensor timing, see [`docs/TESTING.md`](../TESTING.md).
 
 ## How the loop works
 
@@ -17,6 +19,15 @@ The ledger remembers what happened
 The next PR starts with a better factory
 ```
 
+Or generate a draft first:
+
+```bash
+pnpm sensor:factory-report --output factory-report.md
+pnpm factory:recommend --report factory-report.md
+```
+
+Then open `.context/factory-recommendations.md`, approve what you want, and tell the agent to implement only those items.
+
 ## Files in this folder
 
 | File                                         | Purpose                                                                         |
@@ -28,15 +39,50 @@ The next PR starts with a better factory
 
 ## Commands
 
+Full command catalog: [`docs/TESTING.md`](../TESTING.md).
+
+Factory-specific commands:
+
 ```bash
 pnpm sensor:factory-report
 pnpm factory:ledger
 pnpm factory:recommend --report factory-report.md
+pnpm factory:test
+pnpm docs:factory:test
 ```
 
 - `pnpm sensor:factory-report` creates the sticky PR comment input.
 - `pnpm factory:ledger` refreshes finding counts in `LEDGER.md` without overwriting human classifications.
 - `pnpm factory:recommend --report <file>` writes `.context/factory-recommendations.md` for the recommendation-only agent pass.
+
+## Finding IDs
+
+Findings use stable IDs across PRs, for example:
+
+```text
+stale-scaffold:apps/mobile/src/scaffold.ts
+vocabulary:apps/mobile/app/index.tsx:bot:companion
+untested-export:packages/protocol/src/index.ts:sessionmessage
+```
+
+The report uses those IDs plus ledger memory to show whether a finding is new, repeated, accepted, backlogged, or already handled.
+
+## PR classification
+
+Before merging a non-trivial change, classify each material factory-report finding as one of:
+
+| Classification       | Meaning                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Fixed now**        | The current change removes the drift.                                                                   |
+| **Factory improved** | The current change adds or sharpens a guide, sensor, test, or workflow.                                 |
+| **Backlogged**       | Record the improvement in [`BACKLOG.md`](BACKLOG.md) with ledger links.                                 |
+| **Accepted**         | The finding is intentionally tolerated; document rationale in the ledger or [`decisions/`](decisions/). |
+
+Escalation rule for unclassified repeated findings:
+
+- seen once: report only
+- seen twice: recommend classification
+- seen 3+ times unclassified: recommend backlog or factory improvement
 
 ## Approval levels
 
@@ -60,4 +106,13 @@ pnpm factory:recommend --report factory-report.md
 - Change what blocks CI
 - Auto-open GitHub issues
 
-See also [`docs/FACTORY.md`](../FACTORY.md) for the full operating model.
+## Manual Conductor prompt
+
+```text
+Read docs/factory/SELF-IMPROVEMENT.md.
+Here is the PR factory sticky comment:
+<paste comment>
+
+First, write recommendations only.
+Do not edit tracked files until I approve specific items.
+```

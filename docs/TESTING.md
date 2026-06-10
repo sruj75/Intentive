@@ -42,6 +42,19 @@ pnpm coverage
 - `pnpm test` runs every workspace with a `test` script, including desktop Vitest, desktop Rust tests, shared contract tests, architecture lint tests, and scaffold tests for deployables that are not implemented yet.
 - `pnpm coverage` runs desktop Vitest coverage and writes LCOV output under `coverage/apps/desktop/`.
 
+## Sensor Timing
+
+| Moment                           | Run                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| While diagnosing                 | Small focused tests, typecheck for the touched workspace, relevant sensor scripts |
+| Before handoff                   | `pnpm harness`                                                                    |
+| Before review on broad changes   | `pnpm sensor:impact-radius` plus `pnpm harness`                                   |
+| When touching shared contracts   | `pnpm sensor:contract-drift`, package tests, then `pnpm harness`                  |
+| When changing architecture rules | Architecture linter fixture tests, affected lints, then `pnpm harness`            |
+| In CI                            | Re-run the deterministic factory on clean infrastructure                          |
+
+Factory philosophy and how to read harness-health signals: [`docs/FACTORY.md`](FACTORY.md). Self-improvement loop: [`docs/factory/README.md`](factory/README.md).
+
 ## Desktop
 
 Desktop has two test surfaces:
