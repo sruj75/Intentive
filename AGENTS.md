@@ -2,7 +2,7 @@
 
 A proactive companion that lives across your phone and your Mac.
 
-This is a table of contents, not an encyclopedia. Package manager: **pnpm ≥ 9**. Read [`CONTEXT-MAP.md`](CONTEXT-MAP.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) for shared product language and monorepo structure (then the owning deployable's own `CONTEXT.md` and `ARCHITECTURE.md`) before making changes.
+This is a table of contents, not an encyclopedia. Package manager: **pnpm ≥ 11**. Read [`CONTEXT-MAP.md`](CONTEXT-MAP.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) for shared product language and monorepo structure (then the owning deployable's own `CONTEXT.md` and `ARCHITECTURE.md`) before making changes.
 
 ## Verify
 
