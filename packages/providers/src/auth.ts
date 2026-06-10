@@ -52,6 +52,22 @@ export interface JwtVerificationFailure {
 }
 
 /**
+ * Recover the verification failure from a caught `unknown`. This is the only
+ * sanctioned way to get a `reason` back out of the verifier: a thrown
+ * `JwtVerificationError` carries it directly; anything else (an opaque
+ * transport/runtime error from outside the verifier) is treated as the JWKS
+ * being unavailable, the safe conservative default. The `JwtVerificationReason`
+ * taxonomy is enumerated once here, in the module that owns it — callers must
+ * not re-list it. See packages/CONTEXT.md → "Auth provider".
+ */
+export function asJwtVerificationFailure(err: unknown): JwtVerificationFailure {
+  if (err instanceof JwtVerificationError) {
+    return { reason: err.reason };
+  }
+  return { reason: "jwks_unavailable" };
+}
+
+/**
  * Build a verifier bound to one JWKS endpoint. Construct this once at startup
  * and reuse it: the returned verifier closes over an in-memory key cache that
  * fetches lazily and refetches on an unknown `kid` (key rotation). Creating one

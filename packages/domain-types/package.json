@@ -7,11 +7,17 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc --outDir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

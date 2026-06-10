@@ -8,7 +8,7 @@ This repo is **multi-context** (see the root [`CONTEXT-MAP.md`](../../CONTEXT-MA
 | Context              | ADR home                                                                     |
 | -------------------- | ---------------------------------------------------------------------------- |
 | System-wide          | [`docs/adr/`](.)                                                             |
-| Shared (`packages/`) | none yet                                                                     |
+| Shared (`packages/`) | system-wide (see [ADR-0004](0004-shared-boundary-decode-package.md))         |
 | Mobile Client        | [`apps/mobile/docs/adr/`](../../apps/mobile/docs/adr/)                       |
 | Desktop Client       | [`apps/desktop/docs/adr/`](../../apps/desktop/docs/adr/)                     |
 | Control Plane        | [`services/control-plane/docs/adr/`](../../services/control-plane/docs/adr/) |
@@ -20,11 +20,12 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 
 ## System-wide index (`docs/adr/`)
 
-| #    | Title                                             | Status   |
-| ---- | ------------------------------------------------- | -------- |
-| 0001 | Unified monorepo foundation                       | accepted |
-| 0002 | No standalone channels domain in Agent Runtime v1 | accepted |
-| 0003 | Single live protocol shape v1                     | accepted |
+| #    | Title                                                | Status   |
+| ---- | ---------------------------------------------------- | -------- |
+| 0001 | Unified monorepo foundation                          | accepted |
+| 0002 | No standalone channels domain in Agent Runtime v1    | accepted |
+| 0003 | Single live protocol shape v1                        | accepted |
+| 0004 | Shared boundary-decode package (@intentive/boundary) | accepted |
 
 ## Context indexes
 

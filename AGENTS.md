@@ -45,12 +45,13 @@ Workflow skills (issues, labels, vocabulary): [`docs/agents/`](docs/agents/).
 
 Working rules and contract-change ordering: [`packages/AGENTS.md`](packages/AGENTS.md).
 
-| Path                                               | Owns                                                                                      |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`packages/protocol/`](packages/protocol/)         | WebSocket event schemas (Zod). The single source of truth for client↔runtime wire format. |
-| [`packages/api-contract/`](packages/api-contract/) | Control Plane HTTP request/response schemas.                                              |
-| [`packages/domain-types/`](packages/domain-types/) | Shared domain shapes not tied to a wire format.                                           |
-| [`packages/providers/`](packages/providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, feature flags).                       |
+| Path                                               | Owns                                                                                                 |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [`packages/protocol/`](packages/protocol/)         | WebSocket event schemas (Zod). The single source of truth for client↔runtime wire format.            |
+| [`packages/api-contract/`](packages/api-contract/) | Control Plane HTTP request/response schemas.                                                         |
+| [`packages/domain-types/`](packages/domain-types/) | Shared domain shapes not tied to a wire format (owns the canonical `CLIENT_KINDS`).                  |
+| [`packages/providers/`](packages/providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, feature flags).                                  |
+| [`packages/boundary/`](packages/boundary/)         | The one parse-at-boundary decode (`parseBoundary`/`BoundaryParseError`) for WS + HTTP. See ADR-0004. |
 
 ## Inviolable rules (enforced by lint)
 

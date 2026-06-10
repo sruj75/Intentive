@@ -5,7 +5,7 @@ import {
   type RuntimeToClientEvent,
   type SessionSnapshot,
 } from "@intentive/protocol";
-import type { JwtVerificationFailure, JwtVerifier } from "@intentive/providers/auth";
+import { asJwtVerificationFailure, type JwtVerifier } from "@intentive/providers/auth";
 
 import { mapJwtVerificationErrorToRuntimeError } from "./auth-failure.js";
 import { conversationHistoryUnavailableError } from "./history-unavailable.js";
@@ -70,7 +70,7 @@ export function createConnectHandler(deps: {
         });
       } catch (error) {
         return {
-          response: mapJwtVerificationErrorToRuntimeError(toJwtVerificationFailure(error)),
+          response: mapJwtVerificationErrorToRuntimeError(asJwtVerificationFailure(error)),
           closeSocket: true,
         };
       }
@@ -103,28 +103,4 @@ export function createConnectHandler(deps: {
       }
     },
   };
-}
-
-function toJwtVerificationFailure(error: unknown): JwtVerificationFailure {
-  if (hasJwtVerificationReason(error)) {
-    return { reason: error.reason };
-  }
-
-  return { reason: "jwks_unavailable" };
-}
-
-function hasJwtVerificationReason(error: unknown): error is JwtVerificationFailure {
-  if (typeof error !== "object" || error === null || !("reason" in error)) {
-    return false;
-  }
-
-  return (
-    error.reason === "expired" ||
-    error.reason === "invalid_signature" ||
-    error.reason === "wrong_issuer" ||
-    error.reason === "wrong_audience" ||
-    error.reason === "unknown_key" ||
-    error.reason === "jwks_unavailable" ||
-    error.reason === "malformed"
-  );
 }

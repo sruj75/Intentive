@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "zod": "^3.23.0",
+    "@intentive/boundary": "workspace:*",
     "@intentive/domain-types": "workspace:*"
   },
   "devDependencies": {

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { JwtVerificationError } from "@intentive/providers/auth";
+
 import { createConnectHandler } from "../dist/index.js";
 
 const validConnect = {
@@ -79,7 +81,9 @@ test("connect handshake maps JWT verification failures to structured runtime err
         userId: "00000000-0000-4000-8000-000000000001",
         agentInstanceId: "agent_instance_1",
       }),
-      verifier: { verify: async () => Promise.reject({ reason }) },
+      verifier: {
+        verify: async () => Promise.reject(new JwtVerificationError(reason, "verification failed")),
+      },
       conversation: snapshotReader(),
     });
 
@@ -123,7 +127,10 @@ test("connect handshake still maps JWT failures through the auth taxonomy", asyn
       userId: "00000000-0000-4000-8000-000000000001",
       agentInstanceId: "agent_instance_1",
     }),
-    verifier: { verify: async () => Promise.reject({ reason: "invalid_signature" }) },
+    verifier: {
+      verify: async () =>
+        Promise.reject(new JwtVerificationError("invalid_signature", "verification failed")),
+    },
     conversation: {
       readSnapshot: async () => {
         throw new Error("must not read history after auth failure");
