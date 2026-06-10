@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const parser = require("@typescript-eslint/parser");
@@ -41,18 +42,20 @@ Options:
   --help         Show this help.
 `;
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  if (options.help) {
-    console.log(usage);
-    process.exit(0);
-  }
+if (isMainModule(import.meta.url)) {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      console.log(usage);
+      process.exit(0);
+    }
 
-  const report = analyzeImpactRadius(options);
-  console.log(formatReport(report));
-} catch (error) {
-  console.error(`impact-radius: ${error.message}`);
-  process.exit(1);
+    const report = analyzeImpactRadius(options);
+    console.log(formatReport(report));
+  } catch (error) {
+    console.error(`impact-radius: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 export function analyzeImpactRadius({ repo, base }) {
@@ -684,7 +687,7 @@ function workspaceForRelPath(workspaces, relPath) {
   );
 }
 
-function formatReport(report) {
+export function formatReport(report) {
   const lines = [];
 
   lines.push("Impact Radius Sensor");
@@ -782,4 +785,8 @@ function exists(absPath) {
   } catch {
     return false;
   }
+}
+
+function isMainModule(metaUrl) {
+  return process.argv[1] && fileURLToPath(metaUrl) === path.resolve(process.argv[1]);
 }

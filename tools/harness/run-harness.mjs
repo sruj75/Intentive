@@ -30,6 +30,11 @@ const rootChecks = [
     args: ["sensor:harness-health:test"],
   },
   {
+    label: "Factory report sensor fixture tests",
+    command: "pnpm",
+    args: ["sensor:factory-report:test"],
+  },
+  {
     label: "Contract drift sensor",
     command: "pnpm",
     args: ["sensor:contract-drift"],

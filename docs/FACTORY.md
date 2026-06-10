@@ -70,6 +70,7 @@ Run sensors as close to the change as possible. Cheap deterministic checks belon
 | Impact radius          | `pnpm sensor:impact-radius`   | Changed-file coupling and affected-workspace hints for review triage                               |
 | Contract drift         | `pnpm sensor:contract-drift`  | Detects local redefinitions of shared protocol/API contracts                                       |
 | Harness health         | `pnpm sensor:harness-health`  | Advisory ready-for-review drift report                                                             |
+| Factory report         | `pnpm sensor:factory-report`  | Aggregates advisory signals into the PR sticky comment and prompts steward classification          |
 | Typecheck              | `pnpm typecheck`              | Workspace TypeScript contract health                                                               |
 | Lint                   | `pnpm lint`                   | Docs links, context vocabulary, TS architecture rules, ESLint                                      |
 | Rust architecture lint | `pnpm lint:architecture:rust` | Desktop Rust layer and structure rules                                                             |
@@ -150,18 +151,20 @@ Every flywheel recommendation should name:
 
 ## Harness Health Feedback Loop
 
-`pnpm sensor:harness-health` is the factory's ready-for-review feedback loop. It is advisory on purpose: it should steer attention, generate improvement work, and make factory drift visible without pretending to be a complete quality score.
+`pnpm sensor:factory-report` is the factory's ready-for-review feedback loop. It aggregates `pnpm sensor:impact-radius` and `pnpm sensor:harness-health` into the PR sticky comment, then prints the classification handoff reviewers and agents should complete for material findings. It is advisory on purpose: it should steer attention, generate improvement work, and make factory drift visible without pretending to be a complete quality score.
 
 ```mermaid
 flowchart LR
-  A["Code and factory change"] --> B["Harness Health sensor"]
-  B --> C["Ready-for-review PR comment"]
-  C --> D["Human and agent review attention"]
+  A["Code and factory change"] --> B["Impact radius + Harness Health"]
+  B --> C["Factory report PR comment"]
+  C --> D["Classify material findings"]
   D --> E["Code fix"]
   D --> F["Factory improvement"]
+  D --> H["Backlog or accepted rationale"]
   F --> G["Guide, sensor, test, workflow, or issue update"]
   E --> A
   G --> A
+  H --> A
 ```
 
 Read the report as a systems signal, not a checklist. Each section points at a different way the product-building system can drift:
@@ -182,7 +185,7 @@ Use two loops:
 1. **Balancing loop: reduce current drift.** Fix the specific finding when it is clearly part of the current change.
 2. **Reinforcing loop: improve the factory.** When the finding reveals a repeated pattern, improve the guide, sensor, fixture, CI job, or issue template so the next agent starts with a stronger system.
 
-The PR sticky comment is the loop handoff. Before merging a non-trivial change, the reviewer or agent should classify each material harness-health finding as one of:
+The PR sticky comment is the loop handoff. Before merging a non-trivial change, the reviewer or agent should classify each material factory-report finding as one of:
 
 - **Fixed now**: the current change removes the drift.
 - **Factory improved**: the current change adds or sharpens a guide, sensor, test, workflow, or review rubric.

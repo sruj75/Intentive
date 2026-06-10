@@ -12,6 +12,7 @@ pnpm harness --scope apps/mobile
 pnpm sensor:impact-radius
 pnpm sensor:contract-drift
 pnpm sensor:harness-health
+pnpm sensor:factory-report
 pnpm docs:agents:test
 pnpm typecheck
 pnpm lint
@@ -25,6 +26,7 @@ pnpm coverage
 - `pnpm sensor:impact-radius` is the preferred pre-review triage sensor. It reports coupling and affected workspace hints for the current change set, and remains advisory in CI.
 - `pnpm sensor:contract-drift` is a hard-gated architecture sensor. It fails when deployables redefine `@intentive/protocol` wire events or `@intentive/api-contract` HTTP contracts locally.
 - `pnpm sensor:harness-health` emits the advisory Ready-for-review drift report used by the PR sticky comment workflow. Treat the sticky comment as a factory feedback loop: fix current drift when it belongs in the change, improve the harness when the finding repeats, or backlog/accept the finding with rationale.
+- `pnpm sensor:factory-report` aggregates impact-radius and harness-health into the sticky PR handoff report, then prints the factory-steward classification table for material findings.
 - `pnpm docs:agents:test` fixture-tests the structural `AGENTS.md` / `CLAUDE.md` integrity checker that runs inside `pnpm docs:check`.
 - `pnpm typecheck` runs every workspace typecheck through Turbo.
 - `pnpm lint` checks documentation links and architecture lint rules (TS).
@@ -165,6 +167,7 @@ vertical slices land.
 ## CI Expectations
 
 - `.github/workflows/monorepo-foundation.yml` is the root PR gate. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness` and includes typecheck, lint, format check, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests.
+- `.github/workflows/harness-health.yml` posts the non-blocking factory report sticky comment on non-draft pull requests. It uses `pnpm sensor:factory-report`, which folds impact-radius and harness-health into one review handoff and includes the Fixed now / Factory improved / Backlogged / Accepted classification prompt.
 - `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite (including the opt-in Neon repo integration test when repository secrets are set) on pull requests that touch `services/control-plane/` or its shared-package dependencies.
 - `.github/workflows/desktop-ci.yml` runs desktop frontend and Rust checks when desktop-relevant paths change.
 - `.github/workflows/desktop-audit.yml` runs dependency audits for pnpm and Cargo.

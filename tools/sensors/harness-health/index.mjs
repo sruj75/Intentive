@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const parser = require("@typescript-eslint/parser");
@@ -61,24 +62,26 @@ Options:
   --help             Show this help.
 `;
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  if (options.help) {
-    console.log(usage);
-    process.exit(0);
-  }
+if (isMainModule(import.meta.url)) {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      console.log(usage);
+      process.exit(0);
+    }
 
-  const report = analyzeHarnessHealth(options);
-  const output = formatMarkdownReport(report);
-  if (options.output) {
-    const outPath = path.resolve(options.repo, options.output);
-    mkdirSync(path.dirname(outPath), { recursive: true });
-    writeFileSync(outPath, output);
+    const report = analyzeHarnessHealth(options);
+    const output = formatMarkdownReport(report);
+    if (options.output) {
+      const outPath = path.resolve(options.repo, options.output);
+      mkdirSync(path.dirname(outPath), { recursive: true });
+      writeFileSync(outPath, output);
+    }
+    console.log(output);
+  } catch (error) {
+    console.error(`harness-health: ${error.message}`);
+    process.exit(1);
   }
-  console.log(output);
-} catch (error) {
-  console.error(`harness-health: ${error.message}`);
-  process.exit(1);
 }
 
 export function analyzeHarnessHealth({ repo = process.cwd(), base = "HEAD" } = {}) {
@@ -648,7 +651,7 @@ function runGit(repoRoot, args) {
   return result.stdout;
 }
 
-function formatMarkdownReport(report) {
+export function formatMarkdownReport(report) {
   const lines = [];
 
   lines.push("<!-- intentive:harness-health -->");
@@ -809,4 +812,8 @@ function compareByFields(fields) {
 
 function toRepoPath(repoRoot, absPath) {
   return path.relative(repoRoot, absPath).replace(/\\/g, "/");
+}
+
+function isMainModule(metaUrl) {
+  return process.argv[1] && fileURLToPath(metaUrl) === path.resolve(process.argv[1]);
 }
