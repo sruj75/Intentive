@@ -50,7 +50,7 @@ The factory is healthy when guides and sensors reinforce each other and improve 
 
 ## Guides and Sensors
 
-**Guides** tell agents where to start and what constraints apply. Entry map: [`AGENTS.md`](../AGENTS.md). Product language: [`CONTEXT-MAP.md`](../CONTEXT-MAP.md) and deployable `CONTEXT.md`. Structure and boundaries: [`ARCHITECTURE.md`](../ARCHITECTURE.md). Decisions: [`docs/adr/`](adr/) and deployable `docs/adr/`.
+**Guides** tell agents where to start and what constraints apply. Entry map: [`AGENTS.md`](../AGENTS.md). Product language: [`CONTEXT-MAP.md`](../CONTEXT-MAP.md) and deployable `CONTEXT.md`. Structure and boundaries: [`ARCHITECTURE.md`](../ARCHITECTURE.md). Decisions: [`docs/adr/`](adr/) and deployable `docs/adr/`. Sequenced backlog and dependencies: [`docs/ISSUE-BOARD.md`](ISSUE-BOARD.md) — update it when closing or re-scoping issues so the next agent starts from current factory state.
 
 **Sensors** give fast feedback on what changed. Command catalog, timing, and CI expectations: [`docs/TESTING.md`](TESTING.md).
 
