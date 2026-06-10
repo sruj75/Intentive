@@ -8,6 +8,7 @@ import {
 import type { JwtVerificationFailure, JwtVerifier } from "@intentive/providers/auth";
 
 import { mapJwtVerificationErrorToRuntimeError } from "./auth-failure.js";
+import { conversationHistoryUnavailableError } from "./history-unavailable.js";
 
 export interface GatewaySession {
   readonly userId: string;
@@ -96,11 +97,7 @@ export function createConnectHandler(deps: {
         };
       } catch {
         return {
-          response: {
-            type: "runtime_error",
-            code: "service_unavailable",
-            message: "Conversation history is temporarily unavailable.",
-          },
+          response: conversationHistoryUnavailableError(),
           closeSocket: true,
         };
       }

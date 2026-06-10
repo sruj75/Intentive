@@ -64,4 +64,4 @@ Wire shape, deliberately reuse-heavy to minimise contract churn while there is n
 
 Ordering and cursor mechanics: a database-assigned monotonic sequence (`seq`) per appended message is the stable total sort order and the cursor basis; `at` (the server record time — not the client `sent_at`) is for display. `before_cursor` is the `seq` of the oldest message in the returned window, non-null when older history exists.
 
-Scope note: backfill requests are **reads** — they do not enter the `runtime_events` ledger or the per-`user_id` ordering queue (those serialize state-mutating ingress). What stays deferred is only the _client UI_ for scroll-back, not the server contract or handler.
+Scope note: backfill requests are **reads** — they do not enter the `runtime_events` ledger or write path. Their Session Snapshot reads are still submitted through the per-`user_id` ordering boundary, so a reconnect/backfill read waits behind earlier accepted work for that User while reads for other Users continue independently. What stays deferred is only the _client UI_ for scroll-back, not the server contract or handler.

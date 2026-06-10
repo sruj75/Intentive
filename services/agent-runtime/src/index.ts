@@ -6,6 +6,8 @@
  */
 export { mapJwtVerificationErrorToRuntimeError } from "./domains/gateway/service/auth-failure.js";
 export { createConnectHandler } from "./domains/gateway/service/connect.js";
+export { conversationHistoryUnavailableError } from "./domains/gateway/service/history-unavailable.js";
+export { createQueuedSessionSnapshotReader } from "./domains/gateway/service/session-snapshot-reader.js";
 export type {
   ConnectHandler,
   ConnectHandlerResult,
@@ -13,6 +15,7 @@ export type {
   GatewaySessionRegistry,
   SessionSnapshotReader,
 } from "./domains/gateway/service/connect.js";
+export type { UserTaskQueue } from "./domains/gateway/service/session-snapshot-reader.js";
 export { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 export { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
 export type { GatewayEventHandler } from "./domains/gateway/ui/ws-handler.js";

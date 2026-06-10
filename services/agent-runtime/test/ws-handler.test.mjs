@@ -3,7 +3,11 @@ import test from "node:test";
 
 import { WebSocket, WebSocketServer } from "ws";
 
-import { attachGatewayWebSocketHandler, createConnectHandler } from "../dist/index.js";
+import {
+  attachGatewayWebSocketHandler,
+  createConnectHandler,
+  createPostConnectRouter,
+} from "../dist/index.js";
 
 const emptyConversation = {
   readSnapshot: async () => ({ messages: [], before_cursor: null }),
@@ -219,6 +223,78 @@ test("malformed post-handshake events return invalid_connect without closing the
       type: "runtime_error",
       code: "invalid_connect",
       message: "WebSocket event is invalid for this connection state.",
+    });
+    assert.equal(client.readyState, WebSocket.OPEN);
+
+    client.send(
+      JSON.stringify({
+        type: "presence_update",
+        foreground: true,
+      }),
+    );
+
+    await waitFor(() => seenEvent?.type === "presence_update");
+    assert.deepEqual(seenEvent, { type: "presence_update", foreground: true });
+  } finally {
+    client.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("History Backfill read failures send the history error and keep the socket open", async () => {
+  const server = new WebSocketServer({ port: 0 });
+  let seenEvent;
+  const connectHandler = createConnectHandler({
+    sessions: sessionRegistry("agent_instance_1"),
+    verifier: { verify: async () => ({ user_id: "user_1" }) },
+    conversation: emptyConversation,
+  });
+
+  const route = createPostConnectRouter({
+    ingress: (_session, event) => {
+      seenEvent = event;
+    },
+    conversation: {
+      readSnapshot: async () => {
+        throw new Error("conversation reader unavailable");
+      },
+    },
+  });
+
+  server.on("connection", (socket) => {
+    attachGatewayWebSocketHandler(socket, connectHandler, route);
+  });
+
+  await new Promise((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  assert.equal(typeof address, "object");
+  assert.notEqual(address, null);
+
+  const client = new WebSocket(`ws://127.0.0.1:${address.port}`);
+  try {
+    await new Promise((resolve) => client.once("open", resolve));
+    client.send(
+      JSON.stringify({
+        type: "connect",
+        auth_token: "jwt_1",
+        client_kind: "mobile",
+        client_version: "1.0.0",
+      }),
+    );
+    await new Promise((resolve) => client.once("message", resolve));
+
+    client.send(
+      JSON.stringify({
+        type: "history_backfill_request",
+        before_cursor: "53",
+      }),
+    );
+
+    const raw = await new Promise((resolve) => client.once("message", resolve));
+    assert.deepEqual(JSON.parse(raw.toString()), {
+      type: "runtime_error",
+      code: "service_unavailable",
+      message: "Conversation history is temporarily unavailable.",
     });
     assert.equal(client.readyState, WebSocket.OPEN);
 

@@ -14,6 +14,7 @@ import { loadConfig } from "./config/env.js";
 import { createConversationRepo } from "./domains/conversation/repo/conversation.js";
 import { toConversationEntry } from "./domains/conversation/service/project-ingress.js";
 import { createConnectHandler } from "./domains/gateway/service/connect.js";
+import { createQueuedSessionSnapshotReader } from "./domains/gateway/service/session-snapshot-reader.js";
 import { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 import {
   attachGatewayWebSocketHandler,
@@ -42,6 +43,7 @@ const registry = createAgentInstanceRepo(sql);
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const queue = createUserQueue();
+const sessionSnapshots = createQueuedSessionSnapshotReader({ conversation, queue });
 const ingest = createIngestEvent({
   ledger,
   // A `user_message` is transactionally projected into Conversation History
@@ -70,7 +72,7 @@ const internalApp = createInternalApp({
 });
 const connectHandler = createConnectHandler({
   verifier,
-  conversation,
+  conversation: sessionSnapshots,
   sessions: {
     async loadSessionByAuthSubject({ authSubject, clientKind }) {
       const agentInstance = await registry.loadByAuthSubject(authSubject);
@@ -87,13 +89,14 @@ const connectHandler = createConnectHandler({
 serve({ fetch: internalApp.fetch, port: config.internalInbound.port });
 
 // State-mutating ingress (`user_message`, `context_snapshot`,
-// `session_end_marker`) flows through the ledger + ordering queue; History
-// Backfill reads bypass it. The router branches between the two.
+// `session_end_marker`) flows through the ledger + ordering queue. History
+// Backfill bypasses the ledger/write path, but uses the queued Session Snapshot
+// reader so reads observe pending per-User work in order.
 const ingressEventHandler: GatewayEventHandler = (session, event) =>
   isRuntimeIngressEvent(event) ? handleRuntimeIngress(session, event) : undefined;
 const routePostConnectEvent = createPostConnectRouter({
   ingress: ingressEventHandler,
-  conversation,
+  conversation: sessionSnapshots,
 });
 
 const wss = new WebSocketServer({ port: config.port });

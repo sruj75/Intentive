@@ -79,7 +79,7 @@ _Avoid_: reconnect payload, hello payload, message backlog
 A single uniform timeline entry inside a Session Snapshot, built for rendering: `{ message_id, author: "user" | "companion", body, at (datetime), via_post_message_back: boolean }`. Distinct from the live `user_message`/`companion_message` wire events — it is a history projection with its own axis of change. `via_post_message_back` is always present and `false` for user-authored entries. `at` is the **server record time** (when the Runtime durably accepted the message), not the client's `sent_at`; ordering uses a monotonic per-message sequence so equal `at` values never tie.
 
 **History Backfill**:
-A **read** request for the page of Conversation History older than a cursor, served by the same projection as the reconnect snapshot via a generalized `readSnapshot(userId, before?)`. The response reuses the **Session Snapshot** shape. Backfill is a pure read: it does **not** enter the `runtime_events` ledger or the per-`user_id` ordering queue (those serialize state-mutating ingress only). See ADR-0006 (Amendment).
+A **read** request for the page of Conversation History older than a cursor, served by the same projection as the reconnect snapshot via a generalized `readSnapshot(userId, before?)`. The response reuses the **Session Snapshot** shape. Backfill is a pure read: it does **not** enter the `runtime_events` ledger or write path, but its Session Snapshot read is still serialized behind pending per-User work so reconnect/backfill observes earlier accepted events. See ADR-0006 (Amendment).
 _Avoid_: pagination event (too generic), load-more (UI term), history sync
 
 ## Relationships

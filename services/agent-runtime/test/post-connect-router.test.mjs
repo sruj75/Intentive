@@ -43,6 +43,33 @@ test("a History Backfill request is a read: it bypasses ingress and returns a sn
   });
 });
 
+test("a History Backfill read failure returns the history-unavailable error and bypasses ingress", async () => {
+  let ingressCalls = 0;
+
+  const route = createPostConnectRouter({
+    ingress: () => {
+      ingressCalls += 1;
+    },
+    conversation: {
+      readSnapshot: async () => {
+        throw new Error("conversation reader unavailable");
+      },
+    },
+  });
+
+  const response = await route(session, {
+    type: "history_backfill_request",
+    before_cursor: "53",
+  });
+
+  assert.equal(ingressCalls, 0);
+  assert.deepEqual(response, {
+    type: "runtime_error",
+    code: "service_unavailable",
+    message: "Conversation history is temporarily unavailable.",
+  });
+});
+
 test("a state-mutating event is delegated to ingress and produces no direct reply", async () => {
   let readCalls = 0;
   const seen = [];
