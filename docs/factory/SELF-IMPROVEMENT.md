@@ -106,7 +106,7 @@ pnpm format:check
 
 After approved work lands:
 
-1. Update human ledger fields in `LEDGER.md` for accepted/backlogged/factory-improved findings.
+1. Update human ledger fields in the JSON `entries` block inside `LEDGER.md` for accepted/backlogged/factory-improved findings. Do not edit the rendered table; `pnpm factory:ledger` regenerates it from the JSON.
 2. Add unfinished approved work to `BACKLOG.md` with links back to ledger IDs.
 3. Add a decision record for any important trade-off.
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { analyzeHarnessHealth } from "../harness-health/index.mjs";
 import { analyzeImpactRadius } from "../impact-radius/index.mjs";
 import { extractFindingsFromReport } from "../../factory/extract-findings.mjs";
-import { defaultLedgerPath, ledgerStatusForFinding, readLedger } from "../../factory/ledger.mjs";
+import { ledgerStatusForFinding, readLedger } from "../../factory/ledger.mjs";
 
 const maxListItems = 20;
 
@@ -93,7 +93,7 @@ function parseArgs(args) {
     base: "HEAD",
     format: "markdown",
     output: null,
-    ledger: defaultLedgerPath(),
+    ledger: "docs/factory/LEDGER.md",
     help: false,
   };
 

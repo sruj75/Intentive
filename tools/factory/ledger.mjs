@@ -48,7 +48,7 @@ export function formatLedgerMarkdown(ledger) {
       "# Factory Ledger",
       "",
       "This file remembers recurring factory findings across pull requests.",
-      "Machine data lives between the HTML markers below. Human notes stay in the table.",
+      "Machine data lives between the HTML markers below. Human fields (status, rationale, owner, action) belong in each JSON entry and are rendered in the table.",
       "",
     ].join("\n");
 

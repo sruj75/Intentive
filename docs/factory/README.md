@@ -52,7 +52,7 @@ pnpm docs:factory:test
 ```
 
 - `pnpm sensor:factory-report` creates the sticky PR comment input.
-- `pnpm factory:ledger` refreshes finding counts in `LEDGER.md` without overwriting human classifications.
+- `pnpm factory:ledger` refreshes finding counts in `LEDGER.md` without overwriting human classifications stored in the JSON `entries` block.
 - `pnpm factory:recommend --report <file>` writes `.context/factory-recommendations.md` for the recommendation-only agent pass.
 
 ## Finding IDs
