@@ -30,6 +30,13 @@ export function createApp(deps: {
       body: unknown;
     }): Promise<{ status: number; body: unknown }>;
   };
+  getAgent: {
+    handle(req: {
+      authorization: string | null;
+      clientKind: string | null;
+      capturePermissionGranted: string | null;
+    }): Promise<{ status: number; body: unknown }>;
+  };
 }): Hono {
   const app = new Hono();
 
@@ -38,6 +45,17 @@ export function createApp(deps: {
 
   app.get("/me", async (c) => {
     const result = await deps.getMe.handle({
+      authorization: c.req.header("authorization") ?? null,
+      clientKind: c.req.header("x-client-kind") ?? null,
+      capturePermissionGranted: c.req.header("x-capture-permission-granted") ?? null,
+    });
+    return json(result.body, result.status);
+  });
+
+  // `GET /agent` reads the same device-signal headers as `/me` so the gate
+  // policy is identical everywhere (complete mediation).
+  app.get("/agent", async (c) => {
+    const result = await deps.getAgent.handle({
       authorization: c.req.header("authorization") ?? null,
       clientKind: c.req.header("x-client-kind") ?? null,
       capturePermissionGranted: c.req.header("x-capture-permission-granted") ?? null,

@@ -53,6 +53,30 @@ export interface DeviceLister {
   listDevicesForUser(userId: string): Promise<readonly { client_kind: ClientKind }[]>;
 }
 
+/**
+ * The narrow slice of the agents domain this composer needs: "has this User ever
+ * provisioned a Companion?". Depending on this local read port (not the whole
+ * `AgentsService`, whose write surface calls the Agent Runtime) keeps identity a
+ * pure reader and avoids a dependency cycle — `agents` knows nothing of
+ * `identity`; this port is injected at the composition root.
+ */
+export interface AgentInstanceReader {
+  hasAgentInstance(userId: string): Promise<boolean>;
+}
+
+/**
+ * The principal + gate decision shared by both public methods, resolved from one
+ * JWT verification. `authSubject` is the IdP subject (Routing's pass-through
+ * `runtime_jwt` identity); `userId` is our stable internal id. Account State
+ * deliberately never carries `authSubject` — only `resolveRoutingContext`
+ * exposes it.
+ */
+export interface RoutingContext {
+  userId: string;
+  authSubject: string;
+  nextGate: PreChatGateKind | null;
+}
+
 export interface IdentityService {
   /**
    * Verify `token` and resolve the caller to a stable internal user. Rejects
@@ -69,6 +93,16 @@ export interface IdentityService {
    * absent signal yields the cross-client-only gate sequence.
    */
   resolveAccount(token: string, signal?: GetMeDeviceSignal): Promise<AccountState>;
+
+  /**
+   * Verify `token` and return the principal-and-gate context Routing needs to
+   * authorize `GET /agent`: the internal `userId`, the `authSubject`, and the
+   * device-aware `nextGate`. Same verification and same gate logic as
+   * `resolveAccount` (one place owns ADR-0005), but exposes `authSubject` and
+   * omits `has_agent_instance` — Routing decides on the gate, not the registry.
+   * Rejects with the verifier's `JwtVerificationError` if the token is invalid.
+   */
+  resolveRoutingContext(token: string, signal?: GetMeDeviceSignal): Promise<RoutingContext>;
 }
 
 export function createIdentityService(deps: {
@@ -76,38 +110,63 @@ export function createIdentityService(deps: {
   users: UsersRepo;
   gates: NextGateResolver;
   devices: DeviceLister;
+  agents: AgentInstanceReader;
 }): IdentityService {
   async function authenticate(token: string): Promise<{ userId: string }> {
     // The verifier's `user_id` is the IdP *subject* (jose `payload.sub`); the
     // repo maps that to the stable internal user_id we expose to clients.
     const { user_id: sub } = await deps.verifier.verify(token);
-    return deps.users.resolveUser({ sub });
+    const { userId } = await deps.users.resolveUser({ sub });
+    return { userId };
+  }
+
+  /**
+   * The private core both public methods build on: one verification → resolve
+   * the user → compose the device-aware gate (ADR-0005). Keeping the
+   * sibling-device derivation and the gate call here means that logic lives in
+   * exactly one place and never leaks into a second domain (Routing must not
+   * re-derive gate inputs).
+   */
+  async function resolvePrincipalAndGate(
+    token: string,
+    signal: GetMeDeviceSignal,
+  ): Promise<RoutingContext> {
+    const { user_id: authSubject } = await deps.verifier.verify(token);
+    const { userId } = await deps.users.resolveUser({ sub: authSubject });
+
+    // The Sibling Invitation is satisfied by an *observed* sibling device — a
+    // device of a different client_kind than the caller's (Android ignored in
+    // v1). We read it at composition time and pass it as a pure input so the
+    // gates sequencer never reaches into devices itself (ADR-0005). Without a
+    // reported client_kind there is no "different kind" to find, so it is false.
+    const devices = await deps.devices.listDevicesForUser(userId);
+    const hasSiblingDevice =
+      signal.client_kind != null &&
+      devices.some((d) => d.client_kind !== signal.client_kind && d.client_kind !== "android");
+
+    const nextGate = await deps.gates.nextGate(userId, {
+      clientKind: signal.client_kind,
+      capturePermissionGranted: signal.capture_permission_granted,
+      hasSiblingDevice,
+    });
+
+    return { userId, authSubject, nextGate };
   }
 
   return {
     authenticate,
+
     async resolveAccount(token, signal = {}) {
-      const { userId } = await authenticate(token);
+      const { userId, nextGate } = await resolvePrincipalAndGate(token, signal);
+      // `has_agent_instance` now comes from the injected agents read port: it is
+      // "has ever provisioned," not "live session." `authSubject` is deliberately
+      // dropped — Account State never carries the IdP subject.
+      const has_agent_instance = await deps.agents.hasAgentInstance(userId);
+      return { user_id: userId, next_gate: nextGate, has_agent_instance };
+    },
 
-      // The Sibling Invitation is satisfied by an *observed* sibling device — a
-      // device of a different client_kind than the caller's (Android ignored in
-      // v1). We read it at composition time and pass it as a pure input so the
-      // gates sequencer never reaches into devices itself (ADR-0005). Without a
-      // reported client_kind there is no "different kind" to find, so it is false.
-      const devices = await deps.devices.listDevicesForUser(userId);
-      const hasSiblingDevice =
-        signal.client_kind != null &&
-        devices.some((d) => d.client_kind !== signal.client_kind && d.client_kind !== "android");
-
-      const next_gate = await deps.gates.nextGate(userId, {
-        clientKind: signal.client_kind,
-        capturePermissionGranted: signal.capture_permission_granted,
-        hasSiblingDevice,
-      });
-
-      // `has_agent_instance` stays the honest `false` placeholder until #30 wires
-      // the `agents` collaborator. `user_id` and `next_gate` are now real.
-      return { user_id: userId, next_gate, has_agent_instance: false };
+    resolveRoutingContext(token, signal = {}) {
+      return resolvePrincipalAndGate(token, signal);
     },
   };
 }

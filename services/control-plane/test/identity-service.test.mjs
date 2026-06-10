@@ -16,6 +16,7 @@ const fakeVerifier = (sub) => ({ verify: async () => ({ user_id: sub }) });
 const fakeUsers = (userId) => ({ resolveUser: async () => ({ userId }) });
 const fakeGates = (gate) => ({ nextGate: async () => gate });
 const fakeDevices = (list = []) => ({ listDevicesForUser: async () => list });
+const fakeAgents = (has = false) => ({ hasAgentInstance: async () => has });
 
 test("authenticate maps a verified subject to the internal user id", async () => {
   const seen = [];
@@ -37,6 +38,7 @@ test("authenticate maps a verified subject to the internal user id", async () =>
     users,
     gates: fakeGates(null),
     devices: fakeDevices(),
+    agents: fakeAgents(),
   }).authenticate("tok");
 
   assert.deepEqual(result, { userId: "u_1" });
@@ -49,6 +51,7 @@ test("resolveAccount composes the gate the gates domain reports", async () => {
     users: fakeUsers("u_1"),
     gates: fakeGates("consent_primer"),
     devices: fakeDevices(),
+    agents: fakeAgents(),
   }).resolveAccount("tok");
 
   assert.deepEqual(account, {
@@ -56,6 +59,44 @@ test("resolveAccount composes the gate the gates domain reports", async () => {
     next_gate: "consent_primer",
     has_agent_instance: false,
   });
+});
+
+test("resolveAccount reflects has_agent_instance from the injected agents reader", async () => {
+  const seen = [];
+  const account = await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates: fakeGates(null),
+    devices: fakeDevices(),
+    agents: {
+      hasAgentInstance: async (userId) => {
+        seen.push(userId);
+        return true;
+      },
+    },
+  }).resolveAccount("tok");
+
+  assert.equal(account.has_agent_instance, true, "the reader's answer drives the field");
+  assert.deepEqual(seen, ["u_1"], "asked for the resolved internal user id");
+});
+
+test("resolveRoutingContext returns userId, authSubject, and nextGate from one verification", async () => {
+  let verifyCount = 0;
+  const ctx = await createIdentityService({
+    verifier: {
+      verify: async () => {
+        verifyCount += 1;
+        return { user_id: "sub-1" };
+      },
+    },
+    users: fakeUsers("u_1"),
+    gates: fakeGates("consent_primer"),
+    devices: fakeDevices(),
+    agents: fakeAgents(),
+  }).resolveRoutingContext("tok");
+
+  assert.deepEqual(ctx, { userId: "u_1", authSubject: "sub-1", nextGate: "consent_primer" });
+  assert.equal(verifyCount, 1, "routing context costs exactly one verification");
 });
 
 test("resolveAccount asks gates for the resolved user, not the subject", async () => {
@@ -72,6 +113,7 @@ test("resolveAccount asks gates for the resolved user, not the subject", async (
     users: fakeUsers("u_1"),
     gates,
     devices: fakeDevices(),
+    agents: fakeAgents(),
   }).resolveAccount("tok");
 
   assert.deepEqual(seen, ["u_1"], "gates are computed for the internal user id");
@@ -93,6 +135,7 @@ test("resolveAccount derives hasSiblingDevice from the registry and forwards the
     gates,
     // The caller is a Mobile client; the user also owns a Desktop → a sibling.
     devices: fakeDevices([{ client_kind: "desktop" }]),
+    agents: fakeAgents(),
   }).resolveAccount("tok", { client_kind: "mobile", capture_permission_granted: undefined });
 
   assert.deepEqual(seen, [
@@ -114,6 +157,7 @@ test("a device of the caller's own client_kind is not a sibling", async () => {
     users: fakeUsers("u_1"),
     gates,
     devices: fakeDevices([{ client_kind: "mobile" }]),
+    agents: fakeAgents(),
   }).resolveAccount("tok", { client_kind: "mobile" });
 
   assert.deepEqual(seen, [false], "only a *different* client_kind counts as a sibling");
@@ -133,6 +177,7 @@ test("an Android device is ignored when computing the sibling for a Mobile calle
     users: fakeUsers("u_1"),
     gates,
     devices: fakeDevices([{ client_kind: "android" }]),
+    agents: fakeAgents(),
   }).resolveAccount("tok", { client_kind: "mobile" });
 
   assert.deepEqual(seen, [false], "Android is ignored for sibling computation in v1");
@@ -165,9 +210,16 @@ test("resolveAccount propagates a verification failure and never touches repo or
       return [];
     },
   };
+  let agentsCalled = false;
+  const agents = {
+    hasAgentInstance: async () => {
+      agentsCalled = true;
+      return false;
+    },
+  };
 
   await assert.rejects(
-    () => createIdentityService({ verifier, users, gates, devices }).resolveAccount("tok"),
+    () => createIdentityService({ verifier, users, gates, devices, agents }).resolveAccount("tok"),
     (err) => {
       assert.ok(err instanceof JwtVerificationError);
       assert.equal(err.reason, "expired");
@@ -177,4 +229,5 @@ test("resolveAccount propagates a verification failure and never touches repo or
   assert.equal(repoCalled, false, "a failed verification must short-circuit before the repo");
   assert.equal(gatesCalled, false, "a failed verification must short-circuit before gates");
   assert.equal(devicesCalled, false, "a failed verification must short-circuit before devices");
+  assert.equal(agentsCalled, false, "a failed verification must short-circuit before agents");
 });

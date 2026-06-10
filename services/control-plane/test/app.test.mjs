@@ -26,6 +26,7 @@ const appWith = (overrides) =>
     postConsent: { handle: async () => ({ status: 200, body: {} }) },
     postSiblingInvitationSkip: { handle: async () => ({ status: 200, body: {} }) },
     postDeviceRegister: { handle: async () => ({ status: 200, body: {} }) },
+    getAgent: { handle: async () => ({ status: 200, body: {} }) },
     ...overrides,
   });
 
@@ -94,6 +95,55 @@ test("GET /me surfaces the handler's error status", async () => {
 
   const res = await app.request("/me", { headers: { authorization: "Bearer bad" } });
   assert.equal(res.status, 401);
+});
+
+test("GET /agent forwards the auth + device-signal headers and returns the handler's result", async () => {
+  let seen;
+  const app = appWith({
+    getAgent: {
+      handle: async (req) => {
+        seen = req;
+        return {
+          status: 200,
+          body: {
+            agent_instance_id: "agent_1",
+            ws_url: "wss://runtime.example.com/ws",
+            runtime_jwt: "the.user.jwt",
+          },
+        };
+      },
+    },
+  });
+
+  const res = await app.request("/agent", {
+    headers: {
+      authorization: "Bearer the.user.jwt",
+      "x-client-kind": "mobile",
+      "x-capture-permission-granted": "true",
+    },
+  });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    agent_instance_id: "agent_1",
+    ws_url: "wss://runtime.example.com/ws",
+    runtime_jwt: "the.user.jwt",
+  });
+  assert.equal(seen.authorization, "Bearer the.user.jwt");
+  assert.equal(seen.clientKind, "mobile");
+  assert.equal(seen.capturePermissionGranted, "true");
+});
+
+test("GET /agent surfaces the handler's error status", async () => {
+  const app = appWith({
+    getAgent: {
+      handle: async () => ({ status: 403, body: { code: "gate_required", message: "x" } }),
+    },
+  });
+
+  const res = await app.request("/agent", { headers: { authorization: "Bearer t" } });
+  assert.equal(res.status, 403);
+  assert.deepEqual(await res.json(), { code: "gate_required", message: "x" });
 });
 
 test("GET /healthz is a 200 liveness probe", async () => {
