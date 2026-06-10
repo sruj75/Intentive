@@ -3,3 +3,12 @@ packages:
   - "services/*"
   - "packages/*"
   - "tools/linters/*"
+
+allowBuilds:
+  core-js: true
+  esbuild: true
+  msgpackr-extract: true
+
+overrides:
+  better-auth: "1.4.18"
+  "@better-auth/passkey": "1.4.18"

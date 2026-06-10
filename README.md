@@ -24,7 +24,7 @@ Each deployable owns its local setup notes and guardrails:
 
 **Prerequisites**
 
-- **Node ≥ 20** and **pnpm ≥ 9** (`corepack enable` to get pnpm).
+- **Node ≥ 22** and **pnpm ≥ 11** (`corepack enable` to get pnpm).
 - **Desktop only:** a Rust toolchain plus Tauri system deps. macOS needs the
   Xcode Command Line Tools; Linux needs `libwebkit2gtk-4.1-dev`,
   `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`, `libssl-dev`
