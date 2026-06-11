@@ -73,4 +73,17 @@ describe("Intentive Auth client setup", () => {
 
     expect(invoke).toHaveBeenCalledWith("clear_login_token");
   });
+
+  it("does not re-send an unchanged login token on a repeat sync", async () => {
+    const { syncLoginTokenToRust } = await import("../domains/auth/service/auth");
+    const authClient = {
+      getSession: () => ({ data: { session: { token: "login-token" } } }),
+    };
+
+    const first = await syncLoginTokenToRust(authClient);
+    const second = await syncLoginTokenToRust(authClient, first);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(second).toEqual({ kind: "signed_in", token: "login-token" });
+  });
 });

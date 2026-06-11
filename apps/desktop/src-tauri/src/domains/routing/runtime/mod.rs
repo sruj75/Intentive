@@ -247,6 +247,17 @@ impl WsSession {
     }
 
     pub async fn set_login_token(self: &Arc<Self>, token: String) {
+        // The webview re-syncs the same token on mount, on focus, and every few
+        // seconds. Restarting on an unchanged token would tear down a live
+        // session and revive one that stopped on a fatal handshake error
+        // (`protocol_unsupported`/`invalid_connect`). Only a genuinely new token
+        // restarts the loop; an unchanged token is a no-op.
+        {
+            let current = self.login_token.lock().await;
+            if current.as_deref() == Some(token.as_str()) {
+                return;
+            }
+        }
         self.stop_task().await;
         *self.login_token.lock().await = Some(token.clone());
         self.observer
@@ -623,5 +634,91 @@ mod tests {
     #[test]
     fn static_jitter_is_available_for_paused_time_tests() {
         assert_eq!(StaticJitter.jitter(Duration::from_secs(1)), Duration::ZERO);
+    }
+
+    struct CountingObserver {
+        states: std::sync::Mutex<Vec<(RoutingState, SessionState)>>,
+    }
+
+    impl CountingObserver {
+        fn new() -> Self {
+            Self {
+                states: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn count(&self, target: (RoutingState, SessionState)) -> usize {
+            self.states
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|state| **state == target)
+                .count()
+        }
+    }
+
+    impl RoutingObserver for CountingObserver {
+        fn observe(&self, routing_state: RoutingState, session_state: SessionState) {
+            self.states
+                .lock()
+                .unwrap()
+                .push((routing_state, session_state));
+        }
+    }
+
+    /// Counts fetches, then parks forever so the session stays "alive" at the
+    /// fetch step — letting the test observe whether a second `set_login_token`
+    /// restarted the loop.
+    struct ParkingRoutingSource {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        reached: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl RoutingSource for ParkingRoutingSource {
+        async fn fetch(&self, _login_token: &str) -> Result<Routing, RoutingFetchError> {
+            self.calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.reached.notify_one();
+            std::future::pending::<()>().await;
+            unreachable!("parked fetch never resolves")
+        }
+    }
+
+    #[tokio::test]
+    async fn set_login_token_ignores_an_unchanged_token() {
+        use std::sync::atomic::Ordering;
+
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let observer = Arc::new(CountingObserver::new());
+        let session = WsSession::new(
+            Arc::new(ParkingRoutingSource {
+                calls: calls.clone(),
+                reached: reached.clone(),
+            }),
+            Arc::new(FakeTransport::default()),
+            observer.clone(),
+            Arc::new(StaticJitter),
+        );
+
+        session.set_login_token("token".to_string()).await;
+        reached.notified().await; // first run loop has reached the parked fetch
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Re-syncing the identical token must not abort and respawn the loop.
+        session.set_login_token("token".to_string()).await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "unchanged token triggered a second fetch (session was restarted)"
+        );
+        assert_eq!(
+            observer.count((RoutingState::SignedIn, SessionState::Disconnected)),
+            1,
+            "unchanged token re-emitted the signed-in/disconnected transition"
+        );
     }
 }

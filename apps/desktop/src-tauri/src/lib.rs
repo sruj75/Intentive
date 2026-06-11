@@ -207,21 +207,22 @@ pub fn run() {
             // Control Plane `GET /agent` lookup, the long-lived socket, and the
             // reconnect/refresh loop. Snapshot event sends remain intentionally
             // inert until #34 plugs the heartbeat sink into this live session.
+            let control_plane_routing_source = || -> Arc<dyn RoutingSource> {
+                match domains::routing::config::default_control_plane_base_url()
+                    .and_then(|raw| Url::parse(&raw).ok())
+                {
+                    Some(base_url) => Arc::new(RoutingFetcher::new(base_url, reqwest::Client::new())),
+                    None => Arc::new(DisabledRoutingSource),
+                }
+            };
             let routing_source: Arc<dyn RoutingSource> = match FixtureRoutingSource::from_env() {
                 Ok(Some(fixture)) => Arc::new(fixture),
-                Ok(None) => {
-                    match domains::routing::config::default_control_plane_base_url()
-                        .and_then(|raw| Url::parse(&raw).ok())
-                    {
-                        Some(base_url) => {
-                            Arc::new(RoutingFetcher::new(base_url, reqwest::Client::new()))
-                        }
-                        None => Arc::new(DisabledRoutingSource),
-                    }
-                }
+                Ok(None) => control_plane_routing_source(),
+                // A malformed fixture must not disable routing when a real
+                // Control Plane URL is configured — log and fall through.
                 Err(err) => {
-                    eprintln!("routing: fixture ignored: {err}");
-                    Arc::new(DisabledRoutingSource)
+                    eprintln!("routing: fixture ignored, falling back to Control Plane: {err}");
+                    control_plane_routing_source()
                 }
             };
             let routing_session = WsSession::new(

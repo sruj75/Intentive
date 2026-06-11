@@ -2,7 +2,12 @@ import type React from "react";
 import { useEffect, useMemo } from "react";
 import { NeonAuthUIProvider } from "@neondatabase/neon-js/auth/react";
 import "@neondatabase/neon-js/ui/css"; // Neon's default auth form styles
-import { createIntentiveAuthClient, readNeonAuthUrl, syncLoginTokenToRust } from "../service/auth";
+import {
+  createIntentiveAuthClient,
+  readNeonAuthUrl,
+  syncLoginTokenToRust,
+  type LoginTokenSyncState,
+} from "../service/auth";
 
 type Props = {
   children: React.ReactNode;
@@ -25,12 +30,17 @@ export default function IntentiveAuthProvider({ children }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    let synced: LoginTokenSyncState = { kind: "unknown" };
     const sync = () => {
       if (cancelled) return;
-      void syncLoginTokenToRust(authClient).catch(() => {
-        // Browser preview and tests do not have a Rust command host. The app
-        // retries on focus and on the interval once it is running under Tauri.
-      });
+      void syncLoginTokenToRust(authClient, synced)
+        .then((next) => {
+          if (!cancelled) synced = next;
+        })
+        .catch(() => {
+          // Browser preview and tests do not have a Rust command host. The app
+          // retries on focus and on the interval once it is running under Tauri.
+        });
     };
 
     sync();

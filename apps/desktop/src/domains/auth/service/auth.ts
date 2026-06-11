@@ -60,13 +60,38 @@ export async function readLoginTokenFromAuthClient(
   return token === null ? { kind: "signed_out" } : { kind: "signed_in", token };
 }
 
-export async function syncLoginTokenToRust(authClient: unknown): Promise<void> {
+export type LoginTokenSyncState =
+  | { kind: "unknown" }
+  | { kind: "signed_in"; token: string }
+  | { kind: "signed_out" };
+
+// Hands the current Neon login token to Rust, but only when it actually
+// changed since the last sync. The webview polls this every few seconds and on
+// focus; firing `set_login_token` with an unchanged token would be redundant
+// IPC (and, before the Rust-side guard, would tear down the live session).
+// Pass the returned state back in on the next call to dedupe.
+export async function syncLoginTokenToRust(
+  authClient: unknown,
+  previous: LoginTokenSyncState = { kind: "unknown" },
+): Promise<LoginTokenSyncState> {
   const result = await readLoginTokenFromAuthClient(authClient);
   if (result.kind === "signed_in") {
+    if (previous.kind === "signed_in" && previous.token === result.token) {
+      return previous;
+    }
     await invoke("set_login_token", { token: result.token });
-  } else if (result.kind === "signed_out") {
-    await invoke("clear_login_token");
+    return { kind: "signed_in", token: result.token };
   }
+  if (result.kind === "signed_out") {
+    if (previous.kind === "signed_out") {
+      return previous;
+    }
+    await invoke("clear_login_token");
+    return { kind: "signed_out" };
+  }
+  // Unsupported host (browser preview / tests without a Rust command host):
+  // leave the synced state unchanged so the next attempt still fires.
+  return previous;
 }
 
 function hasSessionReader(value: unknown): value is SessionReader & Required<SessionReader> {
