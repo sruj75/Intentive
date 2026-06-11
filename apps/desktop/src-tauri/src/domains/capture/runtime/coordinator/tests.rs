@@ -208,6 +208,30 @@ async fn readiness_false_from_capturing_stops_supervisor() {
 }
 
 #[tokio::test]
+async fn readiness_false_from_stopped_returns_to_setup_required_and_stops_supervisor() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ToggleRequested);
+    wait_for(&observer, CaptureState::Stopped).await;
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        supervisor.stop_count(),
+        2,
+        "one stop for user pause, one stop for readiness revocation"
+    );
+}
+
+#[tokio::test]
 async fn supervisor_crashed_event_drives_fsm_to_error_with_carried_copy() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (sup_tx, sup_rx) = spawn_supervisor_channel();
@@ -276,6 +300,33 @@ async fn toggle_from_stopped_starts_supervisor_and_notifies_observer_capturing()
         supervisor.stop_count(),
         1,
         "first toggle stopped the supervisor exactly once"
+    );
+}
+
+#[tokio::test]
+async fn toggle_from_stopped_with_live_readiness_false_returns_to_setup_required_without_starting()
+{
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ToggleRequested);
+    wait_for(&observer, CaptureState::Stopped).await;
+    readiness.set_ready(false);
+
+    coord.submit(CoordinatorCommand::ToggleRequested);
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        supervisor.start_count(),
+        0,
+        "stale Stopped state must not start capture when live readiness is false"
     );
 }
 

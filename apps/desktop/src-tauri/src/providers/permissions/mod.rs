@@ -107,10 +107,50 @@ fn platform_snapshot() -> PermissionSet {
 #[cfg(target_os = "macos")]
 mod macos {
     use std::ffi::{c_char, c_void};
+    use std::ptr;
+
+    type CFTypeRef = *const c_void;
+    type CFArrayRef = *const c_void;
+    type CFDictionaryRef = *const c_void;
+    type CFNumberRef = *const c_void;
+    type CFStringRef = *const c_void;
+    type CFIndex = isize;
+    type CFTypeId = usize;
+    type CGWindowId = u32;
+    type CGWindowListOption = u32;
+
+    const K_CG_NULL_WINDOW_ID: CGWindowId = 0;
+    const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: CGWindowListOption = 1 << 0;
+    const K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: CGWindowListOption = 1 << 4;
+    const K_CF_NUMBER_SINT32_TYPE: CFIndex = 3;
 
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
         fn CGPreflightScreenCaptureAccess() -> bool;
+        fn CGWindowListCopyWindowInfo(
+            option: CGWindowListOption,
+            relative_to_window: CGWindowId,
+        ) -> CFArrayRef;
+
+        static kCGWindowName: CFStringRef;
+        static kCGWindowOwnerPID: CFStringRef;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFArrayGetCount(the_array: CFArrayRef) -> CFIndex;
+        fn CFArrayGetValueAtIndex(the_array: CFArrayRef, idx: CFIndex) -> CFTypeRef;
+        fn CFDictionaryGetValueIfPresent(
+            the_dict: CFDictionaryRef,
+            key: CFTypeRef,
+            value: *mut CFTypeRef,
+        ) -> bool;
+        fn CFGetTypeID(cf: CFTypeRef) -> CFTypeId;
+        fn CFNumberGetTypeID() -> CFTypeId;
+        fn CFNumberGetValue(number: CFNumberRef, the_type: CFIndex, value_ptr: *mut c_void)
+            -> bool;
+        fn CFRelease(cf: CFTypeRef);
+        fn CFStringGetTypeID() -> CFTypeId;
     }
 
     #[link(name = "ApplicationServices", kind = "framework")]
@@ -131,7 +171,7 @@ mod macos {
     }
 
     pub fn screen_recording_granted() -> bool {
-        unsafe { CGPreflightScreenCaptureAccess() }
+        (unsafe { CGPreflightScreenCaptureAccess() }) || screen_recording_granted_via_window_list()
     }
 
     pub fn accessibility_granted() -> bool {
@@ -148,6 +188,62 @@ mod macos {
             unsafe { std::mem::transmute(objc_msgSend as *const ()) };
         let status = unsafe { send(class, selector, AVMediaTypeAudio) };
         status == AV_AUTHORIZED
+    }
+
+    fn screen_recording_granted_via_window_list() -> bool {
+        let options =
+            K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
+        let window_list = unsafe { CGWindowListCopyWindowInfo(options, K_CG_NULL_WINDOW_ID) };
+        if window_list.is_null() {
+            return false;
+        }
+
+        let granted = unsafe { readable_foreign_window_name_exists(window_list) };
+        unsafe { CFRelease(window_list) };
+        granted
+    }
+
+    unsafe fn readable_foreign_window_name_exists(window_list: CFArrayRef) -> bool {
+        let current_pid = std::process::id() as i32;
+        let count = CFArrayGetCount(window_list);
+        for index in 0..count {
+            let window = CFArrayGetValueAtIndex(window_list, index) as CFDictionaryRef;
+            if window.is_null() || window_owner_pid(window) == Some(current_pid) {
+                continue;
+            }
+            if window_has_readable_name(window) {
+                return true;
+            }
+        }
+        false
+    }
+
+    unsafe fn window_owner_pid(window: CFDictionaryRef) -> Option<i32> {
+        let mut value: CFTypeRef = ptr::null();
+        if !CFDictionaryGetValueIfPresent(window, kCGWindowOwnerPID, &mut value)
+            || value.is_null()
+            || CFGetTypeID(value) != CFNumberGetTypeID()
+        {
+            return None;
+        }
+
+        let mut pid = 0_i32;
+        if CFNumberGetValue(
+            value as CFNumberRef,
+            K_CF_NUMBER_SINT32_TYPE,
+            (&mut pid as *mut i32).cast::<c_void>(),
+        ) {
+            Some(pid)
+        } else {
+            None
+        }
+    }
+
+    unsafe fn window_has_readable_name(window: CFDictionaryRef) -> bool {
+        let mut value: CFTypeRef = ptr::null();
+        CFDictionaryGetValueIfPresent(window, kCGWindowName, &mut value)
+            && !value.is_null()
+            && CFGetTypeID(value) == CFStringGetTypeID()
     }
 }
 

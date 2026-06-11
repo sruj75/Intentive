@@ -170,17 +170,26 @@ impl Inner {
                 Err(TransitionError::NotToggleable) => return,
             }
         };
-        self.notify_observers(&next);
         match next {
             CaptureState::Capturing => {
+                if !self.readiness.is_capture_ready() {
+                    let blocked = {
+                        let mut fsm = self.fsm.lock().expect("fsm poisoned");
+                        fsm.to_setup_required().clone()
+                    };
+                    self.notify_observers(&blocked);
+                    return;
+                }
+                self.notify_observers(&next);
                 let _ = self.supervisor.start().await;
                 self.start_heartbeat().await;
             }
             CaptureState::Stopped => {
+                self.notify_observers(&next);
                 let _ = self.supervisor.stop().await;
                 self.stop_heartbeat(SessionEndReason::UserToggle).await;
             }
-            _ => {}
+            _ => self.notify_observers(&next),
         }
     }
 
@@ -205,6 +214,7 @@ impl Inner {
             match (fsm.state(), ready) {
                 (CaptureState::SetupRequired, true) => Some((fsm.mark_ready().clone(), true)),
                 (CaptureState::Capturing, false) => Some((fsm.to_setup_required().clone(), false)),
+                (CaptureState::Stopped, false) => Some((fsm.to_setup_required().clone(), false)),
                 _ => None,
             }
         };

@@ -90,7 +90,7 @@ impl RoutingSource for RoutingFetcher {
                 "x-capture-permission-granted",
                 self.permissions
                     .as_ref()
-                    .map(|permissions| permissions.is_capture_ready())
+                    .map(|permissions| permissions.snapshot().screen_recording)
                     .unwrap_or(false)
                     .to_string(),
             )
@@ -540,6 +540,68 @@ mod tests {
         let permissions = Arc::new(crate::providers::permissions::StubCapturePermissions::new(
             crate::providers::permissions::PermissionSet {
                 screen_recording: true,
+                microphone: true,
+                accessibility: true,
+            },
+        ));
+        let fetcher = RoutingFetcher::with_permissions(
+            Url::parse(&server.uri()).unwrap(),
+            reqwest::Client::new(),
+            permissions,
+        );
+
+        fetcher.fetch("login-token").await.expect("routing");
+    }
+
+    #[tokio::test]
+    async fn routing_fetcher_reports_screen_recording_grant_even_when_other_capture_grants_are_missing(
+    ) {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/agent"))
+            .and(header("x-capture-permission-granted", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "agent_instance_id": "agent_1",
+                "ws_url": "wss://runtime.example/ws",
+                "runtime_jwt": "runtime-token"
+            })))
+            .mount(&server)
+            .await;
+
+        let permissions = Arc::new(crate::providers::permissions::StubCapturePermissions::new(
+            crate::providers::permissions::PermissionSet {
+                screen_recording: true,
+                microphone: false,
+                accessibility: false,
+            },
+        ));
+        let fetcher = RoutingFetcher::with_permissions(
+            Url::parse(&server.uri()).unwrap(),
+            reqwest::Client::new(),
+            permissions,
+        );
+
+        fetcher.fetch("login-token").await.expect("routing");
+    }
+
+    #[tokio::test]
+    async fn routing_fetcher_reports_missing_screen_recording_even_when_other_capture_grants_exist()
+    {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/agent"))
+            .and(header("x-capture-permission-granted", "false"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "agent_instance_id": "agent_1",
+                "ws_url": "wss://runtime.example/ws",
+                "runtime_jwt": "runtime-token"
+            })))
+            .mount(&server)
+            .await;
+
+        let permissions = Arc::new(crate::providers::permissions::StubCapturePermissions::new(
+            crate::providers::permissions::PermissionSet {
+                screen_recording: false,
                 microphone: true,
                 accessibility: true,
             },
