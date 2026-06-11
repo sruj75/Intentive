@@ -1,5 +1,10 @@
 :root {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    sans-serif;
   font-size: 16px;
   line-height: 1.5;
   font-weight: 400;
@@ -104,17 +109,67 @@ button {
 .onboarding-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.onboarding-actions--split {
+  justify-content: space-between;
+}
+
+.onboarding-primary,
+.onboarding-secondary {
+  appearance: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .onboarding-primary {
-  appearance: none;
   border: 0;
-  border-radius: 8px;
-  padding: 8px 16px;
   background: #171717;
   color: #fffdfa;
-  font-weight: 500;
-  cursor: pointer;
+}
+
+.onboarding-secondary {
+  border: 1px solid #d7d0c4;
+  background: #fffdfa;
+  color: #171717;
+}
+
+.permission-preview {
+  display: grid;
+  place-items: center;
+  min-height: 128px;
+  border: 1px solid #e5dfd4;
+  border-radius: 8px;
+  background: #f7f4ee;
+  color: #58524a;
+  font-size: 13px;
+}
+
+.permission-status {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.permission-status__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.permission-status dt,
+.permission-status dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.permission-status dd {
+  font-weight: 600;
 }
 
 .onboarding-progress {
@@ -159,6 +214,18 @@ button {
   .onboarding-primary {
     background: #f6f1e8;
     color: #171717;
+  }
+
+  .onboarding-secondary {
+    border-color: #38332d;
+    background: #201f1d;
+    color: #f6f1e8;
+  }
+
+  .permission-preview {
+    border-color: #38332d;
+    background: #171717;
+    color: #c9bfb2;
   }
 
   .onboarding-progress {

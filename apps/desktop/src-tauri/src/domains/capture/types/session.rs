@@ -18,6 +18,10 @@ pub enum CoordinatorCommand {
     /// Sign-in (and consent) just completed. Auto-starts a Capture Session per
     /// ADR-0009.
     SignInCompleted,
+    /// Desktop Capture Readiness changed. The coordinator maps this single
+    /// boolean into Capture Session lifecycle changes; permission-specific
+    /// details stay behind the provider seam.
+    ReadinessChanged(bool),
     /// Debug-only: drive the FSM straight to Capture Error. Replaces the
     /// previous `simulate_error` Tauri command path.
     SimulateError(ErrorReason),

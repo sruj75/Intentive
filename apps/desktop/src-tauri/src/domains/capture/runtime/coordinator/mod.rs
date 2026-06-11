@@ -12,7 +12,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 use crate::domains::capture::runtime::screenpipe_supervisor::{Supervisor, SupervisorEvent};
-use crate::domains::capture::service::{AuthChecker, CaptureStateMachine, TransitionError};
+use crate::domains::capture::service::{
+    AuthChecker, CaptureStateMachine, ReadinessChecker, TransitionError,
+};
 use crate::domains::capture::types::session::{
     CaptureSessionControl, CoordinatorCommand, SessionHooks, StateObserver,
 };
@@ -23,6 +25,7 @@ struct Inner {
     fsm: Mutex<CaptureStateMachine>,
     observers: Mutex<Vec<Arc<dyn StateObserver>>>,
     supervisor: Arc<dyn Supervisor>,
+    readiness: Arc<dyn ReadinessChecker>,
     /// Installed once after construction via `set_heartbeat`. `None` in tests
     /// that only exercise the FSM ↔ supervisor wiring.
     heartbeat: Mutex<Option<Arc<dyn SessionHooks>>>,
@@ -42,14 +45,16 @@ impl CaptureSessionCoordinator {
         supervisor: Arc<dyn Supervisor>,
         supervisor_rx: mpsc::UnboundedReceiver<SupervisorEvent>,
         auth: &dyn AuthChecker,
+        readiness: Arc<dyn ReadinessChecker>,
     ) -> Arc<Self> {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
-        let fsm = CaptureStateMachine::from_auth(auth);
+        let fsm = CaptureStateMachine::from_checks(auth, readiness.as_ref());
         Arc::new(Self {
             inner: Arc::new(Inner {
                 fsm: Mutex::new(fsm),
                 observers: Mutex::new(Vec::new()),
                 supervisor,
+                readiness,
                 heartbeat: Mutex::new(None),
                 command_tx,
             }),
@@ -150,6 +155,9 @@ impl Inner {
         match command {
             CoordinatorCommand::ToggleRequested => self.handle_toggle().await,
             CoordinatorCommand::SignInCompleted => self.handle_sign_in_completed().await,
+            CoordinatorCommand::ReadinessChanged(ready) => {
+                self.handle_readiness_changed(ready).await
+            }
             CoordinatorCommand::SimulateError(reason) => self.handle_simulate_error(reason),
         }
     }
@@ -162,29 +170,89 @@ impl Inner {
                 Err(TransitionError::NotToggleable) => return,
             }
         };
-        self.notify_observers(&next);
         match next {
             CaptureState::Capturing => {
+                if !self.readiness.is_capture_ready() {
+                    let blocked = {
+                        let mut fsm = self.fsm.lock().expect("fsm poisoned");
+                        fsm.to_setup_required().clone()
+                    };
+                    self.notify_observers(&blocked);
+                    return;
+                }
+                self.notify_observers(&next);
                 let _ = self.supervisor.start().await;
                 self.start_heartbeat().await;
             }
             CaptureState::Stopped => {
+                self.notify_observers(&next);
                 let _ = self.supervisor.stop().await;
                 self.stop_heartbeat(SessionEndReason::UserToggle).await;
             }
-            _ => {}
+            _ => self.notify_observers(&next),
         }
     }
 
     async fn handle_sign_in_completed(&self) {
         let next = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
-            fsm.mark_signed_in().clone()
+            fsm.mark_signed_in(self.readiness.is_capture_ready())
+                .clone()
         };
         self.notify_observers(&next);
-        // ADR-0009: completing sign-in starts a Capture Session.
-        let _ = self.supervisor.start().await;
-        self.start_heartbeat().await;
+        if matches!(next, CaptureState::Capturing) {
+            // Completing sign-in starts a Capture Session only when the local
+            // permission interlock is already satisfied.
+            let _ = self.supervisor.start().await;
+            self.start_heartbeat().await;
+        }
+    }
+
+    async fn handle_readiness_changed(&self, ready: bool) {
+        // The supervisor side effect differs per arm, so model it explicitly
+        // rather than overloading a `should_start: bool`: the recovery arm must
+        // neither start nor stop.
+        enum Effect {
+            Start,
+            Stop,
+            NotifyOnly,
+        }
+        let outcome = {
+            let mut fsm = self.fsm.lock().expect("fsm poisoned");
+            match (fsm.state(), ready) {
+                (CaptureState::SetupRequired, true) => {
+                    Some((fsm.mark_ready().clone(), Effect::Start))
+                }
+                (CaptureState::Capturing, false) => {
+                    Some((fsm.to_setup_required().clone(), Effect::Stop))
+                }
+                // A crash is classified as Error first; the monitor poll is the
+                // single authority for permission state. Once it observes that
+                // a grant is actually gone, reclassify Error to the
+                // SetupRequired recovery flow. ScreenPipe is already dead and
+                // the heartbeat already ended at crash time, so this arm does
+                // no stop / heartbeat work.
+                (CaptureState::Error(_), false) => {
+                    Some((fsm.to_setup_required().clone(), Effect::NotifyOnly))
+                }
+                _ => None,
+            }
+        };
+        let Some((next, effect)) = outcome else {
+            return;
+        };
+        self.notify_observers(&next);
+        match effect {
+            Effect::Start => {
+                let _ = self.supervisor.start().await;
+                self.start_heartbeat().await;
+            }
+            Effect::Stop => {
+                let _ = self.supervisor.stop().await;
+                self.stop_heartbeat(SessionEndReason::Quit).await;
+            }
+            Effect::NotifyOnly => {}
+        }
     }
 
     fn handle_simulate_error(&self, reason: ErrorReason) {
@@ -199,8 +267,22 @@ impl Inner {
         let (next, reason) = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
             match event {
-                SupervisorEvent::Stopped => (fsm.recover_to_stopped().clone(), SessionEndReason::Quit),
+                SupervisorEvent::Stopped => {
+                    // The supervisor reports Stopped both for a real child
+                    // exit while Capturing and after the readiness-revocation
+                    // stop() path that already moved the shell to
+                    // SetupRequired. Only honor it as a Capturing -> Stopped
+                    // settle; otherwise it would clobber SetupRequired or
+                    // Error.
+                    if !matches!(fsm.state(), CaptureState::Capturing) {
+                        return;
+                    }
+                    (fsm.recover_to_stopped().clone(), SessionEndReason::Quit)
+                }
                 SupervisorEvent::Crashed { user_facing_copy } => {
+                    if !matches!(fsm.state(), CaptureState::Capturing) {
+                        return;
+                    }
                     let reason = ErrorReason::new(user_facing_copy.to_string())
                         .expect("supervisor crash copy is non-empty");
                     (fsm.to_error(reason).clone(), SessionEndReason::Crash)

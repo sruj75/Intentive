@@ -12,10 +12,11 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use domains::capture::runtime::coordinator::CaptureSessionCoordinator;
+use domains::capture::runtime::permission_monitor::PermissionMonitor;
 use domains::capture::runtime::screenpipe_supervisor::{
     OsSpawner, ScreenpipeEndpoint, ScreenpipeSupervisor, Spawner, Supervisor,
 };
-use domains::capture::service::{AuthChecker, StubAuthChecker};
+use domains::capture::service::{AuthChecker, ReadinessChecker, StubAuthChecker};
 use domains::capture::types::session::{CaptureSessionControl, CoordinatorCommand, SessionHooks};
 use domains::capture::types::state::CaptureState;
 use domains::routing::runtime::{
@@ -31,6 +32,7 @@ use domains::snapshots::runtime::heartbeat::{
 use domains::snapshots::types::SessionEndReason;
 use domains::summarization::config::ProviderConfig;
 use domains::summarization::service::LlmProvider;
+use providers::permissions::{CapturePermissions, MacosCapturePermissions};
 use tokio::sync::mpsc;
 
 /// Tauri-managed state for the resolved on-device LLM Provider. Starts as
@@ -134,6 +136,12 @@ fn open_onboarding_window(window: &WebviewWindow) {
     let _ = window.set_focus();
 }
 
+fn open_permission_setup_window(window: &WebviewWindow) {
+    let _ = window.eval("window.location.search = '?surface=permission-setup';");
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -152,10 +160,13 @@ pub fn run() {
 
             let auth = StubAuthChecker::new(false);
             let signed_in = auth.is_signed_in();
+            let permissions = Arc::new(MacosCapturePermissions);
+            app.manage(permissions.clone() as Arc<dyn CapturePermissions>);
             let coordinator: Arc<CaptureSessionCoordinator> = CaptureSessionCoordinator::new(
                 supervisor.clone() as Arc<dyn Supervisor>,
                 events_rx,
                 &auth,
+                permissions.clone() as Arc<dyn ReadinessChecker>,
             );
             app.manage(coordinator.clone() as Arc<dyn CaptureSessionControl>);
             app.manage(supervisor.clone());
@@ -176,6 +187,11 @@ pub fn run() {
             app.manage(Arc::new(snapshot_store));
 
             tauri::async_runtime::spawn(coordinator.clone().run());
+            PermissionMonitor::new(
+                permissions.clone() as Arc<dyn ReadinessChecker>,
+                coordinator.clone() as Arc<dyn CaptureSessionControl>,
+            )
+            .spawn();
 
             domains::menubar::ui::install(
                 app,
@@ -211,7 +227,11 @@ pub fn run() {
                 match domains::routing::config::default_control_plane_base_url()
                     .and_then(|raw| Url::parse(&raw).ok())
                 {
-                    Some(base_url) => Arc::new(RoutingFetcher::new(base_url, reqwest::Client::new())),
+                    Some(base_url) => Arc::new(RoutingFetcher::with_permissions(
+                        base_url,
+                        reqwest::Client::new(),
+                        permissions.clone() as Arc<dyn CapturePermissions>,
+                    )),
                     None => Arc::new(DisabledRoutingSource),
                 }
             };
@@ -280,10 +300,12 @@ pub fn run() {
             // the coordinator's snapshot() — refactor canonicalized this
             // path; StateHolder no longer exists. Models-root resolution,
             // disk probe, and failsafe direction live inside the helper.
-            let needs_onboarding = matches!(coordinator.snapshot(), CaptureState::Capturing)
-                && domains::summarization::service::bundled::bundled_model_needs_install();
-            if needs_onboarding {
-                if let Some(window) = app.get_webview_window("settings") {
+            if let Some(window) = app.get_webview_window("settings") {
+                if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
+                    open_permission_setup_window(&window);
+                } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
+                    && domains::summarization::service::bundled::bundled_model_needs_install()
+                {
                     open_onboarding_window(&window);
                 }
             }
@@ -302,6 +324,8 @@ pub fn run() {
             domains::routing::runtime::commands::set_login_token,
             domains::routing::runtime::commands::clear_login_token,
             domains::routing::runtime::commands::get_connection_status,
+            providers::permissions::commands::capture_permission_status,
+            providers::permissions::commands::open_permission_pane,
             domains::summarization::runtime::commands::start_model_download,
         ]);
     }
@@ -315,6 +339,8 @@ pub fn run() {
             domains::routing::runtime::commands::set_login_token,
             domains::routing::runtime::commands::clear_login_token,
             domains::routing::runtime::commands::get_connection_status,
+            providers::permissions::commands::capture_permission_status,
+            providers::permissions::commands::open_permission_pane,
             domains::summarization::runtime::commands::start_model_download,
         ]);
     }

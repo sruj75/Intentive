@@ -10,7 +10,7 @@ const ERROR: &str = "icons/tray/status-item-error.png";
 
 pub fn path_for(state: &CaptureState) -> &'static str {
     match state {
-        CaptureState::Unauthenticated | CaptureState::Stopped => IDLE,
+        CaptureState::Unauthenticated | CaptureState::SetupRequired | CaptureState::Stopped => IDLE,
         CaptureState::Capturing => CAPTURING,
         CaptureState::Error(_) => ERROR,
     }

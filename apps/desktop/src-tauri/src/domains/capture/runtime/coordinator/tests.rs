@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use crate::domains::capture::runtime::screenpipe_supervisor::{
     Supervisor, SupervisorError, SupervisorEvent,
 };
-use crate::domains::capture::service::StubAuthChecker;
+use crate::domains::capture::service::{StubAuthChecker, StubReadinessChecker};
 use crate::domains::capture::types::state::{CaptureState, ErrorReason};
 
 use super::{CaptureSessionCoordinator, CoordinatorCommand, StateObserver};
@@ -95,7 +95,8 @@ async fn observer_fires_once_per_transition() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
     tokio::spawn(coord.clone().run());
@@ -119,7 +120,8 @@ async fn simulate_error_command_drives_fsm_to_error_and_notifies_observer() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
     tokio::spawn(coord.clone().run());
@@ -138,7 +140,8 @@ async fn sign_in_completed_marks_signed_in_and_starts_supervisor() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(false);
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
     assert_eq!(coord.snapshot(), CaptureState::Unauthenticated);
@@ -151,11 +154,105 @@ async fn sign_in_completed_marks_signed_in_and_starts_supervisor() {
 }
 
 #[tokio::test]
+async fn sign_in_completed_requires_capture_readiness_before_starting_supervisor() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(false);
+    let readiness = Arc::new(StubReadinessChecker::new(false));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Unauthenticated);
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::SignInCompleted);
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(supervisor.start_count(), 0);
+}
+
+#[tokio::test]
+async fn readiness_true_from_setup_required_starts_supervisor() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(false));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(true));
+
+    wait_for(&observer, CaptureState::Capturing).await;
+    assert_eq!(supervisor.start_count(), 1);
+}
+
+#[tokio::test]
+async fn readiness_false_from_capturing_stops_supervisor() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(supervisor.stop_count(), 1);
+}
+
+#[tokio::test]
+async fn paused_capture_stays_stopped_across_readiness_revoke_and_restore() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ToggleRequested);
+    wait_for(&observer, CaptureState::Stopped).await;
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(coord.snapshot(), CaptureState::Stopped);
+    assert_eq!(
+        supervisor.stop_count(),
+        1,
+        "readiness revocation after user pause must not trigger another stop"
+    );
+    assert_eq!(supervisor.start_count(), 0);
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(true));
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(coord.snapshot(), CaptureState::Stopped);
+    assert_eq!(
+        observer.history(),
+        vec![CaptureState::Stopped],
+        "readiness revoke/restore after pause must not auto-resume capture"
+    );
+    assert_eq!(supervisor.start_count(), 0);
+}
+
+#[tokio::test]
 async fn supervisor_crashed_event_drives_fsm_to_error_with_carried_copy() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
     tokio::spawn(coord.clone().run());
@@ -171,13 +268,150 @@ async fn supervisor_crashed_event_drives_fsm_to_error_with_carried_copy() {
 }
 
 #[tokio::test]
+async fn supervisor_crashed_event_recovers_through_setup_required_after_poll_false() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Can't start — port conflict",
+        })
+        .expect("supervisor channel still open");
+
+    let want_reason = ErrorReason::new("Can't start — port conflict".to_string()).unwrap();
+    wait_for(&observer, CaptureState::Error(want_reason.clone())).await;
+
+    readiness.set_ready(false);
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        coord.snapshot(),
+        CaptureState::SetupRequired,
+        "the monitor poll must recover permission-caused crashes through setup"
+    );
+    assert_eq!(
+        supervisor.stop_count(),
+        0,
+        "poll recovery must not stop an already-dead supervisor"
+    );
+}
+
+#[tokio::test]
+async fn readiness_false_recovers_error_to_setup_required_without_stopping() {
+    // The readiness poll is the single permission authority: once it observes
+    // the grant is gone it must reclassify Error to SetupRequired, and must NOT
+    // re-stop the supervisor (ScreenPipe is already dead and the heartbeat
+    // already ended at crash time).
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    // Crash while readiness still reads true → Error (Round 4 fast path).
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Something went wrong — relaunch",
+        })
+        .expect("supervisor channel still open");
+    let want_reason = ErrorReason::new("Something went wrong — relaunch".to_string()).unwrap();
+    wait_for(&observer, CaptureState::Error(want_reason)).await;
+
+    // The probe finally reflects the revoked grant; the poll pulls us out.
+    readiness.set_ready(false);
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        supervisor.stop_count(),
+        0,
+        "recovery from Error must not re-stop an already-dead supervisor"
+    );
+}
+
+#[tokio::test]
+async fn readiness_true_from_error_is_a_noop() {
+    // A genuine, persistent crash sits in Error with readiness still true. The
+    // poll keeps reading true, so (Error, true) must fall through to no-op and
+    // leave Error in place (ADR-0011: real crashes surface Error + relaunch).
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    tokio::spawn(coord.clone().run());
+
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Something went wrong — relaunch",
+        })
+        .expect("supervisor channel still open");
+    let want_reason = ErrorReason::new("Something went wrong — relaunch".to_string()).unwrap();
+    wait_for(&observer, CaptureState::Error(want_reason.clone())).await;
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(true));
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(coord.snapshot(), CaptureState::Error(want_reason));
+}
+
+#[tokio::test]
+async fn supervisor_crashed_event_from_non_capturing_state_is_ignored() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(false));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    tokio::spawn(coord.clone().run());
+
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Can't start — port conflict",
+        })
+        .expect("supervisor channel still open");
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    assert_eq!(
+        observer.history(),
+        Vec::<CaptureState>::new(),
+        "late crashes must not overwrite an already-blocked shell state"
+    );
+}
+
+#[tokio::test]
 async fn supervisor_stopped_event_drives_fsm_to_stopped() {
     // Covers the race where a stop the coordinator did NOT initiate (e.g.
     // ScreenPipe self-exit during a controlled stop) lands on the channel.
     let supervisor = Arc::new(FakeSupervisor::default());
     let (sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
     tokio::spawn(coord.clone().run());
@@ -190,11 +424,44 @@ async fn supervisor_stopped_event_drives_fsm_to_stopped() {
 }
 
 #[tokio::test]
+async fn supervisor_stopped_after_readiness_revocation_preserves_setup_required() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(supervisor.stop_count(), 1);
+
+    sup_tx
+        .send(SupervisorEvent::Stopped)
+        .expect("supervisor channel still open");
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    assert_eq!(observer.last(), Some(CaptureState::SetupRequired));
+    assert_eq!(
+        observer.history(),
+        vec![CaptureState::SetupRequired],
+        "production Stopped after revocation must not overwrite SetupRequired"
+    );
+}
+
+#[tokio::test]
 async fn toggle_from_stopped_starts_supervisor_and_notifies_observer_capturing() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
     tokio::spawn(coord.clone().run());
@@ -207,8 +474,43 @@ async fn toggle_from_stopped_starts_supervisor_and_notifies_observer_capturing()
     coord.submit(CoordinatorCommand::ToggleRequested);
     wait_for(&observer, CaptureState::Capturing).await;
 
-    assert_eq!(supervisor.start_count(), 1, "second toggle started the supervisor");
-    assert_eq!(supervisor.stop_count(), 1, "first toggle stopped the supervisor exactly once");
+    assert_eq!(
+        supervisor.start_count(),
+        1,
+        "second toggle started the supervisor"
+    );
+    assert_eq!(
+        supervisor.stop_count(),
+        1,
+        "first toggle stopped the supervisor exactly once"
+    );
+}
+
+#[tokio::test]
+async fn toggle_from_stopped_with_live_readiness_false_returns_to_setup_required_without_starting()
+{
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ToggleRequested);
+    wait_for(&observer, CaptureState::Stopped).await;
+    readiness.set_ready(false);
+
+    coord.submit(CoordinatorCommand::ToggleRequested);
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        supervisor.start_count(),
+        0,
+        "stale Stopped state must not start capture when live readiness is false"
+    );
 }
 
 #[tokio::test]
@@ -216,7 +518,8 @@ async fn toggle_from_capturing_stops_supervisor_and_notifies_observer_stopped() 
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true); // signed-in launch ⇒ FSM starts at Capturing
-    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
     let observer = Arc::new(RecordingObserver::default());
     coord.subscribe(observer.clone());
 
@@ -226,6 +529,10 @@ async fn toggle_from_capturing_stops_supervisor_and_notifies_observer_stopped() 
     coord.submit(CoordinatorCommand::ToggleRequested);
 
     wait_for(&observer, CaptureState::Stopped).await;
-    assert_eq!(supervisor.stop_count(), 1, "supervisor.stop called exactly once");
+    assert_eq!(
+        supervisor.stop_count(),
+        1,
+        "supervisor.stop called exactly once"
+    );
     assert_eq!(supervisor.start_count(), 0, "supervisor.start never called");
 }

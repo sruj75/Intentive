@@ -27,6 +27,7 @@ impl ErrorReason {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CaptureState {
     Unauthenticated,
+    SetupRequired,
     Stopped,
     Capturing,
     Error(ErrorReason),
