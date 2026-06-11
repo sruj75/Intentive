@@ -301,6 +301,7 @@ pub fn run() {
             domains::menubar::ui::simulate_error,
             domains::routing::runtime::commands::set_login_token,
             domains::routing::runtime::commands::clear_login_token,
+            domains::routing::runtime::commands::get_connection_status,
             domains::summarization::runtime::commands::start_model_download,
         ]);
     }
@@ -313,6 +314,7 @@ pub fn run() {
             domains::menubar::ui::quit_app,
             domains::routing::runtime::commands::set_login_token,
             domains::routing::runtime::commands::clear_login_token,
+            domains::routing::runtime::commands::get_connection_status,
             domains::summarization::runtime::commands::start_model_download,
         ]);
     }

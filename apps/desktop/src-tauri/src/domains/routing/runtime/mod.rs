@@ -227,6 +227,13 @@ pub struct WsSession {
     jitter: Arc<dyn JitterSource>,
     task: Mutex<Option<JoinHandle<()>>>,
     login_token: Mutex<Option<String>>,
+    // Last observed `(RoutingState, SessionState)`, kept so the webview can
+    // replay current status on mount. The Settings window reloads when opened,
+    // so a UI that only listened for future `routing:status` events would miss
+    // every transition that already happened. A `std::sync` mutex (not the
+    // async one) so the synchronous `apply` transition path can record without
+    // awaiting; the critical section is a single `Copy` write.
+    last_status: std::sync::Mutex<(RoutingState, SessionState)>,
 }
 
 impl WsSession {
@@ -243,7 +250,27 @@ impl WsSession {
             jitter,
             task: Mutex::new(None),
             login_token: Mutex::new(None),
+            last_status: std::sync::Mutex::new((
+                RoutingState::SignedOut,
+                SessionState::Disconnected,
+            )),
         })
+    }
+
+    /// Current plain-English status, replayed on demand (e.g. when the Settings
+    /// window mounts). Reflects the most recent observed transition.
+    pub fn current_status(&self) -> ConnectionStatus {
+        let (routing_state, session_state) =
+            *self.last_status.lock().expect("status mutex poisoned");
+        status_for(routing_state, session_state)
+    }
+
+    /// Record a transition as the latest status and forward it to the observer.
+    /// Single sink for both so `last_status` can never drift from what the UI
+    /// was told.
+    fn note(&self, routing_state: RoutingState, session_state: SessionState) {
+        *self.last_status.lock().expect("status mutex poisoned") = (routing_state, session_state);
+        self.observer.observe(routing_state, session_state);
     }
 
     pub async fn set_login_token(self: &Arc<Self>, token: String) {
@@ -260,8 +287,7 @@ impl WsSession {
         }
         self.stop_task().await;
         *self.login_token.lock().await = Some(token.clone());
-        self.observer
-            .observe(RoutingState::SignedIn, SessionState::Disconnected);
+        self.note(RoutingState::SignedIn, SessionState::Disconnected);
         let session = self.clone();
         let task = tokio::spawn(async move { session.run(token).await });
         *self.task.lock().await = Some(task);
@@ -270,8 +296,7 @@ impl WsSession {
     pub async fn clear_login_token(self: &Arc<Self>) {
         *self.login_token.lock().await = None;
         self.stop_task().await;
-        self.observer
-            .observe(RoutingState::SignedOut, SessionState::Disconnected);
+        self.note(RoutingState::SignedOut, SessionState::Disconnected);
     }
 
     async fn stop_task(&self) {
@@ -346,7 +371,7 @@ impl WsSession {
         event: RoutingEvent,
     ) -> (RoutingState, SessionState) {
         let next = transition(routing_state, session_state, event);
-        self.observer.observe(next.0, next.1);
+        self.note(next.0, next.1);
         next
     }
 
@@ -720,5 +745,32 @@ mod tests {
             1,
             "unchanged token re-emitted the signed-in/disconnected transition"
         );
+    }
+
+    #[tokio::test]
+    async fn current_status_replays_the_last_observed_mood() {
+        use crate::domains::routing::types::ConnectionMood;
+
+        let session = WsSession::new(
+            Arc::new(ParkingRoutingSource {
+                calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                reached: Arc::new(tokio::sync::Notify::new()),
+            }),
+            Arc::new(FakeTransport::default()),
+            Arc::new(NoopRoutingObserver),
+            Arc::new(StaticJitter),
+        );
+
+        // Before any sign-in, the replayed status is the signed-out default.
+        assert_eq!(session.current_status().mood, ConnectionMood::SignedOut);
+
+        // Signing in records signed-in/disconnected (→ "Connecting") before the
+        // parked fetch can transition further.
+        session.set_login_token("token".to_string()).await;
+        assert_eq!(session.current_status().mood, ConnectionMood::Connecting);
+
+        // Signing out returns to the signed-out mood.
+        session.clear_login_token().await;
+        assert_eq!(session.current_status().mood, ConnectionMood::SignedOut);
     }
 }
