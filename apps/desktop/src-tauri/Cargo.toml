@@ -24,15 +24,17 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.27", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = "0.3"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 thiserror = "1"
 url = { version = "2", features = ["serde"] }
 async-trait = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio-rustls", "chrono", "migrate", "macros"] }
+fastrand = "2"
 
 [dev-dependencies]
 wiremock = "0.6"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
 tempfile = "3"
-

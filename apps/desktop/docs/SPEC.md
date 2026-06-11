@@ -21,15 +21,15 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 ## Non-Goals
 
-| Non-Goal | Why out of scope |
-|---|---|
-| Behavioral analysis or goal comparison | That is the Agent Runtime's job. Intentive delivers context, the runtime reasons about it. |
-| Transparency / history UI | The Snapshot Store is ready for it, but the UI is a future phase. |
-| Windows or Linux support | macOS-only for v1. ScreenPipe and Ollama both support cross-platform but broadening the target adds QA scope we do not have. |
-| Intel Mac support | v1 targets **Apple Silicon (M-series) Macs only**. Intentive bundles `@screenpipe/cli-darwin-arm64` only (ADR-0014). Intel (`cli-darwin-x64`) and packaging strategy (separate builds vs dual-binary app) are future decisions. |
-| Client-side retry queue | Adds meaningful complexity. Delivery is at-most-once in v1; reconnect-snapshot semantics in the Protocol handle recovery. |
-| Chat UI inside the Desktop Client | Out of scope for v1 by design — Desktop is **capture-only**. Chat lives on the Mobile Client (and future Android Client). |
-| Multiple Agent Instances per user | One Agent Instance per user in v1. Fan-out is a future concern. |
+| Non-Goal                               | Why out of scope                                                                                                                                                                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Behavioral analysis or goal comparison | That is the Agent Runtime's job. Intentive delivers context, the runtime reasons about it.                                                                                                                                      |
+| Transparency / history UI              | The Snapshot Store is ready for it, but the UI is a future phase.                                                                                                                                                               |
+| Windows or Linux support               | macOS-only for v1. ScreenPipe and Ollama both support cross-platform but broadening the target adds QA scope we do not have.                                                                                                    |
+| Intel Mac support                      | v1 targets **Apple Silicon (M-series) Macs only**. Intentive bundles `@screenpipe/cli-darwin-arm64` only (ADR-0014). Intel (`cli-darwin-x64`) and packaging strategy (separate builds vs dual-binary app) are future decisions. |
+| Client-side retry queue                | Adds meaningful complexity. Delivery is at-most-once in v1; reconnect-snapshot semantics in the Protocol handle recovery.                                                                                                       |
+| Chat UI inside the Desktop Client      | Out of scope for v1 by design — Desktop is **capture-only**. Chat lives on the Mobile Client (and future Android Client).                                                                                                       |
+| Multiple Agent Instances per user      | One Agent Instance per user in v1. Fan-out is a future concern.                                                                                                                                                                 |
 
 ---
 
@@ -60,6 +60,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 ### Must-Have (P0)
 
 **Subprocess management — ScreenPipe**
+
 - Intentive bundles the ScreenPipe CLI binary in Tauri resources
 - On signed-in launch or manual restart, spawns ScreenPipe as a child process on `127.0.0.1:44380`; kills it on stop or quit
 - The Desktop Client does not spawn ScreenPipe without completed Auth and Control Plane-confirmed Desktop Capture Readiness for this registered Mac
@@ -76,6 +77,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Status indicator reflects live state: capturing / stopped / error
 
 **LLM Provider detection**
+
 - On startup, Intentive resolves its LLM Provider in priority order:
   1. **Apple Intelligence**: query ScreenPipe `/ai/status`; if available, use `/ai/chat/completions`
   2. **Existing Ollama**: check `localhost:11434`; if responding, select the currently loaded model or first installed model ≤ 5GB on disk; fall through to Tier 3 if none qualify
@@ -91,6 +93,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] LLM Provider is resolved and ready before any Capture Session begins
 
 **Context Heartbeat**
+
 - Fires every 10 minutes during a Capture Session
 - Always fires on schedule; it does not skip quiet or unchanged windows
 - Queries ScreenPipe HTTP API (`localhost:44380`) for activity data from the preceding 10-minute window
@@ -102,6 +105,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Session End Marker is sent immediately when a Capture Session ends from stop, quit, or ScreenPipe crash
 
 **Context Snapshot — local write**
+
 - On each heartbeat, writes snapshot to local SQLite `snapshots` table before attempting push
 - Schema: `id` (UUID), `captured_at`, `period_start`, `period_end`, `summary`, `pushed_at` (null until confirmed)
 - Purges entries older than 7 days on app launch
@@ -111,16 +115,18 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Records older than 7 days are absent after the purge runs
 
 **Context Snapshot — Protocol delivery**
+
 - Emits each snapshot as a `context_snapshot` event on the open WebSocket immediately after local write
 - The WebSocket connection is authenticated once at `connect` using the Control Plane-issued JWT; no per-event auth header
 - On a dropped connection, timeout, or rejected event: the snapshot stays in the Snapshot Store with `pushed_at = null`; no client-side retry queue in v1
 - Acceptance:
   - [ ] `context_snapshot` event payload matches the schema in `packages/protocol/`: `snapshot_id`, `captured_at`, `period_start`, `period_end`, `summary`
-  - [ ] WebSocket `connect` handshake includes `client_kind: "desktop"` and the Control Plane-issued JWT
-  - [ ] Connection drops do not crash or stall the heartbeat; the next cycle runs on schedule and reconnect uses the Protocol's reconnect-snapshot semantics
+  - [x] WebSocket `connect` handshake includes `client_kind: "desktop"` and the Control Plane-issued JWT
+  - [x] Connection drops do not crash or stall the heartbeat; the next cycle runs on schedule and reconnect uses the Protocol's reconnect-snapshot semantics
   - [ ] `session_end_marker` event is a separate Protocol event type, not a flag on `context_snapshot`
 
 **Menu bar UI**
+
 - Menu bar icon with status: capturing (active), stopped (idle), error
 - Menu items: Unauthenticated (when signed out), Start Capturing / Stop Capturing toggle (when signed in), Open Settings, Quit
 - No Dock icon (`LSUIElement = true`)
@@ -132,18 +138,20 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Capturing state shows one enabled "Stop Capturing" toggle
 
 **Settings window**
+
 - Triggered from menu bar
 - Auth/account surface uses Neon Auth UI with Google as the intended OAuth provider
 - Settings may mirror user-facing Intentive status, but it is not a ScreenPipe diagnostics panel
 - Routing details (Agent Runtime URL and JWT) are resolved internally by Control Plane's `GET /agent`, not entered by the user
 - Acceptance:
-  - [ ] Settings renders Neon Auth sign-in/account controls
-  - [ ] Settings does not expose endpoint URL or token fields
+  - [x] Settings renders Neon Auth sign-in/account controls
+  - [x] Settings does not expose endpoint URL or token fields
   - [ ] Settings does not expose ScreenPipe readiness or diagnostics
   - [ ] Settings window can be closed without affecting an active Capture Session
   - [ ] Opening the sign-in surface alone does not start capture; only completed Auth plus Control Plane-confirmed Desktop Capture Readiness for this Mac can do that
 
 **Capture Permission Setup**
+
 - Collects Mac-specific desktop capture consent and guides users through required macOS Privacy Settings grants before the Control Plane can confirm Desktop Capture Readiness
 - Uses static bundled instructional screenshots in the style of Opal, paired with live OS permission checks
 - Required v1 grants: Screen & System Audio Recording, Microphone, and Accessibility
@@ -158,6 +166,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] User-facing copy says Intentive and never exposes ScreenPipe diagnostics.
 
 **Release packaging and macOS identity**
+
 - v1 ships as a direct-download Apple Silicon DMG containing only `Intentive.app`
 - Release builds are Developer ID signed and Apple-notarized; unsigned builds are dev-only
 - Product name is **Intentive** and bundle identifier is `com.heyintentive.tauri`
@@ -199,19 +208,19 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 
 ### Leading indicators (days to weeks post-launch)
 
-| Metric | Target |
-|---|---|
-| Snapshot delivery rate | ≥ 95% of generated snapshots `delivery_ack`'d by the Agent Runtime (non-error sessions) |
-| Heartbeat cadence accuracy | Heartbeat fires every 10 minutes during Capture Sessions with no activity-gated skips |
-| Summarization latency | Ollama generates summary in < 5 seconds on M-series hardware |
-| First-run completion | User reaches "ready" state (Ollama model downloaded, settings configured) without manual intervention |
+| Metric                     | Target                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Snapshot delivery rate     | ≥ 95% of generated snapshots `delivery_ack`'d by the Agent Runtime (non-error sessions)               |
+| Heartbeat cadence accuracy | Heartbeat fires every 10 minutes during Capture Sessions with no activity-gated skips                 |
+| Summarization latency      | Ollama generates summary in < 5 seconds on M-series hardware                                          |
+| First-run completion       | User reaches "ready" state (Ollama model downloaded, settings configured) without manual intervention |
 
 ### Lagging indicators (weeks post-launch)
 
-| Metric | Target |
-|---|---|
-| ScreenPipe crash rate | < 1 crash per 8-hour Capture Session |
-| Privacy incident rate | Zero snapshots containing raw passwords, credentials, or financial data (verified via manual audit of local log) |
+| Metric                      | Target                                                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| ScreenPipe crash rate       | < 1 crash per 8-hour Capture Session                                                                                                    |
+| Privacy incident rate       | Zero snapshots containing raw passwords, credentials, or financial data (verified via manual audit of local log)                        |
 | Agent Runtime compatibility | Agent Runtime gateway accepts and processes `context_snapshot` events without protocol-version mismatches or schema errors from day one |
 
 ---
@@ -221,6 +230,7 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 No open blocking questions remain for the currently documented v1 contracts.
 
 **Resolved:**
+
 - Auth provider: Neon Auth, built on Better Auth. Google is the intended v1 OAuth provider.
 - Model tag: `qwen3.5:0.8b` — confirmed in Ollama registry. Tier 3 bundled model. Tier 2 uses existing models ≤ 5GB on disk, falls through to Tier 3 if none qualify.
 - Transport: WebSocket Protocol (`packages/protocol/`); JWT once at `connect`; no per-event auth header.
@@ -232,14 +242,14 @@ No open blocking questions remain for the currently documented v1 contracts.
 
 Intentive is built incrementally. Each phase is shippable on its own.
 
-| Phase | What ships | Depends on |
-|---|---|---|
-| **1. Subprocess shell** | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator | Rust + Tauri CLI installed |
-| **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call | Phase 1 |
-| **3. Context Heartbeat** | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash | Phase 2 |
-| **4. Settings window** | Neon Auth UI account surface; no manual endpoint or token fields | Phase 1 |
-| **5. Routing** | Signed-in user calls Control Plane's `GET /agent`, receives Agent Runtime URL + JWT | Settings window, Neon Auth, Control Plane online |
-| **6. Protocol pipeline** | WebSocket `connect` to Agent Runtime, `context_snapshot` + `session_end_marker` emission, `delivery_ack` stamps `pushed_at`, dropped connection leaves `pushed_at = null` | Phase 3, Routing, Agent Runtime gateway ready |
+| Phase                     | What ships                                                                                                                                                  | Depends on                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **1. Subprocess shell**   | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator                                                                            | Rust + Tauri CLI installed                       |
+| **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call                                                                           | Phase 1                                          |
+| **3. Context Heartbeat**  | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash                                                  | Phase 2                                          |
+| **4. Settings window**    | Neon Auth UI account surface; no manual endpoint or token fields                                                                                            | Phase 1                                          |
+| **5. Routing**            | Signed-in user calls Control Plane's `GET /agent`, receives Agent Runtime URL + JWT, Rust maintains the Protocol WebSocket session skeleton                 | Settings window, Neon Auth, Control Plane online |
+| **6. Protocol pipeline**  | `context_snapshot` + `session_end_marker` emission over the live WebSocket, `delivery_ack` stamps `pushed_at`, dropped connection leaves `pushed_at = null` | Phase 3, Routing, Agent Runtime gateway ready    |
 
 ---
 
@@ -249,11 +259,17 @@ Intentive is built incrementally. Each phase is shippable on its own.
 macOS (user's machine)
 │
 ├── Intentive (Tauri menu bar app)
-│   ├── Manages ScreenPipe subprocess (capture)
-│   ├── Manages Ollama subprocess (summarization)
-│   ├── Context Heartbeat service (10-minute fixed cadence)
-│   ├── Local SQLite log (snapshots, 7-day retention)
-│   └── WebSocket Protocol (`context_snapshot`, `session_end_marker`) → Agent Runtime (always-alive GCE VM)
+│   ├── Webview (Settings / Neon Auth)
+│   │   └── sign-in → login token to Rust; receives connection mood only (`routing:status`, `get_connection_status` on mount)
+│   ├── Rust core
+│   │   ├── ScreenPipe subprocess (capture)
+│   │   ├── Ollama subprocess (summarization)
+│   │   ├── Context Heartbeat (10-minute fixed cadence) → local SQLite log (7-day retention)
+│   │   └── Routing domain
+│   │       ├── Control Plane `GET /agent` → Routing (`ws_url`, JWT, `agent_instance_id`)
+│   │       ├── Routing State (credentials) and Session State (live socket) — independent dials
+│   │       └── Protocol WebSocket session (connect + reconnect; #34 emits `context_snapshot` / `session_end_marker`)
+│   └── Agent Runtime (always-alive GCE VM) ← WebSocket Protocol
 │
 ├── ScreenPipe CLI binary (bundled)
 │   └── HTTP API on localhost:44380
@@ -266,14 +282,14 @@ macOS (user's machine)
 
 ## Stack
 
-| Layer | Choice | Reason |
-|---|---|---|
-| App framework | Tauri 2.x | Lightweight, Rust-native, menu bar support, no Chromium |
-| Frontend | TypeScript + React | Standard Tauri stack |
-| Capture engine | ScreenPipe CLI binary (bundled) | Wraps, not reimplements; HTTP API is the boundary |
-| On-device LLM | Apple Intelligence → existing Ollama (≤ 5GB on disk) → bundled Ollama + `qwen3.5:0.8b` | Tiered: zero-download when possible, bundled fallback, always on-device |
-| Local storage | SQLite (via Tauri plugin) | Snapshot log + future transparency UI |
-| Agent transport | WebSocket Protocol (Zod-validated events from `packages/protocol/`) | Agent Runtime is always-alive on a GCE VM; same Protocol every client uses |
+| Layer           | Choice                                                                                 | Reason                                                                     |
+| --------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| App framework   | Tauri 2.x                                                                              | Lightweight, Rust-native, menu bar support, no Chromium                    |
+| Frontend        | TypeScript + React                                                                     | Standard Tauri stack                                                       |
+| Capture engine  | ScreenPipe CLI binary (bundled)                                                        | Wraps, not reimplements; HTTP API is the boundary                          |
+| On-device LLM   | Apple Intelligence → existing Ollama (≤ 5GB on disk) → bundled Ollama + `qwen3.5:0.8b` | Tiered: zero-download when possible, bundled fallback, always on-device    |
+| Local storage   | SQLite (via Tauri plugin)                                                              | Snapshot log + future transparency UI                                      |
+| Agent transport | WebSocket Protocol (Zod-validated events from `packages/protocol/`)                    | Agent Runtime is always-alive on a GCE VM; same Protocol every client uses |
 
 ---
 
@@ -305,8 +321,8 @@ Raw ScreenPipe data (OCR text, audio transcript, app/window fields) is consumed 
 
 ## Deferred Decisions
 
-| Decision | Why deferred |
-|---|---|
-| Snapshot history / transparency UI | Snapshot Store is ready; UI is a future phase |
-| Client-side retry queue | v1 is at-most-once with reconnect-snapshot recovery; revisit when reliability data shows it matters |
-| Approach 2 (embed screenpipe-engine as Rust library) | Only if ScreenPipe HTTP API proves insufficient for a specific gap |
+| Decision                                             | Why deferred                                                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Snapshot history / transparency UI                   | Snapshot Store is ready; UI is a future phase                                                       |
+| Client-side retry queue                              | v1 is at-most-once with reconnect-snapshot recovery; revisit when reliability data shows it matters |
+| Approach 2 (embed screenpipe-engine as Rust library) | Only if ScreenPipe HTTP API proves insufficient for a specific gap                                  |

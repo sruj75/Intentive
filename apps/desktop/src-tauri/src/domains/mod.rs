@@ -9,5 +9,6 @@
 
 pub mod capture;
 pub mod menubar;
+pub mod routing;
 pub mod snapshots;
 pub mod summarization;

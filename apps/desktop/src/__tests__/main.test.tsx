@@ -25,6 +25,7 @@ vi.mock("@neondatabase/neon-js/ui/css", () => ({}));
 vi.mock("../domains/auth/service/auth", () => ({
   createIntentiveAuthClient: () => ({ kind: "test-auth-client" }),
   readNeonAuthUrl: () => "https://neon.example/auth",
+  syncLoginTokenToRust: () => Promise.resolve(),
 }));
 
 vi.mock("../App", () => ({

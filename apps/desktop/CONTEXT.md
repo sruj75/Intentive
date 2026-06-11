@@ -14,3 +14,22 @@ _Avoid_: cache, mirror of server state, optional store
 
 **Capture Permission Setup**:
 The macOS Privacy Settings flow (Screen Recording, Microphone, Accessibility) required on the Mac before the Desktop Client can start a Capture Session. **Device-Local Gate**. Cannot be granted from the phone.
+
+**Routing State**:
+Whether the Desktop Client currently holds usable **Routing** (the `ws_url` + `runtime_jwt` + `agent_instance_id` issued by the Control Plane's `GET /agent`). One of `signed_out`, `signed_in` (have a login token, no Routing yet), `routing_ready`, `routing_error`. Owned and held in process memory by the Rust core; never surfaced in Settings. Answers "do we have credentials to connect?" — **not** "is the connection up?".
+_Avoid_: connection state, socket state, online/offline
+
+**Session State**:
+Whether the Protocol WebSocket to the **Agent Runtime** is connected **right now**. One of `disconnected`, `connecting`, `connected`, `reconnecting`. A dropped line moves only this state; it does not invalidate **Routing State**. The Rust core emits Protocol events only when Routing State is `routing_ready` **and** Session State is `connected`.
+_Avoid_: routing state, auth state, login state
+
+## Relationships
+
+- The webview owns **sign-in** and re-syncs the login token to the Rust core when it changes (unchanged token is a no-op); the Rust core owns **Routing** end-to-end — it calls `GET /agent`, holds Routing in memory, and re-fetches it when the runtime rejects the badge.
+- **Routing State** and **Session State** are independent. A WebSocket drop moves only Session State (`connected → reconnecting`); Routing State changes only when Routing is fetched, refreshed, or rejected (`auth_failed`).
+- A snapshot is emitted only when **Routing State** is `routing_ready` **and** **Session State** is `connected`. Otherwise it stays in the **Snapshot Store** with `pushed_at = null`.
+- **Capture** is gated by sign-in + **Desktop Capture Readiness**, not by Routing/Session State. A down connection never stops capture (at-most-once, local-truth).
+
+## Flagged ambiguities
+
+- "signed in" was used to mean both "has a login token" and "ready to emit snapshots" — resolved: these are distinct. **Routing State** answers "do we have credentials?"; **Session State** answers "is the line up?". Being signed in implies neither.

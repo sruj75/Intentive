@@ -7,6 +7,16 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Routing + Protocol WebSocket session skeleton** ([Issue #31]) —
+  `src-tauri/src/domains/routing/` now owns `GET /agent`, Routing State,
+  Session State, the Protocol `connect` handshake (`client_kind: "desktop"`),
+  runtime-error decisions, exponential backoff with jitter, and Tauri commands
+  for login-token handoff plus connection mood (`set_login_token`,
+  `clear_login_token`, `get_connection_status`). Settings receives mood only
+  (`routing:status`, replayed on mount); Routing values and JWTs stay in Rust.
+  `agent_interface` is inert until #34 wires snapshot emission through the live
+  session (`pushed_at = null` until then).
+
 - **Context Heartbeat implementation** ([Issue #8]) — `src-tauri/src/context_heartbeat/`
   now runs a fixed 10-minute cadence service that:
   - queries ScreenPipe for the preceding activity window,
@@ -118,7 +128,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   **Intentive**, bundle identifier `com.heyintentive.tauri`, **Intentive** or
   fallback **Intentive Capture** in macOS Privacy Settings, and Capture Permission
   Setup as a release requirement.
-- **Issue #3 smoke checklist** for manually verifying
+- **[Issue #3] smoke checklist** for manually verifying
   the menu bar shell states.
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
   `chrono`, `thiserror`, `url`, `async-trait`. Dev-dep: `wiremock`.
@@ -148,8 +158,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   completion reach the user, command-dispatch failures surface Retry rather
   than an indefinite starting state, and the resolved bundled provider retains
   its Ollama child for later Context Heartbeats.
-- **Issue #2 decisions locked and documented**
-  ([#2](https://github.com/sruj75/v1-tauri/issues/2)):
+- **Issue #2 decisions locked and documented** ([Issue #2]):
   - Tier 3 bundled model confirmed: `qwen3.5:0.8b` (verified in Ollama registry).
   - Tier 2 model selection rule encoded in
     [ADR-0006](adr/0006-desktop-ollama-for-on-device-summarization.md): loaded model
@@ -196,10 +205,15 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   than reporting a phantom `Tier::BundledOllama`. Real path lands when the
   bundled binary is acquired via Tauri resources. An `#[ignore]`d integration
   test (`integration_real_bundled_ollama_prepares_qwen`) is in place.
-- Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
-  present, but mapping a signed-in user to an Agent Runtime endpoint and
-  credential lands in the follow-up Auth/Data API slice.
+- Protocol event emission through the live Routing-owned WebSocket remains #34.
+  #31 opens and maintains the line but does not send Context Snapshots or
+  Session End Markers yet.
 - Tauri runtime wiring is still partial for release-completion scope: Capture
-  Permission Setup hardening, signed/notarized release packaging evidence, and
-  completed Auth-resolved Agent Interface endpoint/credential resolution remain
-  deferred and tracked against [SPEC.md](SPEC.md) Build Phases.
+  Permission Setup hardening and signed/notarized release packaging evidence
+  remain deferred and tracked against [SPEC.md](SPEC.md) Build Phases.
+
+[Issue #2]: https://github.com/sruj75/Intentive/issues/2
+[Issue #3]: https://github.com/sruj75/Intentive/issues/3
+[Issue #7]: https://github.com/sruj75/Intentive/issues/7
+[Issue #8]: https://github.com/sruj75/Intentive/issues/8
+[Issue #31]: https://github.com/sruj75/Intentive/issues/31

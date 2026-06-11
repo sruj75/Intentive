@@ -33,8 +33,17 @@ cargo clippy  --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ## Environment
 
+Frontend (`.env` or shell):
+
 ```bash
 VITE_NEON_AUTH_URL=<Neon Auth URL>
+```
+
+Rust routing (optional — see [`ARCHITECTURE.md`](ARCHITECTURE.md) Cross-cutting Concerns):
+
+```bash
+INTENTIVE_CONTROL_PLANE_URL=<Control Plane base URL>   # live GET /agent
+INTENTIVE_DESKTOP_ROUTING_FIXTURE='{"ws_url":"...","runtime_jwt":"...","agent_instance_id":"..."}'  # dev/smoke without Control Plane
 ```
 
 ## Release
@@ -42,3 +51,5 @@ VITE_NEON_AUTH_URL=<Neon Auth URL>
 v1 ships a Developer ID signed and notarized Apple Silicon `.dmg` containing only `Intentive.app`. The release pipeline lives in the monorepo's `.github/workflows/desktop-release.yml`. `tauri dev` is not a valid final-evidence build for macOS Privacy Settings identity.
 
 See [`CHANGELOG.md`](docs/CHANGELOG.md) for user-visible changes.
+
+For local Routing/WebSocket smoke without Control Plane, see [`docs/TESTING.md` § Routing session smoke](../../docs/TESTING.md#routing-session-smoke-local).
