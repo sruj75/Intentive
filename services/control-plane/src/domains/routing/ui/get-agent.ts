@@ -21,6 +21,8 @@
 import { GetAgentResponse, GetMeDeviceSignal, parseBoundary } from "@intentive/api-contract";
 import { JwtVerificationError } from "@intentive/providers/auth";
 
+import { readDeviceSignal } from "../../../http/device-signal.js";
+
 /** The principal-and-gate slice of identity this handler needs (no Account State). */
 interface RoutingContextResolver {
   resolveRoutingContext(
@@ -110,22 +112,6 @@ export function createGetAgentHandler(deps: {
       };
     },
   };
-}
-
-/**
- * Parse the optional device signal from its raw header values (ADR-0005), so
- * `GET /agent` applies the identical gate policy as `/me` (complete mediation).
- * A malformed header degrades to "no signal" — the cross-client-only sequence —
- * exactly as an unregistered/legacy caller that sends no headers.
- */
-function readDeviceSignal(req: GetAgentRequest): GetMeDeviceSignal {
-  const raw: Record<string, string> = {};
-  if (req.clientKind != null) raw.client_kind = req.clientKind;
-  if (req.capturePermissionGranted != null) {
-    raw.capture_permission_granted = req.capturePermissionGranted;
-  }
-  const parsed = GetMeDeviceSignal.safeParse(raw);
-  return parsed.success ? parsed.data : {};
 }
 
 function bearerToken(authorization: string | null): string | null {

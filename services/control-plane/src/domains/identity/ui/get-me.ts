@@ -7,9 +7,10 @@
  * the bearer token, turning a `JwtVerificationError` into a status (via the
  * existing mapper), and validating the outgoing body at the boundary.
  */
-import { AccountState, GetMeDeviceSignal, parseBoundary } from "@intentive/api-contract";
+import { AccountState, parseBoundary } from "@intentive/api-contract";
 import { JwtVerificationError } from "@intentive/providers/auth";
 
+import { readDeviceSignal } from "../../../http/device-signal.js";
 import { mapJwtVerificationErrorToHttpResponse } from "../service/auth-failure.js";
 import type { IdentityService } from "../service/resolve-account.js";
 import { bearerToken } from "./require-user.js";
@@ -21,23 +22,6 @@ export interface GetMeRequest {
   clientKind?: string | null;
   /** Raw `X-Capture-Permission-Granted` header value, or null when absent. */
   capturePermissionGranted?: string | null;
-}
-
-/**
- * Parse the optional device signal from its raw header values (ADR-0005). A
- * malformed header is *not* a 400: `GET /me` is the hot path and must stay
- * answerable, so an unparseable signal degrades to "no signal" — the
- * cross-client-only gate sequence — exactly as an unregistered/legacy caller
- * that sends no headers at all.
- */
-function readDeviceSignal(req: GetMeRequest): GetMeDeviceSignal {
-  const raw: Record<string, string> = {};
-  if (req.clientKind != null) raw.client_kind = req.clientKind;
-  if (req.capturePermissionGranted != null) {
-    raw.capture_permission_granted = req.capturePermissionGranted;
-  }
-  const parsed = GetMeDeviceSignal.safeParse(raw);
-  return parsed.success ? parsed.data : {};
 }
 
 export interface GetMeResult {
