@@ -10,7 +10,7 @@ export { controlPlaneContractSample } from "./domains/identity/types/account.js"
 export {
   mapJwtVerificationErrorToHttpResponse,
   type ControlPlaneAuthErrorResponse,
-} from "./domains/identity/service/auth-failure.js";
+} from "./http/auth.js";
 
 export { sessionStartRequestSample } from "./domains/agents/types/registry.js";
 export {

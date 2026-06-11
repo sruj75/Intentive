@@ -11,7 +11,7 @@
  */
 import { PostConsentRequest, parseBoundary } from "@intentive/api-contract";
 
-import { requireUser, type Authenticator } from "./require-user.js";
+import { requireUser, type Authenticator } from "../../../http/auth.js";
 import { consentAccepted } from "./ack.js";
 
 export interface PostConsentRequestHttp {
@@ -36,7 +36,7 @@ export function createPostConsentHandler(deps: {
 }): PostConsentHandler {
   return {
     async handle({ authorization, body }) {
-      const auth = await requireUser(authorization, { identity: deps.identity });
+      const auth = await requireUser(authorization, deps.identity);
       if (!auth.ok) return auth.response;
 
       parseBoundary(PostConsentRequest, body ?? {});

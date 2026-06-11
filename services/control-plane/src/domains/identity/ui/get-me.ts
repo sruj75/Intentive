@@ -8,12 +8,14 @@
  * existing mapper), and validating the outgoing body at the boundary.
  */
 import { AccountState, parseBoundary } from "@intentive/api-contract";
-import { JwtVerificationError } from "@intentive/providers/auth";
 
+import {
+  authErrorResponse,
+  bearerToken,
+  mapJwtVerificationErrorToHttpResponse,
+} from "../../../http/auth.js";
 import { readDeviceSignal } from "../../../http/device-signal.js";
-import { mapJwtVerificationErrorToHttpResponse } from "../service/auth-failure.js";
 import type { IdentityService } from "../service/resolve-account.js";
-import { bearerToken } from "./require-user.js";
 
 export interface GetMeRequest {
   /** Raw `Authorization` header value, or null when absent. */
@@ -49,9 +51,8 @@ export function createGetMeHandler(deps: { identity: IdentityService }): GetMeHa
         // AccountState (parse-at-boundary, docs/CONVENTIONS.md).
         return { status: 200, body: parseBoundary(AccountState, account) };
       } catch (err) {
-        if (err instanceof JwtVerificationError) {
-          return mapJwtVerificationErrorToHttpResponse(err);
-        }
+        const response = authErrorResponse(err);
+        if (response) return response;
         throw err;
       }
     },
