@@ -6,6 +6,24 @@ The product is not only the codebase. The product-building system is also part o
 
 The mental model is **build the machine that builds the machine**. A good feature ships product code. A better feature also leaves the next agent with a clearer guide, sharper test, better lint message, or recorded decision.
 
+## Systems Lens
+
+The factory is the production system for agent-authored software. Agents write code inside the system, and the system shapes whether that work preserves long-term code quality.
+
+In systems terms:
+
+- **Inflow**: day-to-day coding-agent changes.
+- **Outflow**: shipped code quality.
+- **Stock**: the repo plus accumulated factory memory: docs, tests, lint rules, sensors, decisions, backlog, and accepted trade-offs.
+- **Feedback**: Radar, usually delivered through the PR sticky comment.
+- **Levers**: approved changes to guides, tests, sensors, workflows, backlog, or recorded rationale.
+
+The sticky comment is not a random report. It is an information flow back into the production system. If it only lists problems, it is noise. If an Improvement Run turns the signal into approved changes to factory memory or controls, it changes the conditions under which future agents write code.
+
+The quality bar is sustainable software engineering: clear ownership, tests that enable change, review discipline, maintainability, useful automation, and institutional memory. Radar should create pressure toward those values, not toward arbitrary metric-chasing.
+
+The feedback loop only gets stronger when repeated advisory signals become durable constraints. A finding can stay advisory, but once humans approve it, the factory should capture it as a test, lint rule, guide, ownership rule, dependency policy, backlog item, or accepted rationale. The loop gain is low until feedback changes the rules of the system.
+
 The goal is the **agentic flywheel**:
 
 1. Humans define intent, constraints, and quality bars.
@@ -18,6 +36,8 @@ This is not a replacement for human judgment. It moves humans **on the loop**: s
 
 The operating model draws on:
 
+- Donella H. Meadows's _Thinking in Systems_
+- Titus Winters, Tom Manshreck, and Hyrum Wright's _Software Engineering at Google_
 - Birgitta Bockeler's [Harness engineering for coding agents](https://martinfowler.com/articles/harness-engineering.html)
 - Birgitta Bockeler's [Maintainability sensors for coding agents](https://martinfowler.com/articles/sensors-for-coding-agents.html)
 - Kief Morris's [Humans and Agents in Software Engineering Loops](https://martinfowler.com/articles/exploring-gen-ai/humans-and-agents.html)
