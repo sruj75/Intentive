@@ -128,7 +128,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   **Intentive**, bundle identifier `com.heyintentive.tauri`, **Intentive** or
   fallback **Intentive Capture** in macOS Privacy Settings, and Capture Permission
   Setup as a release requirement.
-- **Issue #3 smoke checklist** for manually verifying
+- **[Issue #3] smoke checklist** for manually verifying
   the menu bar shell states.
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
   `chrono`, `thiserror`, `url`, `async-trait`. Dev-dep: `wiremock`.
@@ -158,8 +158,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   completion reach the user, command-dispatch failures surface Retry rather
   than an indefinite starting state, and the resolved bundled provider retains
   its Ollama child for later Context Heartbeats.
-- **Issue #2 decisions locked and documented**
-  ([#2](https://github.com/sruj75/v1-tauri/issues/2)):
+- **Issue #2 decisions locked and documented** ([Issue #2]):
   - Tier 3 bundled model confirmed: `qwen3.5:0.8b` (verified in Ollama registry).
   - Tier 2 model selection rule encoded in
     [ADR-0006](adr/0006-desktop-ollama-for-on-device-summarization.md): loaded model
@@ -210,6 +209,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   #31 opens and maintains the line but does not send Context Snapshots or
   Session End Markers yet.
 - Tauri runtime wiring is still partial for release-completion scope: Capture
-  Permission Setup hardening, signed/notarized release packaging evidence, and
-  completed Auth-resolved Agent Interface endpoint/credential resolution remain
-  deferred and tracked against [SPEC.md](SPEC.md) Build Phases.
+  Permission Setup hardening and signed/notarized release packaging evidence
+  remain deferred and tracked against [SPEC.md](SPEC.md) Build Phases.
+
+[Issue #2]: https://github.com/sruj75/Intentive/issues/2
+[Issue #3]: https://github.com/sruj75/Intentive/issues/3
+[Issue #7]: https://github.com/sruj75/Intentive/issues/7
+[Issue #8]: https://github.com/sruj75/Intentive/issues/8
+[Issue #31]: https://github.com/sruj75/Intentive/issues/31

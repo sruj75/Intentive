@@ -259,11 +259,17 @@ Intentive is built incrementally. Each phase is shippable on its own.
 macOS (user's machine)
 │
 ├── Intentive (Tauri menu bar app)
-│   ├── Manages ScreenPipe subprocess (capture)
-│   ├── Manages Ollama subprocess (summarization)
-│   ├── Context Heartbeat service (10-minute fixed cadence)
-│   ├── Local SQLite log (snapshots, 7-day retention)
-│   └── WebSocket Protocol (`context_snapshot`, `session_end_marker`) → Agent Runtime (always-alive GCE VM)
+│   ├── Webview (Settings / Neon Auth)
+│   │   └── sign-in → login token to Rust; receives connection mood only (`routing:status`)
+│   ├── Rust core
+│   │   ├── ScreenPipe subprocess (capture)
+│   │   ├── Ollama subprocess (summarization)
+│   │   ├── Context Heartbeat (10-minute fixed cadence) → local SQLite log (7-day retention)
+│   │   └── Routing domain
+│   │       ├── Control Plane `GET /agent` → Routing (`ws_url`, JWT, `agent_instance_id`)
+│   │       ├── Routing State (credentials) and Session State (live socket) — independent dials
+│   │       └── Protocol WebSocket session (connect + reconnect; #34 emits `context_snapshot` / `session_end_marker`)
+│   └── Agent Runtime (always-alive GCE VM) ← WebSocket Protocol
 │
 ├── ScreenPipe CLI binary (bundled)
 │   └── HTTP API on localhost:44380

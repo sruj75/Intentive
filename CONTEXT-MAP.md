@@ -56,6 +56,7 @@ _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the produ
 - The two **Internal API** directions each trust the caller via a **Directional Secret** (one secret guards calls to the Agent Runtime, a separate secret guards calls to the Control Plane) on a private network interface. User JWT auth is separate and used only on the public WebSocket.
 - **Conversation History** is server-truth. The Mobile Client renders the authoritative timeline streamed back on WebSocket reconnect; it stores nothing locally.
 - The **Snapshot Store** on the Desktop Client is unrelated to chat history. It is local-truth for snapshots the device itself produced.
+- On the **Desktop Client**, **Routing State** (do we hold valid Routing from `GET /agent`?) and **Session State** (is the Protocol WebSocket up right now?) are independent — see [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md). Settings sees only a plain connection mood; JWT and `ws_url` stay in Rust.
 - **Push Notifications** in v1 originate exclusively from **Post-Message-Back**. Replies do not auto-push.
 - **Post-Message-Back** is invoked by the Agent Runtime, which then calls Control Plane's `POST /internal/notifications/push`. The Control Plane owns APNs credentials and the device-token side of the Device Registry.
 - **Cron** and **Heartbeat** are triggers, not notifications. A trigger fires → agent code runs → agent may or may not decide to **Post-Message-Back**.

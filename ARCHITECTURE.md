@@ -69,8 +69,9 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `auth` — sign-in, Neon Auth UI
 - `onboarding` — Capture Permission Setup wizard
 - `capture` — ScreenPipe subprocess management, Capture Session lifecycle
-- `summarization` — LLM Provider tier resolution, Context Heartbeat
-- `snapshots` — Snapshot Store (local SQLite), snapshot delivery
+- `routing` — Control Plane `GET /agent`, Routing/Session state, Protocol WebSocket session (Rust-owned; JWT never in webview)
+- `summarization` — LLM Provider tier resolution, bundled-model download
+- `snapshots` — Snapshot Store (local SQLite), Context Heartbeat, inert delivery sink until #34 wires live Protocol emission
 - `menubar` — tray icon, capture toggle, Capture Error state
 - `account` — Settings, sibling invitation
 
@@ -199,10 +200,12 @@ intentive/
 │       ├── ARCHITECTURE.md              ← Desktop Client structure
 │       ├── docs/adr/                    ← Desktop Client decisions
 │       ├── src/domains/                 ← TS/React side (App.tsx/main.tsx are the exempt composition root)
-│       │   ├── auth/{service}/
+│       │   ├── auth/{service,ui}/
+│       │   ├── account/{ui}/
 │       │   └── onboarding/{ui}/
 │       └── src-tauri/src/domains/       ← Rust side, same layer rule
 │           ├── capture/{types,config,service,runtime}/
+│           ├── routing/{types,config,service,runtime}/
 │           ├── menubar/{service,ui}/
 │           ├── summarization/{types,config,service,runtime}/
 │           └── snapshots/{types,repo,runtime}/

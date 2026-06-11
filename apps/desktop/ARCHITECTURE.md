@@ -81,10 +81,10 @@ Intentive sits between four external systems and one user:
 ## Architectural Invariants
 
 1. **macOS v1 only** — No cross-platform abstractions in core paths unless required by Tauri deps.
-2. **Rust owns orchestration** — Capture, heartbeat, summarization routing, persistence, and Protocol emission live in `src-tauri/`. The webview does not call ScreenPipe, Ollama, or the Agent Runtime directly.
+2. **Rust owns orchestration** — Capture, heartbeat, summarization, Routing, persistence, and Protocol emission live in `src-tauri/`. The webview does not call ScreenPipe, Ollama, Control Plane, or the Agent Runtime directly.
 3. **Thin UI boundary** — React talks to Rust only via Tauri commands and events. No business logic duplicated in `src/` that belongs in Rust.
 4. **ScreenPipe via HTTP, not SQLite** — Integrate through the bundled CLI and the supervisor's resolved localhost endpoint (`44380` primary, `44382` fallback) for the Intentive-owned process. Do not read ScreenPipe's database unless an API gap is documented and approved (ADR-0002/0013). Embedding `screenpipe-engine` in-process is a targeted future escape hatch, not the default.
-5. **Deep modules at integration seams** — `summarization::service` (LlmProvider), `snapshots::runtime::agent_interface`, `capture::runtime::screenpipe_supervisor`, `capture::runtime::coordinator`, and `snapshots::repo` (SnapshotStore) expose small public surfaces (`resolve`/`summarize`; `emit` + `ContextSnapshot`; `start`/`stop` + `SupervisorEvent`; `submit`/`subscribe` + `CoordinatorCommand`/`StateObserver`; `new`/`insert`/`mark_pushed`/`list_recent`). Callers do not branch on provider tiers, construct Protocol frames, mutate the FSM, read it back to dispatch lifecycle, or see `sqlx::Error` / pool / migration internals.
+5. **Deep modules at integration seams** — `summarization::service` (LlmProvider), `routing::runtime` (WsSession), `capture::runtime::screenpipe_supervisor`, `capture::runtime::coordinator`, and `snapshots::repo` (SnapshotStore) expose small public surfaces (`resolve`/`summarize`; `set_login_token`/`clear_login_token` + Routing/Session state; `start`/`stop` + `SupervisorEvent`; `submit`/`subscribe` + `CoordinatorCommand`/`StateObserver`; `new`/`insert`/`mark_pushed`/`list_recent`). The heartbeat's `agent_interface` sink stays a narrow seam until #34. Callers do not branch on provider tiers, construct Protocol frames, mutate the FSM, read it back to dispatch lifecycle, or see `sqlx::Error` / pool / migration internals.
 6. **Context Snapshot contract is frozen for v1** — Payload fields: `id`, `captured_at`, `period_start`, `period_end`, `summary` only. Same shape for the Snapshot Store and the `context_snapshot` Protocol event. Do not add fields without an explicit Protocol contract change in `packages/protocol/`.
 7. **Session End Marker contract is its own event** — `session_end_marker` is a distinct Protocol event type, not a flag on `context_snapshot`. Canonical fields are `ended_at` and `reason` in `packages/protocol/`. Do not smuggle marker fields into `ContextSnapshot`.
 8. **Write locally, then emit** — Every snapshot is persisted in the Snapshot Store before the Protocol emit attempt; `pushed_at` records success when a `delivery_ack` returns (ADR-0007). A dropped connection does not delete the local row (ADR-0011).
@@ -128,8 +128,8 @@ Intentive sits between four external systems and one user:
 
 ### Frontend ↔ Rust (Tauri)
 
-- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings.
-- **Events** — State changes (capturing / stopped / error), setup progress, push outcomes for UI if needed.
+- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings, `set_login_token` / `clear_login_token` (Auth → Routing handoff).
+- **Events** — Capture state changes (capturing / stopped / error), setup progress, `routing:status` connection mood for Settings (no Routing values or JWT).
 - **Security** — CSP in `tauri.conf.json` restricts webview network; production paths for localhost services are Rust-side only.
 
 ### Auth
@@ -155,7 +155,7 @@ Intentive sits between four external systems and one user:
 
 **Errors** — Domain errors as `thiserror` enums inside modules (`PushError`, `ProviderError`, state transition errors). UI maps capture/push/provider failures to menu bar **error** state without crashing the heartbeat loop.
 
-**Testing** — Rust: unit tests colocated (`domains/snapshots/runtime/agent_interface/tests`, `domains/summarization/service/tests`, `wiremock` HTTP). Frontend: Vitest + Testing Library smoke tests. No E2E against real ScreenPipe in CI.
+**Testing** — Rust: unit tests colocated (`domains/routing/service`, `domains/routing/runtime`, `domains/snapshots/runtime/agent_interface/tests`, `domains/summarization/service/tests`, `wiremock` HTTP). Frontend: Vitest + Testing Library smoke tests. No E2E against real ScreenPipe in CI.
 
 **Security posture** — Summaries only cross the network boundary to the Agent Runtime over the WebSocket Protocol; the JWT is presented once at `connect` and is never persisted to disk or surfaced in UI. Webview CSP limits exfiltration from UI code and explicitly allows the Neon Auth origin needed by the Settings/Auth surface.
 

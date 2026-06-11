@@ -71,6 +71,26 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 The root `apps/desktop` `test` script runs both surfaces. Do not replace it with a filtered Cargo command unless the filter is only for local debugging.
 
+### Routing session smoke (local)
+
+Exercise the Rust-owned Protocol WebSocket session without a live Control Plane:
+
+1. Stand up a reachable Agent Runtime gateway, or a local WebSocket stub that accepts the Protocol `connect` handshake (`client_kind: "desktop"` + JWT).
+2. Export fixture Routing before launch (fixture wins over `INTENTIVE_CONTROL_PLANE_URL` when both are set):
+
+```bash
+export VITE_NEON_AUTH_URL=<Neon Auth URL>
+export INTENTIVE_DESKTOP_ROUTING_FIXTURE='{"ws_url":"wss://localhost:8787/ws","runtime_jwt":"<jwt>","agent_instance_id":"agent_dev"}'
+cd apps/desktop && npm run tauri dev
+```
+
+3. Open Settings and sign in. The webview calls `set_login_token`; Rust reads Routing from the fixture (the login token is not used for the lookup), opens the socket, and emits `routing:status` moods — never the JWT or `ws_url`.
+4. Expect Settings to move through **Connecting** → **Connected**, or **Reconnecting** / **Needs attention** when the socket fails.
+
+For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the fixture. Rust unit tests for Routing/Session transitions and reconnect decisions live under `apps/desktop/src-tauri/src/domains/routing/` (`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml routing` for a focused run).
+
+See also [`apps/desktop/README.md`](../apps/desktop/README.md) (environment variables) and [`apps/desktop/CONTEXT.md`](../apps/desktop/CONTEXT.md) (**Routing State** vs **Session State**).
+
 ## Shared Contracts
 
 `packages/protocol` and `packages/api-contract` own wire and HTTP shapes. Contract changes must update the schemas and their Node tests together:

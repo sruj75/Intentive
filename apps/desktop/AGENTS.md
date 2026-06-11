@@ -9,8 +9,8 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 - Runs the bundled **ScreenPipe** subprocess to capture screen + audio
 - On a fixed 10-minute **Context Heartbeat**, summarizes the window via the **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama, in that priority)
 - Produces a **Context Snapshot** per heartbeat tick; writes it to the **Snapshot Store** (local SQLite, **local-truth, not a cache**)
-- Sends each Context Snapshot to the **Agent Runtime** as a `context_snapshot` WebSocket event using **Protocol** schemas from `packages/protocol/`
-- Emits a `session_end_marker` when a **Capture Session** ends
+- Rust owns **Routing** end-to-end (`GET /agent`, Protocol WebSocket session skeleton, reconnect). The webview hands a login token via `set_login_token` / `clear_login_token` and receives only a plain connection mood — no JWT in UI.
+- Protocol event emission (`context_snapshot`, `session_end_marker`) over the live session is **#34**; #31 leaves the heartbeat delivery sink inert so new rows keep `pushed_at = null` until then.
 - Menu bar capture toggle + state. **No chat UI.**
 
 ## Domains
@@ -19,13 +19,14 @@ TypeScript side (`src/domains/<name>/`; `App.tsx`/`main.tsx` are the exempt comp
 
 - `auth` — Neon Auth client + UI integration, sign-in
 - `onboarding` — bundled-model download / Capture Permission Setup UI
-- `account` — Settings surface (planned)
+- `account` — Settings surface (Neon Auth UI + connection mood from `routing:status`)
 
 Rust side (`src-tauri/src/domains/<name>/`):
 
 - `capture` — ScreenPipe supervisor, Capture Session coordinator, shell-state FSM, port resolution
+- `routing` — Control Plane `GET /agent`, Routing/Session state, Protocol WebSocket session, login-token commands
 - `summarization` — LLM Provider tier resolution + bundled-model download commands
-- `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, Protocol WebSocket delivery (`agent_interface`)
+- `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, inert `agent_interface` delivery sink (#34 wires live emission)
 - `menubar` — tray icon, capture toggle, Capture Error state (Rust Tauri UI)
 
 Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/providers/`. Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
