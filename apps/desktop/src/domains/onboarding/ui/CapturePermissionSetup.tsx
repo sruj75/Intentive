@@ -18,6 +18,7 @@ const EMPTY_STATUS: PermissionSet = {
 };
 
 const STEPS: PermissionKind[] = ["screen_recording", "microphone", "accessibility"];
+const CONSENT_ACKNOWLEDGED_KEY = "intentive.capture-consent-acknowledged";
 
 const COPY: Record<PermissionKind, { title: string; body: string; button: string }> = {
   screen_recording: {
@@ -46,7 +47,9 @@ function stepFor(status: PermissionSet): Step {
 }
 
 export default function CapturePermissionSetup() {
-  const [acknowledged, setAcknowledged] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(
+    () => localStorage.getItem(CONSENT_ACKNOWLEDGED_KEY) === "true",
+  );
   const [status, setStatus] = useState<PermissionSet>(EMPTY_STATUS);
   const [error, setError] = useState<string | null>(null);
   const unlistenersRef = useRef<UnlistenFn[]>([]);
@@ -75,14 +78,23 @@ export default function CapturePermissionSetup() {
     };
     void subscribe();
     void refresh();
+    const refreshInterval = setInterval(() => {
+      void refresh();
+    }, 1500);
     return () => {
       cancelled = true;
+      clearInterval(refreshInterval);
       for (const unlisten of unlistenersRef.current) {
         unlisten();
       }
       unlistenersRef.current = [];
     };
   }, [refresh]);
+
+  const acknowledgeConsent = useCallback(() => {
+    localStorage.setItem(CONSENT_ACKNOWLEDGED_KEY, "true");
+    setAcknowledged(true);
+  }, []);
 
   const step = useMemo<Step>(() => {
     if (!acknowledged) return "intro";
@@ -108,11 +120,7 @@ export default function CapturePermissionSetup() {
             Audio Recording, Microphone, and Accessibility in macOS Privacy Settings.
           </p>
           <div className="onboarding-actions">
-            <button
-              type="button"
-              className="onboarding-primary"
-              onClick={() => setAcknowledged(true)}
-            >
+            <button type="button" className="onboarding-primary" onClick={acknowledgeConsent}>
               Continue
             </button>
           </div>

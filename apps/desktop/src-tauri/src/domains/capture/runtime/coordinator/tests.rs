@@ -208,7 +208,7 @@ async fn readiness_false_from_capturing_stops_supervisor() {
 }
 
 #[tokio::test]
-async fn readiness_false_from_stopped_returns_to_setup_required_and_stops_supervisor() {
+async fn paused_capture_stays_stopped_across_readiness_revoke_and_restore() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
@@ -222,13 +222,28 @@ async fn readiness_false_from_stopped_returns_to_setup_required_and_stops_superv
     wait_for(&observer, CaptureState::Stopped).await;
 
     coord.submit(CoordinatorCommand::ReadinessChanged(false));
-
-    wait_for(&observer, CaptureState::SetupRequired).await;
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(coord.snapshot(), CaptureState::Stopped);
     assert_eq!(
         supervisor.stop_count(),
-        2,
-        "one stop for user pause, one stop for readiness revocation"
+        1,
+        "readiness revocation after user pause must not trigger another stop"
     );
+    assert_eq!(supervisor.start_count(), 0);
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(true));
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(coord.snapshot(), CaptureState::Stopped);
+    assert_eq!(
+        observer.history(),
+        vec![CaptureState::Stopped],
+        "readiness revoke/restore after pause must not auto-resume capture"
+    );
+    assert_eq!(supervisor.start_count(), 0);
 }
 
 #[tokio::test]

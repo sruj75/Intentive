@@ -43,6 +43,7 @@ async function flush() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   listeners.clear();
   invokeMock.mockReset();
   invokeMock.mockResolvedValue({
@@ -54,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("Capture Permission Setup", () => {
@@ -78,6 +80,21 @@ describe("Capture Permission Setup", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
+    expect(screen.getByRole("heading", { level: 1, name: "Microphone" })).toBeTruthy();
+  });
+
+  it("resumes at the first ungranted permission when consent was already acknowledged", async () => {
+    localStorage.setItem("intentive.capture-consent-acknowledged", "true");
+    invokeMock.mockResolvedValueOnce({
+      screen_recording: true,
+      microphone: false,
+      accessibility: false,
+    } satisfies PermissionSet);
+
+    render(<CapturePermissionSetup />);
+    await flush();
+
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: "Microphone" })).toBeTruthy();
   });
 
@@ -118,5 +135,33 @@ describe("Capture Permission Setup", () => {
       });
     });
     expect(screen.getByRole("heading", { level: 1, name: "Capture is ready" })).toBeTruthy();
+  });
+
+  it("auto-advances as permission polling observes OS-side grants", async () => {
+    vi.useFakeTimers();
+    invokeMock.mockResolvedValue({
+      screen_recording: false,
+      microphone: false,
+      accessibility: false,
+    } satisfies PermissionSet);
+
+    render(<CapturePermissionSetup />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Screen & System Audio Recording" }),
+    ).toBeTruthy();
+
+    invokeMock.mockResolvedValue({
+      screen_recording: true,
+      microphone: false,
+      accessibility: false,
+    } satisfies PermissionSet);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(screen.getByRole("heading", { level: 1, name: "Microphone" })).toBeTruthy();
   });
 });

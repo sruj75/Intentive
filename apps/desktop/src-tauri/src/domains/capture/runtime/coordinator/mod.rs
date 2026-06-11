@@ -214,7 +214,6 @@ impl Inner {
             match (fsm.state(), ready) {
                 (CaptureState::SetupRequired, true) => Some((fsm.mark_ready().clone(), true)),
                 (CaptureState::Capturing, false) => Some((fsm.to_setup_required().clone(), false)),
-                (CaptureState::Stopped, false) => Some((fsm.to_setup_required().clone(), false)),
                 _ => None,
             }
         };
