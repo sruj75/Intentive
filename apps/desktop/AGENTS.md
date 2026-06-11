@@ -18,18 +18,18 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 TypeScript side (`src/domains/<name>/`; `App.tsx`/`main.tsx` are the exempt composition root):
 
 - `auth` — Neon Auth client + UI integration, sign-in
-- `onboarding` — bundled-model download / Capture Permission Setup UI
+- `onboarding` — bundled-model download (`Onboarding.tsx`) and Capture Permission Setup wizard (`CapturePermissionSetup.tsx`, `?surface=permission-setup`)
 - `account` — Settings surface (Neon Auth UI + connection mood from `routing:status`, replayed on mount)
 
 Rust side (`src-tauri/src/domains/<name>/`):
 
-- `capture` — ScreenPipe supervisor, Capture Session coordinator, shell-state FSM, port resolution
+- `capture` — ScreenPipe supervisor, Capture Session coordinator, shell-state FSM (`SetupRequired` included), `permission_monitor`, port resolution
 - `routing` — Control Plane `GET /agent`, Routing/Session state, Protocol WebSocket session, login-token commands
 - `summarization` — LLM Provider tier resolution + bundled-model download commands
 - `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, inert `agent_interface` delivery sink (#34 wires live emission)
 - `menubar` — tray icon, capture toggle, Capture Error state (Rust Tauri UI)
 
-Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/providers/`. Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
+Cross-cutting Rust helpers (port probe, macOS permission probes) live in `src-tauri/src/providers/` (`providers/permissions/` implements `CapturePermissions` + `ReadinessChecker`). Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`, `CapturePermissions`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
 
 ## Working docs
 
@@ -53,4 +53,4 @@ Cross-cutting Rust helpers (e.g. the port probe) live in `src-tauri/src/provider
 - **Snapshot Privacy Boundary is structural.** The `ContextSnapshot` Rust struct has no fields for raw ScreenPipe data. Do not add any.
 - **Bundled native artifacts** match the host **Mac CPU variant**, not the signed-in user.
 - ScreenPipe is an internal implementation detail — never user-visible. macOS Privacy Settings should present "Intentive" or fallback "Intentive Capture", never "ScreenPipe".
-- Capture is gated by **Desktop Capture Readiness** — Control Plane confirms this Mac is ready before auto-start.
+- Capture is gated by sign-in + live **Desktop Capture Readiness** on this Mac (all three macOS grants). The Mac's local check is the interlock authority; the Control Plane capture gate is policy-only (Screen Recording signal, ADR-0020).

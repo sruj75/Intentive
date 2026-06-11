@@ -12,7 +12,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 1. **Reliable capture**: ScreenPipe runs without crashing for the full duration of a Capture Session — screen, audio, and UI events are recorded continuously.
 2. **Clean context**: Every Context Snapshot delivered to the Agent Runtime is a coherent prose summary that accurately represents the user's activity in the preceding 10-minute window, with no raw screen data or sensitive information leaked.
-3. **Silent operation**: The Desktop Client runs in the background with zero user interruption during a Capture Session. Launch starts capture automatically only after the Control Plane confirms Desktop Capture Readiness for that Mac; users interact with it only to stop, restart, sign in, or complete setup.
+3. **Silent operation**: The Desktop Client runs in the background with zero user interruption during a Capture Session. Launch starts capture automatically only after Auth and live **Desktop Capture Readiness** on this Mac (all three macOS grants; ADR-0020); users interact with it only to stop, restart, sign in, or complete setup.
 4. **Privacy by default**: No user data leaves the device except the sanitized Context Snapshot summary emitted to the Agent Runtime over the WebSocket Protocol.
 5. **Compatibility**: The `context_snapshot` event payload conforms to the schema in `packages/protocol/` and is accepted by the Agent Runtime's WebSocket gateway from day one.
 6. **Finished macOS product packaging**: v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`, and macOS Privacy Settings shows **Intentive** or fallback **Intentive Capture** as the capture permission owner.
@@ -63,14 +63,14 @@ AI agents that act on behalf of a user need to know what that user is actually d
 
 - Intentive bundles the ScreenPipe CLI binary in Tauri resources
 - On signed-in launch or manual restart, spawns ScreenPipe as a child process on `127.0.0.1:44380`; kills it on stop or quit
-- The Desktop Client does not spawn ScreenPipe without completed Auth and Control Plane-confirmed Desktop Capture Readiness for this registered Mac
-- The Control Plane must not confirm Desktop Capture Readiness until Capture Permission Setup on this Mac has verified consent plus Screen & System Audio Recording, Microphone, and Accessibility grants
+- The Desktop Client does not spawn ScreenPipe without completed Auth and live **Desktop Capture Readiness** on this Mac (all three grants present right now)
+- Capture Permission Setup on this Mac collects consent and guides the three required grants; the Mac enforces the interlock locally. The Control Plane `capture_permission_setup` gate is a coarser policy nudge that sees only the live Screen-Recording signal (ADR-0020)
 - If ScreenPipe exits unexpectedly, Intentive retries once silently; a second unexpected exit moves the menu bar to error state
 - If port `44380` is already in use, Intentive enters error state without spawning ScreenPipe
 - Acceptance:
-  - [ ] ScreenPipe starts automatically when a signed-in user launches the Desktop Client and the Control Plane confirms Desktop Capture Readiness for this Mac
+  - [ ] ScreenPipe starts automatically when a signed-in user launches the Desktop Client and live Desktop Capture Readiness is true on this Mac
   - [ ] ScreenPipe does not start for an unauthenticated user
-  - [ ] ScreenPipe does not start for a signed-in user whose registered Mac is not confirmed desktop capture-ready, including a user onboarded only in the Mobile Client
+  - [ ] ScreenPipe does not start for a signed-in user without live Desktop Capture Readiness on this Mac, including a user onboarded only in the Mobile Client
   - [ ] ScreenPipe stops when the user toggles capture off or quits Intentive
   - [ ] Duplicate start actions do not create duplicate ScreenPipe processes
   - [ ] One unexpected ScreenPipe exit is retried silently; a second unexpected exit surfaces error
@@ -148,11 +148,11 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [x] Settings does not expose endpoint URL or token fields
   - [ ] Settings does not expose ScreenPipe readiness or diagnostics
   - [ ] Settings window can be closed without affecting an active Capture Session
-  - [ ] Opening the sign-in surface alone does not start capture; only completed Auth plus Control Plane-confirmed Desktop Capture Readiness for this Mac can do that
+  - [ ] Opening the sign-in surface alone does not start capture; only completed Auth plus live Desktop Capture Readiness on this Mac can do that
 
 **Capture Permission Setup**
 
-- Collects Mac-specific desktop capture consent and guides users through required macOS Privacy Settings grants before the Control Plane can confirm Desktop Capture Readiness
+- Collects Mac-specific desktop capture consent and guides users through required macOS Privacy Settings grants before capture can auto-start on this Mac
 - Uses static bundled instructional screenshots in the style of Opal, paired with live OS permission checks
 - Required v1 grants: Screen & System Audio Recording, Microphone, and Accessibility
 - Opens the exact macOS Privacy Settings pane when possible, falls back to Privacy & Security when needed, and offers a manual recheck
@@ -162,7 +162,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
   - [ ] Capture Permission Setup waits for live OS grant detection before advancing to the next step.
   - [ ] Capture Permission Setup exposes a Recheck action for already-granted permissions.
   - [ ] Capture Permission Setup is incomplete until Screen & System Audio Recording, Microphone, and Accessibility are granted.
-  - [ ] A Capture Session cannot auto-start until Capture Permission Setup is complete on this Mac and the Control Plane confirms Desktop Capture Readiness for it.
+  - [ ] A Capture Session cannot auto-start until Capture Permission Setup is complete on this Mac and live Desktop Capture Readiness is true (all three grants).
   - [ ] User-facing copy says Intentive and never exposes ScreenPipe diagnostics.
 
 **Release packaging and macOS identity**

@@ -7,6 +7,23 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Capture Permission Setup + Desktop Capture Readiness interlock** ([Issue #32]) —
+  `providers/permissions/` exposes check-only macOS grant probes behind a
+  `CapturePermissions` trait seam (Screen Recording with Tauri/macOS-15+
+  fallback, Microphone, Accessibility). The capture coordinator gates
+  ScreenPipe and the Context Heartbeat on live **Desktop Capture Readiness**
+  (all three grants) regardless of the Control Plane gate (ADR-0020).
+  `capture/runtime/permission_monitor/` polls on a ~5s interval and emits
+  readiness-lost events the coordinator maps to `SetupRequired`.
+  `CapturePermissionSetup.tsx` (`?surface=permission-setup`) is a sequential
+  Opal-style wizard (intro consent acknowledgment, one permission per step,
+  deep-link + live recheck, resume at first ungranted on re-entry).
+  Tauri commands: `capture_permission_status`, `open_permission_pane`.
+  Events: `permissions:status`. Menu bar surfaces **Finish Setup…** for
+  `SetupRequired`. Routing `GET /agent` sends `x-capture-permission-granted`
+  from the live Screen-Recording signal only (ADR-0020). ADR-0021 documents
+  the ScreenPipe-adapted detection pattern.
+
 - **Routing + Protocol WebSocket session skeleton** ([Issue #31]) —
   `src-tauri/src/domains/routing/` now owns `GET /agent`, Routing State,
   Session State, the Protocol `connect` handshake (`client_kind: "desktop"`),
@@ -135,6 +152,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Capture Session shell state** — `CaptureState` gains `SetupRequired`
+  (signed in, idle, Desktop Capture Readiness false), distinct from
+  `Stopped`, `Unauthenticated`, and `Error`. Mid-session grant revocation
+  transitions to `SetupRequired` via the permission monitor (ADR-0020/0021).
+
 - **Domain architecture refactor** — all Rust modules are now organized under `src-tauri/src/domains/` with the monorepo layer rule (`types → config → repo → service → runtime → ui`) enforced mechanically by the new `tools/linters/rust-architecture/` checker (`pnpm lint:architecture:rust`). Previous flat modules map to new locations:
   - `capture_state/` → `domains/capture/service/`
   - `capture_session/` → `domains/capture/runtime/coordinator/`
@@ -208,12 +230,14 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - Protocol event emission through the live Routing-owned WebSocket remains #34.
   #31 opens and maintains the line but does not send Context Snapshots or
   Session End Markers yet.
-- Tauri runtime wiring is still partial for release-completion scope: Capture
-  Permission Setup hardening and signed/notarized release packaging evidence
-  remain deferred and tracked against [SPEC.md](SPEC.md) Build Phases.
+- Mid-session permission revocation detection is poll-only (~5s worst case) in
+  #32; the ~100ms eager capture-stream-error path is deferred to #43.
+- Signed/notarized release packaging evidence remains deferred and tracked
+  against [SPEC.md](SPEC.md) Build Phases.
 
 [Issue #2]: https://github.com/sruj75/Intentive/issues/2
 [Issue #3]: https://github.com/sruj75/Intentive/issues/3
 [Issue #7]: https://github.com/sruj75/Intentive/issues/7
 [Issue #8]: https://github.com/sruj75/Intentive/issues/8
 [Issue #31]: https://github.com/sruj75/Intentive/issues/31
+[Issue #32]: https://github.com/sruj75/Intentive/issues/32

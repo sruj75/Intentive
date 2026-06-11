@@ -7,14 +7,14 @@
 - Date: 2026-06-11
 - Repo: Intentive monorepo (`sruj75/Intentive`)
 - Tracker root: [GitHub Issues](https://github.com/sruj75/Intentive/issues) on `sruj75/Intentive` (v1 backlog #7–#56); PRDs at `[docs/prd/](prd/)`
-- Closed: `#7`–`#31` — Desktop v1 foundation (`#7`–`#13`), shared protocol/api-contract + Providers auth (`#14`–`#15`), AR/CP contract roots (`#16`–`#17`, [PR #57](https://github.com/sruj75/Intentive/pull/57)), Mobile foundation lane (`#18`–`#22`, [PR #57](https://github.com/sruj75/Intentive/pull/57), [PR #58](https://github.com/sruj75/Intentive/pull/58)), CP Identity + mobile launch hydration (`#23`, commit `8e65c71`), AR Runtime skeleton + WS gateway and CP Pre-Chat Gate (`#24`–`#26`, [PR #62](https://github.com/sruj75/Intentive/pull/62)), CP Device Registry + device-aware gates (`#27`, [PR #63](https://github.com/sruj75/Intentive/pull/63)), AR Sessions / Ordering / Event Ledger (`#28`, commit `ce43ad7`), AR Conversation History + reconnect snapshot (`#29`, [PR #65](https://github.com/sruj75/Intentive/pull/65)), CP Routing + Agent Instance + Session Start (`#30`, commit `a703b1e`), Desktop Routing + Protocol WS session (`#31`, [PR #71](https://github.com/sruj75/Intentive/pull/71))
-- Open: `#32`–`#56`
+- Closed: `#7`–`#32` — Desktop v1 foundation (`#7`–`#13`), shared protocol/api-contract + Providers auth (`#14`–`#15`), AR/CP contract roots (`#16`–`#17`, [PR #57](https://github.com/sruj75/Intentive/pull/57)), Mobile foundation lane (`#18`–`#22`, [PR #57](https://github.com/sruj75/Intentive/pull/57), [PR #58](https://github.com/sruj75/Intentive/pull/58)), CP Identity + mobile launch hydration (`#23`, commit `8e65c71`), AR Runtime skeleton + WS gateway and CP Pre-Chat Gate (`#24`–`#26`, [PR #62](https://github.com/sruj75/Intentive/pull/62)), CP Device Registry + device-aware gates (`#27`, [PR #63](https://github.com/sruj75/Intentive/pull/63)), AR Sessions / Ordering / Event Ledger (`#28`, commit `ce43ad7`), AR Conversation History + reconnect snapshot (`#29`, [PR #65](https://github.com/sruj75/Intentive/pull/65)), CP Routing + Agent Instance + Session Start (`#30`, commit `a703b1e`), Desktop Routing + Protocol WS session (`#31`, [PR #71](https://github.com/sruj75/Intentive/pull/71)), Desktop Capture Permission Setup (`#32`, branch `issue-32`)
+- Open: `#33`–`#56`
 
 ## Executive Next Move
 
-**Latest closure:** [#31 Desktop Routing + Protocol WS Session](https://github.com/sruj75/Intentive/issues/31) ([PR #71](https://github.com/sruj75/Intentive/pull/71)) — Rust `routing` domain owns Control Plane `GET /agent`, Routing/Session state, and the Protocol WebSocket session skeleton; Settings surfaces connection mood only (no JWT/`ws_url`); fixture fallback and [ADR-0019](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0019-desktop-rust-owns-routing-and-ws-session.md) documented. That completes the desktop signed-in path from Neon Auth → Control Plane Routing → Agent Runtime Protocol WebSocket. Prior AR/CP foundations (`#23`–`#30`) are recorded in Operating Frame and the Closed table.
+**Latest closure:** [#32 Desktop Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32) (branch `issue-32`) — Opal-style sequential permission wizard (`?surface=permission-setup`), `providers/permissions/` check-only probes, `permission_monitor` poll loop, `SetupRequired` shell state + menu bar **Finish Setup…**, and local three-grant **Desktop Capture Readiness** interlock authoritative over the Control Plane capture gate ([ADR-0020](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0020-desktop-local-three-grant-interlock-authoritative-over-cp-capture-gate.md), [ADR-0021](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0021-desktop-permission-detection-adapted-from-screenpipe.md)). Prior desktop routing closure ([#31](https://github.com/sruj75/Intentive/issues/31), [PR #71](https://github.com/sruj75/Intentive/pull/71)) is recorded in Operating Frame and the Closed table.
 
-**Now:** [#33 Mobile Protocol client](https://github.com/sruj75/Intentive/issues/33) and [#34 Desktop Snapshot emit](https://github.com/sruj75/Intentive/issues/34) — parallel Protocol lanes, both unblocked. [#32 Desktop Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32) and shared [#51](https://github.com/sruj75/Intentive/issues/51)/[#52](https://github.com/sruj75/Intentive/issues/52) are independently startable.
+**Now:** [#33 Mobile Protocol client](https://github.com/sruj75/Intentive/issues/33) and [#34 Desktop Snapshot emit](https://github.com/sruj75/Intentive/issues/34) — parallel Protocol lanes, both unblocked. Shared [#51](https://github.com/sruj75/Intentive/issues/51)/[#52](https://github.com/sruj75/Intentive/issues/52) are independently startable.
 
 What it unlocks:
 
@@ -105,12 +105,12 @@ flowchart TD
 | 29  | Agent Runtime | [Conversation History + Reconnect Snapshot](https://github.com/sruj75/Intentive/issues/29)                     | closed ([PR #65](https://github.com/sruj75/Intentive/pull/65)) — `conversation` domain, transcript, snapshot + backfill (ADR-0006/0008/0009); companion persist → #36; live delivery → #41                                          |
 | 30  | Control Plane | [Routing + Agent Instance + Session Start](https://github.com/sruj75/Intentive/issues/30)                      | closed (`a703b1e`) — `GET /agent`, Agent Instance Registry (`0004_agent_instances.sql`), Session Start client, pass-through `runtime_jwt` (ADR-0002), gate enforcement                                                              |
 | 31  | Desktop       | [Routing + Protocol WS Session](https://github.com/sruj75/Intentive/issues/31)                                 | closed ([PR #71](https://github.com/sruj75/Intentive/pull/71)) — Rust `routing` domain, Control Plane `GET /agent`, Routing/Session state, Protocol WS skeleton, Settings connection mood (ADR-0019); snapshot emit deferred to #34 |
+| 32  | Desktop       | [Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32)                                      | closed (branch `issue-32`) — Opal-style permission wizard, `providers/permissions/`, `permission_monitor`, `SetupRequired` shell state, local three-grant interlock (ADR-0020/0021); eager revocation detection deferred to #43     |
 
 ### Phase 1: Now
 
 | #   | Deployable | Issue                                                                                 | Why now                                   | Unblocks |
 | --- | ---------- | ------------------------------------------------------------------------------------- | ----------------------------------------- | -------- |
-| 32  | Desktop    | [Capture Permission Setup](https://github.com/sruj75/Intentive/issues/32)             | No blocker; start now                     | #35/#55  |
 | 33  | Mobile     | [Protocol client for Companion Chat](https://github.com/sruj75/Intentive/issues/33)   | `#29` + `#30` closed                      | #44/#45  |
 | 34  | Desktop    | [Emit Context Snapshots over Protocol](https://github.com/sruj75/Intentive/issues/34) | `#31` closed + existing snapshot pipeline | #35/#43  |
 
@@ -118,7 +118,7 @@ flowchart TD
 
 | #   | Deployable | Issue                                                                       | Blocker cleared by | Unblocks           |
 | --- | ---------- | --------------------------------------------------------------------------- | ------------------ | ------------------ |
-| 35  | Desktop    | [Signed-in happy-path smoke](https://github.com/sruj75/Intentive/issues/35) | #34 + #32          | #43/#55 confidence |
+| 35  | Desktop    | [Signed-in happy-path smoke](https://github.com/sruj75/Intentive/issues/35) | #34 (closed #32)   | #43/#55 confidence |
 
 ### Phase 3: Later
 
@@ -151,7 +151,7 @@ flowchart TD
 | Issue                                            | Waiting on                                   | Evidence                                               | Next check                                                |
 | ------------------------------------------------ | -------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------- |
 | #53 Desktop — Signed/notarized DMG               | Human Apple signing/notarization credentials | Issue notes explicit human credential dependency       | Confirm credential readiness before packaging pass        |
-| #55 Desktop — Final packaged-app smoke           | #43, #53, #54, #32                           | Explicit `Blocked by` chain in issue                   | Re-evaluate once #43 and packaging pass exist             |
+| #55 Desktop — Final packaged-app smoke           | #43, #53, #54                                | Explicit `Blocked by` chain in issue                   | Re-evaluate once #43 and packaging pass exist             |
 | #42 Agent Runtime — Observability/prod readiness | #37, #39, #40, #41                           | Explicit `Blocked by` chain in issue                   | Re-plan hardening sprint after trigger + push slices land |
 | #48 Mobile — E2E verification                    | Most mobile stack                            | Explicit broad blocker list including core chat slices | Treat as terminal verification gate only                  |
 
@@ -170,12 +170,13 @@ flowchart TD
 - **Next:** `#33` (Protocol client) and `#44`–`#48` chat and release slices — `#29` transcript path and `#30` Routing are closed.
 - Cross-project dependency: Protocol/chat slices rely on closed AR `#25`/`#29` and closed CP Routing `#30`.
 
-### Desktop Client (issues #7–#13, #31 closed; #32, #34–#35, #43, #53–#56 open)
+### Desktop Client (issues #7–#13, #31–#32 closed; #34–#35, #43, #53–#56 open)
 
 - `#7`–`#13` closed.
 - `#31` (Routing + Protocol WS Session) **closed** ([PR #71](https://github.com/sruj75/Intentive/pull/71)): Rust `routing` domain owns Control Plane `GET /agent`, Routing/Session state machine (`signed_out` / `signed_in` / `routing_ready` / `routing_error`), and Protocol WebSocket session lifecycle; webview syncs login tokens and Settings shows connection mood only; fixture fallback for local dev ([ADR-0019](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0019-desktop-rust-owns-routing-and-ws-session.md)). Snapshot Protocol emission stays inert until `#34`.
-- **Next:** `#34` (Emit Context Snapshots over Protocol) — `#31` closed and snapshot pipeline (`#10`–`#13`) exists. `#32` (Capture Permission Setup) can start immediately.
-- Signed-in smoke (`#35`) follows `#34` + `#32`.
+- `#32` (Capture Permission Setup) **closed** (branch `issue-32`): Opal-style sequential wizard (`CapturePermissionSetup.tsx`, `?surface=permission-setup`), `providers/permissions/` grant probes, `permission_monitor` poll loop, `SetupRequired` shell state with menu bar **Finish Setup…**, and local three-grant **Desktop Capture Readiness** interlock over the Control Plane capture gate ([ADR-0020](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0020-desktop-local-three-grant-interlock-authoritative-over-cp-capture-gate.md), [ADR-0021](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0021-desktop-permission-detection-adapted-from-screenpipe.md)).
+- **Next:** `#34` (Emit Context Snapshots over Protocol) — `#31` closed and snapshot pipeline (`#10`–`#13`) exists.
+- Signed-in smoke (`#35`) follows `#34`.
 - Cross-project dependency: Snapshot emit and signed-in smoke need AR gateway semantics and protocol compatibility.
 
 ### Control Plane (issues #17, #23, #26–#27, #30 closed; #49–#50 open)
