@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
 
-import { createJwtVerifier, JwtVerificationError } from "../dist/auth.js";
+import { asJwtVerificationFailure, createJwtVerifier, JwtVerificationError } from "../dist/auth.js";
 
 // --- Fake JWKS endpoint -----------------------------------------------------
 //
@@ -212,6 +212,34 @@ test("JWKS fetch failure → reason 'jwks_unavailable'", async () => {
     "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xIn0.eyJzdWIiOiJ1c2VyLTEiLCJpc3MiOiJodHRwczovL2lzc3Vlci50ZXN0L2F1dGgiLCJhdWQiOiJodHRwczovL2lzc3Vlci50ZXN0L2F1dGgifQ.signature";
 
   await expectReason(verifier, token, "jwks_unavailable");
+});
+
+// --- Recovering the failure from a caught error -----------------------------
+//
+// `asJwtVerificationFailure` is the sanctioned way callers turn a caught
+// `unknown` back into a `{ reason }`. It owns the taxonomy so callers stop
+// re-enumerating it.
+
+test("asJwtVerificationFailure round-trips every JwtVerificationError reason", () => {
+  const reasons = [
+    "expired",
+    "invalid_signature",
+    "wrong_issuer",
+    "wrong_audience",
+    "unknown_key",
+    "jwks_unavailable",
+    "malformed",
+  ];
+  for (const reason of reasons) {
+    const failure = asJwtVerificationFailure(new JwtVerificationError(reason, "msg"));
+    assert.equal(failure.reason, reason);
+  }
+});
+
+test("asJwtVerificationFailure maps opaque/unknown errors to jwks_unavailable", () => {
+  assert.equal(asJwtVerificationFailure(new Error("boom")).reason, "jwks_unavailable");
+  assert.equal(asJwtVerificationFailure({ reason: "expired" }).reason, "jwks_unavailable");
+  assert.equal(asJwtVerificationFailure(undefined).reason, "jwks_unavailable");
 });
 
 test("error message leaks neither the token nor any claim", async () => {

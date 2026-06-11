@@ -16,13 +16,9 @@ import {
   PostDeviceRegisterResponse,
   parseBoundary,
 } from "@intentive/api-contract";
-import { JwtVerificationError } from "@intentive/providers/auth";
 
+import { requireUser, type Authenticator } from "../../../http/auth.js";
 import type { RegisterDeviceInput } from "../repo/devices.js";
-
-interface Authenticator {
-  authenticate(token: string): Promise<{ userId: string }>;
-}
 
 export interface PostDeviceRegisterRequestHttp {
   /** Raw `Authorization` header value, or null when absent. */
@@ -46,7 +42,7 @@ export function createPostDeviceRegisterHandler(deps: {
 }): PostDeviceRegisterHandler {
   return {
     async handle({ authorization, body }) {
-      const auth = await requireDeviceUser(authorization, deps.identity);
+      const auth = await requireUser(authorization, deps.identity);
       if (!auth.ok) return auth.response;
 
       const req = parseBoundary(PostDeviceRegisterRequest, body ?? {});
@@ -62,60 +58,6 @@ export function createPostDeviceRegisterHandler(deps: {
         status: 200,
         body: parseBoundary(PostDeviceRegisterResponse, { device_id: deviceId }),
       };
-    },
-  };
-}
-
-type AuthResult =
-  | { ok: true; userId: string }
-  | {
-      ok: false;
-      response: {
-        status: 401 | 503;
-        body: { code: "auth_failed" | "service_unavailable"; message: string };
-      };
-    };
-
-async function requireDeviceUser(
-  authorization: string | null,
-  identity: Authenticator,
-): Promise<AuthResult> {
-  const token = bearerToken(authorization);
-  if (token === null) return { ok: false, response: authFailed() };
-
-  try {
-    const { userId } = await identity.authenticate(token);
-    return { ok: true, userId };
-  } catch (err) {
-    if (err instanceof JwtVerificationError) {
-      return {
-        ok: false,
-        response: err.reason === "jwks_unavailable" ? authUnavailable() : authFailed(),
-      };
-    }
-    throw err;
-  }
-}
-
-function bearerToken(authorization: string | null): string | null {
-  if (!authorization) return null;
-  const match = /^Bearer (.+)$/i.exec(authorization.trim());
-  return match?.[1] ?? null;
-}
-
-function authFailed() {
-  return {
-    status: 401 as const,
-    body: { code: "auth_failed" as const, message: "Authentication failed." },
-  };
-}
-
-function authUnavailable() {
-  return {
-    status: 503 as const,
-    body: {
-      code: "service_unavailable" as const,
-      message: "Authentication is temporarily unavailable. Please retry shortly.",
     },
   };
 }

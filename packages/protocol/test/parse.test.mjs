@@ -15,8 +15,25 @@ test("parseClientToRuntimeEvent returns the typed event for valid input", () => 
   assert.equal(event.type, "connect");
 });
 
-test("parseClientToRuntimeEvent throws on invalid input", () => {
-  assert.throws(() => protocol.parseClientToRuntimeEvent({ type: "nope" }));
+test("parseClientToRuntimeEvent throws a leak-free BoundaryParseError on invalid input", () => {
+  try {
+    protocol.parseClientToRuntimeEvent({ type: "nope" });
+    assert.fail("expected BoundaryParseError");
+  } catch (err) {
+    assert.ok(err instanceof protocol.BoundaryParseError);
+    assert.ok(Array.isArray(err.keys));
+  }
+});
+
+test("parseClientToRuntimeEvent surfaces the offending key path", () => {
+  try {
+    // A valid connect discriminant but a missing required field.
+    protocol.parseClientToRuntimeEvent({ type: "connect", auth_token: "jwt" });
+    assert.fail("expected BoundaryParseError");
+  } catch (err) {
+    assert.ok(err instanceof protocol.BoundaryParseError);
+    assert.ok(err.keys.includes("client_kind"));
+  }
 });
 
 test("safeParseClientToRuntimeEvent reports success/failure without throwing", () => {

@@ -51,6 +51,15 @@ The Control Plane is the single writer of account truth. Clients render this sta
 `src/index.ts`
 : Workspace library entry — re-exports config and contract samples for other packages; not the HTTP server boot path.
 
+`src/http/auth.ts`
+: Authenticated-HTTP-request boundary — `requireUser`, bearer extraction, and the one canonical `401`/`503` mapping for JWT verification failures on every public endpoint. Service-local (transport-specific); not in `packages/providers`.
+
+`src/http/device-signal.ts`
+: Device-signal header boundary — `readDeviceSignal` for the optional `X-Client-Kind` / `X-Capture-Permission-Granted` headers shared by `GET /me` and `GET /agent` (ADR-0005). Malformed headers degrade to no signal.
+
+`src/db/sql.ts`
+: The narrow `Sql` tagged-template port every domain `repo` imports — keeps the Neon driver out of unit-tier module graphs.
+
 `migrations/`
 : SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27; `0004_agent_instances.sql` for Agent Instance Registry, #30). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
 
@@ -181,5 +190,5 @@ Testing:
 
 - **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, `test/agents-service.test.mjs`, `test/runtime-session-start.test.mjs`, gate write-handler tests).
 - **Repo tier:** real SQL against a disposable Neon branch per ADR-0003 (`test/users-repo.integration.test.mjs`, `test/user-gates-repo.integration.test.mjs`, `test/devices-repo.integration.test.mjs`, `test/agent-instances-repo.integration.test.mjs`; skips without `NEON_API_KEY` / `NEON_PROJECT_ID`).
-- **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`, `test/get-me-handler.test.mjs`, `test/get-agent-handler.test.mjs`, `test/post-device-register-handler.test.mjs`).
+- **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`, `test/get-me-handler.test.mjs`, `test/get-agent-handler.test.mjs`, `test/post-device-register-handler.test.mjs`); shared auth and device-signal boundaries (`test/http-auth.test.mjs`, `test/http-device-signal.test.mjs`).
 - Still to cover: push fan-out and the no-proxy guardrail as those domains land (#49).

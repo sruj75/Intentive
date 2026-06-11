@@ -1,27 +1,34 @@
-import type { HistoryBackfillResponse } from "@intentive/protocol";
+import type { HistoryBackfillResponse, RuntimeError } from "@intentive/protocol";
 
-import type { GatewaySession, SessionSnapshotReader } from "../service/connect.js";
+import type { PerUserChannel } from "../../sessions/types/event.js";
+import { isRuntimeIngressEvent } from "../../sessions/types/event.js";
 import { conversationHistoryUnavailableError } from "../service/history-unavailable.js";
 import type { GatewayEventHandler } from "./ws-handler.js";
 
+const unsupportedPostConnectEvent: RuntimeError = {
+  type: "runtime_error",
+  code: "invalid_connect",
+  message: "Event type is not supported on an active connection.",
+};
+
 /**
- * Routes a post-connect event to the right path:
+ * The single post-connect routing table. Every post-handshake event resolves to
+ * exactly one of three paths through the Per-User Channel:
  *
- * - `history_backfill_request` is a **read** — it returns a
- *   `history_backfill_response` from the injected Session Snapshot reader. The
- *   reader may serialize behind pending per-User work, but the request never
- *   touches the arrival ledger/write path (ADR-0006).
- * - everything else is delegated to the injected `ingress` handler (the ledger +
- *   queue path).
+ * - `history_backfill_request` is a **read** — `channel.readSnapshot` returns a
+ *   `history_backfill_response`. It serializes behind pending per-User work but
+ *   never touches the arrival ledger/write path (ADR-0006).
+ * - a Runtime Ingress event (`user_message` / `context_snapshot` /
+ *   `session_end_marker`) is a **write** — `channel.accept` commits the ledger
+ *   marker + projection in one transaction and replies with nothing.
+ * - anything else is rejected with an explicit `runtime_error`; there is no
+ *   silent no-op.
  */
-export function createPostConnectRouter(deps: {
-  ingress: GatewayEventHandler;
-  conversation: SessionSnapshotReader;
-}): GatewayEventHandler {
-  return async (session: GatewaySession, event) => {
+export function createPostConnectRouter(deps: { channel: PerUserChannel }): GatewayEventHandler {
+  return async (session, event) => {
     if (event.type === "history_backfill_request") {
       try {
-        const session_snapshot = await deps.conversation.readSnapshot(
+        const session_snapshot = await deps.channel.readSnapshot(
           session.userId,
           event.before_cursor,
           event.limit,
@@ -36,6 +43,11 @@ export function createPostConnectRouter(deps: {
       }
     }
 
-    return deps.ingress(session, event);
+    if (isRuntimeIngressEvent(event)) {
+      await deps.channel.accept(session, event);
+      return undefined;
+    }
+
+    return unsupportedPostConnectEvent;
   };
 }

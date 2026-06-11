@@ -8,9 +8,12 @@
  * bearer token, mapping `JwtVerificationError` / `AgentRuntimeUnavailableError`
  * to a status, enforcing the gate server-side, and validating the outgoing body.
  *
- * It carries a *local* auth-failure helper rather than importing identity's —
- * Routing is its own domain and must not reach across into identity's `ui`
- * (no cross-domain imports; mirrors `devices/ui/post-device-register.ts`).
+ * It shares the auth-failure mapping with every other endpoint via the
+ * service-local `src/http/auth.ts` (exempt from the layer rule) rather than
+ * reaching across into identity's `ui` — Routing is its own domain and must not
+ * cross-import another's `ui`. The Runtime-unavailable 503 stays local: it is a
+ * routing-specific trigger, recognized by a name-sniff to avoid a cross-domain
+ * import, and routed through the same shared `serviceUnavailable()` body.
  *
  * The Control Plane sits beside the data path, never on it: this handler returns
  * where to connect and a badge to present, then the client connects directly to
@@ -19,7 +22,14 @@
  * (ADR-0002); the Control Plane signs nothing.
  */
 import { GetAgentResponse, GetMeDeviceSignal, parseBoundary } from "@intentive/api-contract";
-import { JwtVerificationError } from "@intentive/providers/auth";
+
+import {
+  authErrorResponse,
+  authFailed,
+  bearerToken,
+  serviceUnavailable,
+} from "../../../http/auth.js";
+import { readDeviceSignal } from "../../../http/device-signal.js";
 
 /** The principal-and-gate slice of identity this handler needs (no Account State). */
 interface RoutingContextResolver {
@@ -68,9 +78,8 @@ export function createGetAgentHandler(deps: {
       try {
         ctx = await deps.identity.resolveRoutingContext(token, readDeviceSignal(req));
       } catch (err) {
-        if (err instanceof JwtVerificationError) {
-          return err.reason === "jwks_unavailable" ? serviceUnavailable() : authFailed();
-        }
+        const response = authErrorResponse(err);
+        if (response) return response;
         throw err;
       }
 
@@ -112,46 +121,7 @@ export function createGetAgentHandler(deps: {
   };
 }
 
-/**
- * Parse the optional device signal from its raw header values (ADR-0005), so
- * `GET /agent` applies the identical gate policy as `/me` (complete mediation).
- * A malformed header degrades to "no signal" — the cross-client-only sequence —
- * exactly as an unregistered/legacy caller that sends no headers.
- */
-function readDeviceSignal(req: GetAgentRequest): GetMeDeviceSignal {
-  const raw: Record<string, string> = {};
-  if (req.clientKind != null) raw.client_kind = req.clientKind;
-  if (req.capturePermissionGranted != null) {
-    raw.capture_permission_granted = req.capturePermissionGranted;
-  }
-  const parsed = GetMeDeviceSignal.safeParse(raw);
-  return parsed.success ? parsed.data : {};
-}
-
-function bearerToken(authorization: string | null): string | null {
-  if (!authorization) return null;
-  const match = /^Bearer (.+)$/i.exec(authorization.trim());
-  return match?.[1] ?? null;
-}
-
-function authFailed(): GetAgentResult {
-  return {
-    status: 401,
-    body: { code: "auth_failed", message: "Authentication failed." },
-  };
-}
-
 /** Recognize the agents Session Start failure without a cross-domain import. */
 function isAgentRuntimeUnavailable(err: unknown): boolean {
   return err instanceof Error && err.name === "AgentRuntimeUnavailableError";
-}
-
-function serviceUnavailable(): GetAgentResult {
-  return {
-    status: 503,
-    body: {
-      code: "service_unavailable",
-      message: "The service is temporarily unavailable. Please retry shortly.",
-    },
-  };
 }

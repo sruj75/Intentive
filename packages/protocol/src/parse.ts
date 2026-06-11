@@ -5,9 +5,13 @@
  * runtime boundary (the WebSocket message handler); never pass unvalidated data
  * into service/repo layers. See docs/CONVENTIONS.md → "Parse at the boundary".
  *
- * `parse*` throws a ZodError on invalid input; `safeParse*` returns a Zod
- * result object for callers that want to branch without try/catch.
+ * `parse*` throws a leak-free `BoundaryParseError` (the same type the HTTP
+ * boundary throws — see `@intentive/boundary` and docs/adr/0004) listing only
+ * the offending key paths. `safeParse*` returns a Zod result object for callers
+ * that branch without try/catch (the WS handler uses it for control flow).
  */
+
+import { parseBoundary } from "@intentive/boundary";
 
 import {
   clientToRuntimeEvent,
@@ -16,8 +20,10 @@ import {
   type RuntimeToClientEvent,
 } from "./index.js";
 
+export { BoundaryParseError } from "@intentive/boundary";
+
 export function parseClientToRuntimeEvent(raw: unknown): ClientToRuntimeEvent {
-  return clientToRuntimeEvent.parse(raw);
+  return parseBoundary(clientToRuntimeEvent, raw);
 }
 
 export function safeParseClientToRuntimeEvent(raw: unknown) {
@@ -25,7 +31,7 @@ export function safeParseClientToRuntimeEvent(raw: unknown) {
 }
 
 export function parseRuntimeToClientEvent(raw: unknown): RuntimeToClientEvent {
-  return runtimeToClientEvent.parse(raw);
+  return parseBoundary(runtimeToClientEvent, raw);
 }
 
 export function safeParseRuntimeToClientEvent(raw: unknown) {

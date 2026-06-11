@@ -13,18 +13,7 @@
  */
 import type { ClientKind } from "@intentive/api-contract";
 
-/**
- * The narrow SQL capability this repo needs: a tagged-template query returning
- * rows. The Neon driver (`@neondatabase/serverless`'s `neon()`) satisfies this;
- * depending on this local port instead of the driver keeps the driver out of the
- * repo's imports (and out of unit-tier module graphs). Mirrors `users.ts`.
- */
-export interface Sql {
-  <Row = Record<string, unknown>>(
-    strings: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<Row[]>;
-}
+import type { Sql } from "../../../db/sql.js";
 
 /**
  * The token-free view of a registered device — the only shape that crosses a

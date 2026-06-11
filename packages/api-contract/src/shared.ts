@@ -1,6 +1,9 @@
+import { CLIENT_KINDS } from "@intentive/domain-types";
 import { z } from "zod";
 
-export const ClientKind = z.enum(["mobile", "desktop", "android"]);
+// Derived from the canonical tuple in @intentive/domain-types — the single
+// source of truth for Client Kinds across the wire packages.
+export const ClientKind = z.enum(CLIENT_KINDS);
 export type ClientKind = z.infer<typeof ClientKind>;
 
 export const PreChatGateKind = z.enum([

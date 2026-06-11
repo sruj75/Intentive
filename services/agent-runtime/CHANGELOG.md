@@ -17,9 +17,8 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   behind the per-`user_id` queue. Companion-message persistence and live outbound
   delivery remain deferred to #36 and #41. Tests: `test/conversation-repo.integration.test.mjs`,
   `test/project-ingress.test.mjs`, `test/post-connect-router.test.mjs`,
-  `test/session-snapshot-reader.test.mjs`,
   `test/runtime-ingress-projection.integration.test.mjs`, plus extended connect/ws-handler
-  coverage.
+  coverage (snapshot-reader coverage later consolidated into `test/per-user-channel.test.mjs`).
 - **Sessions, ordering, and event ledger** ([Issue #28], in progress) — Neon-backed
   Agent Instance registry (`agent_instances`), append-only `runtime_events` idempotency
   ledger, per-`user_id` in-memory queue, and write-ahead ingest wiring
@@ -32,8 +31,8 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   `NEON_API_KEY` and `NEON_PROJECT_ID` are set. Recorded in
   [ADR-0007](docs/adr/0007-agent-runtime-event-ledger-and-in-memory-ordering.md) and the
   "Runtime durable state is three separate concerns" decision in `CONTEXT.md`. Tests:
-  `test/user-queue.test.mjs`, `test/ingest-event.test.mjs`,
-  `test/runtime-event-handler.test.mjs`, `test/sessions-repo.integration.test.mjs`.
+  `test/user-queue.test.mjs`, `test/sessions-repo.integration.test.mjs` (ingest/event-handler
+  coverage later consolidated into `test/per-user-channel.test.mjs`).
 - **Runtime config seam** ([Issue #24], [PR #62]) — `src/config/env.ts` (`loadConfig`,
   `AgentRuntimeConfig`, `AgentRuntimeConfigError`): single boot-time Zod validation for
   `PORT`, `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, Neon connection +
@@ -48,8 +47,24 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
-- **`src/main.ts` composition root** ([Issue #29]) — wires the `conversation` repo,
-  transactional ingress projection (`ingest.queriesFor` + `sql.transaction`), and
+- **Per-User Channel deepening refactor** — consolidated the per-`user_id` write and read
+  paths that `main.ts` previously assembled from five collaborators into one deep module,
+  `sessions/runtime/per-user-channel.ts` (`createPerUserChannel`). Its `accept` commits the
+  ledger marker + injected projection in one Neon transaction and its `readSnapshot` runs
+  through the same in-memory ordering queue, so reads observe earlier accepted writes
+  (ADR-0006/0009; read-after-write ordering now has a unit test). Absorbed and **removed**
+  `sessions/service/ingest-event.ts`, `sessions/runtime/event-handler.ts`, and
+  `gateway/service/session-snapshot-reader.ts` (with their `test/ingest-event.test.mjs`,
+  `test/runtime-event-handler.test.mjs`, `test/session-snapshot-reader.test.mjs`; new
+  `test/per-user-channel.test.mjs` tests the deepened interface). The session handle is now
+  one canonical `BoundSession` (gateway type-only-imports it; `GatewaySession` deleted), and
+  `post-connect-router.ts` is the single routing table — `history_backfill_request` → read,
+  Runtime Ingress → write, anything else → explicit `runtime_error` (no silent no-op). The
+  read-side port `SessionSnapshotReader` now lives in `conversation/types`. ADR-0009 amended
+  to place the transaction commit inside the Channel; `CONTEXT.md` adds **Bound Session** and
+  **Per-User Channel**.
+- **`src/main.ts` composition root** ([Issue #29]) — wires the `conversation` repo, the
+  **Per-User Channel** (`createPerUserChannel` with injected `project` seam), and
   queue-serialized `readSnapshot` for connect/backfill.
 - **`gateway/service/connect.ts`, `gateway/ui/post-connect-router.ts`, and
   `gateway/ui/ws-handler.ts`** ([Issue #29]) — connect emits the Session Snapshot

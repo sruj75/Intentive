@@ -47,6 +47,21 @@ device_fingerprint)`, non-destructive APNs/FCM token rotation) and the token-fre
 
 ### Changed
 
+- **HTTP auth boundary consolidation** — the authenticated-request decision for every
+  public endpoint (`GET /me`, `GET /agent`, `POST /consent`, `POST /sibling-invitation/skip`,
+  `POST /devices/register`) now lives once in `src/http/auth.ts` (`requireUser`,
+  `bearerToken`, `authFailed`, `serviceUnavailable`, `mapJwtVerificationErrorToHttpResponse`).
+  Resolves drift where `get-agent` and identity handlers returned different `503` bodies for
+  JWKS outages. **Removed** per-domain copies in `identity/ui/require-user.ts` and
+  `identity/service/auth-failure.ts`. HTTP-status mapping stays service-local (the Agent Runtime
+  maps the same `JwtVerificationFailure` to protocol events, not statuses). Tests:
+  `test/http-auth.test.mjs`; duplicated auth-failure cases thinned in handler tests.
+- **Device-signal header boundary** — `GET /me` and `GET /agent` both read the identical
+  optional device signal (`X-Client-Kind`, `X-Capture-Permission-Granted`) through
+  `src/http/device-signal.ts` (`readDeviceSignal`); malformed headers degrade to no signal
+  (cross-client-only gate sequence) rather than `400`. Tests: `test/http-device-signal.test.mjs`.
+- **Shared SQL port** — every domain `repo` imports the one `Sql` tagged-template interface from
+  `src/db/sql.ts` instead of restating it; keeps the Neon driver out of unit-tier module graphs.
 - **`AccountState` assembly** ([ADR-0004](docs/adr/0004-account-state-assembled-by-identity-composer.md),
   extended by [ADR-0005](docs/adr/0005-device-aware-gates-from-live-signals.md))
   — `identity.resolveAccount` is the sole assembler of the `GET /me` response and

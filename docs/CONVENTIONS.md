@@ -24,8 +24,10 @@ A new file in the wrong case fails `pnpm lint`; the error states the expected ca
 
 Inbound payloads are decoded through their schema at the **runtime boundary**
 (the WebSocket message handler or HTTP request handler) and never passed raw into
-`service`/`repo` layers. The contract packages export the helpers — don't call
-`.parse()`/`.safeParse()` on the raw schemas at call sites.
+`service`/`repo` layers. The decode lives once in `@intentive/boundary`
+(`parseBoundary` / `BoundaryParseError`); the contract packages surface it — don't
+call `.parse()`/`.safeParse()` on the raw schemas at call sites. See
+[`docs/adr/0004-shared-boundary-decode-package.md`](adr/0004-shared-boundary-decode-package.md).
 
 - **WebSocket events** (`@intentive/protocol`):
   - `parseClientToRuntimeEvent(raw)` / `safeParseClientToRuntimeEvent(raw)`

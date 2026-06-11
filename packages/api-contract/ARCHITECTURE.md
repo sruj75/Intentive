@@ -10,7 +10,8 @@ The single source of truth for the **Control Plane's HTTP contract** — request
 
 Defined as three internal modules re-exported by `src/index.ts`:
 
-- `src/shared.ts` — cross-surface primitives (`ClientKind`, `PreChatGateKind`).
+- `src/shared.ts` — cross-surface primitives (`ClientKind` derived from `@intentive/domain-types` `CLIENT_KINDS`, `PreChatGateKind`).
+- `src/parse.ts` — re-exports `parseBoundary` / `BoundaryParseError` from `@intentive/boundary` (monorepo ADR-0004).
 - `src/public.ts` — JWT-authenticated client-facing request/response schemas.
 - `src/internal.ts` — shared-secret internal request/response schemas.
 
@@ -37,7 +38,7 @@ Two API surfaces:
 ## Boundaries
 
 - **Consumers:** `apps/mobile` and `apps/desktop` (public surface, via their Control Plane HTTP provider); `services/control-plane` (both surfaces, as implementer); `services/agent-runtime` (internal surface — its `internal` domain).
-- **Sibling contracts:** WebSocket events live in `@intentive/protocol`; non-wire domain shapes live in `@intentive/domain-types`.
+- **Sibling contracts:** WebSocket events live in `@intentive/protocol`; non-wire domain shapes live in `@intentive/domain-types`; inbound decode lives in `@intentive/boundary` (re-exported here for HTTP call sites).
 
 ## Change protocol
 

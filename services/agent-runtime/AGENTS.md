@@ -2,7 +2,7 @@
 
 The always-alive, multi-tenant service that runs **Companion** behavior. Built on **DeepAgents** (LangChain TypeScript: `langchain-ai/deepagentsjs`).
 
-**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), root [`AGENTS.md`](../../AGENTS.md) Start here, and [`reference/AGENTS.md`](reference/AGENTS.md) when implementing shell domains.
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CHANGELOG.md`](CHANGELOG.md), root [`AGENTS.md`](../../AGENTS.md) Start here, and [`reference/AGENTS.md`](reference/AGENTS.md) when implementing shell domains.
 
 ## Role in V1
 
@@ -18,7 +18,7 @@ The always-alive, multi-tenant service that runs **Companion** behavior. Built o
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
-- `sessions` — per-user session queue, ordering, message idempotency
+- `sessions` — the Per-User Channel: per-user serialization point for ordering, message idempotency, transactional ingress, and queue-serialized Conversation History reads
 - `conversation` — durable Conversation History transcript (`conversation_messages`), Session Snapshot projection (`readSnapshot`), history backfill reads (ADR-0008)
 - `protocol` — inbound/outbound event handling (every event type in `packages/protocol/`)
 - `runtime` — DeepAgents loop, Agent Instance lifecycle

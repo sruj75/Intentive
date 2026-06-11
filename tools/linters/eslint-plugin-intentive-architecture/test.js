@@ -129,6 +129,11 @@ ruleTester.run("layer-direction", plugin.rules["layer-direction"], {
       filename: MOBILE_CHAT_TYPES,
       code: "import { auth } from '../providers/auth';",
     },
+    {
+      name: "service may import another domain's public types/ contract",
+      filename: MOBILE_CHAT_SERVICE,
+      code: "import type { Token } from '../../auth/types/token';",
+    },
   ],
   invalid: [
     {

@@ -82,6 +82,14 @@ A single uniform timeline entry inside a Session Snapshot, built for rendering: 
 A **read** request for the page of Conversation History older than a cursor, served by the same projection as the reconnect snapshot via a generalized `readSnapshot(userId, before?)`. The response reuses the **Session Snapshot** shape. Backfill is a pure read: it does **not** enter the `runtime_events` ledger or write path, but its Session Snapshot read is still serialized behind pending per-User work so reconnect/backfill observes earlier accepted events. See ADR-0006 (Amendment).
 _Avoid_: pagination event (too generic), load-more (UI term), history sync
 
+**Bound Session**:
+The authenticated per-connection session handle (`userId`, `clientKind`, `agentInstanceId`). Produced at connect once the JWT is verified and the Agent Instance is resolved, then carried for the life of the WebSocket connection and consumed by the **Per-User Channel**. The one canonical shape — the gateway type-only-imports it from the `sessions` domain rather than redeclaring it.
+_Avoid_: GatewaySession, connection context
+
+**Per-User Channel**:
+The single per-`user_id` serialization point in the always-alive Runtime process. All stateful ingress (the `runtime_events` ledger marker + Conversation History projection in one transaction) and all Conversation History reads pass through it, so reads observe earlier accepted writes. Wraps the in-memory ordering queue (ADR-0007); owns the transactional ingress commit (ADR-0009). Consumes a **Bound Session** on `accept`.
+_Avoid_: job queue, session writer, durable queue
+
 ## Relationships
 
 - The **Persistence Adapter** wraps LangGraph's Postgres checkpoint store.

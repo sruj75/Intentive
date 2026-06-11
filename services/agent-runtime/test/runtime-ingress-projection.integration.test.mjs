@@ -7,9 +7,7 @@ import path from "node:path";
 import {
   createConversationRepo,
   createEventLedger,
-  createIngestEvent,
-  createRuntimeIngressHandler,
-  createUserQueue,
+  createPerUserChannel,
   toConversationEntry,
 } from "../dist/index.js";
 import {
@@ -50,8 +48,10 @@ after(async () => {
 test("runtime ingress retries safely when a durable projection write fails", { skip }, async () => {
   const session = boundSession(randomUUID());
   let failProjectionOnce = true;
-  const ingest = createIngestEvent({
+  const channel = createPerUserChannel({
+    sql,
     ledger,
+    conversation,
     project: (seenSession, event) => {
       const entry = toConversationEntry(seenSession.userId, event);
       if (!entry) return [];
@@ -62,16 +62,10 @@ test("runtime ingress retries safely when a durable projection write fails", { s
       return [conversation.appendQuery(entry)];
     },
   });
-  const handleRuntimeIngress = createRuntimeIngressHandler({
-    queue: createUserQueue(),
-    commit: async (seenSession, event) => {
-      await sql.transaction(ingest.queriesFor(seenSession, event));
-    },
-  });
   const event = userMessage("message_1");
 
-  await assert.rejects(handleRuntimeIngress(session, event));
-  await handleRuntimeIngress(session, event);
+  await assert.rejects(channel.accept(session, event));
+  await channel.accept(session, event);
 
   const snapshot = await conversation.readSnapshot(session.userId);
   assert.deepEqual(
@@ -92,23 +86,19 @@ test(
   { skip },
   async () => {
     const session = boundSession(randomUUID());
-    const ingest = createIngestEvent({
+    const channel = createPerUserChannel({
+      sql,
       ledger,
+      conversation,
       project: (seenSession, event) => {
         const entry = toConversationEntry(seenSession.userId, event);
         return entry ? [conversation.appendQuery(entry)] : [];
       },
     });
-    const handleRuntimeIngress = createRuntimeIngressHandler({
-      queue: createUserQueue(),
-      commit: async (seenSession, event) => {
-        await sql.transaction(ingest.queriesFor(seenSession, event));
-      },
-    });
     const event = userMessage("message_1");
 
-    await handleRuntimeIngress(session, event);
-    await handleRuntimeIngress(session, event);
+    await channel.accept(session, event);
+    await channel.accept(session, event);
 
     const snapshot = await conversation.readSnapshot(session.userId);
     assert.equal(snapshot.messages.length, 1);
@@ -128,21 +118,17 @@ test(
   { skip },
   async () => {
     const session = boundSession(randomUUID());
-    const ingest = createIngestEvent({
+    const channel = createPerUserChannel({
+      sql,
       ledger,
+      conversation,
       project: (seenSession, event) => {
         const entry = toConversationEntry(seenSession.userId, event);
         return entry ? [conversation.appendQuery(entry)] : [];
       },
     });
-    const handleRuntimeIngress = createRuntimeIngressHandler({
-      queue: createUserQueue(),
-      commit: async (seenSession, event) => {
-        await sql.transaction(ingest.queriesFor(seenSession, event));
-      },
-    });
 
-    await handleRuntimeIngress(session, {
+    await channel.accept(session, {
       type: "context_snapshot",
       snapshot_id: "snapshot_1",
       captured_at: "2026-06-09T00:00:00.000Z",

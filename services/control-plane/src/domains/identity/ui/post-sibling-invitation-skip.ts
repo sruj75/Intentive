@@ -8,7 +8,7 @@
  */
 import { PostSiblingInvitationSkipRequest, parseBoundary } from "@intentive/api-contract";
 
-import { requireUser, type Authenticator } from "./require-user.js";
+import { requireUser, type Authenticator } from "../../../http/auth.js";
 import { siblingSkipAccepted } from "./ack.js";
 
 export interface PostSiblingInvitationSkipRequestHttp {
@@ -33,7 +33,7 @@ export function createPostSiblingInvitationSkipHandler(deps: {
 }): PostSiblingInvitationSkipHandler {
   return {
     async handle({ authorization, body }) {
-      const auth = await requireUser(authorization, { identity: deps.identity });
+      const auth = await requireUser(authorization, deps.identity);
       if (!auth.ok) return auth.response;
 
       parseBoundary(PostSiblingInvitationSkipRequest, body ?? {});

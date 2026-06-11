@@ -8,7 +8,7 @@ This repo is **multi-context** (see the root [`CONTEXT-MAP.md`](../../CONTEXT-MA
 | Context              | ADR home                                                                     |
 | -------------------- | ---------------------------------------------------------------------------- |
 | System-wide          | [`docs/adr/`](.)                                                             |
-| Shared (`packages/`) | none yet                                                                     |
+| Shared (`packages/`) | system-wide (see [ADR-0004](0004-shared-boundary-decode-package.md))         |
 | Mobile Client        | [`apps/mobile/docs/adr/`](../../apps/mobile/docs/adr/)                       |
 | Desktop Client       | [`apps/desktop/docs/adr/`](../../apps/desktop/docs/adr/)                     |
 | Control Plane        | [`services/control-plane/docs/adr/`](../../services/control-plane/docs/adr/) |
@@ -20,11 +20,12 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 
 ## System-wide index (`docs/adr/`)
 
-| #    | Title                                             | Status   |
-| ---- | ------------------------------------------------- | -------- |
-| 0001 | Unified monorepo foundation                       | accepted |
-| 0002 | No standalone channels domain in Agent Runtime v1 | accepted |
-| 0003 | Single live protocol shape v1                     | accepted |
+| #    | Title                                                | Status   |
+| ---- | ---------------------------------------------------- | -------- |
+| 0001 | Unified monorepo foundation                          | accepted |
+| 0002 | No standalone channels domain in Agent Runtime v1    | accepted |
+| 0003 | Single live protocol shape v1                        | accepted |
+| 0004 | Shared boundary-decode package (@intentive/boundary) | accepted |
 
 ## Context indexes
 
@@ -78,17 +79,21 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0002 | Runtime JWT is the pass-through Neon Auth token      | accepted |
 | 0003 | Repo-layer tests run against ephemeral Neon branches | accepted |
 | 0004 | AccountState assembled by the identity composer      | accepted |
+| 0005 | Device-aware gates from live client signals          | accepted |
 
 ### Agent Runtime — `services/agent-runtime/docs/adr/`
 
-| #    | Title                                                                 | Status                                                 |
-| ---- | --------------------------------------------------------------------- | ------------------------------------------------------ |
-| 0001 | OpenClaw patterns as default                                          | accepted                                               |
-| 0002 | Vertical-first progressive layering                                   | **amended by monorepo 0001**                           |
-| 0003 | WebSocket protocol contract v1                                        | **amended by monorepo 0003**                           |
-| 0004 | DB-backed VFS overlay model v1                                        | **refined by 0005; amended 2026-05-29 (pin boundary)** |
-| 0005 | VFS write policy: immutable procedure files, writable knowledge files | accepted                                               |
-| 0006 | Session Snapshot as a separate history projection                     | accepted                                               |
+| #    | Title                                                                 | Status                                                    |
+| ---- | --------------------------------------------------------------------- | --------------------------------------------------------- |
+| 0001 | OpenClaw patterns as default                                          | accepted                                                  |
+| 0002 | Vertical-first progressive layering                                   | **amended by monorepo 0001**                              |
+| 0003 | WebSocket protocol contract v1                                        | **amended by monorepo 0003**                              |
+| 0004 | DB-backed VFS overlay model v1                                        | **refined by 0005; amended 2026-05-29 (pin boundary)**    |
+| 0005 | VFS write policy: immutable procedure files, writable knowledge files | accepted                                                  |
+| 0006 | Session Snapshot as a separate history projection                     | accepted                                                  |
+| 0007 | Event ledger and in-memory per-user ordering                          | accepted                                                  |
+| 0008 | Conversation History owns its own domain                              | accepted                                                  |
+| 0009 | Transactional ingress projections                                     | accepted; amended 2026-06-11 (commit in Per-User Channel) |
 
 ## Migration map (old unified number → new per-context number)
 

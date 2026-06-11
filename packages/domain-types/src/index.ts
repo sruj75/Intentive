@@ -17,7 +17,15 @@ export type MessageId = string & { readonly __brand: "MessageId" };
 
 // ---------- Devices ----------
 
-export type ClientKind = "mobile" | "desktop" | "android";
+/**
+ * The canonical set of Client Kinds. This is the single source of truth the
+ * wire packages derive from: `@intentive/protocol` and `@intentive/api-contract`
+ * build their Zod enums from this tuple so adding a client is one central edit,
+ * not three lockstep ones. See packages/CONTEXT.md → "Client Kind".
+ */
+export const CLIENT_KINDS = ["mobile", "desktop", "android"] as const;
+
+export type ClientKind = (typeof CLIENT_KINDS)[number];
 
 export interface Device {
   device_id: DeviceId;

@@ -9,6 +9,10 @@
 import { BoundaryParseError } from "@intentive/api-contract";
 import { Hono } from "hono";
 
+import {
+  CAPTURE_PERMISSION_GRANTED_HEADER,
+  CLIENT_KIND_HEADER,
+} from "../../../http/device-signal.js";
 import type { GetMeHandler } from "./get-me.js";
 import type { PostConsentHandler } from "./post-consent.js";
 import type { PostSiblingInvitationSkipHandler } from "./post-sibling-invitation-skip.js";
@@ -46,8 +50,8 @@ export function createApp(deps: {
   app.get("/me", async (c) => {
     const result = await deps.getMe.handle({
       authorization: c.req.header("authorization") ?? null,
-      clientKind: c.req.header("x-client-kind") ?? null,
-      capturePermissionGranted: c.req.header("x-capture-permission-granted") ?? null,
+      clientKind: c.req.header(CLIENT_KIND_HEADER) ?? null,
+      capturePermissionGranted: c.req.header(CAPTURE_PERMISSION_GRANTED_HEADER) ?? null,
     });
     return json(result.body, result.status);
   });
@@ -57,8 +61,8 @@ export function createApp(deps: {
   app.get("/agent", async (c) => {
     const result = await deps.getAgent.handle({
       authorization: c.req.header("authorization") ?? null,
-      clientKind: c.req.header("x-client-kind") ?? null,
-      capturePermissionGranted: c.req.header("x-capture-permission-granted") ?? null,
+      clientKind: c.req.header(CLIENT_KIND_HEADER) ?? null,
+      capturePermissionGranted: c.req.header(CAPTURE_PERMISSION_GRANTED_HEADER) ?? null,
     });
     return json(result.body, result.status);
   });

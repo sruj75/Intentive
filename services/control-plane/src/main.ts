@@ -12,6 +12,7 @@ import { createJwtVerifier } from "@intentive/providers/auth";
 import { neon } from "@neondatabase/serverless";
 
 import { loadConfig } from "./config/env.js";
+import type { Sql } from "./db/sql.js";
 import { createAgentInstancesRepo } from "./domains/agents/repo/agent-instances.js";
 import { createRuntimeSessionStarter } from "./domains/agents/repo/runtime-session-start.js";
 import { createAgentsService } from "./domains/agents/service/agents-service.js";
@@ -19,7 +20,7 @@ import { createDevicesRepo } from "./domains/devices/repo/devices.js";
 import { createPostDeviceRegisterHandler } from "./domains/devices/ui/post-device-register.js";
 import { createUserGatesRepo } from "./domains/gates/repo/user-gates.js";
 import { createGatesService } from "./domains/gates/service/gates-service.js";
-import { createUsersRepo, type Sql } from "./domains/identity/repo/users.js";
+import { createUsersRepo } from "./domains/identity/repo/users.js";
 import { createIdentityService } from "./domains/identity/service/resolve-account.js";
 import { createApp } from "./domains/identity/ui/app.js";
 import { createGetMeHandler } from "./domains/identity/ui/get-me.js";
