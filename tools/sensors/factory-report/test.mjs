@@ -111,29 +111,43 @@ try {
     [sensorPath, "--repo", repo, "--format", "markdown", "--base", "HEAD"],
     { encoding: "utf8" },
   );
+  const auditOutput = execFileSync(
+    process.execPath,
+    [sensorPath, "--repo", repo, "--format", "markdown", "--base", "HEAD", "--audit"],
+    { encoding: "utf8" },
+  );
 
   assert.match(output, /<!-- intentive:factory-report -->/);
-  assert.match(output, /## Factory Report/);
-  assert.match(output, /### Factory Focus/);
-  assert.match(output, /#### PR-Tied And Learning Findings/);
-  assert.match(output, /### Factory Learning Metrics/);
-  assert.match(output, /\| PR-tied findings \|/);
-  assert.match(output, /### Behavior Proof/);
-  assert.match(output, /apps\/mobile: Mobile behavior \(present\)/);
-  assert.match(output, /### Impact Radius/);
+  assert.match(output, /## Factory Radar/);
+  assert.match(output, /### Radar/);
+  assert.match(output, /#### Actionable Findings/);
+  assert.match(output, /#### Changed Files/);
   assert.match(output, /`apps\/mobile\/src\/untracked\.ts`/);
-  assert.match(output, /`packages\/protocol\/src\/events\.ts`: fan-in 1, fan-out 0/);
-  assert.match(output, /`services\/agent-runtime`: .*depends on @intentive\/protocol/);
-  assert.match(output, /### Harness Health/);
+  assert.match(output, /#### Behavior Coverage/);
+  assert.match(output, /apps\/mobile: Mobile behavior \(present\)/);
+  assert.match(output, /#### Repo-Wide Drift Summary/);
+  assert.match(output, /\| Repo-wide findings hidden by default \|/);
+  assert.match(output, /Run `pnpm sensor:factory-report --audit`/);
   assert.match(output, /apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts/);
-  assert.match(output, /`untestedEvent` from `packages\/protocol\/src\/events\.ts`/);
-  assert.match(output, /### Factory Steward Handoff/);
-  assert.match(output, /dependencies in apps\/mobile|Dependency Maintenance Groups/);
+  assert.match(output, /Untested export untestedEvent/);
+  assert.doesNotMatch(output, /### Harness Health/);
+  assert.doesNotMatch(output, /### Impact Radius/);
+  assert.doesNotMatch(output, /### Improvement Handoff/);
+
+  assert.match(auditOutput, /### Audit Details/);
+  assert.match(auditOutput, /### Radar Metrics/);
+  assert.match(auditOutput, /\| PR-tied findings \|/);
+  assert.match(auditOutput, /### Impact Radius/);
+  assert.match(auditOutput, /`packages\/protocol\/src\/events\.ts`: fan-in 1, fan-out 0/);
+  assert.match(auditOutput, /`services\/agent-runtime`: .*depends on @intentive\/protocol/);
+  assert.match(auditOutput, /### Harness Health/);
+  assert.match(auditOutput, /### Improvement Handoff/);
+  assert.match(auditOutput, /dependencies in apps\/mobile|Dependency Maintenance/);
   assert.match(output, /Factory improved/);
   assert.match(output, /Backlogged/);
   assert.match(output, /`stale-scaffold:apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts`/);
   assert.match(output, /`untested-export:packages\/protocol\/src\/events\.ts:untestedevent`/);
-  assert.match(output, /### Finding Memory/);
+  assert.match(auditOutput, /### Finding Memory/);
 
   console.log("factory-report: fixture test passed");
 } finally {

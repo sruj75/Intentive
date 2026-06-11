@@ -1,49 +1,30 @@
 # Factory Self-Improvement Runbook
 
-Use this file as the agent skill for factory self-improvement runs in Conductor.
+Use this runbook when a Radar report points to factory work: docs, tests, sensors, workflows, backlog, ledger, or decisions.
 
-## Goal
+## Hard Rules
 
-Turn a PR factory sticky comment into approved factory improvements.
-
-Do not treat this as "fix today's code only." The point is to improve the system that caused repeated problems: docs, tests, sensors, workflows, and backlog items.
-
-## Inputs you will receive
-
-1. A copied PR factory sticky comment, or a saved `factory-report.md`
-2. This runbook
-3. The current factory memory in [`LEDGER.md`](LEDGER.md) and [`BACKLOG.md`](BACKLOG.md)
-
-## Hard rules
-
-1. **Recommendation pass first.** On the first pass, do not edit tracked files.
+1. **Recommendation pass first.** Do not edit tracked files until I approve specific items.
 2. Write recommendations to `.context/factory-recommendations.md`.
-3. Wait for explicit human approval of specific recommendation items.
-4. Only implement approved items.
-5. Any factory rule change must update the relevant docs and tests together.
-6. Never mark a finding accepted, backlogged, or factory-improved in the ledger without human approval.
-7. Prefer small durable improvements over broad rule weakening.
+3. Wait for explicit human approval.
+4. Implement only approved items.
+5. Update docs and tests together when factory behavior changes.
+6. Never mark a finding accepted, backlogged, or factory-improved without human approval.
+7. Do not weaken a Gate without explicit human approval.
 
-## Step 1: Read the handoff
+## Inputs
 
-Read the pasted factory comment and identify:
+- A copied PR Radar comment or saved `factory-report.md`
+- [`LEDGER.md`](LEDGER.md) for prior decisions
+- [`BACKLOG.md`](BACKLOG.md) and [`decisions/`](decisions/) for approved follow-up and rationale
 
-- Factory Focus items tied to changed files or changed workspaces
-- new findings
-- repeated findings
-- findings already classified in the ledger
-- findings waiting for classification
-- behavior-proof gaps for changed workspaces
+## Recommendation Pass
 
-If helpful, run:
+If starting from a saved report, generate a draft:
 
 ```bash
 pnpm factory:recommend --report <saved-report.md>
 ```
-
-Use the generated `.context/factory-recommendations.md` as your starting draft, then refine it.
-
-## Step 2: Write recommendations only
 
 For each material finding, write:
 
@@ -51,97 +32,65 @@ For each material finding, write:
 Finding
 Observed signal
 Why it matters
-What has happened before
+Prior decision or history
 Recommended classification
 Recommended action
 Risk
 Approval needed
-Files likely affected
+Likely files
 ```
-
-Use grouped recommendations when the report already groups the decision:
-
-- dependency freshness: one maintenance recommendation per workspace
-- repo-wide high fan-in or oversized-file findings: review attention unless the current PR touched the file
-- changed stale scaffolds, forbidden vocabulary, boundary imports, suppressions, and changed untested exports: keep as individual recommendations
 
 Use these approval levels:
 
-- **automatic**: safe formatting, fixture, or ledger cleanup
-- **agent-suggested**: docs, allowlists, backlog entries, lint guidance
-- **human-approved**: architecture, CI gates, suppression, product vocabulary
+- **automatic**: broken report formatting, fixture coverage, disappeared-finding cleanup
+- **agent-suggested**: docs, allowlists with tests, backlog entries, lint guidance
+- **human-approved**: Gate changes, suppressions, product vocabulary, architecture rule changes, accepted/backlogged/factory-improved statuses
 
-Escalation rule:
+Escalation:
 
 - seen once: report only
 - seen twice: recommend classification
 - seen 3+ times unclassified: recommend backlog or factory improvement
 
-## Step 3: Stop and wait
+After writing recommendations, stop and report what needs approval. Do not edit tracked files yet.
 
-After writing `.context/factory-recommendations.md`, stop.
-
-Tell the human:
-
-- which recommendations are ready
-- which ones need approval
-- which files would change if approved
-
-Do not edit tracked files yet.
-
-## Step 4: Implement approved items only
+## Implementation Pass
 
 After approval, make only the approved changes.
 
-Typical approved outputs:
+Common outputs:
 
-- docs updates in `docs/factory/`, `docs/FACTORY.md`, deployable `AGENTS.md`, or `CONTEXT.md`
+- docs updates in `docs/FACTORY.md`, `docs/factory/`, `AGENTS.md`, or `CONTEXT.md`
 - sensor or lint changes under `tools/`
-- fixture tests for the changed factory behavior
+- fixture tests for changed factory behavior
 - backlog entries in [`BACKLOG.md`](BACKLOG.md)
 - decision records in [`decisions/`](decisions/)
-- ledger updates in [`LEDGER.md`](LEDGER.md) with rationale
+- approved ledger rationale in [`LEDGER.md`](LEDGER.md)
 
-Then run the relevant checks:
+Run the relevant checks:
 
 ```bash
 pnpm sensor:factory-report:test
 pnpm factory:test
-pnpm harness:test
+pnpm docs:factory:test
 pnpm docs:check
+pnpm harness:test
 pnpm format:check
 ```
 
-## Step 5: Update factory memory
-
-After approved work lands:
-
-1. Update human ledger fields in the JSON `entries` block inside `LEDGER.md` for accepted/backlogged/factory-improved findings. Do not edit the rendered table; `pnpm factory:ledger` regenerates it from the JSON.
-2. Add unfinished approved work to `BACKLOG.md` with links back to ledger IDs.
-3. Add a decision record for any important trade-off.
-
-Refresh counts with:
+Refresh the ledger from a saved report when needed:
 
 ```bash
 pnpm factory:ledger --report <saved-report.md>
 ```
 
-## Manual Conductor prompt
+## Manual Prompt
 
 ```text
 Read docs/factory/SELF-IMPROVEMENT.md.
-Here is the PR factory sticky comment:
+Here is the PR Radar comment:
 <paste comment>
 
 First, write recommendations only.
 Do not edit tracked files until I approve specific items.
 ```
-
-## What success looks like
-
-The loop is working when:
-
-- repeated findings go down
-- noisy findings get accepted with reasons or get fixed in the factory
-- future agents inherit clearer docs, tests, and sensors
-- humans approve important trade-offs instead of re-deciding them every PR

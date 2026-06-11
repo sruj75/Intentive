@@ -48,13 +48,17 @@ export function formatLedgerMarkdown(ledger) {
       "# Factory Ledger",
       "",
       "This file remembers recurring factory findings across pull requests.",
-      "Machine data lives between the HTML markers below. Human fields (status, rationale, owner, action) belong in each JSON entry and are rendered in the table.",
+      "Machine data lives between the HTML markers below. Human fields (status, rationale, owner, action) belong in each JSON entry.",
       "",
     ].join("\n");
 
   const entries = Object.values(ledger.entries).sort((left, right) =>
     left.id.localeCompare(right.id),
   );
+  const statusCounts = countByStatus(entries);
+  const visibleEntries = entries.filter((entry) => {
+    return ["accepted", "backlogged", "factory-improved"].includes(entry.status);
+  });
 
   const lines = [];
   lines.push(intro);
@@ -72,19 +76,29 @@ export function formatLedgerMarkdown(ledger) {
   );
   lines.push(ledgerMarkerEnd);
   lines.push("");
-  lines.push("## Entries");
+  lines.push("## Summary");
   lines.push("");
   lines.push(
-    "| ID | Title | Status | First seen | Last seen | Seen count | Owner | Rationale | Action |",
+    "Raw findings stay in the hidden JSON block above. This summary renders only durable human decisions.",
   );
-  lines.push("| --- | --- | --- | --- | --- | ---: | --- | --- | --- |");
+  lines.push("");
+  lines.push("| Status | Count |");
+  lines.push("| --- | ---: |");
+  for (const status of LEDGER_STATUSES) {
+    lines.push(`| ${status} | ${statusCounts.get(status) ?? 0} |`);
+  }
+  lines.push("");
+  lines.push("## Active Decisions");
+  lines.push("");
+  lines.push("| ID | Title | Status | Seen count | Owner | Rationale | Action |");
+  lines.push("| --- | --- | --- | ---: | --- | --- | --- |");
 
-  if (entries.length === 0) {
-    lines.push("| _none yet_ | | | | | | | | |");
+  if (visibleEntries.length === 0) {
+    lines.push("| _none yet_ | | | | | | |");
   } else {
-    for (const entry of entries) {
+    for (const entry of visibleEntries) {
       lines.push(
-        `| \`${entry.id}\` | ${escapeCell(entry.title)} | ${entry.status} | ${entry.firstSeen ?? ""} | ${entry.lastSeen ?? ""} | ${entry.seenCount ?? 0} | ${escapeCell(entry.owner ?? "")} | ${escapeCell(entry.rationale ?? "")} | ${escapeCell(entry.actionUrl ?? "")} |`,
+        `| \`${entry.id}\` | ${escapeCell(entry.title)} | ${entry.status} | ${entry.seenCount ?? 0} | ${escapeCell(entry.owner ?? "")} | ${escapeCell(entry.rationale ?? "")} | ${escapeCell(entry.actionUrl ?? "")} |`,
       );
     }
   }
@@ -93,6 +107,14 @@ export function formatLedgerMarkdown(ledger) {
   lines.push("Allowed statuses: " + LEDGER_STATUSES.join(", "));
   lines.push("");
   return lines.join("\n");
+}
+
+function countByStatus(entries) {
+  const counts = new Map();
+  for (const entry of entries) {
+    counts.set(entry.status, (counts.get(entry.status) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export function updateLedgerFromFindings(ledger, findings, { now = new Date() } = {}) {

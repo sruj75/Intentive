@@ -20,7 +20,7 @@ try {
       '{ "updatedAt": null, "entries": { "sample:id": { "id": "sample:id", "title": "Sample", "status": "accepted", "seenCount": 1 } } }',
       "<!-- intentive:factory-ledger:end -->",
       "",
-      "## Entries",
+      "## Summary",
       "",
     ].join("\n"),
     backlog: "# Backlog\n\nSee [LEDGER.md](LEDGER.md).\n",
