@@ -171,6 +171,9 @@ mod macos {
     }
 
     pub fn screen_recording_granted() -> bool {
+        // Unlike ScreenPipe's Sequoia-gated CGWindowListCreateImage fallback,
+        // this fallback only accepts readable foreign window names and excludes
+        // the current process, avoiding the own-window false positive class.
         (unsafe { CGPreflightScreenCaptureAccess() }) || screen_recording_granted_via_window_list()
     }
 

@@ -268,7 +268,7 @@ async fn supervisor_crashed_event_drives_fsm_to_error_with_carried_copy() {
 }
 
 #[tokio::test]
-async fn supervisor_crashed_event_with_live_readiness_false_drives_setup_required() {
+async fn supervisor_crashed_event_recovers_through_setup_required_after_poll_false() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
@@ -280,28 +280,37 @@ async fn supervisor_crashed_event_with_live_readiness_false_drives_setup_require
     assert_eq!(coord.snapshot(), CaptureState::Capturing);
     tokio::spawn(coord.clone().run());
 
-    readiness.set_ready(false);
     sup_tx
         .send(SupervisorEvent::Crashed {
             user_facing_copy: "Can't start — port conflict",
         })
         .expect("supervisor channel still open");
 
+    let want_reason = ErrorReason::new("Can't start — port conflict".to_string()).unwrap();
+    wait_for(&observer, CaptureState::Error(want_reason.clone())).await;
+
+    readiness.set_ready(false);
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
     wait_for(&observer, CaptureState::SetupRequired).await;
     assert_eq!(
         coord.snapshot(),
         CaptureState::SetupRequired,
-        "a permission-caused ScreenPipe crash must recover through setup"
+        "the monitor poll must recover permission-caused crashes through setup"
+    );
+    assert_eq!(
+        supervisor.stop_count(),
+        0,
+        "poll recovery must not stop an already-dead supervisor"
     );
 }
 
 #[tokio::test]
 async fn readiness_false_recovers_error_to_setup_required_without_stopping() {
-    // Lagging-probe recovery: a permission-caused crash whose crash-time probe
-    // still read "granted" lands in Error (Round 4 path). The readiness poll is
-    // the backstop — once it observes the grant is actually gone it must
-    // reclassify Error to SetupRequired, and must NOT re-stop the supervisor
-    // (ScreenPipe is already dead and the heartbeat already ended at crash time).
+    // The readiness poll is the single permission authority: once it observes
+    // the grant is gone it must reclassify Error to SetupRequired, and must NOT
+    // re-stop the supervisor (ScreenPipe is already dead and the heartbeat
+    // already ended at crash time).
     let supervisor = Arc::new(FakeSupervisor::default());
     let (sup_tx, sup_rx) = spawn_supervisor_channel();
     let auth = StubAuthChecker::new(true);
