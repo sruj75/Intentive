@@ -209,24 +209,50 @@ impl Inner {
     }
 
     async fn handle_readiness_changed(&self, ready: bool) {
-        let transition = {
+        // The supervisor side effect differs per arm, so model it explicitly
+        // rather than overloading a `should_start: bool`: the recovery arm must
+        // neither start nor stop.
+        enum Effect {
+            Start,
+            Stop,
+            NotifyOnly,
+        }
+        let outcome = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
             match (fsm.state(), ready) {
-                (CaptureState::SetupRequired, true) => Some((fsm.mark_ready().clone(), true)),
-                (CaptureState::Capturing, false) => Some((fsm.to_setup_required().clone(), false)),
+                (CaptureState::SetupRequired, true) => {
+                    Some((fsm.mark_ready().clone(), Effect::Start))
+                }
+                (CaptureState::Capturing, false) => {
+                    Some((fsm.to_setup_required().clone(), Effect::Stop))
+                }
+                // A permission-caused crash can land in Error when the
+                // crash-time readiness probe still read "granted" (the
+                // screen-recording probe lags revocation — ADR-0021). The poll
+                // is the backstop: once it observes the grant is actually gone,
+                // reclassify Error to the SetupRequired recovery flow.
+                // ScreenPipe is already dead and the heartbeat already ended at
+                // crash time, so this arm does no stop / heartbeat work.
+                (CaptureState::Error(_), false) => {
+                    Some((fsm.to_setup_required().clone(), Effect::NotifyOnly))
+                }
                 _ => None,
             }
         };
-        let Some((next, should_start)) = transition else {
+        let Some((next, effect)) = outcome else {
             return;
         };
         self.notify_observers(&next);
-        if should_start {
-            let _ = self.supervisor.start().await;
-            self.start_heartbeat().await;
-        } else {
-            let _ = self.supervisor.stop().await;
-            self.stop_heartbeat(SessionEndReason::Quit).await;
+        match effect {
+            Effect::Start => {
+                let _ = self.supervisor.start().await;
+                self.start_heartbeat().await;
+            }
+            Effect::Stop => {
+                let _ = self.supervisor.stop().await;
+                self.stop_heartbeat(SessionEndReason::Quit).await;
+            }
+            Effect::NotifyOnly => {}
         }
     }
 

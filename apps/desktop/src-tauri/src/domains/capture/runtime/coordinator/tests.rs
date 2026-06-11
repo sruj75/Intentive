@@ -296,6 +296,76 @@ async fn supervisor_crashed_event_with_live_readiness_false_drives_setup_require
 }
 
 #[tokio::test]
+async fn readiness_false_recovers_error_to_setup_required_without_stopping() {
+    // Lagging-probe recovery: a permission-caused crash whose crash-time probe
+    // still read "granted" lands in Error (Round 4 path). The readiness poll is
+    // the backstop — once it observes the grant is actually gone it must
+    // reclassify Error to SetupRequired, and must NOT re-stop the supervisor
+    // (ScreenPipe is already dead and the heartbeat already ended at crash time).
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    // Crash while readiness still reads true → Error (Round 4 fast path).
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Something went wrong — relaunch",
+        })
+        .expect("supervisor channel still open");
+    let want_reason = ErrorReason::new("Something went wrong — relaunch".to_string()).unwrap();
+    wait_for(&observer, CaptureState::Error(want_reason)).await;
+
+    // The probe finally reflects the revoked grant; the poll pulls us out.
+    readiness.set_ready(false);
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        supervisor.stop_count(),
+        0,
+        "recovery from Error must not re-stop an already-dead supervisor"
+    );
+}
+
+#[tokio::test]
+async fn readiness_true_from_error_is_a_noop() {
+    // A genuine, persistent crash sits in Error with readiness still true. The
+    // poll keeps reading true, so (Error, true) must fall through to no-op and
+    // leave Error in place (ADR-0011: real crashes surface Error + relaunch).
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    tokio::spawn(coord.clone().run());
+
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Something went wrong — relaunch",
+        })
+        .expect("supervisor channel still open");
+    let want_reason = ErrorReason::new("Something went wrong — relaunch".to_string()).unwrap();
+    wait_for(&observer, CaptureState::Error(want_reason.clone())).await;
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(true));
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(coord.snapshot(), CaptureState::Error(want_reason));
+}
+
+#[tokio::test]
 async fn supervisor_crashed_event_from_non_capturing_state_is_ignored() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (sup_tx, sup_rx) = spawn_supervisor_channel();
