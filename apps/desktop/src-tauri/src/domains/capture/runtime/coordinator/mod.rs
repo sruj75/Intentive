@@ -243,6 +243,15 @@ impl Inner {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
             match event {
                 SupervisorEvent::Stopped => {
+                    // The supervisor reports Stopped both for a real child
+                    // exit while Capturing and after the readiness-revocation
+                    // stop() path that already moved the shell to
+                    // SetupRequired. Only honor it as a Capturing -> Stopped
+                    // settle; otherwise it would clobber SetupRequired or
+                    // Error.
+                    if !matches!(fsm.state(), CaptureState::Capturing) {
+                        return;
+                    }
                     (fsm.recover_to_stopped().clone(), SessionEndReason::Quit)
                 }
                 SupervisorEvent::Crashed { user_facing_copy } => {

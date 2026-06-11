@@ -288,6 +288,38 @@ async fn supervisor_stopped_event_drives_fsm_to_stopped() {
 }
 
 #[tokio::test]
+async fn supervisor_stopped_after_readiness_revocation_preserves_setup_required() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(supervisor.stop_count(), 1);
+
+    sup_tx
+        .send(SupervisorEvent::Stopped)
+        .expect("supervisor channel still open");
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    assert_eq!(observer.last(), Some(CaptureState::SetupRequired));
+    assert_eq!(
+        observer.history(),
+        vec![CaptureState::SetupRequired],
+        "production Stopped after revocation must not overwrite SetupRequired"
+    );
+}
+
+#[tokio::test]
 async fn toggle_from_stopped_starts_supervisor_and_notifies_observer_capturing() {
     let supervisor = Arc::new(FakeSupervisor::default());
     let (_sup_tx, sup_rx) = spawn_supervisor_channel();

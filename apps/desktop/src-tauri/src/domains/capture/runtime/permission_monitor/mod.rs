@@ -3,6 +3,9 @@
 //! Polls the readiness seam and submits a single coordinator command when the
 //! boolean flips. The monitor deliberately does not know which permission
 //! changed; that detail belongs to the provider and setup UI.
+//!
+//! #32 ships poll-only monitoring for v1. The eager capture-stream-error signal
+//! is tracked with the #43 reliability harness.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -81,7 +84,6 @@ impl PermissionMonitor {
             }
         }
     }
-
 }
 
 #[cfg(test)]
