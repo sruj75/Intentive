@@ -53,8 +53,37 @@ try {
   const markdown = formatLedgerMarkdown(updated);
   const parsed = parseLedgerMarkdown(markdown);
   assert.equal(Object.keys(parsed.entries).length, Object.keys(updated.entries).length);
+  assert.match(markdown, /## Summary/);
+  assert.match(markdown, /## Active Decisions/);
 
-  const reportMarkdown = formatMarkdownReport(report, { ledgerEntries: updated.entries });
+  const summaryLedger = formatLedgerMarkdown({
+    entries: {
+      "sample:new": {
+        id: "sample:new",
+        title: "New raw finding",
+        status: "new",
+        seenCount: 1,
+      },
+      "sample:accepted": {
+        id: "sample:accepted",
+        title: "Accepted finding",
+        status: "accepted",
+        seenCount: 2,
+        rationale: "intentional for now",
+        actionUrl: "docs/factory/decisions/example.md",
+      },
+    },
+    updatedAt: null,
+  });
+  assert.match(summaryLedger, /\| new \| 1 \|/);
+  assert.match(summaryLedger, /sample:accepted/);
+  assert.match(summaryLedger, /intentional for now/);
+  assert.doesNotMatch(summaryLedger, /\| `sample:new` \|/);
+
+  const reportMarkdown = formatMarkdownReport(report, {
+    ledgerEntries: updated.entries,
+    audit: true,
+  });
   const parsedFindings = parseReportMarkdown(reportMarkdown);
   assert.ok(parsedFindings.length >= Math.min(findings.length, 2));
 

@@ -24,7 +24,7 @@ not a quality score and does not fail on findings.
 
 Usage:
   pnpm sensor:factory-report
-  node tools/sensors/factory-report/index.mjs [--format markdown] [--base <ref>] [--repo <path>] [--output <path>] [--ledger <path>]
+  node tools/sensors/factory-report/index.mjs [--format markdown] [--base <ref>] [--repo <path>] [--output <path>] [--ledger <path>] [--audit]
 
 Options:
   --format markdown  Output format. Only markdown is supported.
@@ -32,6 +32,7 @@ Options:
   --repo <path>      Repository root to analyze. Defaults to the current directory.
   --output <path>    Write the markdown report to this path as well as stdout.
   --ledger <path>    Ledger file used to mark findings as new or repeated.
+  --audit            Include full repo-wide sensor details.
   --help             Show this help.
 `;
 
@@ -45,7 +46,10 @@ if (isMainModule(import.meta.url)) {
 
     const report = analyzeFactoryReport(options);
     const ledger = readLedgerSafe(path.resolve(options.repo, options.ledger));
-    const output = formatMarkdownReport(report, { ledgerEntries: ledger.entries });
+    const output = formatMarkdownReport(report, {
+      ledgerEntries: ledger.entries,
+      audit: options.audit,
+    });
     if (options.output) {
       const outPath = path.resolve(options.repo, options.output);
       mkdirSync(path.dirname(outPath), { recursive: true });
@@ -70,7 +74,7 @@ export function analyzeFactoryReport({ repo = process.cwd(), base = "HEAD" } = {
   };
 }
 
-export function formatMarkdownReport(report, { ledgerEntries = {} } = {}) {
+export function formatMarkdownReport(report, { ledgerEntries = {}, audit = false } = {}) {
   const findings = extractFindingsFromReport(report);
   const findingsByCategory = groupFindings(findings);
   const factoryContext = buildFactoryContext({
@@ -82,12 +86,12 @@ export function formatMarkdownReport(report, { ledgerEntries = {} } = {}) {
   const lines = [];
 
   lines.push("<!-- intentive:factory-report -->");
-  lines.push("## Factory Report");
+  lines.push("## Factory Radar");
   lines.push("");
   lines.push(`Base: \`${report.base}\``);
   lines.push("");
   lines.push(
-    "This advisory report aggregates review-triage signals. Use it to classify material findings before merge; it is not a quality score.",
+    "Radar is advisory PR review triage. It highlights change-tied and learning findings; it is not a quality score or merge gate.",
   );
   lines.push("");
   lines.push(
@@ -95,18 +99,26 @@ export function formatMarkdownReport(report, { ledgerEntries = {} } = {}) {
   );
   lines.push("");
 
-  factoryFocusSection(lines, factoryContext);
-  learningMetricsSection(lines, factoryContext.metrics);
-  behaviorProofSection(lines, report.behaviorProof);
-  impactRadiusSection(lines, report.impactRadius, findingsByCategory);
-  harnessHealthSection(lines, report.harnessHealth, findingsByCategory, ledgerEntries);
-  findingsSummarySection(lines, findings, ledgerEntries);
-  classificationSection(lines, findings, ledgerEntries, factoryContext);
+  radarSection(lines, factoryContext, report.behaviorProof, report.impactRadius);
+
+  if (audit) {
+    lines.push("### Audit Details");
+    lines.push("");
+    lines.push(
+      "Full repo-wide sensor output follows because `--audit` was passed. Use this for scheduled or explicit maintenance, not normal PR review.",
+    );
+    lines.push("");
+    learningMetricsSection(lines, factoryContext.metrics);
+    impactRadiusSection(lines, report.impactRadius, findingsByCategory);
+    harnessHealthSection(lines, report.harnessHealth, findingsByCategory, ledgerEntries);
+    findingsSummarySection(lines, findings, ledgerEntries);
+    classificationSection(lines, findings, ledgerEntries, factoryContext);
+  }
 
   return lines.join("\n");
 }
 
-function factoryFocusSection(lines, context) {
+function radarSection(lines, context, behaviorProof, impactRadius) {
   const actionable = context.items.filter((item) => {
     if (item.finding.category === "dependency") return false;
     return (
@@ -116,23 +128,30 @@ function factoryFocusSection(lines, context) {
       item.isReturned
     );
   });
+  const dependencyGroups = context.dependencyGroups.filter((group) => {
+    return group.isPrTied || group.isRepeatedUnclassified || group.isReturned;
+  });
 
-  lines.push("### Factory Focus");
+  lines.push("### Radar");
   lines.push("");
   lines.push(
-    "Start here. These are the findings most likely to need PR-time action before reading the raw sensor sections.",
+    "Start here. These findings are tied to the change, repeated without classification, or returned after being marked fixed.",
   );
   lines.push("");
 
-  section(lines, "PR-Tied And Learning Findings", actionable, (item) => {
+  section(lines, "Actionable Findings", actionable, (item) => {
     return `- \`${item.finding.id}\` (${actionLabel(item)}): ${item.finding.title}; recommended classification: ${recommendedClassification(item)}`;
   });
 
-  dependencyMaintenanceSection(lines, context.dependencyGroups);
+  dependencyMaintenanceSection(lines, dependencyGroups);
+  section(lines, "Changed Files", impactRadius.changedFiles, (file) => `- \`${file}\``);
+  changedWorkspacesSection(lines, context.changedWorkspaces);
+  behaviorProofSection(lines, behaviorProof);
+  repoWideSummarySection(lines, context.metrics);
 }
 
 function learningMetricsSection(lines, metrics) {
-  lines.push("### Factory Learning Metrics");
+  lines.push("### Radar Metrics");
   lines.push("");
   lines.push(
     "Use these counts to judge whether the factory is learning. They are advisory signals, not a CI gate.",
@@ -152,10 +171,10 @@ function learningMetricsSection(lines, metrics) {
 }
 
 function dependencyMaintenanceSection(lines, groups) {
-  lines.push("#### Dependency Maintenance Groups");
+  lines.push("#### Dependency Maintenance");
 
   if (groups.length === 0) {
-    lines.push("- none");
+    lines.push("- no dependency maintenance finding needs PR-time action");
   } else {
     for (const group of groups.slice(0, maxListItems)) {
       const scope = group.isPrTied ? "changed workspace" : "repo-wide";
@@ -172,10 +191,10 @@ function dependencyMaintenanceSection(lines, groups) {
 }
 
 function behaviorProofSection(lines, behaviorProof) {
-  lines.push("### Behavior Proof");
+  lines.push("#### Behavior Coverage");
   lines.push("");
   lines.push(
-    "This checks whether changed workspaces have product-behavior slices represented in the existing scoped harness templates.",
+    "Changed workspaces should have product-behavior slices represented in the scoped harness templates.",
   );
   lines.push("");
 
@@ -199,6 +218,38 @@ function behaviorProofSection(lines, behaviorProof) {
   lines.push("");
 }
 
+function changedWorkspacesSection(lines, changedWorkspaces) {
+  lines.push("#### Changed Workspaces");
+
+  if (changedWorkspaces.size === 0) {
+    lines.push("- none");
+  } else {
+    for (const workspace of [...changedWorkspaces].sort()) {
+      lines.push(`- \`${workspace}\``);
+    }
+  }
+
+  lines.push("");
+}
+
+function repoWideSummarySection(lines, metrics) {
+  lines.push("#### Repo-Wide Drift Summary");
+  lines.push("");
+  lines.push("| Signal | Count |");
+  lines.push("| --- | ---: |");
+  lines.push(`| PR-tied findings | ${metrics.prTiedFindings} |`);
+  lines.push(`| Repo-wide findings hidden by default | ${metrics.repoWideFindings} |`);
+  lines.push(`| New findings | ${metrics.newFindings} |`);
+  lines.push(`| Repeated unclassified findings | ${metrics.repeatedUnclassifiedFindings} |`);
+  lines.push(`| Returned findings | ${metrics.returnedFindings} |`);
+  lines.push(`| Accepted findings | ${metrics.acceptedFindings} |`);
+  lines.push(`| Backlogged findings | ${metrics.backloggedFindings} |`);
+  lines.push(`| Factory-improved findings | ${metrics.factoryImprovedFindings} |`);
+  lines.push("");
+  lines.push("Run `pnpm sensor:factory-report --audit` for full repo-wide details.");
+  lines.push("");
+}
+
 function parseArgs(args) {
   const options = {
     repo: process.cwd(),
@@ -206,6 +257,7 @@ function parseArgs(args) {
     format: "markdown",
     output: null,
     ledger: "docs/factory/LEDGER.md",
+    audit: false,
     help: false,
   };
 
@@ -228,6 +280,8 @@ function parseArgs(args) {
     } else if (arg === "--ledger") {
       options.ledger = requireValue(args, index, arg);
       index += 1;
+    } else if (arg === "--audit") {
+      options.audit = true;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
@@ -392,7 +446,7 @@ function printBucket(lines, title, findings) {
 }
 
 function classificationSection(lines, findings, ledgerEntries, factoryContext) {
-  lines.push("### Factory Steward Handoff");
+  lines.push("### Improvement Handoff");
   lines.push("");
   lines.push(
     "For each material finding above, classify the response before merge. If the same finding keeps recurring, prefer `Factory improved` or `Backlogged` over leaving it unclassified.",
