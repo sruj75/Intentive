@@ -14,6 +14,10 @@ vi.mock("@neondatabase/neon-js/auth/react/ui", () => ({
   UserButton: () => <button type="button">Intentive account</button>,
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: () => Promise.resolve(() => {}),
+}));
+
 afterEach(() => {
   cleanup();
   window.history.replaceState({}, "", "/");
@@ -28,6 +32,8 @@ describe("Settings account surface", () => {
     expect(screen.queryByText(/ScreenPipe/i)).toBeNull();
     expect(screen.queryByText(/OpenClaw/i)).toBeNull();
     expect(screen.queryByText(/Agent Interface/i)).toBeNull();
+    expect(screen.queryByText(/runtime_jwt/i)).toBeNull();
+    expect(screen.queryByText(/ws_url/i)).toBeNull();
   });
 
   it("renders Neon Auth when ?surface=sign-in is set", async () => {

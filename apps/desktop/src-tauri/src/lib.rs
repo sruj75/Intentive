@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tauri::path::BaseDirectory;
+use tauri::Emitter;
 use tauri::Manager;
 use tauri::WebviewWindow;
 use tokio::sync::Mutex;
@@ -17,12 +18,17 @@ use domains::capture::runtime::screenpipe_supervisor::{
 use domains::capture::service::{AuthChecker, StubAuthChecker};
 use domains::capture::types::session::{CaptureSessionControl, CoordinatorCommand, SessionHooks};
 use domains::capture::types::state::CaptureState;
-use domains::snapshots::types::SessionEndReason;
+use domains::routing::runtime::{
+    DisabledRoutingSource, FastrandJitter, FixtureRoutingSource, RoutingFetcher, RoutingObserver,
+    RoutingSource, TungsteniteTransport, WsSession,
+};
+use domains::routing::types::{ConnectionStatus, RoutingState, SessionState};
 use domains::snapshots::repo::SnapshotStore;
-use domains::snapshots::runtime::agent_interface::{AgentInterface, AgentSink};
+use domains::snapshots::runtime::agent_interface::{AgentSink, NoopAgentSink};
 use domains::snapshots::runtime::heartbeat::{
     ContextHeartbeat, ReqwestActivityClient, ScreenpipeUrlSource, Summarizer, SummarizerError,
 };
+use domains::snapshots::types::SessionEndReason;
 use domains::summarization::config::ProviderConfig;
 use domains::summarization::service::LlmProvider;
 use tokio::sync::mpsc;
@@ -97,6 +103,17 @@ impl SessionHooks for HeartbeatHooks {
 
     async fn on_session_end(&self, reason: SessionEndReason) {
         self.0.clone().stop(reason).await;
+    }
+}
+
+struct TauriRoutingObserver {
+    app: tauri::AppHandle,
+}
+
+impl RoutingObserver for TauriRoutingObserver {
+    fn observe(&self, routing_state: RoutingState, session_state: SessionState) {
+        let status = domains::routing::runtime::status_for(routing_state, session_state);
+        let _ = self.app.emit("routing:status", status);
     }
 }
 
@@ -185,20 +202,52 @@ pub fn run() {
             let llm_slot = Arc::new(LlmProviderSlot(Mutex::new(None)));
             app.manage(llm_slot.clone());
 
+            // Routing + Protocol WebSocket session skeleton (Issue #31). The
+            // webview supplies only the login token after sign-in; Rust owns the
+            // Control Plane `GET /agent` lookup, the long-lived socket, and the
+            // reconnect/refresh loop. Snapshot event sends remain intentionally
+            // inert until #34 plugs the heartbeat sink into this live session.
+            let routing_source: Arc<dyn RoutingSource> = match FixtureRoutingSource::from_env() {
+                Ok(Some(fixture)) => Arc::new(fixture),
+                Ok(None) => {
+                    match domains::routing::config::default_control_plane_base_url()
+                        .and_then(|raw| Url::parse(&raw).ok())
+                    {
+                        Some(base_url) => {
+                            Arc::new(RoutingFetcher::new(base_url, reqwest::Client::new()))
+                        }
+                        None => Arc::new(DisabledRoutingSource),
+                    }
+                }
+                Err(err) => {
+                    eprintln!("routing: fixture ignored: {err}");
+                    Arc::new(DisabledRoutingSource)
+                }
+            };
+            let routing_session = WsSession::new(
+                routing_source,
+                Arc::new(TungsteniteTransport),
+                Arc::new(TauriRoutingObserver {
+                    app: app.handle().clone(),
+                }),
+                Arc::new(FastrandJitter),
+            );
+            app.manage(routing_session);
+            let _ = app.emit(
+                "routing:status",
+                ConnectionStatus {
+                    mood: domains::routing::types::ConnectionMood::SignedOut,
+                },
+            );
+
             // Context Heartbeat (Issue #8, ADR-0008). The placeholder runtime
-            // endpoint is replaced when Auth-resolved Routing lands. The
-            // `emit_session_end` transport path is intentionally stubbed until
-            // #25/#28 session lifecycle wiring lands, and context snapshot
-            // delivery failures are dropped per ADR-0005 — so the placeholder
-            // URL never causes user-visible noise.
+            // sink is intentionally inert until #34 wires actual Protocol event
+            // emission through the live routing session. It reports "not
+            // connected" so the Snapshot Store keeps `pushed_at = NULL`.
             let snapshot_store_arc: Arc<SnapshotStore> =
                 app.state::<Arc<SnapshotStore>>().inner().clone();
             let http = reqwest::Client::new();
-            let agent_sink: Arc<dyn AgentSink> = Arc::new(AgentInterface::new(
-                Url::parse("http://localhost:0/stub").expect("stub URL parses"),
-                "stub".to_string(),
-                http.clone(),
-            ));
+            let agent_sink: Arc<dyn AgentSink> = Arc::new(NoopAgentSink);
             let summarizer = Arc::new(LlmProviderSlotSummarizer {
                 slot: llm_slot.clone(),
                 config: provider_config,
@@ -249,6 +298,8 @@ pub fn run() {
             domains::menubar::ui::open_sign_in_surface,
             domains::menubar::ui::quit_app,
             domains::menubar::ui::simulate_error,
+            domains::routing::runtime::commands::set_login_token,
+            domains::routing::runtime::commands::clear_login_token,
             domains::summarization::runtime::commands::start_model_download,
         ]);
     }
@@ -259,6 +310,8 @@ pub fn run() {
             domains::menubar::ui::open_settings,
             domains::menubar::ui::open_sign_in_surface,
             domains::menubar::ui::quit_app,
+            domains::routing::runtime::commands::set_login_token,
+            domains::routing::runtime::commands::clear_login_token,
             domains::summarization::runtime::commands::start_model_download,
         ]);
     }

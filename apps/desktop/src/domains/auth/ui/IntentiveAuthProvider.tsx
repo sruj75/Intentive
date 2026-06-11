@@ -1,8 +1,8 @@
 import type React from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { NeonAuthUIProvider } from "@neondatabase/neon-js/auth/react";
 import "@neondatabase/neon-js/ui/css"; // Neon's default auth form styles
-import { createIntentiveAuthClient, readNeonAuthUrl } from "../service/auth";
+import { createIntentiveAuthClient, readNeonAuthUrl, syncLoginTokenToRust } from "../service/auth";
 
 type Props = {
   children: React.ReactNode;
@@ -22,6 +22,26 @@ const Provider = NeonAuthUIProvider as React.ComponentType<IntentiveAuthProvider
 export default function IntentiveAuthProvider({ children }: Props) {
   const authUrl = readNeonAuthUrl();
   const authClient = useMemo(() => createIntentiveAuthClient(authUrl), [authUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = () => {
+      if (cancelled) return;
+      void syncLoginTokenToRust(authClient).catch(() => {
+        // Browser preview and tests do not have a Rust command host. The app
+        // retries on focus and on the interval once it is running under Tauri.
+      });
+    };
+
+    sync();
+    window.addEventListener("focus", sync);
+    const interval = window.setInterval(sync, 5_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", sync);
+      window.clearInterval(interval);
+    };
+  }, [authClient]);
 
   return (
     <Provider

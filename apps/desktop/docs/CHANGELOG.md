@@ -7,6 +7,16 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Routing + Protocol WebSocket session skeleton** ([Issue #31]) —
+  `src-tauri/src/domains/routing/` now owns `GET /agent`, Routing State,
+  Session State, the Protocol `connect` handshake (`client_kind: "desktop"`),
+  runtime-error decisions, exponential backoff with jitter, and login-token
+  Tauri commands (`set_login_token` / `clear_login_token`). Settings receives
+  only a plain connection mood event; Routing values and JWTs stay in Rust.
+  `agent_interface` is now an inert sink until #34 wires snapshot emission
+  through the live session, so capture continues and new rows keep
+  `pushed_at = null`.
+
 - **Context Heartbeat implementation** ([Issue #8]) — `src-tauri/src/context_heartbeat/`
   now runs a fixed 10-minute cadence service that:
   - queries ScreenPipe for the preceding activity window,
@@ -196,9 +206,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   than reporting a phantom `Tier::BundledOllama`. Real path lands when the
   bundled binary is acquired via Tauri resources. An `#[ignore]`d integration
   test (`integration_real_bundled_ollama_prepares_qwen`) is in place.
-- Auth-resolved Agent Interface configuration remains unwired. Neon Auth UI is
-  present, but mapping a signed-in user to an Agent Runtime endpoint and
-  credential lands in the follow-up Auth/Data API slice.
+- Protocol event emission through the live Routing-owned WebSocket remains #34.
+  #31 opens and maintains the line but does not send Context Snapshots or
+  Session End Markers yet.
 - Tauri runtime wiring is still partial for release-completion scope: Capture
   Permission Setup hardening, signed/notarized release packaging evidence, and
   completed Auth-resolved Agent Interface endpoint/credential resolution remain
