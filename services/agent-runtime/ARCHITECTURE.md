@@ -66,7 +66,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, transactional ingress projection, the per-`user_id` queue, queue-serialized snapshot reads, serves the private Internal API, and attaches the public WebSocket gateway.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs the **Per-User Channel** (the single per-`user_id` serialization point owning transactional ingress + queue-serialized snapshot reads) and injects the `sessions` → `conversation` projection seam, serves the private Internal API, and attaches the public WebSocket gateway.
 
 `migrations/`
 : Runtime-owned Neon schema migrations (`agent_runtime.*`). See `migrations/README.md`.
@@ -92,7 +92,7 @@ This block is the _map_, not a build order. Per [ADR-0002](docs/adr/0002-agent-r
 Domain responsibilities:
 
 - `gateway`: WebSocket server, handshake-first connect flow, JWT verification, socket lifecycle, post-connect routing for `history_backfill_request`. Protocol-version compatibility is enforced at build time by the single shared `packages/protocol` import (monorepo "one protocol version" rule), **not** negotiated per connection; `client_version` on `connect` is informational, and the `protocol_unsupported` error code is reserved/unused in v1.
-- `sessions`: Agent Instance lookup, per-`user_id` queueing, ordering, idempotency, connected-client presence.
+- `sessions`: Agent Instance lookup, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, and queue-serialized Conversation History reads), connected-client presence. Exposes the `BoundSession` and `PerUserChannel` types as its public `types/` contract.
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
 - `runtime`: DeepAgents construction/invocation, turn lifecycle, result classification, trace/run IDs.

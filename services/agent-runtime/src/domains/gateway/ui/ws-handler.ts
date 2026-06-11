@@ -5,7 +5,8 @@ import {
 } from "@intentive/protocol";
 import type { RawData, WebSocket } from "ws";
 
-import type { ConnectHandler, GatewaySession } from "../service/connect.js";
+import type { BoundSession } from "../../sessions/types/event.js";
+import type { ConnectHandler } from "../service/connect.js";
 
 export type PostConnectEvent = Exclude<ClientToRuntimeEvent, { type: "connect" }>;
 
@@ -15,7 +16,7 @@ export type PostConnectEvent = Exclude<ClientToRuntimeEvent, { type: "connect" }
  * returning nothing means the event was handled without a direct reply.
  */
 export type GatewayEventHandler = (
-  session: GatewaySession,
+  session: BoundSession,
   event: PostConnectEvent,
 ) => Promise<RuntimeToClientEvent | void> | RuntimeToClientEvent | void;
 
@@ -25,7 +26,7 @@ export function attachGatewayWebSocketHandler(
   onEvent: GatewayEventHandler = () => undefined,
 ): void {
   let connected = false;
-  let session: GatewaySession | undefined;
+  let session: BoundSession | undefined;
 
   socket.on("message", (data) => {
     void handleMessage(socket, handler, onEvent, data, {
@@ -54,9 +55,9 @@ async function handleMessage(
   data: RawData,
   state: {
     isConnected(): boolean;
-    getSession(): GatewaySession | undefined;
+    getSession(): BoundSession | undefined;
     markConnected(): void;
-    bindSession(session: GatewaySession): void;
+    bindSession(session: BoundSession): void;
   },
 ): Promise<void> {
   const raw = parseFrame(data);
@@ -83,7 +84,7 @@ async function handleMessage(
 
 async function handlePostConnectMessage(
   socket: WebSocket,
-  session: GatewaySession,
+  session: BoundSession,
   onEvent: GatewayEventHandler,
   raw: unknown,
 ): Promise<void> {

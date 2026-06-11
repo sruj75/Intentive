@@ -48,6 +48,22 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Per-User Channel deepening refactor** — consolidated the per-`user_id` write and read
+  paths that `main.ts` previously assembled from five collaborators into one deep module,
+  `sessions/runtime/per-user-channel.ts` (`createPerUserChannel`). Its `accept` commits the
+  ledger marker + injected projection in one Neon transaction and its `readSnapshot` runs
+  through the same in-memory ordering queue, so reads observe earlier accepted writes
+  (ADR-0006/0009; read-after-write ordering now has a unit test). Absorbed and **removed**
+  `sessions/service/ingest-event.ts`, `sessions/runtime/event-handler.ts`, and
+  `gateway/service/session-snapshot-reader.ts` (with their `test/ingest-event.test.mjs`,
+  `test/runtime-event-handler.test.mjs`, `test/session-snapshot-reader.test.mjs`; new
+  `test/per-user-channel.test.mjs` tests the deepened interface). The session handle is now
+  one canonical `BoundSession` (gateway type-only-imports it; `GatewaySession` deleted), and
+  `post-connect-router.ts` is the single routing table — `history_backfill_request` → read,
+  Runtime Ingress → write, anything else → explicit `runtime_error` (no silent no-op). The
+  read-side port `SessionSnapshotReader` now lives in `conversation/types`. ADR-0009 amended
+  to place the transaction commit inside the Channel; `CONTEXT.md` adds **Bound Session** and
+  **Per-User Channel**.
 - **`src/main.ts` composition root** ([Issue #29]) — wires the `conversation` repo,
   transactional ingress projection (`ingest.queriesFor` + `sql.transaction`), and
   queue-serialized `readSnapshot` for connect/backfill.

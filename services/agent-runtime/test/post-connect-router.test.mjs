@@ -9,16 +9,16 @@ const session = {
   agentInstanceId: "agent_instance_1",
 };
 
-test("a History Backfill request is a read: it bypasses ingress and returns a snapshot response", async () => {
-  let ingressCalls = 0;
+test("a History Backfill request is a read: it calls the channel reader and returns a snapshot response", async () => {
+  let acceptCalls = 0;
   const readArgs = [];
   const snapshot = { messages: [], before_cursor: "3" };
 
   const route = createPostConnectRouter({
-    ingress: () => {
-      ingressCalls += 1;
-    },
-    conversation: {
+    channel: {
+      accept: async () => {
+        acceptCalls += 1;
+      },
       readSnapshot: async (userId, before, limit) => {
         readArgs.push([userId, before, limit]);
         return snapshot;
@@ -32,8 +32,8 @@ test("a History Backfill request is a read: it bypasses ingress and returns a sn
     limit: 25,
   });
 
-  // The request never touches the ingress (ledger + queue) path.
-  assert.equal(ingressCalls, 0);
+  // The request never touches the write path.
+  assert.equal(acceptCalls, 0);
   // It reads the older page for this User with the given cursor and limit.
   assert.deepEqual(readArgs, [[session.userId, "53", 25]]);
   // And replies with the snapshot wrapped in a backfill response frame.
@@ -43,14 +43,14 @@ test("a History Backfill request is a read: it bypasses ingress and returns a sn
   });
 });
 
-test("a History Backfill read failure returns the history-unavailable error and bypasses ingress", async () => {
-  let ingressCalls = 0;
+test("a History Backfill read failure returns the history-unavailable error and never writes", async () => {
+  let acceptCalls = 0;
 
   const route = createPostConnectRouter({
-    ingress: () => {
-      ingressCalls += 1;
-    },
-    conversation: {
+    channel: {
+      accept: async () => {
+        acceptCalls += 1;
+      },
       readSnapshot: async () => {
         throw new Error("conversation reader unavailable");
       },
@@ -62,7 +62,7 @@ test("a History Backfill read failure returns the history-unavailable error and 
     before_cursor: "53",
   });
 
-  assert.equal(ingressCalls, 0);
+  assert.equal(acceptCalls, 0);
   assert.deepEqual(response, {
     type: "runtime_error",
     code: "service_unavailable",
@@ -70,15 +70,15 @@ test("a History Backfill read failure returns the history-unavailable error and 
   });
 });
 
-test("a state-mutating event is delegated to ingress and produces no direct reply", async () => {
+test("a state-mutating event is accepted by the channel and produces no direct reply", async () => {
   let readCalls = 0;
-  const seen = [];
+  const accepted = [];
 
   const route = createPostConnectRouter({
-    ingress: (s, event) => {
-      seen.push([s, event]);
-    },
-    conversation: {
+    channel: {
+      accept: async (s, event) => {
+        accepted.push([s, event]);
+      },
       readSnapshot: async () => {
         readCalls += 1;
         return { messages: [], before_cursor: null };
@@ -94,8 +94,35 @@ test("a state-mutating event is delegated to ingress and produces no direct repl
   };
   const response = await route(session, userMessage);
 
-  // Ingress owns it; the read path is untouched; nothing is sent straight back.
+  // The write path owns it; the read path is untouched; nothing is sent straight back.
   assert.equal(readCalls, 0);
-  assert.deepEqual(seen, [[session, userMessage]]);
+  assert.deepEqual(accepted, [[session, userMessage]]);
   assert.equal(response, undefined);
+});
+
+test("an unknown post-connect event is rejected explicitly and touches neither path", async () => {
+  let acceptCalls = 0;
+  let readCalls = 0;
+
+  const route = createPostConnectRouter({
+    channel: {
+      accept: async () => {
+        acceptCalls += 1;
+      },
+      readSnapshot: async () => {
+        readCalls += 1;
+        return { messages: [], before_cursor: null };
+      },
+    },
+  });
+
+  const response = await route(session, { type: "presence_update", foreground: true });
+
+  assert.equal(acceptCalls, 0);
+  assert.equal(readCalls, 0);
+  assert.deepEqual(response, {
+    type: "runtime_error",
+    code: "invalid_connect",
+    message: "Event type is not supported on an active connection.",
+  });
 });

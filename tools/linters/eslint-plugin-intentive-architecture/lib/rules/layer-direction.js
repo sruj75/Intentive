@@ -54,6 +54,12 @@ module.exports = {
       if (!target) return;
       if (target.deployable !== source.deployable) return; // handled by no-cross-deployable
 
+      // Another domain's `types/` layer is its public contract: a types/ file
+      // holds only schemas and TypeScript types, so importing it creates no
+      // runtime coupling and no layer inversion. This is the "another domain's
+      // public types/ contract" path the crossDomainImport message names.
+      if (target.domain !== source.domain && target.layer === "types") return;
+
       if (target.domain !== source.domain) {
         context.report({
           node,

@@ -1,0 +1,186 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createPerUserChannel } from "../dist/index.js";
+
+const session = {
+  userId: "00000000-0000-4000-8000-000000000001",
+  clientKind: "mobile",
+  agentInstanceId: "00000000-0000-4000-8000-000000000010",
+};
+
+test("accept commits the ledger marker before projection queries in one transaction", async () => {
+  const records = [];
+  const transactions = [];
+  const ledgerQuery = Promise.resolve([{ id: "ledger_1" }]);
+  const projectionQuery = Promise.resolve([{ projection: true }]);
+
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async (queries) => {
+        transactions.push(queries);
+        return [];
+      },
+    },
+    ledger: {
+      recordQuery: (record) => {
+        records.push(record);
+        return ledgerQuery;
+      },
+    },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: () => [projectionQuery],
+  });
+
+  const event = userMessage("message_1");
+  await channel.accept(session, event);
+
+  assert.deepEqual(records, [
+    {
+      userId: session.userId,
+      kind: "user_message",
+      dedupKey: "message_1",
+      payload: event,
+    },
+  ]);
+  // The single transaction batches the ledger insert first, projection after.
+  assert.equal(transactions.length, 1);
+  assert.deepEqual(transactions[0], [ledgerQuery, projectionQuery]);
+});
+
+test("accept derives stable dedup keys for messages and snapshots and mints them for end markers", async () => {
+  const records = [];
+  const keys = ["end_1", "end_2"];
+  const channel = createPerUserChannel({
+    sql: { transaction: async () => [] },
+    ledger: {
+      recordQuery: (record) => {
+        records.push(record);
+        return Promise.resolve([{ id: "ledger" }]);
+      },
+    },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: () => [],
+    newDedupKey: () => keys.shift(),
+  });
+
+  await channel.accept(session, userMessage("message_1"));
+  await channel.accept(session, {
+    type: "context_snapshot",
+    snapshot_id: "snapshot_1",
+    captured_at: "2026-06-09T00:00:00.000Z",
+    period_start: "2026-06-08T23:55:00.000Z",
+    period_end: "2026-06-09T00:00:00.000Z",
+    summary: "screen summary",
+  });
+  await channel.accept(session, {
+    type: "session_end_marker",
+    ended_at: "2026-06-09T00:01:00.000Z",
+    reason: "quit",
+  });
+  await channel.accept(session, {
+    type: "session_end_marker",
+    ended_at: "2026-06-09T00:02:00.000Z",
+    reason: "quit",
+  });
+
+  assert.deepEqual(
+    records.map((record) => [record.kind, record.dedupKey]),
+    [
+      ["user_message", "message_1"],
+      ["context_snapshot", "snapshot_1"],
+      ["session_end_marker", "end_1"],
+      ["session_end_marker", "end_2"],
+    ],
+  );
+});
+
+test("a failed transaction stays retryable in submit order", async () => {
+  const attempts = [];
+  let failOnce = true;
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("projection failed");
+        }
+        return [];
+      },
+    },
+    ledger: {
+      recordQuery: (record) => {
+        attempts.push(record.dedupKey);
+        return Promise.resolve([{ id: "ledger" }]);
+      },
+    },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: () => [],
+  });
+
+  await assert.rejects(channel.accept(session, userMessage("message_1")));
+  await channel.accept(session, userMessage("message_1"));
+
+  assert.deepEqual(attempts, ["message_1", "message_1"]);
+});
+
+test("a snapshot read submitted behind a pending accept observes it (read-after-write ordering)", async () => {
+  const order = [];
+  let releaseTransaction;
+  const transactionGate = new Promise((resolve) => {
+    releaseTransaction = resolve;
+  });
+
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => {
+        order.push("accept:start");
+        await transactionGate;
+        order.push("accept:end");
+        return [];
+      },
+    },
+    ledger: { recordQuery: () => Promise.resolve([{ id: "ledger" }]) },
+    conversation: {
+      readSnapshot: async () => {
+        order.push("read");
+        return emptySnapshot();
+      },
+    },
+    project: () => [],
+  });
+
+  const accepted = channel.accept(session, userMessage("message_1"));
+  await waitFor(() => order.includes("accept:start"));
+
+  const read = channel.readSnapshot(session.userId);
+  // The read for the same User cannot have run while the write is still pending.
+  assert.deepEqual(order, ["accept:start"]);
+
+  releaseTransaction();
+  await Promise.all([accepted, read]);
+
+  // It runs strictly after the accepted write settles.
+  assert.deepEqual(order, ["accept:start", "accept:end", "read"]);
+});
+
+function emptySnapshot() {
+  return { messages: [], before_cursor: null };
+}
+
+function userMessage(messageId) {
+  return {
+    type: "user_message",
+    message_id: messageId,
+    body: "hello",
+    sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+async function waitFor(predicate) {
+  for (let i = 0; i < 20; i += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  assert.equal(predicate(), true);
+}

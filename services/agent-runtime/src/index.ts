@@ -7,15 +7,11 @@
 export { mapJwtVerificationErrorToRuntimeError } from "./domains/gateway/service/auth-failure.js";
 export { createConnectHandler } from "./domains/gateway/service/connect.js";
 export { conversationHistoryUnavailableError } from "./domains/gateway/service/history-unavailable.js";
-export { createQueuedSessionSnapshotReader } from "./domains/gateway/service/session-snapshot-reader.js";
 export type {
   ConnectHandler,
   ConnectHandlerResult,
-  GatewaySession,
   GatewaySessionRegistry,
-  SessionSnapshotReader,
 } from "./domains/gateway/service/connect.js";
-export type { UserTaskQueue } from "./domains/gateway/service/session-snapshot-reader.js";
 export { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 export { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
 export type { GatewayEventHandler } from "./domains/gateway/ui/ws-handler.js";
@@ -25,6 +21,7 @@ export { toConversationEntry } from "./domains/conversation/service/project-ingr
 export type {
   ConversationEntry,
   ConversationRepo,
+  SessionSnapshotReader,
 } from "./domains/conversation/types/conversation.js";
 export { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 export type { EventLedger } from "./domains/sessions/repo/event-ledger.js";
@@ -34,12 +31,9 @@ export {
 } from "./domains/sessions/repo/instance-registry.js";
 export type { AgentInstanceRegistry } from "./domains/sessions/repo/instance-registry.js";
 export type { Sql, SqlQuery, TransactionalSql } from "./domains/sessions/repo/sql.js";
-export { createRuntimeIngressHandler } from "./domains/sessions/runtime/event-handler.js";
-export type { RuntimeIngressHandler } from "./domains/sessions/runtime/event-handler.js";
+export { createPerUserChannel } from "./domains/sessions/runtime/per-user-channel.js";
 export { createUserQueue } from "./domains/sessions/runtime/user-queue.js";
 export type { UserQueue } from "./domains/sessions/runtime/user-queue.js";
-export { createIngestEvent } from "./domains/sessions/service/ingest-event.js";
-export type { IngestEvent } from "./domains/sessions/service/ingest-event.js";
 export { createStartSession } from "./domains/sessions/service/start-session.js";
 export type { StartSession } from "./domains/sessions/service/start-session.js";
 export { isRuntimeIngressEvent } from "./domains/sessions/types/event.js";
@@ -47,6 +41,7 @@ export type {
   BoundSession,
   EventProcessor,
   LedgerRecord,
+  PerUserChannel,
   RuntimeEventKind,
   RuntimeIngressEvent,
 } from "./domains/sessions/types/event.js";

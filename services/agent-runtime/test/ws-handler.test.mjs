@@ -251,10 +251,10 @@ test("History Backfill read failures send the history error and keep the socket 
   });
 
   const route = createPostConnectRouter({
-    ingress: (_session, event) => {
-      seenEvent = event;
-    },
-    conversation: {
+    channel: {
+      accept: async (_session, event) => {
+        seenEvent = event;
+      },
       readSnapshot: async () => {
         throw new Error("conversation reader unavailable");
       },
@@ -300,13 +300,15 @@ test("History Backfill read failures send the history error and keep the socket 
 
     client.send(
       JSON.stringify({
-        type: "presence_update",
-        foreground: true,
+        type: "user_message",
+        message_id: "message_1",
+        body: "hello",
+        sent_at: "2026-06-09T00:00:00.000Z",
       }),
     );
 
-    await waitFor(() => seenEvent?.type === "presence_update");
-    assert.deepEqual(seenEvent, { type: "presence_update", foreground: true });
+    await waitFor(() => seenEvent?.type === "user_message");
+    assert.equal(seenEvent.message_id, "message_1");
   } finally {
     client.close();
     await new Promise((resolve) => server.close(resolve));

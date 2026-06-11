@@ -39,3 +39,12 @@ export interface ConversationRepo {
    */
   readSnapshot(userId: string, before?: string, limit?: number): Promise<SessionSnapshot>;
 }
+
+/**
+ * The read-side port over Conversation History: just `readSnapshot`. The connect
+ * handshake reads the newest window; History Backfill reads an older page with a
+ * cursor. Consumers (the gateway connect handler, the Per-User Channel) depend on
+ * this narrow contract rather than the whole `ConversationRepo`. See ADR-0006 /
+ * ADR-0008.
+ */
+export type SessionSnapshotReader = Pick<ConversationRepo, "readSnapshot">;
