@@ -2,7 +2,7 @@
 
 Status: accepted
 
-The Rust core — not the webview — owns **Routing** end-to-end. The webview owns sign-in (Neon Auth) and hands the resulting login token to Rust once; Rust then calls the Control Plane's `GET /agent`, holds the resolved Routing (`ws_url`, `runtime_jwt`, `agent_instance_id`) in process memory, opens the long-lived Protocol WebSocket to the Agent Runtime, and re-fetches Routing itself when the badge is rejected. The `runtime_jwt` never enters the webview. This is the ownership decision behind Issue #31; it replaces the legacy one-shot HTTP delivery in `snapshots::runtime::agent_interface` with a real WebSocket session skeleton (connect + reconnect + error, no event emission — that is #34).
+The Rust core — not the webview — owns **Routing** end-to-end. The webview owns sign-in (Neon Auth) and re-syncs the login token to Rust when it changes (mount, focus, interval); an unchanged token is a no-op on both sides so a live session is not torn down. Rust then calls the Control Plane's `GET /agent`, holds the resolved Routing (`ws_url`, `runtime_jwt`, `agent_instance_id`) in process memory, opens the long-lived Protocol WebSocket to the Agent Runtime, and re-fetches Routing itself when the badge is rejected. The `runtime_jwt` never enters the webview. This is the ownership decision behind Issue #31; it replaces the legacy one-shot HTTP delivery in `snapshots::runtime::agent_interface` with a real WebSocket session skeleton (connect + reconnect + error, no event emission — that is #34).
 
 ## Considered options
 

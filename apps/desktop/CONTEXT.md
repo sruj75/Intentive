@@ -25,7 +25,7 @@ _Avoid_: routing state, auth state, login state
 
 ## Relationships
 
-- The webview owns **sign-in** and hands the resulting login token to the Rust core; the Rust core owns **Routing** end-to-end — it calls `GET /agent`, holds Routing in memory, and re-fetches it when the runtime rejects the badge.
+- The webview owns **sign-in** and re-syncs the login token to the Rust core when it changes (unchanged token is a no-op); the Rust core owns **Routing** end-to-end — it calls `GET /agent`, holds Routing in memory, and re-fetches it when the runtime rejects the badge.
 - **Routing State** and **Session State** are independent. A WebSocket drop moves only Session State (`connected → reconnecting`); Routing State changes only when Routing is fetched, refreshed, or rejected (`auth_failed`).
 - A snapshot is emitted only when **Routing State** is `routing_ready` **and** **Session State** is `connected`. Otherwise it stays in the **Snapshot Store** with `pushed_at = null`.
 - **Capture** is gated by sign-in + **Desktop Capture Readiness**, not by Routing/Session State. A down connection never stops capture (at-most-once, local-truth).

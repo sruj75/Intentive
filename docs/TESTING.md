@@ -87,7 +87,7 @@ cd apps/desktop && npm run tauri dev
 3. Open Settings and sign in. The webview calls `set_login_token`; Rust reads Routing from the fixture (the login token is not used for the lookup), opens the socket, and emits `routing:status` moods — never the JWT or `ws_url`.
 4. Expect Settings to move through **Connecting** → **Connected**, or **Reconnecting** / **Needs attention** when the socket fails.
 
-For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the fixture. Rust unit tests for Routing/Session transitions and reconnect decisions live under `apps/desktop/src-tauri/src/domains/routing/` (`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml routing` for a focused run).
+For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the fixture. A malformed fixture logs and falls back to Control Plane when that URL is set. Rust unit tests for Routing/Session transitions and reconnect decisions live under `apps/desktop/src-tauri/src/domains/routing/` (`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml routing` for a focused run).
 
 See also [`apps/desktop/README.md`](../apps/desktop/README.md) (environment variables) and [`apps/desktop/CONTEXT.md`](../apps/desktop/CONTEXT.md) (**Routing State** vs **Session State**).
 

@@ -9,7 +9,7 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 - Runs the bundled **ScreenPipe** subprocess to capture screen + audio
 - On a fixed 10-minute **Context Heartbeat**, summarizes the window via the **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama, in that priority)
 - Produces a **Context Snapshot** per heartbeat tick; writes it to the **Snapshot Store** (local SQLite, **local-truth, not a cache**)
-- Rust owns **Routing** end-to-end (`GET /agent`, Protocol WebSocket session skeleton, reconnect). The webview hands a login token via `set_login_token` / `clear_login_token` and receives only a plain connection mood — no JWT in UI.
+- Rust owns **Routing** end-to-end (`GET /agent`, Protocol WebSocket session skeleton, reconnect). The webview re-syncs the login token via `set_login_token` / `clear_login_token` when it changes (deduped on both sides) and receives only a plain connection mood — no JWT in UI.
 - Protocol event emission (`context_snapshot`, `session_end_marker`) over the live session is **#34**; #31 leaves the heartbeat delivery sink inert so new rows keep `pushed_at = null` until then.
 - Menu bar capture toggle + state. **No chat UI.**
 

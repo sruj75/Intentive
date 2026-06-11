@@ -128,8 +128,9 @@ Intentive sits between four external systems and one user:
 
 ### Frontend ↔ Rust (Tauri)
 
-- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings, `set_login_token` / `clear_login_token` (Auth → Routing handoff).
+- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings, `set_login_token` / `clear_login_token` (Auth → Routing handoff; identical token is a no-op on both sides).
 - **Events** — Capture state changes (capturing / stopped / error), setup progress, `routing:status` connection mood for Settings (no Routing values or JWT).
+- **Auth token sync** — `IntentiveAuthProvider` re-reads Neon Auth on mount, window focus, and interval; the webview dedupes before IPC and Rust ignores unchanged `set_login_token` so a live session is not restarted.
 - **Security** — CSP in `tauri.conf.json` restricts webview network; production paths for localhost services are Rust-side only.
 
 ### Auth
@@ -149,7 +150,7 @@ Intentive sits between four external systems and one user:
 
 ## Cross-cutting Concerns
 
-**Configuration** — LLM endpoints start from `ProviderConfig`, then runtime subprocess owners publish the effective local endpoints: `screenpipe_supervisor` records the active ScreenPipe URL, and bundled Ollama updates its effective URL after port resolution. `VITE_NEON_AUTH_URL` is required by the Settings/Auth surface. `INTENTIVE_CONTROL_PLANE_URL` points Rust at Control Plane for `GET /agent`; `INTENTIVE_DESKTOP_ROUTING_FIXTURE` can inject a dev/smoke Routing JSON object before a live Control Plane is available. The Agent Runtime URL and JWT are not user-facing Settings config — they come from Control Plane's `GET /agent` and live only in process memory.
+**Configuration** — LLM endpoints start from `ProviderConfig`, then runtime subprocess owners publish the effective local endpoints: `screenpipe_supervisor` records the active ScreenPipe URL, and bundled Ollama updates its effective URL after port resolution. `VITE_NEON_AUTH_URL` is required by the Settings/Auth surface. `INTENTIVE_CONTROL_PLANE_URL` points Rust at Control Plane for `GET /agent`; `INTENTIVE_DESKTOP_ROUTING_FIXTURE` can inject a dev/smoke Routing JSON object before a live Control Plane is available (valid fixture wins when both are set; malformed fixture logs and falls back to Control Plane). The Agent Runtime URL and JWT are not user-facing Settings config — they come from Control Plane's `GET /agent` and live only in process memory.
 
 **Logging and diagnostics** — Prefer structured Rust logging for heartbeat, provider tier, push results, and ScreenPipe child exit.
 

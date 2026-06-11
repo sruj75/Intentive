@@ -133,6 +133,16 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
   `chrono`, `thiserror`, `url`, `async-trait`. Dev-dep: `wiremock`.
 
+### Fixed
+
+- **Login token re-sync no longer tears down a live Routing session** — the
+  webview polls Neon Auth on mount, focus, and interval; `syncLoginTokenToRust`
+  and `WsSession::set_login_token` now no-op when the token is unchanged so
+  redundant IPC does not restart the Protocol WebSocket loop.
+- **Malformed routing fixture falls back to Control Plane** — invalid
+  `INTENTIVE_DESKTOP_ROUTING_FIXTURE` JSON logs and uses
+  `INTENTIVE_CONTROL_PLANE_URL` when set, instead of disabling routing entirely.
+
 ### Changed
 
 - **Domain architecture refactor** — all Rust modules are now organized under `src-tauri/src/domains/` with the monorepo layer rule (`types → config → repo → service → runtime → ui`) enforced mechanically by the new `tools/linters/rust-architecture/` checker (`pnpm lint:architecture:rust`). Previous flat modules map to new locations:
