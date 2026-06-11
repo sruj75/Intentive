@@ -2,18 +2,19 @@
 
 The cross-deployable shared kernel. Before changing anything here, read
 [`CONTEXT.md`](CONTEXT.md) for the vocabulary these packages own (Protocol,
-Context Snapshot, Internal API, …), root [`../AGENTS.md`](../AGENTS.md), and
+Context Snapshot, Internal API, …), [`CHANGELOG.md`](CHANGELOG.md) for shipped
+package deltas, root [`../AGENTS.md`](../AGENTS.md), and
 [`../CONTEXT-MAP.md`](../CONTEXT-MAP.md).
 
 ## The packages
 
-| Path                             | Owns                                                                                              |
-| -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`protocol/`](protocol/)         | WebSocket event schemas (Zod). The single source of truth for the client↔runtime wire format.     |
-| [`api-contract/`](api-contract/) | Control Plane HTTP request/response schemas (public + internal).                                  |
-| [`domain-types/`](domain-types/) | Shared domain shapes not tied to a wire format. Owns the canonical `CLIENT_KINDS` tuple.          |
-| [`providers/`](providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, feature flags).                               |
-| [`boundary/`](boundary/)         | The one parse-at-boundary decode (`parseBoundary`/`BoundaryParseError`) for WS + HTTP (ADR-0004). |
+| Path                             | Owns                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`protocol/`](protocol/)         | WebSocket event schemas (Zod). The single source of truth for the client↔runtime wire format.                                                                 |
+| [`api-contract/`](api-contract/) | Control Plane HTTP request/response schemas (public + internal).                                                                                              |
+| [`domain-types/`](domain-types/) | Shared domain shapes not tied to a wire format. Owns the canonical `CLIENT_KINDS` tuple.                                                                      |
+| [`providers/`](providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, feature flags).                                                                                           |
+| [`boundary/`](boundary/)         | The one parse-at-boundary decode (`parseBoundary`/`BoundaryParseError`) for WS + HTTP (ADR-0004). See [`boundary/ARCHITECTURE.md`](boundary/ARCHITECTURE.md). |
 
 ## Contract-change rules
 

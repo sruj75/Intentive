@@ -11,7 +11,7 @@ Shared in-process domain shapes that need the same TypeScript type in multiple d
 Defined in `src/index.ts`:
 
 - **Branded identifiers** — `UserId`, `DeviceId`, `AgentInstanceId`, `MessageId` (nominal `string` brands so ids of different kinds cannot be mixed).
-- **Devices** — `ClientKind`, `Device`.
+- **Devices** — `CLIENT_KINDS` (canonical `["mobile", "desktop", "android"]` tuple — wire packages derive their Zod enums from this), `ClientKind`, `Device`.
 - **Agent Instance** — `AgentInstanceStatus`, `AgentInstance`.
 - **Conversation** — `MessageRole`, `ConversationMessage`.
 

@@ -16,7 +16,10 @@ _Avoid_: webhook payload, HTTP POST body, activity dump
 A `session_end_marker` event the Desktop Client sends when a Capture Session ends (user toggle, quit, or crash). Distinct event type from `context_snapshot`.
 _Avoid_: final snapshot, end flag
 
+**Client Kind**:
+Which client app is calling (`mobile`, `desktop`, or `android`). The canonical tuple `CLIENT_KINDS` lives in `@intentive/domain-types`; `@intentive/protocol` and `@intentive/api-contract` derive their Zod enums from it so adding a client is one central edit, not three lockstep ones.
+_Avoid_: platform string, device type (too generic), duplicating the enum in each wire package
+
 **Internal API**:
 The private HTTP surfaces the two services expose for server-to-server calls: the **Agent Runtime**'s (`POST /internal/sessions/start`, called by the Control Plane) and the **Control Plane**'s (`POST /internal/notifications/push`, called by the Agent Runtime). Bound only to a private network interface; not reachable from clients or the public internet. Each direction is protected by its **own** shared secret in `Authorization: Bearer` (two **Directional Secrets**, not one symmetric password) — so a leaked inbound secret on one service cannot be replayed against the other's door.
 _Avoid_: admin API, public API, management API, one symmetric shared secret
-

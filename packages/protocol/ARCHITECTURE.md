@@ -10,7 +10,7 @@ The single source of truth for the **WebSocket** message contract between every 
 
 Defined in `src/index.ts`:
 
-- **Shared primitives** — `ClientKind` (`mobile | desktop | android`).
+- **Shared primitives** — `ClientKind` (`mobile | desktop | android`, Zod enum derived from `@intentive/domain-types` `CLIENT_KINDS`).
 - **Client → Runtime** (`clientToRuntimeEvent` discriminated union): `connect`, `user_message`, `presence_update`, `delivery_ack`, `context_snapshot`, `session_end_marker`.
 - **Runtime → Client** (`runtimeToClientEvent` discriminated union): `hello_ok`, `companion_message`, `runtime_error`.
 - **Runtime error envelope** — one typed error event shape with `code`, `message`, and optional `details`.
@@ -29,7 +29,7 @@ Defined in `src/index.ts`:
 
 - **Consumers:** `apps/mobile`, `apps/desktop`, future Android, and `services/agent-runtime` (its `protocol` domain parses these events).
 - **Not a consumer:** the Control Plane. It issues Routing and is never on the WebSocket data path, so it does not import this package.
-- **Sibling contracts:** HTTP shapes live in `@intentive/api-contract`; non-wire domain shapes live in `@intentive/domain-types`. Keep wire concerns out of those packages.
+- **Sibling contracts:** HTTP shapes live in `@intentive/api-contract`; non-wire domain shapes live in `@intentive/domain-types`; inbound decode lives in `@intentive/boundary` (this package's `parse*` helpers delegate to it — monorepo ADR-0004). Keep wire concerns out of those packages.
 
 ## Change protocol
 

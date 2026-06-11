@@ -79,17 +79,21 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0002 | Runtime JWT is the pass-through Neon Auth token      | accepted |
 | 0003 | Repo-layer tests run against ephemeral Neon branches | accepted |
 | 0004 | AccountState assembled by the identity composer      | accepted |
+| 0005 | Device-aware gates from live client signals          | accepted |
 
 ### Agent Runtime — `services/agent-runtime/docs/adr/`
 
-| #    | Title                                                                 | Status                                                 |
-| ---- | --------------------------------------------------------------------- | ------------------------------------------------------ |
-| 0001 | OpenClaw patterns as default                                          | accepted                                               |
-| 0002 | Vertical-first progressive layering                                   | **amended by monorepo 0001**                           |
-| 0003 | WebSocket protocol contract v1                                        | **amended by monorepo 0003**                           |
-| 0004 | DB-backed VFS overlay model v1                                        | **refined by 0005; amended 2026-05-29 (pin boundary)** |
-| 0005 | VFS write policy: immutable procedure files, writable knowledge files | accepted                                               |
-| 0006 | Session Snapshot as a separate history projection                     | accepted                                               |
+| #    | Title                                                                 | Status                                                    |
+| ---- | --------------------------------------------------------------------- | --------------------------------------------------------- |
+| 0001 | OpenClaw patterns as default                                          | accepted                                                  |
+| 0002 | Vertical-first progressive layering                                   | **amended by monorepo 0001**                              |
+| 0003 | WebSocket protocol contract v1                                        | **amended by monorepo 0003**                              |
+| 0004 | DB-backed VFS overlay model v1                                        | **refined by 0005; amended 2026-05-29 (pin boundary)**    |
+| 0005 | VFS write policy: immutable procedure files, writable knowledge files | accepted                                                  |
+| 0006 | Session Snapshot as a separate history projection                     | accepted                                                  |
+| 0007 | Event ledger and in-memory per-user ordering                          | accepted                                                  |
+| 0008 | Conversation History owns its own domain                              | accepted                                                  |
+| 0009 | Transactional ingress projections                                     | accepted; amended 2026-06-11 (commit in Per-User Channel) |
 
 ## Migration map (old unified number → new per-context number)
 

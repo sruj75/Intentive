@@ -2,7 +2,7 @@
 
 Server-side authority: identity, devices, gate state, agent instance registry, routing, notifications.
 
-**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CHANGELOG.md`](CHANGELOG.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
+**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CHANGELOG.md`](CHANGELOG.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs). Shared HTTP auth and device-signal boundaries live in `src/http/` (outside `domains/`, like `src/main.ts`).
 
 ## Role in V1
 
