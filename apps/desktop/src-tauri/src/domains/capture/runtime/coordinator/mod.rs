@@ -239,6 +239,11 @@ impl Inner {
     }
 
     async fn handle_supervisor_event(&self, event: SupervisorEvent) {
+        let crash_readiness = if matches!(event, SupervisorEvent::Crashed { .. }) {
+            Some(self.readiness.is_capture_ready())
+        } else {
+            None
+        };
         let (next, reason) = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
             match event {
@@ -255,9 +260,20 @@ impl Inner {
                     (fsm.recover_to_stopped().clone(), SessionEndReason::Quit)
                 }
                 SupervisorEvent::Crashed { user_facing_copy } => {
-                    let reason = ErrorReason::new(user_facing_copy.to_string())
-                        .expect("supervisor crash copy is non-empty");
-                    (fsm.to_error(reason).clone(), SessionEndReason::Crash)
+                    // ScreenPipe dying while Capturing is our analog of
+                    // ScreenPipe's capture-stream PermissionDenied signal
+                    // (ADR-0021). Re-check live readiness outside the FSM lock
+                    // and route revoked grants to SetupRequired, not Error.
+                    if !matches!(fsm.state(), CaptureState::Capturing) {
+                        return;
+                    }
+                    if crash_readiness.expect("crash readiness checked before fsm lock") {
+                        let reason = ErrorReason::new(user_facing_copy.to_string())
+                            .expect("supervisor crash copy is non-empty");
+                        (fsm.to_error(reason).clone(), SessionEndReason::Crash)
+                    } else {
+                        (fsm.to_setup_required().clone(), SessionEndReason::Quit)
+                    }
                 }
             }
         };

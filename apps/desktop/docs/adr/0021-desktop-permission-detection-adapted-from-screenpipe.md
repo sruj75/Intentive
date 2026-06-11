@@ -9,7 +9,7 @@ Capture Permission Setup (#32) detects and monitors the three required macOS gra
   - Microphone: `AVCaptureDevice authorizationStatusForMediaType:"soun"`.
   - Accessibility: `AXIsProcessTrusted()`.
   - All are **check-only**. Request/prompt (deep-link to the Privacy pane, open dialog) lives in the `onboarding` UI domain, never in the check layer.
-- **Monitor:** #32 ships a poll-only monitor on a ~5s interval. It emits a "readiness lost" event on revocation; it does **not** stop capture itself. A **10s wake-grace** suppresses events after system sleep/wake to avoid false positives. The ~100ms eager detection path from capture-stream errors is deferred to #43 alongside the reliability harness work.
+- **Monitor:** #32 ships a poll-only monitor on a ~5s interval. It emits a "readiness lost" event on revocation; it does **not** stop capture itself. A **10s wake-grace** suppresses events after system sleep/wake to avoid false positives. The ~100ms eager detection path from capture-stream errors is deferred to #43 alongside the reliability harness work; until then, the coordinator still re-checks live readiness before classifying a ScreenPipe crash during capture so permission-caused exits recover through setup instead of generic error.
 - **Subscriber:** the capture coordinator owns the FSM transition. Readiness-false ⟹ `SetupRequired` (ADR-0020), at first-run and mid-session alike.
 - **Testability:** the check layer sits behind a trait seam (mirroring the existing `AuthChecker`/`StubAuthChecker`) so tests inject grant combinations without real OS state.
 

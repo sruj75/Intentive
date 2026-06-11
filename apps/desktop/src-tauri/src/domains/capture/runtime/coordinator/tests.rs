@@ -268,6 +268,63 @@ async fn supervisor_crashed_event_drives_fsm_to_error_with_carried_copy() {
 }
 
 #[tokio::test]
+async fn supervisor_crashed_event_with_live_readiness_false_drives_setup_required() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord =
+        CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    readiness.set_ready(false);
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Can't start — port conflict",
+        })
+        .expect("supervisor channel still open");
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        coord.snapshot(),
+        CaptureState::SetupRequired,
+        "a permission-caused ScreenPipe crash must recover through setup"
+    );
+}
+
+#[tokio::test]
+async fn supervisor_crashed_event_from_non_capturing_state_is_ignored() {
+    let supervisor = Arc::new(FakeSupervisor::default());
+    let (sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(false));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    tokio::spawn(coord.clone().run());
+
+    sup_tx
+        .send(SupervisorEvent::Crashed {
+            user_facing_copy: "Can't start — port conflict",
+        })
+        .expect("supervisor channel still open");
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(coord.snapshot(), CaptureState::SetupRequired);
+    assert_eq!(
+        observer.history(),
+        Vec::<CaptureState>::new(),
+        "late crashes must not overwrite an already-blocked shell state"
+    );
+}
+
+#[tokio::test]
 async fn supervisor_stopped_event_drives_fsm_to_stopped() {
     // Covers the race where a stop the coordinator did NOT initiate (e.g.
     // ScreenPipe self-exit during a controlled stop) lands on the channel.
