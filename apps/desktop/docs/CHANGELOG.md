@@ -16,8 +16,9 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   `capture/runtime/permission_monitor/` polls on a ~5s interval and emits
   readiness-lost events the coordinator maps to `SetupRequired`.
   `CapturePermissionSetup.tsx` (`?surface=permission-setup`) is a sequential
-  Opal-style wizard (intro consent acknowledgment, one permission per step,
-  deep-link + live recheck, resume at first ungranted on re-entry).
+  Opal-style wizard (intro consent acknowledgment persisted in `localStorage`,
+  one permission per step, deep-link + live recheck with ~1.5s UI polling,
+  resume at first ungranted on re-entry).
   Tauri commands: `capture_permission_status`, `open_permission_pane`.
   Events: `permissions:status`. Menu bar surfaces **Finish Setup…** for
   `SetupRequired`. Routing `GET /agent` sends `x-capture-permission-granted`
@@ -156,6 +157,11 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   (signed in, idle, Desktop Capture Readiness false), distinct from
   `Stopped`, `Unauthenticated`, and `Error`. Mid-session grant revocation
   transitions to `SetupRequired` via the permission monitor (ADR-0020/0021).
+  The coordinator routes permission-caused ScreenPipe crashes to
+  `SetupRequired`, uses the poll as an `Error → SetupRequired` backstop when
+  the crash-time probe lags revocation, ignores late supervisor `Stopped`
+  events that would clobber `SetupRequired`/`Error`, and keeps user-paused
+  `Stopped` across readiness revoke/restore.
 
 - **Domain architecture refactor** — all Rust modules are now organized under `src-tauri/src/domains/` with the monorepo layer rule (`types → config → repo → service → runtime → ui`) enforced mechanically by the new `tools/linters/rust-architecture/` checker (`pnpm lint:architecture:rust`). Previous flat modules map to new locations:
   - `capture_state/` → `domains/capture/service/`
