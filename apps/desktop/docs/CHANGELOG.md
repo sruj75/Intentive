@@ -10,12 +10,12 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **Routing + Protocol WebSocket session skeleton** ([Issue #31]) —
   `src-tauri/src/domains/routing/` now owns `GET /agent`, Routing State,
   Session State, the Protocol `connect` handshake (`client_kind: "desktop"`),
-  runtime-error decisions, exponential backoff with jitter, and login-token
-  Tauri commands (`set_login_token` / `clear_login_token`). Settings receives
-  only a plain connection mood event; Routing values and JWTs stay in Rust.
-  `agent_interface` is now an inert sink until #34 wires snapshot emission
-  through the live session, so capture continues and new rows keep
-  `pushed_at = null`.
+  runtime-error decisions, exponential backoff with jitter, and Tauri commands
+  for login-token handoff plus connection mood (`set_login_token`,
+  `clear_login_token`, `get_connection_status`). Settings receives mood only
+  (`routing:status`, replayed on mount); Routing values and JWTs stay in Rust.
+  `agent_interface` is inert until #34 wires snapshot emission through the live
+  session (`pushed_at = null` until then).
 
 - **Context Heartbeat implementation** ([Issue #8]) — `src-tauri/src/context_heartbeat/`
   now runs a fixed 10-minute cadence service that:
@@ -132,16 +132,6 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   the menu bar shell states.
 - **Rust dependencies**: `reqwest` (rustls TLS), `tokio` (full features), `uuid`,
   `chrono`, `thiserror`, `url`, `async-trait`. Dev-dep: `wiremock`.
-
-### Fixed
-
-- **Login token re-sync no longer tears down a live Routing session** — the
-  webview polls Neon Auth on mount, focus, and interval; `syncLoginTokenToRust`
-  and `WsSession::set_login_token` now no-op when the token is unchanged so
-  redundant IPC does not restart the Protocol WebSocket loop.
-- **Malformed routing fixture falls back to Control Plane** — invalid
-  `INTENTIVE_DESKTOP_ROUTING_FIXTURE` JSON logs and uses
-  `INTENTIVE_CONTROL_PLANE_URL` when set, instead of disabling routing entirely.
 
 ### Changed
 

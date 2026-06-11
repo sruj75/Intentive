@@ -19,7 +19,7 @@ TypeScript side (`src/domains/<name>/`; `App.tsx`/`main.tsx` are the exempt comp
 
 - `auth` — Neon Auth client + UI integration, sign-in
 - `onboarding` — bundled-model download / Capture Permission Setup UI
-- `account` — Settings surface (Neon Auth UI + connection mood from `routing:status`)
+- `account` — Settings surface (Neon Auth UI + connection mood from `routing:status`, replayed on mount)
 
 Rust side (`src-tauri/src/domains/<name>/`):
 

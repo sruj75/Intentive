@@ -260,7 +260,7 @@ macOS (user's machine)
 │
 ├── Intentive (Tauri menu bar app)
 │   ├── Webview (Settings / Neon Auth)
-│   │   └── sign-in → login token to Rust; receives connection mood only (`routing:status`)
+│   │   └── sign-in → login token to Rust; receives connection mood only (`routing:status`, `get_connection_status` on mount)
 │   ├── Rust core
 │   │   ├── ScreenPipe subprocess (capture)
 │   │   ├── Ollama subprocess (summarization)

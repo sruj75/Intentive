@@ -128,9 +128,8 @@ Intentive sits between four external systems and one user:
 
 ### Frontend ↔ Rust (Tauri)
 
-- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings, `set_login_token` / `clear_login_token` (Auth → Routing handoff; identical token is a no-op on both sides).
+- **Commands** — Toggle capture, open settings, open sign-in/consent surface, read status, first-run progress, persist settings, `set_login_token` / `clear_login_token` / `get_connection_status` (Auth → Routing handoff and mood replay).
 - **Events** — Capture state changes (capturing / stopped / error), setup progress, `routing:status` connection mood for Settings (no Routing values or JWT).
-- **Auth token sync** — `IntentiveAuthProvider` re-reads Neon Auth on mount, window focus, and interval; the webview dedupes before IPC and Rust ignores unchanged `set_login_token` so a live session is not restarted.
 - **Security** — CSP in `tauri.conf.json` restricts webview network; production paths for localhost services are Rust-side only.
 
 ### Auth
