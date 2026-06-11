@@ -13,19 +13,7 @@
  * value that can go stale (see service/agents-service.ts and
  * migrations/0004_agent_instances.sql).
  */
-
-/**
- * The narrow SQL capability this repo needs: a tagged-template query returning
- * rows. The Neon driver (`@neondatabase/serverless`'s `neon()`) satisfies this;
- * depending on this local port instead of the driver keeps the driver out of the
- * repo's imports (and out of unit-tier module graphs). Mirrors `users.ts`.
- */
-export interface Sql {
-  <Row = Record<string, unknown>>(
-    strings: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<Row[]>;
-}
+import type { Sql } from "../../../db/sql.js";
 
 export interface AgentInstancesRepo {
   /**

@@ -15,19 +15,8 @@
  * The interface is defined here (the repo tier owns its own contract); the
  * service imports it forward. The implementation lives below.
  */
+import type { Sql } from "../../../db/sql.js";
 import type { GateState } from "../types/state.js";
-
-/**
- * The narrow SQL capability this repo needs: a tagged-template query returning
- * rows. Defined locally (same shape as `identity/repo/users.ts`'s `Sql`) so the
- * gates domain depends on neither the Neon driver nor the identity domain.
- */
-export interface Sql {
-  <Row = Record<string, unknown>>(
-    strings: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<Row[]>;
-}
 
 export interface UserGatesRepo {
   /**
