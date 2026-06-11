@@ -23,10 +23,14 @@ use crate::domains::menubar::service::menu::{describe, MenuItemDescriptor};
 /// for light/dark mode). Template mode strips color, so the capturing/error
 /// variants — whose colored dots encode state — opt out.
 fn icon_is_template(state: &CaptureState) -> bool {
-    matches!(state, CaptureState::Unauthenticated | CaptureState::Stopped)
+    matches!(
+        state,
+        CaptureState::Unauthenticated | CaptureState::SetupRequired | CaptureState::Stopped
+    )
 }
 
 pub const MENU_ID_SIGN_IN: &str = "intentive.sign_in";
+pub const MENU_ID_FINISH_SETUP: &str = "intentive.finish_setup";
 pub const MENU_ID_TOGGLE: &str = "intentive.toggle_capture";
 pub const MENU_ID_ERROR_INFO: &str = "intentive.error_info";
 pub const MENU_ID_SETTINGS: &str = "intentive.open_settings";
@@ -104,15 +108,14 @@ pub fn install(
     Ok(())
 }
 
-fn handle_menu_event(
-    app: &AppHandle,
-    coordinator: &Arc<dyn CaptureSessionControl>,
-    id: &str,
-) {
+fn handle_menu_event(app: &AppHandle, coordinator: &Arc<dyn CaptureSessionControl>, id: &str) {
     match id {
         MENU_ID_SIGN_IN => {
             coordinator.submit(CoordinatorCommand::SignInCompleted);
             open_settings_window(app, true);
+        }
+        MENU_ID_FINISH_SETUP => {
+            open_permission_setup_window(app);
         }
         MENU_ID_TOGGLE => {
             coordinator.submit(CoordinatorCommand::ToggleRequested);
@@ -127,6 +130,14 @@ fn handle_menu_event(
             // non-clickable in v1 — no-op.
         }
         _ => {}
+    }
+}
+
+pub(crate) fn open_permission_setup_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.eval("window.location.search = '?surface=permission-setup';");
+        let _ = window.show();
+        let _ = window.set_focus();
     }
 }
 
@@ -173,6 +184,12 @@ fn build_menu(app: &AppHandle, state: &CaptureState) -> Result<Menu<Wry>, MenuBa
         match item {
             MenuItemDescriptor::SignIn { enabled } => {
                 let mi = MenuItemBuilder::with_id(MENU_ID_SIGN_IN, "Unauthenticated")
+                    .enabled(*enabled)
+                    .build(app)?;
+                builder = builder.item(&mi);
+            }
+            MenuItemDescriptor::FinishSetup { enabled } => {
+                let mi = MenuItemBuilder::with_id(MENU_ID_FINISH_SETUP, "Finish Setup…")
                     .enabled(*enabled)
                     .build(app)?;
                 builder = builder.item(&mi);

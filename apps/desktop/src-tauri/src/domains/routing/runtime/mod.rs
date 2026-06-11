@@ -18,6 +18,7 @@ use crate::domains::routing::service::{
 use crate::domains::routing::types::{
     connection_mood, ConnectionStatus, Routing, RoutingState, RuntimeHandshakeFrame, SessionState,
 };
+use crate::providers::permissions::CapturePermissions;
 
 pub mod commands;
 
@@ -41,11 +42,28 @@ pub enum RoutingFetchError {
 pub struct RoutingFetcher {
     base_url: Url,
     http: reqwest::Client,
+    permissions: Option<Arc<dyn CapturePermissions>>,
 }
 
 impl RoutingFetcher {
     pub fn new(base_url: Url, http: reqwest::Client) -> Self {
-        Self { base_url, http }
+        Self {
+            base_url,
+            http,
+            permissions: None,
+        }
+    }
+
+    pub fn with_permissions(
+        base_url: Url,
+        http: reqwest::Client,
+        permissions: Arc<dyn CapturePermissions>,
+    ) -> Self {
+        Self {
+            base_url,
+            http,
+            permissions: Some(permissions),
+        }
     }
 }
 
@@ -68,6 +86,14 @@ impl RoutingSource for RoutingFetcher {
             .get(endpoint)
             .bearer_auth(login_token)
             .header("x-client-kind", CLIENT_KIND)
+            .header(
+                "x-capture-permission-granted",
+                self.permissions
+                    .as_ref()
+                    .map(|permissions| permissions.is_capture_ready())
+                    .unwrap_or(false)
+                    .to_string(),
+            )
             .send()
             .await
             .map_err(|e| RoutingFetchError::Network(e.to_string()))?;
@@ -498,6 +524,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn routing_fetcher_sends_capture_permission_header() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/agent"))
+            .and(header("x-capture-permission-granted", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "agent_instance_id": "agent_1",
+                "ws_url": "wss://runtime.example/ws",
+                "runtime_jwt": "runtime-token"
+            })))
+            .mount(&server)
+            .await;
+
+        let permissions = Arc::new(crate::providers::permissions::StubCapturePermissions::new(
+            crate::providers::permissions::PermissionSet {
+                screen_recording: true,
+                microphone: true,
+                accessibility: true,
+            },
+        ));
+        let fetcher = RoutingFetcher::with_permissions(
+            Url::parse(&server.uri()).unwrap(),
+            reqwest::Client::new(),
+            permissions,
+        );
+
+        fetcher.fetch("login-token").await.expect("routing");
+    }
+
+    #[tokio::test]
     async fn routing_fetcher_surfaces_unauthorized_as_typed_status() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -702,8 +758,7 @@ mod tests {
     #[async_trait]
     impl RoutingSource for ParkingRoutingSource {
         async fn fetch(&self, _login_token: &str) -> Result<Routing, RoutingFetchError> {
-            self.calls
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             self.reached.notify_one();
             std::future::pending::<()>().await;
             unreachable!("parked fetch never resolves")

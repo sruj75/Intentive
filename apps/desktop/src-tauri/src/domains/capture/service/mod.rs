@@ -1,5 +1,5 @@
-//! Capture state machine — pure FSM for the four shell states
-//! (Unauthenticated, Stopped, Capturing, Error). No Tauri dependencies.
+//! Capture state machine — pure FSM for the shell states. No Tauri
+//! dependencies and no macOS permission APIs.
 //!
 //! See ADR-0009 for auto-start-after-auth semantics and CONTEXT.md for the
 //! Capture Session definition. The state shapes themselves live in
@@ -11,6 +11,10 @@ use crate::domains::capture::types::state::{CaptureState, ErrorReason};
 
 pub trait AuthChecker: Send + Sync {
     fn is_signed_in(&self) -> bool;
+}
+
+pub trait ReadinessChecker: Send + Sync {
+    fn is_capture_ready(&self) -> bool;
 }
 
 pub struct StubAuthChecker {
@@ -35,6 +39,28 @@ impl AuthChecker for StubAuthChecker {
     }
 }
 
+pub struct StubReadinessChecker {
+    ready: AtomicBool,
+}
+
+impl StubReadinessChecker {
+    pub fn new(initial: bool) -> Self {
+        Self {
+            ready: AtomicBool::new(initial),
+        }
+    }
+
+    pub fn set_ready(&self, value: bool) {
+        self.ready.store(value, Ordering::SeqCst);
+    }
+}
+
+impl ReadinessChecker for StubReadinessChecker {
+    fn is_capture_ready(&self) -> bool {
+        self.ready.load(Ordering::SeqCst)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum TransitionError {
     #[error("current state is not toggleable")]
@@ -46,17 +72,17 @@ pub struct CaptureStateMachine {
 }
 
 impl CaptureStateMachine {
-    pub fn from_initial(is_signed_in: bool) -> Self {
-        let state = if is_signed_in {
-            CaptureState::Capturing
-        } else {
-            CaptureState::Unauthenticated
+    pub fn from_initial(is_signed_in: bool, is_capture_ready: bool) -> Self {
+        let state = match (is_signed_in, is_capture_ready) {
+            (false, _) => CaptureState::Unauthenticated,
+            (true, false) => CaptureState::SetupRequired,
+            (true, true) => CaptureState::Capturing,
         };
         Self { state }
     }
 
-    pub fn from_auth(checker: &dyn AuthChecker) -> Self {
-        Self::from_initial(checker.is_signed_in())
+    pub fn from_checks(auth: &dyn AuthChecker, readiness: &dyn ReadinessChecker) -> Self {
+        Self::from_initial(auth.is_signed_in(), readiness.is_capture_ready())
     }
 
     pub fn state(&self) -> &CaptureState {
@@ -67,7 +93,9 @@ impl CaptureStateMachine {
         let next = match self.state {
             CaptureState::Capturing => CaptureState::Stopped,
             CaptureState::Stopped => CaptureState::Capturing,
-            CaptureState::Unauthenticated | CaptureState::Error(_) => {
+            CaptureState::Unauthenticated
+            | CaptureState::SetupRequired
+            | CaptureState::Error(_) => {
                 return Err(TransitionError::NotToggleable);
             }
         };
@@ -83,8 +111,24 @@ impl CaptureStateMachine {
         self.set(CaptureState::Stopped)
     }
 
-    pub fn mark_signed_in(&mut self) -> &CaptureState {
-        self.set(CaptureState::Capturing)
+    pub fn mark_signed_in(&mut self, is_capture_ready: bool) -> &CaptureState {
+        if is_capture_ready {
+            self.set(CaptureState::Capturing)
+        } else {
+            self.set(CaptureState::SetupRequired)
+        }
+    }
+
+    pub fn mark_ready(&mut self) -> &CaptureState {
+        if matches!(self.state, CaptureState::SetupRequired) {
+            self.set(CaptureState::Capturing)
+        } else {
+            &self.state
+        }
+    }
+
+    pub fn to_setup_required(&mut self) -> &CaptureState {
+        self.set(CaptureState::SetupRequired)
     }
 
     fn set(&mut self, new: CaptureState) -> &CaptureState {

@@ -45,6 +45,14 @@ describe("Settings account surface", () => {
     expect(screen.queryByText(/OpenClaw/i)).toBeNull();
   });
 
+  it("renders Capture Permission Setup when ?surface=permission-setup is set", async () => {
+    window.history.replaceState({}, "", "/?surface=permission-setup");
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Capture Permission Setup" }),
+    ).toBeTruthy();
+  });
+
   it("has a stable signed-in account home", async () => {
     render(<App />);
     expect(await screen.findByRole("heading", { level: 2, name: "Account" })).toBeTruthy();

@@ -79,4 +79,16 @@ describe("Intentive Auth provider wiring", () => {
     });
     expect(capturedAuthProviderProps).toHaveLength(0);
   });
+
+  it("does not boot the Auth provider for Capture Permission Setup", async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    window.history.replaceState({}, "", "/?surface=permission-setup");
+
+    await import("../main");
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("Intentive Settings");
+    });
+    expect(capturedAuthProviderProps).toHaveLength(0);
+  });
 });

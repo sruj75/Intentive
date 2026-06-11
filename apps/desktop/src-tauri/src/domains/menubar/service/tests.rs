@@ -1,5 +1,7 @@
 use super::icon::path_for;
-use super::menu::{describe, MenuItemDescriptor, START_CAPTURING_LABEL, STOP_CAPTURING_LABEL};
+use super::menu::{
+    describe, MenuItemDescriptor, FINISH_SETUP_LABEL, START_CAPTURING_LABEL, STOP_CAPTURING_LABEL,
+};
 use crate::domains::capture::types::state::{CaptureState, ErrorReason};
 
 #[test]
@@ -20,6 +22,33 @@ fn menu_for_unauthenticated_has_clickable_sign_in_and_disabled_rest() {
         items[2],
         MenuItemDescriptor::Quit { enabled: false }
     ));
+}
+
+#[test]
+fn menu_for_setup_required_shows_finish_setup_and_no_toggle() {
+    let descriptor = describe(&CaptureState::SetupRequired);
+    let items = descriptor.items();
+
+    assert_eq!(items.len(), 3);
+    match &items[0] {
+        MenuItemDescriptor::FinishSetup { enabled } => assert!(*enabled),
+        other => panic!("expected FinishSetup, got {:?}", other),
+    }
+    assert!(matches!(
+        items[1],
+        MenuItemDescriptor::Settings { enabled: true }
+    ));
+    assert!(matches!(
+        items[2],
+        MenuItemDescriptor::Quit { enabled: true }
+    ));
+
+    for item in items {
+        assert!(
+            !matches!(item, MenuItemDescriptor::Toggle { .. }),
+            "{FINISH_SETUP_LABEL} state must not contain a Toggle item"
+        );
+    }
 }
 
 #[test]
@@ -102,6 +131,7 @@ fn menu_for_error_shows_disabled_info_text_and_no_toggle() {
 #[test]
 fn icon_for_unauthenticated_and_stopped_is_idle() {
     assert!(path_for(&CaptureState::Unauthenticated).ends_with("status-item-idle.png"));
+    assert!(path_for(&CaptureState::SetupRequired).ends_with("status-item-idle.png"));
     assert!(path_for(&CaptureState::Stopped).ends_with("status-item-idle.png"));
 }
 

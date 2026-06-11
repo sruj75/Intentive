@@ -5,10 +5,12 @@ use crate::domains::capture::types::state::CaptureState;
 
 pub const START_CAPTURING_LABEL: &str = "Start Capturing";
 pub const STOP_CAPTURING_LABEL: &str = "Stop Capturing";
+pub const FINISH_SETUP_LABEL: &str = "Finish Setup…";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuItemDescriptor {
     SignIn { enabled: bool },
+    FinishSetup { enabled: bool },
     Toggle { label: &'static str, enabled: bool },
     ErrorInfo { text: String, enabled: bool },
     Settings { enabled: bool },
@@ -32,6 +34,11 @@ pub fn describe(state: &CaptureState) -> MenuDescriptor {
             MenuItemDescriptor::SignIn { enabled: true },
             MenuItemDescriptor::Settings { enabled: false },
             MenuItemDescriptor::Quit { enabled: false },
+        ],
+        CaptureState::SetupRequired => vec![
+            MenuItemDescriptor::FinishSetup { enabled: true },
+            MenuItemDescriptor::Settings { enabled: true },
+            MenuItemDescriptor::Quit { enabled: true },
         ],
         CaptureState::Stopped => vec![
             MenuItemDescriptor::Toggle {
