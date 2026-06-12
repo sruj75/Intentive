@@ -99,3 +99,42 @@ test("Agent State returns available when a proactive companion message arrives",
   assert.equal(proactive.agentState, "available");
   assert.equal(proactive.messages[0].viaPostMessageBack, true);
 });
+
+test("mark_pending_failed only affects pending user messages", () => {
+  const withMessages = {
+    ...EMPTY_MESSAGE_STORE,
+    agentState: "thinking",
+    messages: [
+      {
+        id: "pending-user",
+        author: "user",
+        body: "pending",
+        at,
+        viaPostMessageBack: false,
+        delivery: "pending",
+      },
+      {
+        id: "confirmed-user",
+        author: "user",
+        body: "confirmed",
+        at,
+        viaPostMessageBack: false,
+        delivery: "confirmed",
+      },
+      {
+        id: "companion",
+        author: "companion",
+        body: "hello",
+        at,
+        viaPostMessageBack: false,
+      },
+    ],
+  };
+
+  const failed = reduceConversationState(withMessages, { type: "mark_pending_failed" });
+
+  assert.equal(failed.messages[0].delivery, "failed");
+  assert.equal(failed.messages[1].delivery, "confirmed");
+  assert.equal(failed.messages[2].delivery, undefined);
+  assert.equal(failed.agentState, "available");
+});

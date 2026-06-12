@@ -46,9 +46,11 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     error: null,
   };
   let socket: WebSocketLike | null = null;
+  let socketIsOpen = false;
   let retryCancel: { cancel(): void } | null = null;
   let closed = false;
   let routingAttempts = 0;
+  let outboundQueue: ClientToRuntimeEvent[] = [];
 
   const setState = (patch: Partial<RuntimeAdapterState>) => {
     state = { ...state, ...patch };
@@ -73,11 +75,17 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   const routeAndOpen = async (): Promise<void> => {
     if (closed) return;
     setConnection("routing");
-    const result = await getRuntimeRouting({
-      baseUrl: deps.baseUrl,
-      getUserJwt: deps.getUserJwt,
-      fetch: deps.fetch,
-    });
+    let result: Awaited<ReturnType<typeof getRuntimeRouting>>;
+    try {
+      result = await getRuntimeRouting({
+        baseUrl: deps.baseUrl,
+        getUserJwt: deps.getUserJwt,
+        fetch: deps.fetch,
+      });
+    } catch {
+      scheduleRoutingRetry();
+      return;
+    }
 
     switch (result.status) {
       case "ok":
@@ -88,10 +96,16 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
         scheduleRoutingRetry(result.retryAfterMs);
         return;
       case "reauth":
-        setError("reauth-required", "Sign in again to reconnect Companion Chat.");
+        failPendingOutboundAndSetError(
+          "reauth-required",
+          "Sign in again to reconnect Companion Chat.",
+        );
         return;
       case "gate":
-        setError("gate-required", "Finish the next Pre-Chat Gate before reconnecting.");
+        failPendingOutboundAndSetError(
+          "gate-required",
+          "Finish the next Pre-Chat Gate before reconnecting.",
+        );
         return;
     }
   };
@@ -102,18 +116,21 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     setConnection("connecting");
     socket = deps.createWebSocket(url);
     socket.onopen = () => {
-      sendFrame({
+      sendNow({
         type: "connect",
         auth_token: runtimeJwt,
         client_kind: "mobile",
         client_version: deps.clientVersion,
       });
+      socketIsOpen = true;
+      flushOutboundQueue();
     };
     socket.onmessage = (event) => handleRuntimeFrame(event.data);
-    socket.onerror = () => setError("network", "Companion Chat connection failed.");
+    socket.onerror = () =>
+      failPendingOutboundAndSetError("network", "Companion Chat connection failed.");
     socket.onclose = () => {
       if (closed) return;
-      dispatch({ type: "mark_pending_failed" });
+      markPendingOutboundFailed();
       scheduleRoutingRetry();
     };
   };
@@ -124,7 +141,12 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     const messageId = deps.id();
     const sentAt = deps.now();
     dispatch({ type: "send_user_message", messageId, body: trimmed, sentAt });
-    sendFrame({ type: "user_message", message_id: messageId, body: trimmed, sent_at: sentAt });
+    enqueueOutbound({
+      type: "user_message",
+      message_id: messageId,
+      body: trimmed,
+      sent_at: sentAt,
+    });
   };
 
   const close = () => {
@@ -139,7 +161,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     try {
       event = parseRuntimeToClientEvent(JSON.parse(data));
     } catch {
-      setError("protocol", "Received an invalid Protocol frame.");
+      failPendingOutboundAndSetError("protocol", "Received an invalid Protocol frame.");
       return;
     }
 
@@ -167,16 +189,30 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
           emittedAt: event.emitted_at,
           viaPostMessageBack: event.via_post_message_back,
         });
-        sendFrame({ type: "delivery_ack", message_id: event.message_id });
+        enqueueOutbound({ type: "delivery_ack", message_id: event.message_id });
         return;
       case "runtime_error":
-        setError("protocol", event.message);
+        failPendingOutboundAndSetError("protocol", event.message);
         return;
     }
   };
 
-  const sendFrame = (event: ClientToRuntimeEvent) => {
-    socket?.send(JSON.stringify(event));
+  const enqueueOutbound = (event: ClientToRuntimeEvent) => {
+    outboundQueue = [...outboundQueue, event];
+    flushOutboundQueue();
+  };
+
+  const flushOutboundQueue = () => {
+    if (!socketIsOpen || outboundQueue.length === 0) return;
+    const pending = outboundQueue;
+    outboundQueue = [];
+    for (const event of pending) sendNow(event);
+  };
+
+  const sendNow = (event: ClientToRuntimeEvent) => {
+    if (!socket) return false;
+    socket.send(JSON.stringify(event));
+    return true;
   };
 
   const scheduleRoutingRetry = (retryAfterMs?: number) => {
@@ -184,7 +220,10 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     routingAttempts += 1;
     const max = deps.maxRoutingRetries ?? DEFAULT_BACKOFF_MS.length;
     if (routingAttempts > max) {
-      setError("routing-unavailable", "Companion Chat routing is unavailable.");
+      failPendingOutboundAndSetError(
+        "routing-unavailable",
+        "Companion Chat routing is unavailable.",
+      );
       return;
     }
     setConnection("retrying");
@@ -208,6 +247,16 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     setState({ connectionState: "error", error: { kind, message } });
   };
 
+  const failPendingOutboundAndSetError = (kind: RuntimeAdapterError["kind"], message: string) => {
+    markPendingOutboundFailed();
+    setError(kind, message);
+  };
+
+  const markPendingOutboundFailed = () => {
+    outboundQueue = [];
+    dispatch({ type: "mark_pending_failed" });
+  };
+
   const cancelRetry = () => {
     retryCancel?.cancel();
     retryCancel = null;
@@ -216,6 +265,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   const closeSocket = () => {
     const current = socket;
     socket = null;
+    socketIsOpen = false;
     if (!current) return;
     current.onopen = null;
     current.onmessage = null;
