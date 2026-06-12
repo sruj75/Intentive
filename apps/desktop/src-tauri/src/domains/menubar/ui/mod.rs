@@ -54,6 +54,36 @@ impl From<tauri::Error> for MenuBarError {
     }
 }
 
+trait PermissionSetupEntry {
+    fn open_surface(&self) -> bool;
+    fn start_status_emitter(&self);
+}
+
+impl PermissionSetupEntry for AppHandle {
+    fn open_surface(&self) -> bool {
+        let Some(window) = self.get_webview_window("settings") else {
+            return false;
+        };
+        let _ = window.eval("window.location.search = '?surface=permission-setup';");
+        let _ = window.show();
+        let _ = window.set_focus();
+        true
+    }
+
+    fn start_status_emitter(&self) {
+        let supervisor = self.state::<PermissionEmitterSupervisor>();
+        let permissions = self.state::<Arc<dyn CapturePermissions>>().inner().clone();
+        let handle = self.clone();
+        supervisor.ensure_running(move || PermissionStatusEmitter::spawn_for(handle, permissions));
+    }
+}
+
+fn open_permission_setup(entry: &impl PermissionSetupEntry) {
+    if entry.open_surface() {
+        entry.start_status_emitter();
+    }
+}
+
 /// Tray observer — subscribed once by `install`. Receives every state-change
 /// notification from the coordinator and re-renders the menu bar icon + menu.
 struct TrayObserver {
@@ -138,16 +168,7 @@ fn handle_menu_event(app: &AppHandle, coordinator: &Arc<dyn CaptureSessionContro
 }
 
 pub(crate) fn open_permission_setup_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.eval("window.location.search = '?surface=permission-setup';");
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-
-    let supervisor = app.state::<PermissionEmitterSupervisor>();
-    let permissions = app.state::<Arc<dyn CapturePermissions>>().inner().clone();
-    let handle = app.clone();
-    supervisor.ensure_running(move || PermissionStatusEmitter::spawn_for(handle, permissions));
+    open_permission_setup(app);
 }
 
 pub(crate) fn refresh_tray(app: &AppHandle, state: &CaptureState) {
@@ -267,5 +288,39 @@ pub fn simulate_error(coordinator: tauri::State<'_, Arc<dyn CaptureSessionContro
         coordinator
             .inner()
             .submit(CoordinatorCommand::SimulateError(reason));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingPermissionSetupEntry {
+        opened: std::sync::atomic::AtomicUsize,
+        started: std::sync::atomic::AtomicUsize,
+    }
+
+    impl PermissionSetupEntry for RecordingPermissionSetupEntry {
+        fn open_surface(&self) -> bool {
+            self.opened
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            true
+        }
+
+        fn start_status_emitter(&self) {
+            self.started
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn opening_permission_setup_starts_the_status_emitter() {
+        let entry = RecordingPermissionSetupEntry::default();
+
+        open_permission_setup(&entry);
+
+        assert_eq!(entry.opened.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(entry.started.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

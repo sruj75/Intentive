@@ -328,12 +328,12 @@ pub fn run() {
             // the coordinator's snapshot() — refactor canonicalized this
             // path; StateHolder no longer exists. Models-root resolution,
             // disk probe, and failsafe direction live inside the helper.
-            if let Some(window) = app.get_webview_window("settings") {
-                if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
-                    domains::menubar::ui::open_permission_setup_window(app.handle());
-                } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
-                    && domains::summarization::service::bundled::bundled_model_needs_install()
-                {
+            if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
+                domains::menubar::ui::open_permission_setup_window(app.handle());
+            } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
+                && domains::summarization::service::bundled::bundled_model_needs_install()
+            {
+                if let Some(window) = app.get_webview_window("settings") {
                     open_onboarding_window(&window);
                 }
             }

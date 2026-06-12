@@ -141,10 +141,13 @@ impl PermissionStatusEmitter {
             }
             last_tick = now;
             let current = self.permissions.snapshot();
-            // After a sleep/wake gap the probes can briefly read a live grant as
-            // missing; suppress surfacing that regression during the grace
-            // window (mirrors `permission_monitor`'s false suppression).
-            if !current.all_granted() && suppress_regression_until.is_some_and(|until| now < until)
+            // After a sleep/wake gap the probes can briefly read a previously-
+            // granted permission as missing; suppress surfacing that regression
+            // during the grace window (mirrors `permission_monitor`'s false-
+            // readiness suppression). A snapshot that only gains grants is
+            // trustworthy and surfaces immediately.
+            if current.is_regression_from(&last)
+                && suppress_regression_until.is_some_and(|until| now < until)
             {
                 continue;
             }
@@ -345,6 +348,34 @@ mod tests {
         tokio::time::advance(Duration::from_secs(10)).await;
         tokio::task::yield_now().await;
         assert_eq!(sink.emitted(), vec![set(false, true, false)]);
+        handle.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn surfaces_partial_improvement_during_wake_grace() {
+        let permissions = Arc::new(StubCapturePermissions::new(set(false, true, false)));
+        let sink = Arc::new(RecordingSink::default());
+        let emitter = PermissionStatusEmitter::with_timing(
+            permissions.clone(),
+            sink.clone(),
+            Duration::from_secs(1),
+            Duration::from_secs(10),
+        );
+        let handle = emitter.spawn();
+
+        // Establish a no-gap baseline tick.
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert!(sink.emitted().is_empty());
+
+        // The user grants screen recording while mic/a11y stay missing, and a
+        // wake gap opens the grace window. The snapshot is a strict improvement,
+        // not a regression, so it must surface immediately rather than wait out
+        // the grace window.
+        permissions.set_snapshot(set(true, true, false));
+        tokio::time::advance(Duration::from_secs(20)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(sink.emitted(), vec![set(true, true, false)]);
         handle.abort();
     }
 }
