@@ -14,10 +14,13 @@
     "android": "expo run:android"
   },
   "dependencies": {
+    "@assistant-ui/core": "0.2.9",
     "@assistant-ui/react-native": "^0.1.20",
-    "@intentive/api-contract": "workspace:*",
     "@better-auth/expo": "1.4.18",
     "@expo/metro-runtime": "~56.0.13",
+    "@intentive/api-contract": "workspace:*",
+    "@intentive/domain-types": "workspace:*",
+    "@intentive/protocol": "workspace:*",
     "better-auth": "1.4.18",
     "expo": "^56.0.8",
     "expo-constants": "*",

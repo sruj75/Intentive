@@ -1,0 +1,306 @@
+import {
+  parseRuntimeToClientEvent,
+  type ClientToRuntimeEvent,
+  type RuntimeToClientEvent,
+} from "@intentive/protocol";
+
+import { EMPTY_MESSAGE_STORE, reduceConversationState } from "../service/conversation-reducer.js";
+import { getRuntimeRouting, type FetchLike } from "../service/routing-client.js";
+import type {
+  ConnectionState,
+  RuntimeAdapter,
+  RuntimeAdapterError,
+  RuntimeAdapterState,
+} from "../types/conversation.js";
+
+export interface WebSocketLike {
+  onopen: (() => void) | null;
+  onmessage: ((event: { readonly data: string }) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onclose: (() => void) | null;
+  send(data: string): void;
+  close(): void;
+}
+
+export interface RuntimeAdapterDeps {
+  readonly baseUrl: string;
+  readonly getUserJwt: () => Promise<string | null>;
+  readonly fetch: FetchLike;
+  readonly createWebSocket: (url: string) => WebSocketLike;
+  readonly clientVersion: string;
+  readonly now: () => string;
+  readonly id: () => string;
+  readonly schedule: (fn: () => void, delayMs: number) => { cancel(): void };
+  readonly maxRoutingRetries?: number;
+  readonly backoffMs?: readonly number[];
+}
+
+const DEFAULT_BACKOFF_MS = [250, 500, 1000, 2000, 5000] as const;
+const MAX_BACKOFF_MS = 5000;
+
+export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
+  const listeners = new Set<() => void>();
+  let state: RuntimeAdapterState = {
+    ...EMPTY_MESSAGE_STORE,
+    connectionState: "idle",
+    error: null,
+  };
+  let socket: WebSocketLike | null = null;
+  let socketIsReady = false;
+  let retryCancel: { cancel(): void } | null = null;
+  let closed = false;
+  let connectionGeneration = 0;
+  let routingAttempts = 0;
+  let outboundQueue: ClientToRuntimeEvent[] = [];
+
+  const setState = (patch: Partial<RuntimeAdapterState>) => {
+    state = { ...state, ...patch };
+    for (const listener of listeners) listener();
+  };
+
+  const dispatch = (event: Parameters<typeof reduceConversationState>[1]) => {
+    const next = reduceConversationState(state, event);
+    setState({
+      messages: next.messages,
+      beforeCursor: next.beforeCursor,
+      agentState: next.agentState,
+    });
+  };
+
+  const connect = async (): Promise<void> => {
+    closed = false;
+    const generation = ++connectionGeneration;
+    cancelRetry();
+    closeSocket();
+    routingAttempts = 0;
+    await routeAndOpen(generation);
+  };
+
+  const isCurrentGeneration = (generation: number) =>
+    !closed && generation === connectionGeneration;
+
+  const routeAndOpen = async (generation: number): Promise<void> => {
+    if (!isCurrentGeneration(generation)) return;
+    setConnection("routing");
+    let result: Awaited<ReturnType<typeof getRuntimeRouting>>;
+    try {
+      result = await getRuntimeRouting({
+        baseUrl: deps.baseUrl,
+        getUserJwt: deps.getUserJwt,
+        fetch: deps.fetch,
+      });
+    } catch {
+      if (isCurrentGeneration(generation)) scheduleRoutingRetry(generation);
+      return;
+    }
+    if (!isCurrentGeneration(generation)) return;
+
+    switch (result.status) {
+      case "ok":
+        routingAttempts = 0;
+        openSocket(generation, result.routing.wsUrl, result.routing.runtimeJwt);
+        return;
+      case "retry":
+        scheduleRoutingRetry(generation, result.retryAfterMs);
+        return;
+      case "reauth":
+        failPendingOutboundAndSetError(
+          "reauth-required",
+          "Sign in again to reconnect Companion Chat.",
+        );
+        return;
+      case "gate":
+        failPendingOutboundAndSetError(
+          "gate-required",
+          "Finish the next Pre-Chat Gate before reconnecting.",
+        );
+        return;
+    }
+  };
+
+  const openSocket = (generation: number, url: string, runtimeJwt: string) => {
+    if (!isCurrentGeneration(generation)) return;
+    closeSocket();
+    setConnection("connecting");
+    socket = deps.createWebSocket(url);
+    socket.onopen = () => {
+      if (!isCurrentGeneration(generation)) return;
+      sendNow({
+        type: "connect",
+        auth_token: runtimeJwt,
+        client_kind: "mobile",
+        client_version: deps.clientVersion,
+      });
+    };
+    socket.onmessage = (event) => {
+      if (!isCurrentGeneration(generation)) return;
+      handleRuntimeFrame(generation, event.data);
+    };
+    socket.onerror = () => {
+      if (!isCurrentGeneration(generation)) return;
+      failPendingOutboundAndSetError("network", "Companion Chat connection failed.");
+    };
+    socket.onclose = () => {
+      if (!isCurrentGeneration(generation)) return;
+      markPendingOutboundFailed();
+      scheduleRoutingRetry(generation);
+    };
+  };
+
+  const sendUserMessage = async (body: string): Promise<void> => {
+    const trimmed = body.trim();
+    if (trimmed.length === 0) return;
+    const messageId = deps.id();
+    const sentAt = deps.now();
+    dispatch({ type: "send_user_message", messageId, body: trimmed, sentAt });
+    enqueueOutbound({
+      type: "user_message",
+      message_id: messageId,
+      body: trimmed,
+      sent_at: sentAt,
+    });
+  };
+
+  const close = () => {
+    connectionGeneration += 1;
+    closed = true;
+    cancelRetry();
+    closeSocket();
+    setConnection("idle");
+  };
+
+  const handleRuntimeFrame = (generation: number, data: string) => {
+    if (!isCurrentGeneration(generation)) return;
+    let event: RuntimeToClientEvent;
+    try {
+      event = parseRuntimeToClientEvent(JSON.parse(data));
+    } catch {
+      if (!isCurrentGeneration(generation)) return;
+      failPendingOutboundAndSetError("protocol", "Received an invalid Protocol frame.");
+      return;
+    }
+    if (!isCurrentGeneration(generation)) return;
+
+    switch (event.type) {
+      case "hello_ok":
+        dispatch({
+          type: "reconnect_snapshot",
+          messages: event.session_snapshot.messages,
+          beforeCursor: event.session_snapshot.before_cursor,
+        });
+        socketIsReady = true;
+        setConnection("connected");
+        flushOutboundQueue();
+        return;
+      case "history_backfill_response":
+        dispatch({
+          type: "history_backfill",
+          messages: event.session_snapshot.messages,
+          beforeCursor: event.session_snapshot.before_cursor,
+        });
+        return;
+      case "companion_message":
+        dispatch({
+          type: "companion_message",
+          messageId: event.message_id,
+          body: event.body,
+          emittedAt: event.emitted_at,
+          viaPostMessageBack: event.via_post_message_back,
+        });
+        enqueueOutbound({ type: "delivery_ack", message_id: event.message_id });
+        return;
+      case "runtime_error":
+        failPendingOutboundAndSetError("protocol", event.message);
+        return;
+    }
+  };
+
+  const enqueueOutbound = (event: ClientToRuntimeEvent) => {
+    outboundQueue = [...outboundQueue, event];
+    flushOutboundQueue();
+  };
+
+  const flushOutboundQueue = () => {
+    if (!socketIsReady || outboundQueue.length === 0) return;
+    const pending = outboundQueue;
+    outboundQueue = [];
+    for (const event of pending) sendNow(event);
+  };
+
+  const sendNow = (event: ClientToRuntimeEvent) => {
+    if (!socket) return false;
+    socket.send(JSON.stringify(event));
+    return true;
+  };
+
+  const scheduleRoutingRetry = (generation: number, retryAfterMs?: number) => {
+    if (!isCurrentGeneration(generation)) return;
+    routingAttempts += 1;
+    const max = deps.maxRoutingRetries ?? DEFAULT_BACKOFF_MS.length;
+    if (routingAttempts > max) {
+      failPendingOutboundAndSetError(
+        "routing-unavailable",
+        "Companion Chat routing is unavailable.",
+      );
+      return;
+    }
+    setConnection("retrying");
+    const delayMs =
+      retryAfterMs ??
+      deps.backoffMs?.[routingAttempts - 1] ??
+      DEFAULT_BACKOFF_MS[routingAttempts - 1] ??
+      MAX_BACKOFF_MS;
+    retryCancel = deps.schedule(() => {
+      if (!isCurrentGeneration(generation)) return;
+      retryCancel = null;
+      void routeAndOpen(generation);
+    }, delayMs);
+  };
+
+  const setConnection = (connectionState: ConnectionState) => {
+    setState({ connectionState, error: null });
+  };
+
+  const setError = (kind: RuntimeAdapterError["kind"], message: string) => {
+    closeSocket();
+    setState({ connectionState: "error", error: { kind, message } });
+  };
+
+  const failPendingOutboundAndSetError = (kind: RuntimeAdapterError["kind"], message: string) => {
+    markPendingOutboundFailed();
+    setError(kind, message);
+  };
+
+  const markPendingOutboundFailed = () => {
+    outboundQueue = [];
+    dispatch({ type: "mark_pending_failed" });
+  };
+
+  const cancelRetry = () => {
+    retryCancel?.cancel();
+    retryCancel = null;
+  };
+
+  const closeSocket = () => {
+    const current = socket;
+    socket = null;
+    socketIsReady = false;
+    if (!current) return;
+    current.onopen = null;
+    current.onmessage = null;
+    current.onerror = null;
+    current.onclose = null;
+    current.close();
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getState: () => state,
+    connect,
+    sendUserMessage,
+    close,
+  };
+}

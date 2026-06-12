@@ -5,7 +5,7 @@
     "rootDir": "src",
     "noEmit": false
   },
-  "//": "Pure-core build for the fast node:test path (split test toolchains by axis). Lists ONLY the RN-free modules: the resolver, the launch-state types/source, the workspace entry, the auth domain's pure core (types + provider/adapter logic behind an injected client port), and the chat runtime's dev adapter (its `@assistant-ui/react-native` import is type-only, erased on compile). The barrel (index.ts), the store (.tsx), the screens, `companion-chat.tsx` (imports the vendor package at runtime), and `auth/service/neon-client.ts` (imports expo) belong to the navigation axis — they are compiled by Metro and type-checked by the full tsconfig.json, never here, so node:test never loads React Native.",
+  "//": "Pure-core build for the fast node:test path (split test toolchains by axis). Lists ONLY the RN-free modules: the resolver, the launch-state types/source, the workspace entry, the auth domain's pure core (types + provider/adapter logic behind an injected client port), and the chat Runtime Adapter core (types/service/runtime). The barrel (index.ts), the store (.tsx), the screens, `companion-chat.tsx` (imports the vendor package at runtime), and `auth/service/neon-client.ts` (imports expo) belong to the navigation axis — they are compiled by Metro and type-checked by the full tsconfig.json, never here, so node:test never loads React Native.",
   "include": [
     "src/index.ts",
     "src/domains/account/types/workspace.ts",
@@ -18,6 +18,8 @@
     "src/domains/auth/service/dev-provider.ts",
     "src/domains/auth/service/neon-provider.ts",
     "src/domains/auth/service/auth-adapter.ts",
-    "src/domains/chat/runtime/dev-chat-adapter.ts"
+    "src/domains/chat/types/**/*.ts",
+    "src/domains/chat/service/**/*.ts",
+    "src/domains/chat/runtime/**/*.ts"
   ]
 }
