@@ -65,6 +65,10 @@ export default function CapturePermissionSetup() {
   }, []);
 
   useEffect(() => {
+    // Detector-emits (ADR-0021): the Rust detection engine owns the granular
+    // permission poll and emits `permissions:status` on change while this
+    // surface is open. The webview is a pure subscriber — one initial fetch to
+    // seed state, then it renders from emitted snapshots (no self-poll loop).
     let cancelled = false;
     const subscribe = async () => {
       const unlisten = await listen<PermissionSet>("permissions:status", (event) => {
@@ -78,12 +82,8 @@ export default function CapturePermissionSetup() {
     };
     void subscribe();
     void refresh();
-    const refreshInterval = setInterval(() => {
-      void refresh();
-    }, 1500);
     return () => {
       cancelled = true;
-      clearInterval(refreshInterval);
       for (const unlisten of unlistenersRef.current) {
         unlisten();
       }

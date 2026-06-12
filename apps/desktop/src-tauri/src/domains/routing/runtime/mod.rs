@@ -4,7 +4,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
@@ -173,6 +173,15 @@ pub enum WsTransportError {
     Failed(String),
 }
 
+/// Outcome of an outbound [`WsSession::try_emit`]. Routing owns this rather than
+/// reusing the snapshots `PushError` (a cross-domain runtime type the layer rule
+/// forbids referencing here); the `lib.rs` `AgentSink` bridge maps it.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum TryEmitError {
+    #[error("protocol websocket session is not connected")]
+    NotConnected,
+}
+
 #[derive(Default)]
 pub struct TungsteniteTransport;
 
@@ -253,6 +262,11 @@ pub struct WsSession {
     jitter: Arc<dyn JitterSource>,
     task: Mutex<Option<JoinHandle<()>>>,
     login_token: Mutex<Option<String>>,
+    // Outbound seam for Protocol event emission (#34). `Some` only while a
+    // connection is live; the connection loop drains the matching receiver via
+    // `tokio::select!`. Dormant in #31 — `lib.rs` installs `NoopAgentSink`, so
+    // nothing pushes here yet; #34 flips to the live `AgentSink` bridge.
+    outbound: Mutex<Option<mpsc::UnboundedSender<String>>>,
     // Last observed `(RoutingState, SessionState)`, kept so the webview can
     // replay current status on mount. The Settings window reloads when opened,
     // so a UI that only listened for future `routing:status` events would miss
@@ -276,11 +290,26 @@ impl WsSession {
             jitter,
             task: Mutex::new(None),
             login_token: Mutex::new(None),
+            outbound: Mutex::new(None),
             last_status: std::sync::Mutex::new((
                 RoutingState::SignedOut,
                 SessionState::Disconnected,
             )),
         })
+    }
+
+    /// Push a pre-serialized Protocol frame over the live connection. Returns
+    /// [`TryEmitError::NotConnected`] when no connection is up. The frame is
+    /// handed to the connection loop, which sends it on the socket; on send
+    /// failure that loop drops to the existing reconnect path. This is the
+    /// dormant join for #34 — nothing calls it while `NoopAgentSink` is
+    /// installed.
+    pub async fn try_emit(&self, frame: String) -> Result<(), TryEmitError> {
+        let guard = self.outbound.lock().await;
+        let Some(sender) = guard.as_ref() else {
+            return Err(TryEmitError::NotConnected);
+        };
+        sender.send(frame).map_err(|_| TryEmitError::NotConnected)
     }
 
     /// Current plain-English status, replayed on demand (e.g. when the Settings
@@ -368,10 +397,22 @@ impl WsSession {
             (routing_state, session_state) =
                 self.apply(routing_state, session_state, RoutingEvent::ConnectStarted);
 
-            let exit = drive_connection(&active_routing, self.transport.as_ref(), |event| {
-                (routing_state, session_state) = self.apply(routing_state, session_state, event);
-            })
+            // Register the outbound seam for the lifetime of this connection so
+            // `try_emit` has somewhere to push; clear it the moment the
+            // connection drops.
+            let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+            *self.outbound.lock().await = Some(outbound_tx);
+            let exit = drive_connection(
+                &active_routing,
+                self.transport.as_ref(),
+                outbound_rx,
+                |event| {
+                    (routing_state, session_state) =
+                        self.apply(routing_state, session_state, event);
+                },
+            )
             .await;
+            *self.outbound.lock().await = None;
 
             let decision = reconnect_decision(exit.cause);
             if decision == ReconnectDecision::Stop {
@@ -414,6 +455,7 @@ struct ConnectionExit {
 async fn drive_connection(
     routing: &Routing,
     transport: &dyn WsTransport,
+    mut outbound_rx: mpsc::UnboundedReceiver<String>,
     mut observe_event: impl FnMut(RoutingEvent),
 ) -> ConnectionExit {
     let mut connection = match transport.connect(&routing.ws_url).await {
@@ -441,22 +483,46 @@ async fn drive_connection(
         };
     }
 
+    // Once the channel's sole sender (held in `WsSession.outbound`) is cleared
+    // the receiver closes; stop selecting on it to avoid a busy loop, while the
+    // inbound read keeps driving the connection.
+    let mut outbound_open = true;
     loop {
-        let next = match connection.next_text().await {
-            Ok(Some(text)) => text,
-            Ok(None) => {
-                observe_event(RoutingEvent::TransportDropped);
-                return ConnectionExit {
-                    cause: ReconnectCause::TransportDropped,
-                };
-            }
-            Err(e) => {
-                eprintln!("routing: websocket read failed: {e}");
-                observe_event(RoutingEvent::TransportDropped);
-                return ConnectionExit {
-                    cause: ReconnectCause::TransportDropped,
-                };
-            }
+        let next = tokio::select! {
+            inbound = connection.next_text() => match inbound {
+                Ok(Some(text)) => text,
+                Ok(None) => {
+                    observe_event(RoutingEvent::TransportDropped);
+                    return ConnectionExit {
+                        cause: ReconnectCause::TransportDropped,
+                    };
+                }
+                Err(e) => {
+                    eprintln!("routing: websocket read failed: {e}");
+                    observe_event(RoutingEvent::TransportDropped);
+                    return ConnectionExit {
+                        cause: ReconnectCause::TransportDropped,
+                    };
+                }
+            },
+            outbound = outbound_rx.recv(), if outbound_open => {
+                match outbound {
+                    Some(frame) => {
+                        if let Err(e) = connection.send_text(frame).await {
+                            eprintln!("routing: outbound send failed: {e}");
+                            observe_event(RoutingEvent::TransportDropped);
+                            return ConnectionExit {
+                                cause: ReconnectCause::TransportDropped,
+                            };
+                        }
+                        continue;
+                    }
+                    None => {
+                        outbound_open = false;
+                        continue;
+                    }
+                }
+            },
         };
 
         match serde_json::from_str::<RuntimeHandshakeFrame>(&next) {
@@ -720,8 +786,11 @@ mod tests {
             })]));
         let mut events = Vec::new();
 
-        let exit =
-            drive_connection(&sample_routing(), &transport, |event| events.push(event)).await;
+        let (_outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+        let exit = drive_connection(&sample_routing(), &transport, outbound_rx, |event| {
+            events.push(event)
+        })
+        .await;
 
         let sent = transport.sent.lock().await;
         assert_eq!(
@@ -747,8 +816,11 @@ mod tests {
             })]));
         let mut events = Vec::new();
 
-        let exit =
-            drive_connection(&sample_routing(), &transport, |event| events.push(event)).await;
+        let (_outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+        let exit = drive_connection(&sample_routing(), &transport, outbound_rx, |event| {
+            events.push(event)
+        })
+        .await;
 
         assert_eq!(
             events,
@@ -889,5 +961,112 @@ mod tests {
         // Signing out returns to the signed-out mood.
         session.clear_login_token().await;
         assert_eq!(session.current_status().mood, ConnectionMood::SignedOut);
+    }
+
+    struct StaticRoutingSource;
+
+    #[async_trait]
+    impl RoutingSource for StaticRoutingSource {
+        async fn fetch(&self, _login_token: &str) -> Result<Routing, RoutingFetchError> {
+            Ok(sample_routing())
+        }
+    }
+
+    /// A connection whose inbound read parks until signalled, so the outbound
+    /// `select!` arm fires deterministically. Records everything sent.
+    struct OutboundProbeConnection {
+        sent: Arc<AsyncMutex<Vec<String>>>,
+        drop_signal: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl WsConnection for OutboundProbeConnection {
+        async fn send_text(&mut self, text: String) -> Result<(), WsTransportError> {
+            self.sent.lock().await.push(text);
+            Ok(())
+        }
+
+        async fn next_text(&mut self) -> Result<Option<String>, WsTransportError> {
+            self.drop_signal.notified().await;
+            Ok(None)
+        }
+    }
+
+    struct OutboundProbeTransport {
+        sent: Arc<AsyncMutex<Vec<String>>>,
+        drop_signal: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl WsTransport for OutboundProbeTransport {
+        async fn connect(&self, _url: &Url) -> Result<Box<dyn WsConnection>, WsTransportError> {
+            Ok(Box::new(OutboundProbeConnection {
+                sent: self.sent.clone(),
+                drop_signal: self.drop_signal.clone(),
+            }))
+        }
+    }
+
+    /// Spin (yielding) until `predicate` holds or a generous bound elapses.
+    async fn wait_until(predicate: impl Fn() -> bool) {
+        for _ in 0..2_000 {
+            if predicate() {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+        panic!("condition never held");
+    }
+
+    #[tokio::test]
+    async fn try_emit_pushes_a_frame_through_the_live_connection() {
+        let sent = Arc::new(AsyncMutex::new(Vec::new()));
+        let drop_signal = Arc::new(tokio::sync::Notify::new());
+        let session = WsSession::new(
+            Arc::new(StaticRoutingSource),
+            Arc::new(OutboundProbeTransport {
+                sent: sent.clone(),
+                drop_signal: drop_signal.clone(),
+            }),
+            Arc::new(NoopRoutingObserver),
+            Arc::new(StaticJitter),
+        );
+
+        // No live connection yet → the seam reports NotConnected.
+        assert_eq!(
+            session.try_emit("early".to_string()).await,
+            Err(TryEmitError::NotConnected)
+        );
+
+        session.set_login_token("token".to_string()).await;
+        // The connect frame lands once the connection is live and the outbound
+        // sender is registered.
+        let sent_for_wait = sent.clone();
+        wait_until(|| sent_for_wait.try_lock().map(|s| !s.is_empty()).unwrap_or(false)).await;
+
+        let frame = r#"{"type":"context_snapshot"}"#.to_string();
+        session
+            .try_emit(frame.clone())
+            .await
+            .expect("a live connection accepts the frame");
+
+        let sent_for_wait = sent.clone();
+        wait_until(|| sent_for_wait.try_lock().map(|s| s.len() >= 2).unwrap_or(false)).await;
+        assert_eq!(sent.lock().await[1], frame, "the frame was sent on the socket");
+
+        // Dropping the inbound read drives the existing reconnect path, which
+        // clears the outbound seam — a fresh try_emit reports NotConnected
+        // until the connection comes back. `notify_one` stores a permit so the
+        // wake can't be lost to a scheduling race.
+        drop_signal.notify_one();
+        let mut cleared = false;
+        for _ in 0..2_000 {
+            if session.try_emit("probe".to_string()).await == Err(TryEmitError::NotConnected) {
+                cleared = true;
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(cleared, "the outbound seam clears when the connection drops");
     }
 }

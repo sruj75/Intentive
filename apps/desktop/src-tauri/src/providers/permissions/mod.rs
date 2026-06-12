@@ -12,6 +12,13 @@ use serde::{Deserialize, Serialize};
 use crate::domains::capture::service::ReadinessChecker;
 
 pub mod commands;
+pub mod status_emitter;
+
+/// Tauri event carrying the per-permission [`PermissionSet`] snapshot. Both the
+/// on-demand `capture_permission_status` command and the timed
+/// [`status_emitter::PermissionStatusEmitter`] publish under this single name;
+/// the Capture Permission Setup webview is a pure subscriber to it.
+pub const PERMISSIONS_STATUS_EVENT: &str = "permissions:status";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PermissionSet {

@@ -24,15 +24,16 @@ use domains::routing::runtime::{
 };
 use domains::routing::types::{ConnectionStatus, RoutingState, SessionState};
 use domains::snapshots::repo::SnapshotStore;
-use domains::snapshots::runtime::agent_interface::{AgentSink, NoopAgentSink};
+use domains::snapshots::runtime::agent_interface::{AgentSink, NoopAgentSink, PushError};
 use domains::snapshots::runtime::heartbeat::{
     ContextHeartbeat, ReqwestActivityClient, ScreenpipeUrlSource, Summarizer, SummarizerError,
 };
-use domains::snapshots::types::SessionEndReason;
+use domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
 use domains::summarization::config::ProviderConfig;
 use domains::summarization::runtime::{
     LazyLlmProvider, LiveProviderResolver, LlmProviderSlot, SummarizeError,
 };
+use providers::permissions::status_emitter::PermissionStatusEmitter;
 use providers::permissions::{CapturePermissions, MacosCapturePermissions};
 use tokio::sync::mpsc;
 
@@ -85,6 +86,53 @@ impl SessionHooks for HeartbeatHooks {
 
     async fn on_session_end(&self, reason: SessionEndReason) {
         self.0.clone().stop(reason).await;
+    }
+}
+
+/// Uninstalled (#34) cross-domain bridge: implements the snapshots `AgentSink`
+/// by framing Context Snapshots / Session End Markers as Protocol events and
+/// pushing them through the routing `WsSession`'s dormant `try_emit` seam, and
+/// maps routing's `TryEmitError` onto the snapshots `PushError`. It lives at the
+/// composition root because it names two domains' runtime types, which the
+/// layer rule allows only here. `lib.rs` keeps `NoopAgentSink` installed on the
+/// heartbeat; swapping in this adapter is the one-line #34 change.
+#[allow(dead_code)]
+struct WsSessionAgentSink {
+    session: Arc<WsSession>,
+}
+
+/// Frame a Context Snapshot as the `context_snapshot` Protocol event. The Rust
+/// `ContextSnapshot` already serializes the frozen v1 fields (`snapshot_id`,
+/// `captured_at`, `period_start`, `period_end`, `summary`); this only adds the
+/// event `type` tag from `packages/protocol`.
+#[allow(dead_code)]
+fn context_snapshot_frame(snapshot: &ContextSnapshot) -> String {
+    let mut value = serde_json::to_value(snapshot).expect("ContextSnapshot serializes");
+    value["type"] = serde_json::Value::String("context_snapshot".to_string());
+    value.to_string()
+}
+
+/// Frame a Session End Marker as the distinct `session_end_marker` event
+/// (canonical `ended_at` + `reason`; invariant 7).
+#[allow(dead_code)]
+fn session_end_marker_frame(marker: &SessionEndMarker) -> String {
+    let mut value = serde_json::to_value(marker).expect("SessionEndMarker serializes");
+    value["type"] = serde_json::Value::String("session_end_marker".to_string());
+    value.to_string()
+}
+
+#[async_trait]
+impl AgentSink for WsSessionAgentSink {
+    async fn emit_context_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError> {
+        self.session
+            .try_emit(context_snapshot_frame(snapshot))
+            .await
+            // The only TryEmitError is NotConnected → the socket is down.
+            .map_err(|_| PushError::NotConnected)
+    }
+
+    async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
+        let _ = self.session.try_emit(session_end_marker_frame(marker)).await;
     }
 }
 
@@ -288,6 +336,14 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("settings") {
                 if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
                     open_permission_setup_window(&window);
+                    // Detector-emits (ADR-0021): the Rust detection engine polls
+                    // and emits `permissions:status` while the wizard is open, so
+                    // the webview is a pure subscriber. Self-terminates on grant
+                    // completion.
+                    PermissionStatusEmitter::spawn_for(
+                        app.handle().clone(),
+                        permissions.clone() as Arc<dyn CapturePermissions>,
+                    );
                 } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
                     && domains::summarization::service::bundled::bundled_model_needs_install()
                 {
@@ -354,4 +410,62 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{context_snapshot_frame, session_end_marker_frame};
+    use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
+    use chrono::{TimeZone, Utc};
+    use serde_json::{json, Value};
+    use uuid::Uuid;
+
+    #[test]
+    fn context_snapshot_frame_carries_only_the_frozen_v1_fields() {
+        let captured_at = Utc.timestamp_opt(1_700_000_000, 0).single().unwrap();
+        let period_start = Utc.timestamp_opt(1_699_999_400, 0).single().unwrap();
+        let snapshot = ContextSnapshot {
+            snapshot_id: Uuid::nil(),
+            captured_at,
+            period_start,
+            period_end: captured_at,
+            summary: "did some things".to_string(),
+        };
+
+        let frame: Value = serde_json::from_str(&context_snapshot_frame(&snapshot)).unwrap();
+        let object = frame.as_object().expect("frame is a JSON object");
+
+        assert_eq!(frame["type"], json!("context_snapshot"));
+        assert_eq!(frame["snapshot_id"], json!(Uuid::nil().to_string()));
+        assert_eq!(frame["summary"], json!("did some things"));
+        // Datetimes pass through the struct's own serialization unchanged.
+        assert_eq!(frame["captured_at"], serde_json::to_value(captured_at).unwrap());
+        assert_eq!(frame["period_start"], serde_json::to_value(period_start).unwrap());
+        assert_eq!(frame["period_end"], serde_json::to_value(captured_at).unwrap());
+        // Invariant 6: no fields beyond `type` + the five frozen payload fields.
+        assert_eq!(
+            object.len(),
+            6,
+            "context_snapshot must not smuggle extra fields: {object:?}"
+        );
+    }
+
+    #[test]
+    fn session_end_marker_frame_is_its_own_event_with_canonical_fields() {
+        let ended_at = Utc.timestamp_opt(1_700_000_500, 0).single().unwrap();
+        let marker = SessionEndMarker {
+            ended_at,
+            reason: SessionEndReason::Quit,
+        };
+
+        let frame: Value = serde_json::from_str(&session_end_marker_frame(&marker)).unwrap();
+        let object = frame.as_object().expect("frame is a JSON object");
+
+        assert_eq!(frame["type"], json!("session_end_marker"));
+        assert_eq!(frame["ended_at"], serde_json::to_value(ended_at).unwrap());
+        // Reason serializes snake_case to match the protocol enum.
+        assert_eq!(frame["reason"], json!("quit"));
+        // Invariant 7: a distinct event of exactly `type` + `ended_at` + `reason`.
+        assert_eq!(object.len(), 3, "session_end_marker fields: {object:?}");
+    }
 }
