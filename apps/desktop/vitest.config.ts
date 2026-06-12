@@ -1,28 +1,20 @@
-import { fileURLToPath } from "node:url";
-
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-
-// Resolve the shared contract packages to their TypeScript source. Their
-// package `exports` map points `default` at `dist/`, which is only built by
-// turbo's `^build` — but the Desktop Vitest jobs (`desktop-ci`, `coverage`)
-// run `vitest` directly without that build step, so a dist-based import fails
-// to resolve. Pointing at source also makes `protocol-contract.test.ts` exercise
-// the *live* Zod schemas (no stale dist) and is naturally excluded from the
-// `src/**` coverage scope.
-const pkgSource = (relPath: string) => fileURLToPath(new URL(relPath, import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   css: {
     postcss: { plugins: [] },
   },
+  // The shared `@intentive/*` packages are internal and never published; their
+  // `exports` runtime entry (`default`) points at `dist/`, built only by turbo's
+  // `^build`. The Desktop Vitest jobs (`desktop-ci`, `coverage`) run `vitest`
+  // directly without that build, so resolve the packages through their `source`
+  // export condition instead. This needs no per-package alias list (transitive
+  // deps and future packages are covered automatically), exercises the *live*
+  // Zod schemas with no stale dist, and the source sits outside `src/**` coverage.
   resolve: {
-    alias: {
-      "@intentive/protocol": pkgSource("../../packages/protocol/src/index.ts"),
-      "@intentive/boundary": pkgSource("../../packages/boundary/src/index.ts"),
-      "@intentive/domain-types": pkgSource("../../packages/domain-types/src/index.ts"),
-    },
+    conditions: ["source"],
   },
   test: {
     environment: "jsdom",

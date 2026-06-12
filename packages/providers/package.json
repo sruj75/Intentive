@@ -7,18 +7,22 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
     "./auth": {
       "types": "./src/auth.ts",
+      "source": "./src/auth.ts",
       "default": "./dist/auth.js"
     },
     "./telemetry": {
       "types": "./src/telemetry.ts",
+      "source": "./src/telemetry.ts",
       "default": "./dist/telemetry.js"
     },
     "./flags": {
       "types": "./src/flags.ts",
+      "source": "./src/flags.ts",
       "default": "./dist/flags.js"
     }
   },
