@@ -1,10 +1,28 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+
+// Resolve the shared contract packages to their TypeScript source. Their
+// package `exports` map points `default` at `dist/`, which is only built by
+// turbo's `^build` — but the Desktop Vitest jobs (`desktop-ci`, `coverage`)
+// run `vitest` directly without that build step, so a dist-based import fails
+// to resolve. Pointing at source also makes `protocol-contract.test.ts` exercise
+// the *live* Zod schemas (no stale dist) and is naturally excluded from the
+// `src/**` coverage scope.
+const pkgSource = (relPath: string) => fileURLToPath(new URL(relPath, import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   css: {
     postcss: { plugins: [] },
+  },
+  resolve: {
+    alias: {
+      "@intentive/protocol": pkgSource("../../packages/protocol/src/index.ts"),
+      "@intentive/boundary": pkgSource("../../packages/boundary/src/index.ts"),
+      "@intentive/domain-types": pkgSource("../../packages/domain-types/src/index.ts"),
+    },
   },
   test: {
     environment: "jsdom",

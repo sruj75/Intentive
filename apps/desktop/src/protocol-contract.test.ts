@@ -20,7 +20,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { BoundaryParseError, parseClientToRuntimeEvent } from "@intentive/protocol";
+import {
+  BoundaryParseError,
+  parseClientToRuntimeEvent,
+  type SessionEndMarker,
+} from "@intentive/protocol";
 import { describe, expect, it } from "vitest";
 
 // Vitest runs with the Desktop package root as cwd; the committed Rust golden
@@ -44,25 +48,28 @@ describe("Rust Protocol frames satisfy the live Zod contract", () => {
   // The one enum that crosses the language wall. The Rust `SessionEndReason`
   // serializes snake_case (`user_toggle`/`quit`/`crash`); the contract must
   // accept each variant and reject anything else, or a renamed Rust variant
-  // would push frames the Runtime silently drops.
+  // would push frames the Runtime silently drops. The reason list and payload
+  // shape are typed against the imported `SessionEndMarker` contract — a renamed
+  // variant fails typecheck here rather than drifting silently.
   it("accepts every SessionEndReason variant the Rust enum can emit", () => {
-    for (const reason of ["user_toggle", "quit", "crash"] as const) {
-      const result = parseClientToRuntimeEvent({
+    const reasons: SessionEndMarker["reason"][] = ["user_toggle", "quit", "crash"];
+    for (const reason of reasons) {
+      const marker: SessionEndMarker = {
         type: "session_end_marker",
         ended_at: "2023-11-14T22:13:20Z",
         reason,
-      });
+      };
+      const result = parseClientToRuntimeEvent(marker);
       expect(result.type).toBe("session_end_marker");
     }
   });
 
   it("rejects a session_end_marker reason outside the contract enum", () => {
-    expect(() =>
-      parseClientToRuntimeEvent({
-        type: "session_end_marker",
-        ended_at: "2023-11-14T22:13:20Z",
-        reason: "unknown_reason",
-      }),
-    ).toThrow(BoundaryParseError);
+    const invalid = {
+      type: "session_end_marker",
+      ended_at: "2023-11-14T22:13:20Z",
+      reason: "unknown_reason",
+    };
+    expect(() => parseClientToRuntimeEvent(invalid)).toThrow(BoundaryParseError);
   });
 });
