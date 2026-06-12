@@ -19,7 +19,7 @@
 What it unlocks:
 
 - `#31` (closed) → Desktop `#34` / `#35` / `#43` — snapshot emit, signed-in smoke, and reliability harness.
-- `#29` + `#30` (closed) → Mobile `#33` / `#44` and AR `#36` / `#39` / `#41` — mobile Protocol/reconnect and runtime companion-message lanes.
+- `#29` + `#30` + `#33` (closed) → Mobile `#44` and AR `#36` / `#39` / `#41` — mobile reconnect and runtime companion-message lanes.
 - `#27` (closed) → `#49` (push fan-out) once AR `#41` lands.
 - `#15` (closed) → `#51` (telemetry/flags) → `#52` (CI rule enforcement).
 
@@ -52,7 +52,7 @@ flowchart TD
   N43 --> N44
   N45 --> N44
 
-  N23 --> N27["#33 MOBILE Protocol client"]
+  N23 --> N27["#33 MOBILE Protocol client (closed)"]
   N24 --> N27
   N27 --> N38["#44 MOBILE Reconnect hydration"]
   N27 --> N39["#45 MOBILE Liquid Glass chat shell"]
