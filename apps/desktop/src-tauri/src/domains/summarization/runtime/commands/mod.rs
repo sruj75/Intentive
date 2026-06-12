@@ -11,8 +11,9 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
+use crate::domains::summarization::runtime::{LlmProviderSlot, ReadyProvider};
 use crate::domains::summarization::service::{LlmProvider, PullProgress};
-use crate::{LlmProviderSlot, ProviderConfigState};
+use crate::ProviderConfigState;
 
 /// Event name emitted for each progress tick while the bundled model pulls.
 pub const EVENT_PROGRESS: &str = "bundled-ollama:progress";
@@ -62,7 +63,7 @@ pub async fn start_model_download(
 
     match result {
         Ok(provider) => {
-            *slot.0.lock().await = Some(Arc::new(provider));
+            *slot.0.lock().await = Some(Arc::new(provider) as Arc<dyn ReadyProvider>);
             let _ = app.emit(EVENT_COMPLETE, ());
             Ok(())
         }

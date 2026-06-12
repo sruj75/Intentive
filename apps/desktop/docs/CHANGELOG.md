@@ -153,6 +153,31 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Capture Session lifecycle table** — the full shell-state transition table
+  now lives in a pure `decide()` function in `capture/service/` (mirroring
+  `routing::service::transition`). `CaptureStateMachine` is a thin state holder;
+  the coordinator is wiring-only (`apply` + effect dispatch). Service tests
+  hold the transition table; coordinator tests prove effect dispatch only.
+
+- **Capture Permission Setup status emitter** —
+  `providers/permissions/status_emitter/` polls grants on a ~1.5s cadence while
+  the setup surface is open and emits `permissions:status` on change. A
+  supervisor prevents duplicate emitter tasks; wake-grace suppression surfaces
+  grant improvements immediately while filtering transient regressions after
+  sleep/wake. Opening permission setup (menu bar or startup) centralizes through
+  `menubar::ui::open_permission_setup`.
+
+- **Routing outbound emit seam (#34 prep)** — `WsSession::try_emit` registers an
+  mpsc outbound channel for the lifetime of each live WebSocket connection.
+  `lib.rs` adds the dormant `WsSessionAgentSink` bridge framing
+  `context_snapshot` / `session_end_marker` events; the heartbeat still uses
+  `NoopAgentSink` until #34.
+
+- **Lazy LLM Provider resolution in summarization runtime** —
+  `LlmProviderSlot`, `LazyLlmProvider`, and `LiveProviderResolver` moved from
+  `lib.rs` into `summarization/runtime/`. The composition root keeps only
+  cross-domain trait bridges (`Summarizer`, future `AgentSink`).
+
 - **Capture Session shell state** — `CaptureState` gains `SetupRequired`
   (signed in, idle, Desktop Capture Readiness false), distinct from
   `Stopped`, `Unauthenticated`, and `Error`. Mid-session grant revocation

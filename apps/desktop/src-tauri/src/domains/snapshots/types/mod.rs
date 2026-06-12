@@ -24,7 +24,7 @@ pub struct ContextSnapshot {
 /// "session over" on the runtime side.
 ///
 /// Field names align with the canonical `session_end_marker` wire shape.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionEndReason {
     UserToggle,

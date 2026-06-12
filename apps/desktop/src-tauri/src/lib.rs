@@ -8,7 +8,6 @@ use tauri::path::BaseDirectory;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::WebviewWindow;
-use tokio::sync::Mutex;
 use url::Url;
 
 use domains::capture::runtime::coordinator::CaptureSessionCoordinator;
@@ -25,61 +24,43 @@ use domains::routing::runtime::{
 };
 use domains::routing::types::{ConnectionStatus, RoutingState, SessionState};
 use domains::snapshots::repo::SnapshotStore;
-use domains::snapshots::runtime::agent_interface::{AgentSink, NoopAgentSink};
+use domains::snapshots::runtime::agent_interface::{AgentSink, NoopAgentSink, PushError};
 use domains::snapshots::runtime::heartbeat::{
     ContextHeartbeat, ReqwestActivityClient, ScreenpipeUrlSource, Summarizer, SummarizerError,
 };
-use domains::snapshots::types::SessionEndReason;
+use domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
 use domains::summarization::config::ProviderConfig;
-use domains::summarization::service::LlmProvider;
+use domains::summarization::runtime::{
+    LazyLlmProvider, LiveProviderResolver, LlmProviderSlot, SummarizeError,
+};
+use providers::permissions::status_emitter::PermissionEmitterSupervisor;
 use providers::permissions::{CapturePermissions, MacosCapturePermissions};
 use tokio::sync::mpsc;
 
-/// Tauri-managed state for the resolved on-device LLM Provider. Starts as
-/// `None`; the Context Heartbeat prepares any already-available tier when a
-/// Capture Session starts, while `start_model_download` supplies Tier 3 after
-/// explicit onboarding consent. A tick skips only while no tier is ready.
-pub struct LlmProviderSlot(pub Mutex<Option<Arc<LlmProvider>>>);
-
-/// Production adapter wiring `LlmProviderSlot` behind the heartbeat's
-/// `Summarizer` seam. Lives here (not in `context_heartbeat`) because
-/// `LlmProviderSlot` is a Tauri-state concern owned by this wiring layer.
+/// Cross-domain bridge: implements the snapshots `Summarizer` trait by
+/// delegating to the summarization domain's [`LazyLlmProvider`]. The
+/// resolve-once-and-cache *behavior* lives in `summarization::runtime`; only
+/// this thin trait bridge stays in the composition root (the rust-architecture
+/// linter allows the cross-domain `Summarizer` impl only here). It maps the
+/// domain's `SummarizeError` onto the heartbeat's `SummarizerError` arms.
 struct LlmProviderSlotSummarizer {
-    slot: Arc<LlmProviderSlot>,
-    config: ProviderConfig,
-    screenpipe_endpoint: ScreenpipeEndpoint,
-    http: reqwest::Client,
+    lazy: LazyLlmProvider,
 }
 
 #[async_trait]
 impl Summarizer for LlmProviderSlotSummarizer {
     async fn prepare(&self) {
-        self.resolve_ready_if_needed().await;
+        self.lazy.prepare().await;
     }
 
     async fn summarize(&self, activity: &str) -> Result<String, SummarizerError> {
-        self.resolve_ready_if_needed().await;
-        let provider = {
-            let guard = self.slot.0.lock().await;
-            guard.as_ref().cloned().ok_or(SummarizerError::Unresolved)?
-        };
-        provider
+        self.lazy
             .summarize(activity)
             .await
-            .map_err(|e| SummarizerError::Failed(e.to_string()))
-    }
-}
-
-impl LlmProviderSlotSummarizer {
-    async fn resolve_ready_if_needed(&self) {
-        if self.slot.0.lock().await.is_some() {
-            return;
-        }
-        let mut config = self.config.clone();
-        config.screenpipe_url = self.screenpipe_endpoint.current_or_primary_url();
-        if let Ok(provider) = LlmProvider::resolve_ready(config, self.http.clone()).await {
-            *self.slot.0.lock().await = Some(Arc::new(provider));
-        }
+            .map_err(|e| match e {
+                SummarizeError::Unresolved => SummarizerError::Unresolved,
+                SummarizeError::Provider(pe) => SummarizerError::Failed(pe.to_string()),
+            })
     }
 }
 
@@ -105,6 +86,53 @@ impl SessionHooks for HeartbeatHooks {
 
     async fn on_session_end(&self, reason: SessionEndReason) {
         self.0.clone().stop(reason).await;
+    }
+}
+
+/// Uninstalled (#34) cross-domain bridge: implements the snapshots `AgentSink`
+/// by framing Context Snapshots / Session End Markers as Protocol events and
+/// pushing them through the routing `WsSession`'s dormant `try_emit` seam, and
+/// maps routing's `TryEmitError` onto the snapshots `PushError`. It lives at the
+/// composition root because it names two domains' runtime types, which the
+/// layer rule allows only here. `lib.rs` keeps `NoopAgentSink` installed on the
+/// heartbeat; swapping in this adapter is the one-line #34 change.
+#[allow(dead_code)]
+struct WsSessionAgentSink {
+    session: Arc<WsSession>,
+}
+
+/// Frame a Context Snapshot as the `context_snapshot` Protocol event. The Rust
+/// `ContextSnapshot` already serializes the frozen v1 fields (`snapshot_id`,
+/// `captured_at`, `period_start`, `period_end`, `summary`); this only adds the
+/// event `type` tag from `packages/protocol`.
+#[allow(dead_code)]
+fn context_snapshot_frame(snapshot: &ContextSnapshot) -> String {
+    let mut value = serde_json::to_value(snapshot).expect("ContextSnapshot serializes");
+    value["type"] = serde_json::Value::String("context_snapshot".to_string());
+    value.to_string()
+}
+
+/// Frame a Session End Marker as the distinct `session_end_marker` event
+/// (canonical `ended_at` + `reason`; invariant 7).
+#[allow(dead_code)]
+fn session_end_marker_frame(marker: &SessionEndMarker) -> String {
+    let mut value = serde_json::to_value(marker).expect("SessionEndMarker serializes");
+    value["type"] = serde_json::Value::String("session_end_marker".to_string());
+    value.to_string()
+}
+
+#[async_trait]
+impl AgentSink for WsSessionAgentSink {
+    async fn emit_context_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError> {
+        self.session
+            .try_emit(context_snapshot_frame(snapshot))
+            .await
+            // The only TryEmitError is NotConnected → the socket is down.
+            .map_err(|_| PushError::NotConnected)
+    }
+
+    async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
+        let _ = self.session.try_emit(session_end_marker_frame(marker)).await;
     }
 }
 
@@ -136,12 +164,6 @@ fn open_onboarding_window(window: &WebviewWindow) {
     let _ = window.set_focus();
 }
 
-fn open_permission_setup_window(window: &WebviewWindow) {
-    let _ = window.eval("window.location.search = '?surface=permission-setup';");
-    let _ = window.show();
-    let _ = window.set_focus();
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -162,6 +184,7 @@ pub fn run() {
             let signed_in = auth.is_signed_in();
             let permissions = Arc::new(MacosCapturePermissions);
             app.manage(permissions.clone() as Arc<dyn CapturePermissions>);
+            app.manage(PermissionEmitterSupervisor::default());
             let coordinator: Arc<CaptureSessionCoordinator> = CaptureSessionCoordinator::new(
                 supervisor.clone() as Arc<dyn Supervisor>,
                 events_rx,
@@ -215,7 +238,7 @@ pub fn run() {
                 config: provider_config.clone(),
                 screenpipe_endpoint: screenpipe_endpoint.clone(),
             });
-            let llm_slot = Arc::new(LlmProviderSlot(Mutex::new(None)));
+            let llm_slot = Arc::new(LlmProviderSlot::empty());
             app.manage(llm_slot.clone());
 
             // Routing + Protocol WebSocket session skeleton (Issue #31). The
@@ -269,11 +292,16 @@ pub fn run() {
                 app.state::<Arc<SnapshotStore>>().inner().clone();
             let http = reqwest::Client::new();
             let agent_sink: Arc<dyn AgentSink> = Arc::new(NoopAgentSink);
+            let resolver = Arc::new(LiveProviderResolver::new(
+                provider_config,
+                http.clone(),
+                Arc::new({
+                    let endpoint = screenpipe_endpoint.clone();
+                    move || endpoint.current_or_primary_url()
+                }),
+            ));
             let summarizer = Arc::new(LlmProviderSlotSummarizer {
-                slot: llm_slot.clone(),
-                config: provider_config,
-                screenpipe_endpoint: screenpipe_endpoint.clone(),
-                http: http.clone(),
+                lazy: LazyLlmProvider::new(llm_slot.clone(), resolver),
             });
             let activity_client = Arc::new(ReqwestActivityClient::new(http));
             let heartbeat = ContextHeartbeat::new(
@@ -300,12 +328,12 @@ pub fn run() {
             // the coordinator's snapshot() — refactor canonicalized this
             // path; StateHolder no longer exists. Models-root resolution,
             // disk probe, and failsafe direction live inside the helper.
-            if let Some(window) = app.get_webview_window("settings") {
-                if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
-                    open_permission_setup_window(&window);
-                } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
-                    && domains::summarization::service::bundled::bundled_model_needs_install()
-                {
+            if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
+                domains::menubar::ui::open_permission_setup_window(app.handle());
+            } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
+                && domains::summarization::service::bundled::bundled_model_needs_install()
+            {
+                if let Some(window) = app.get_webview_window("settings") {
                     open_onboarding_window(&window);
                 }
             }
@@ -369,4 +397,62 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{context_snapshot_frame, session_end_marker_frame};
+    use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
+    use chrono::{TimeZone, Utc};
+    use serde_json::{json, Value};
+    use uuid::Uuid;
+
+    #[test]
+    fn context_snapshot_frame_carries_only_the_frozen_v1_fields() {
+        let captured_at = Utc.timestamp_opt(1_700_000_000, 0).single().unwrap();
+        let period_start = Utc.timestamp_opt(1_699_999_400, 0).single().unwrap();
+        let snapshot = ContextSnapshot {
+            snapshot_id: Uuid::nil(),
+            captured_at,
+            period_start,
+            period_end: captured_at,
+            summary: "did some things".to_string(),
+        };
+
+        let frame: Value = serde_json::from_str(&context_snapshot_frame(&snapshot)).unwrap();
+        let object = frame.as_object().expect("frame is a JSON object");
+
+        assert_eq!(frame["type"], json!("context_snapshot"));
+        assert_eq!(frame["snapshot_id"], json!(Uuid::nil().to_string()));
+        assert_eq!(frame["summary"], json!("did some things"));
+        // Datetimes pass through the struct's own serialization unchanged.
+        assert_eq!(frame["captured_at"], serde_json::to_value(captured_at).unwrap());
+        assert_eq!(frame["period_start"], serde_json::to_value(period_start).unwrap());
+        assert_eq!(frame["period_end"], serde_json::to_value(captured_at).unwrap());
+        // Invariant 6: no fields beyond `type` + the five frozen payload fields.
+        assert_eq!(
+            object.len(),
+            6,
+            "context_snapshot must not smuggle extra fields: {object:?}"
+        );
+    }
+
+    #[test]
+    fn session_end_marker_frame_is_its_own_event_with_canonical_fields() {
+        let ended_at = Utc.timestamp_opt(1_700_000_500, 0).single().unwrap();
+        let marker = SessionEndMarker {
+            ended_at,
+            reason: SessionEndReason::Quit,
+        };
+
+        let frame: Value = serde_json::from_str(&session_end_marker_frame(&marker)).unwrap();
+        let object = frame.as_object().expect("frame is a JSON object");
+
+        assert_eq!(frame["type"], json!("session_end_marker"));
+        assert_eq!(frame["ended_at"], serde_json::to_value(ended_at).unwrap());
+        // Reason serializes snake_case to match the protocol enum.
+        assert_eq!(frame["reason"], json!("quit"));
+        // Invariant 7: a distinct event of exactly `type` + `ended_at` + `reason`.
+        assert_eq!(object.len(), 3, "session_end_marker fields: {object:?}");
+    }
 }

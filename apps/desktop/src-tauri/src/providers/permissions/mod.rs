@@ -12,6 +12,13 @@ use serde::{Deserialize, Serialize};
 use crate::domains::capture::service::ReadinessChecker;
 
 pub mod commands;
+pub mod status_emitter;
+
+/// Tauri event carrying the per-permission [`PermissionSet`] snapshot. Both the
+/// on-demand `capture_permission_status` command and the timed
+/// [`status_emitter::PermissionStatusEmitter`] publish under this single name;
+/// the Capture Permission Setup webview is a pure subscriber to it.
+pub const PERMISSIONS_STATUS_EVENT: &str = "permissions:status";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PermissionSet {
@@ -23,6 +30,18 @@ pub struct PermissionSet {
 impl PermissionSet {
     pub fn all_granted(&self) -> bool {
         self.screen_recording && self.microphone && self.accessibility
+    }
+
+    /// True when `self` has *lost* a grant that `prev` held — i.e. some
+    /// permission that was granted now reads as missing. A snapshot that only
+    /// gains grants (an improvement) is not a regression. Used by the setup
+    /// emitter to decide what to suppress during the post-wake grace window:
+    /// transient regressions are the documented false-positive after sleep/wake;
+    /// improvements are always trustworthy and surface immediately.
+    pub fn is_regression_from(&self, prev: &PermissionSet) -> bool {
+        (prev.screen_recording && !self.screen_recording)
+            || (prev.microphone && !self.microphone)
+            || (prev.accessibility && !self.accessibility)
     }
 }
 
@@ -269,6 +288,34 @@ mod tests {
             accessibility: true,
         }
         .all_granted());
+    }
+
+    #[test]
+    fn permission_set_reports_regression_only_when_a_granted_bit_drops() {
+        let granted = PermissionSet {
+            screen_recording: true,
+            microphone: true,
+            accessibility: false,
+        };
+
+        // A dropped grant is a regression.
+        assert!(PermissionSet {
+            screen_recording: false,
+            microphone: true,
+            accessibility: false,
+        }
+        .is_regression_from(&granted));
+
+        // Gaining a grant is an improvement, not a regression.
+        assert!(!PermissionSet {
+            screen_recording: true,
+            microphone: true,
+            accessibility: true,
+        }
+        .is_regression_from(&granted));
+
+        // An unchanged set is not a regression.
+        assert!(!granted.is_regression_from(&granted));
     }
 
     #[test]

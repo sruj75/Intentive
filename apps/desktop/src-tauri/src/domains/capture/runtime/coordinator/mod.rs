@@ -13,12 +13,12 @@ use tokio::sync::mpsc;
 
 use crate::domains::capture::runtime::screenpipe_supervisor::{Supervisor, SupervisorEvent};
 use crate::domains::capture::service::{
-    AuthChecker, CaptureStateMachine, ReadinessChecker, TransitionError,
+    decide, AuthChecker, CaptureInput, CaptureStateMachine, Effect, ReadinessChecker,
 };
 use crate::domains::capture::types::session::{
     CaptureSessionControl, CoordinatorCommand, SessionHooks, StateObserver,
 };
-use crate::domains::capture::types::state::{CaptureState, ErrorReason};
+use crate::domains::capture::types::state::CaptureState;
 use crate::domains::snapshots::types::SessionEndReason;
 
 struct Inner {
@@ -114,11 +114,11 @@ impl CaptureSessionCoordinator {
         loop {
             tokio::select! {
                 cmd = command_rx.recv() => match cmd {
-                    Some(cmd) => self.inner.handle_command(cmd).await,
+                    Some(cmd) => self.inner.apply(CaptureInput::Command(cmd)).await,
                     None => return,
                 },
                 evt = supervisor_rx.recv() => match evt {
-                    Some(evt) => self.inner.handle_supervisor_event(evt).await,
+                    Some(evt) => self.inner.apply(supervisor_input(evt)).await,
                     None => {
                         // Supervisor channel closed; keep listening for commands.
                         continue;
@@ -151,148 +151,40 @@ impl Inner {
         }
     }
 
-    async fn handle_command(&self, command: CoordinatorCommand) {
-        match command {
-            CoordinatorCommand::ToggleRequested => self.handle_toggle().await,
-            CoordinatorCommand::SignInCompleted => self.handle_sign_in_completed().await,
-            CoordinatorCommand::ReadinessChanged(ready) => {
-                self.handle_readiness_changed(ready).await
-            }
-            CoordinatorCommand::SimulateError(reason) => self.handle_simulate_error(reason),
-        }
-    }
-
-    async fn handle_toggle(&self) {
-        let next = {
+    /// Single entry point for both command and supervisor inputs: sample live
+    /// readiness, ask the pure `decide` table for the transition, write the new
+    /// state under lock, notify observers, then dispatch the effect. All the
+    /// lifecycle decisions live in `service::decide`; this is pure wiring.
+    async fn apply(&self, input: CaptureInput) {
+        let ready = self.readiness.is_capture_ready();
+        let transition = {
             let mut fsm = self.fsm.lock().expect("fsm poisoned");
-            match fsm.toggle() {
-                Ok(state) => state.clone(),
-                Err(TransitionError::NotToggleable) => return,
-            }
+            let Some(transition) = decide(fsm.state(), &input, ready) else {
+                return;
+            };
+            fsm.set(transition.next.clone());
+            transition
         };
-        match next {
-            CaptureState::Capturing => {
-                if !self.readiness.is_capture_ready() {
-                    let blocked = {
-                        let mut fsm = self.fsm.lock().expect("fsm poisoned");
-                        fsm.to_setup_required().clone()
-                    };
-                    self.notify_observers(&blocked);
-                    return;
-                }
-                self.notify_observers(&next);
+        // Observers see the settled state before any async effect runs, so a
+        // StopSession/EndSession marker fires after the FSM has settled in its
+        // terminal state (preserving prior ordering).
+        self.notify_observers(&transition.next);
+        match transition.effect {
+            Effect::None => {}
+            Effect::StartSession => {
                 let _ = self.supervisor.start().await;
                 self.start_heartbeat().await;
             }
-            CaptureState::Stopped => {
-                self.notify_observers(&next);
+            Effect::StopSession(reason) => {
                 let _ = self.supervisor.stop().await;
-                self.stop_heartbeat(SessionEndReason::UserToggle).await;
+                self.stop_heartbeat(reason).await;
             }
-            _ => self.notify_observers(&next),
+            // ScreenPipe is already gone (supervisor reported Stopped/Crashed):
+            // end the heartbeat without re-issuing supervisor.stop().
+            Effect::EndSession(reason) => {
+                self.stop_heartbeat(reason).await;
+            }
         }
-    }
-
-    async fn handle_sign_in_completed(&self) {
-        let next = {
-            let mut fsm = self.fsm.lock().expect("fsm poisoned");
-            fsm.mark_signed_in(self.readiness.is_capture_ready())
-                .clone()
-        };
-        self.notify_observers(&next);
-        if matches!(next, CaptureState::Capturing) {
-            // Completing sign-in starts a Capture Session only when the local
-            // permission interlock is already satisfied.
-            let _ = self.supervisor.start().await;
-            self.start_heartbeat().await;
-        }
-    }
-
-    async fn handle_readiness_changed(&self, ready: bool) {
-        // The supervisor side effect differs per arm, so model it explicitly
-        // rather than overloading a `should_start: bool`: the recovery arm must
-        // neither start nor stop.
-        enum Effect {
-            Start,
-            Stop,
-            NotifyOnly,
-        }
-        let outcome = {
-            let mut fsm = self.fsm.lock().expect("fsm poisoned");
-            match (fsm.state(), ready) {
-                (CaptureState::SetupRequired, true) => {
-                    Some((fsm.mark_ready().clone(), Effect::Start))
-                }
-                (CaptureState::Capturing, false) => {
-                    Some((fsm.to_setup_required().clone(), Effect::Stop))
-                }
-                // A crash is classified as Error first; the monitor poll is the
-                // single authority for permission state. Once it observes that
-                // a grant is actually gone, reclassify Error to the
-                // SetupRequired recovery flow. ScreenPipe is already dead and
-                // the heartbeat already ended at crash time, so this arm does
-                // no stop / heartbeat work.
-                (CaptureState::Error(_), false) => {
-                    Some((fsm.to_setup_required().clone(), Effect::NotifyOnly))
-                }
-                _ => None,
-            }
-        };
-        let Some((next, effect)) = outcome else {
-            return;
-        };
-        self.notify_observers(&next);
-        match effect {
-            Effect::Start => {
-                let _ = self.supervisor.start().await;
-                self.start_heartbeat().await;
-            }
-            Effect::Stop => {
-                let _ = self.supervisor.stop().await;
-                self.stop_heartbeat(SessionEndReason::Quit).await;
-            }
-            Effect::NotifyOnly => {}
-        }
-    }
-
-    fn handle_simulate_error(&self, reason: ErrorReason) {
-        let next = {
-            let mut fsm = self.fsm.lock().expect("fsm poisoned");
-            fsm.to_error(reason).clone()
-        };
-        self.notify_observers(&next);
-    }
-
-    async fn handle_supervisor_event(&self, event: SupervisorEvent) {
-        let (next, reason) = {
-            let mut fsm = self.fsm.lock().expect("fsm poisoned");
-            match event {
-                SupervisorEvent::Stopped => {
-                    // The supervisor reports Stopped both for a real child
-                    // exit while Capturing and after the readiness-revocation
-                    // stop() path that already moved the shell to
-                    // SetupRequired. Only honor it as a Capturing -> Stopped
-                    // settle; otherwise it would clobber SetupRequired or
-                    // Error.
-                    if !matches!(fsm.state(), CaptureState::Capturing) {
-                        return;
-                    }
-                    (fsm.recover_to_stopped().clone(), SessionEndReason::Quit)
-                }
-                SupervisorEvent::Crashed { user_facing_copy } => {
-                    if !matches!(fsm.state(), CaptureState::Capturing) {
-                        return;
-                    }
-                    let reason = ErrorReason::new(user_facing_copy.to_string())
-                        .expect("supervisor crash copy is non-empty");
-                    (fsm.to_error(reason).clone(), SessionEndReason::Crash)
-                }
-            }
-        };
-        self.notify_observers(&next);
-        // ScreenPipe is gone either way — stop the heartbeat so its Session
-        // End Marker fires before the FSM settles in its terminal state.
-        self.stop_heartbeat(reason).await;
     }
 
     fn heartbeat_handle(&self) -> Option<Arc<dyn SessionHooks>> {
@@ -312,6 +204,18 @@ impl Inner {
         if let Some(hb) = self.heartbeat_handle() {
             hb.on_session_end(reason).await;
         }
+    }
+}
+
+/// Translate a `runtime`-layer supervisor event into the `service`-owned
+/// [`CaptureInput`] the pure `decide` table speaks. This is the cross-layer
+/// boundary that keeps `service` free of any `runtime` dependency.
+fn supervisor_input(event: SupervisorEvent) -> CaptureInput {
+    match event {
+        SupervisorEvent::Stopped => CaptureInput::SupervisorStopped,
+        SupervisorEvent::Crashed { user_facing_copy } => CaptureInput::SupervisorCrashed {
+            user_facing_copy: user_facing_copy.to_string(),
+        },
     }
 }
 

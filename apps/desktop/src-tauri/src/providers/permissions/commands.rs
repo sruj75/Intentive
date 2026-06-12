@@ -4,9 +4,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tauri::Emitter;
 
-use super::{CapturePermissions, PermissionSet};
-
-const PERMISSIONS_STATUS_EVENT: &str = "permissions:status";
+use super::{CapturePermissions, PermissionSet, PERMISSIONS_STATUS_EVENT};
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]

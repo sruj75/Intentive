@@ -137,31 +137,24 @@ describe("Capture Permission Setup", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Capture is ready" })).toBeTruthy();
   });
 
-  it("auto-advances as permission polling observes OS-side grants", async () => {
+  it("does not self-poll — the detection engine owns the granular poll", async () => {
+    // The webview seeds once on mount, then renders from emitted
+    // `permissions:status` events. It must NOT run its own recurring poll;
+    // advancing time triggers no further `capture_permission_status` calls.
     vi.useFakeTimers();
-    invokeMock.mockResolvedValue({
-      screen_recording: false,
-      microphone: false,
-      accessibility: false,
-    } satisfies PermissionSet);
-
     render(<CapturePermissionSetup />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Screen & System Audio Recording" }),
-    ).toBeTruthy();
 
-    invokeMock.mockResolvedValue({
-      screen_recording: true,
-      microphone: false,
-      accessibility: false,
-    } satisfies PermissionSet);
+    const statusCalls = () =>
+      invokeMock.mock.calls.filter(([command]) => command === "capture_permission_status").length;
+    const seeded = statusCalls();
+    expect(seeded).toBe(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(10_000);
     });
 
-    expect(screen.getByRole("heading", { level: 1, name: "Microphone" })).toBeTruthy();
+    expect(statusCalls()).toBe(seeded);
   });
 });
