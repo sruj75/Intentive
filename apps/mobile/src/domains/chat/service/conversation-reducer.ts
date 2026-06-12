@@ -2,7 +2,12 @@ import type { AgentState, ConversationMessage, MessageStoreState } from "../type
 
 export type ConversationEvent =
   | {
-      readonly type: "snapshot";
+      readonly type: "reconnect_snapshot";
+      readonly messages: readonly RuntimeSnapshotMessage[];
+      readonly beforeCursor: string | null;
+    }
+  | {
+      readonly type: "history_backfill";
       readonly messages: readonly RuntimeSnapshotMessage[];
       readonly beforeCursor: string | null;
     }
@@ -40,11 +45,24 @@ export function reduceConversationState(
   event: ConversationEvent,
 ): MessageStoreState {
   switch (event.type) {
-    case "snapshot": {
-      const messages = event.messages.reduce(
-        (next, message) => upsertMessage(next, fromSnapshotMessage(message)),
-        state.messages,
-      );
+    case "reconnect_snapshot": {
+      const messages = mergeServerPage({
+        currentMessages: state.messages,
+        pageMessages: event.messages,
+        placement: "replace_server_window",
+      });
+      return {
+        messages,
+        beforeCursor: event.beforeCursor,
+        agentState: deriveAgentState(messages, state.agentState),
+      };
+    }
+    case "history_backfill": {
+      const messages = mergeServerPage({
+        currentMessages: state.messages,
+        pageMessages: event.messages,
+        placement: "prepend",
+      });
       return {
         messages,
         beforeCursor: event.beforeCursor,
@@ -83,6 +101,47 @@ export function reduceConversationState(
   }
 }
 
+function mergeServerPage({
+  currentMessages,
+  pageMessages,
+  placement,
+}: {
+  readonly currentMessages: readonly ConversationMessage[];
+  readonly pageMessages: readonly RuntimeSnapshotMessage[];
+  readonly placement: "replace_server_window" | "prepend";
+}): readonly ConversationMessage[] {
+  const serverMessages = dedupeServerPage(pageMessages).map((message) => {
+    const incoming = fromSnapshotMessage(message);
+    const current = currentMessages.find((existing) => existing.id === incoming.id);
+    return current ? reconcileMessage(current, incoming) : incoming;
+  });
+  const serverIds = new Set(serverMessages.map((message) => message.id));
+
+  if (placement === "prepend") {
+    return [...serverMessages, ...currentMessages.filter((message) => !serverIds.has(message.id))];
+  }
+
+  return [
+    ...serverMessages,
+    ...currentMessages.filter(
+      (message) => !serverIds.has(message.id) && isLocalOnlyOutbound(message),
+    ),
+  ];
+}
+
+function dedupeServerPage(
+  messages: readonly RuntimeSnapshotMessage[],
+): readonly RuntimeSnapshotMessage[] {
+  const seen = new Set<string>();
+  const deduped: RuntimeSnapshotMessage[] = [];
+  for (const message of messages) {
+    if (seen.has(message.message_id)) continue;
+    seen.add(message.message_id);
+    deduped.push(message);
+  }
+  return deduped;
+}
+
 function fromSnapshotMessage(message: RuntimeSnapshotMessage): ConversationMessage {
   return {
     id: message.message_id,
@@ -92,6 +151,12 @@ function fromSnapshotMessage(message: RuntimeSnapshotMessage): ConversationMessa
     viaPostMessageBack: message.via_post_message_back,
     ...(message.author === "user" ? { delivery: "confirmed" as const } : {}),
   };
+}
+
+function isLocalOnlyOutbound(message: ConversationMessage): boolean {
+  return (
+    message.author === "user" && (message.delivery === "pending" || message.delivery === "failed")
+  );
 }
 
 function upsertMessage(

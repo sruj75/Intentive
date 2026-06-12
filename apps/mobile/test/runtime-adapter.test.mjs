@@ -125,6 +125,36 @@ test("sendUserMessage during connecting queues one frame and flushes after socke
   );
 });
 
+test("sendUserMessage during connecting keeps hello_ok server order authoritative", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+
+  await harness.adapter.sendUserMessage(" hello ");
+  harness.sockets[0].open();
+  harness.sockets[0].message({
+    type: "hello_ok",
+    session_snapshot: {
+      messages: [
+        {
+          message_id: "opening",
+          author: "companion",
+          body: "Welcome",
+          at,
+          via_post_message_back: false,
+        },
+      ],
+      before_cursor: null,
+    },
+  });
+
+  assert.deepEqual(
+    harness.adapter
+      .getState()
+      .messages.map((message) => `${message.id}:${message.delivery ?? "server"}`),
+    ["opening:server", "id-1:pending"],
+  );
+});
+
 test("sendUserMessage during retrying queues one frame and flushes after retry opens", async () => {
   const fetches = [response(503, {}), okRoutingResponse()];
   const harness = createHarness({
@@ -158,6 +188,13 @@ test("queued outbound keeps message_id and reconciles when snapshot confirms it"
     session_snapshot: {
       messages: [
         {
+          message_id: "opening",
+          author: "companion",
+          body: "Welcome",
+          at,
+          via_post_message_back: false,
+        },
+        {
           message_id: "id-1",
           author: "user",
           body: "hello",
@@ -169,9 +206,11 @@ test("queued outbound keeps message_id and reconciles when snapshot confirms it"
     },
   });
 
-  assert.equal(harness.adapter.getState().messages.length, 1);
-  assert.equal(harness.adapter.getState().messages[0].id, "id-1");
-  assert.equal(harness.adapter.getState().messages[0].delivery, "confirmed");
+  assert.deepEqual(
+    harness.adapter.getState().messages.map((message) => message.id),
+    ["opening", "id-1"],
+  );
+  assert.equal(harness.adapter.getState().messages[1].delivery, "confirmed");
 });
 
 test("terminal socket and Protocol errors mark pending outbound failed", async () => {

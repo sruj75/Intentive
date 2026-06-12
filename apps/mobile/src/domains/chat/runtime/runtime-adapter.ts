@@ -168,7 +168,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     switch (event.type) {
       case "hello_ok":
         dispatch({
-          type: "snapshot",
+          type: "reconnect_snapshot",
           messages: event.session_snapshot.messages,
           beforeCursor: event.session_snapshot.before_cursor,
         });
@@ -176,7 +176,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
         return;
       case "history_backfill_response":
         dispatch({
-          type: "snapshot",
+          type: "history_backfill",
           messages: event.session_snapshot.messages,
           beforeCursor: event.session_snapshot.before_cursor,
         });
