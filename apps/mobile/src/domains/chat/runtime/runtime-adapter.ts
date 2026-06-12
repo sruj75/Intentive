@@ -46,7 +46,6 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     error: null,
   };
   let socket: WebSocketLike | null = null;
-  let socketIsReady = false;
   let retryCancel: { cancel(): void } | null = null;
   let closed = false;
   let connectionGeneration = 0;
@@ -142,6 +141,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     };
     socket.onclose = () => {
       if (!isCurrentGeneration(generation)) return;
+      closeSocket();
       markPendingOutboundFailed();
       scheduleRoutingRetry(generation);
     };
@@ -188,7 +188,6 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
           messages: event.session_snapshot.messages,
           beforeCursor: event.session_snapshot.before_cursor,
         });
-        socketIsReady = true;
         setConnection("connected");
         flushOutboundQueue();
         return;
@@ -220,11 +219,15 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     flushOutboundQueue();
   };
 
+  const isReadyToSend = () => socket !== null && state.connectionState === "connected";
+
   const flushOutboundQueue = () => {
-    if (!socketIsReady || outboundQueue.length === 0) return;
-    const pending = outboundQueue;
-    outboundQueue = [];
-    for (const event of pending) sendNow(event);
+    if (!isReadyToSend()) return;
+    while (outboundQueue.length > 0) {
+      const next = outboundQueue[0];
+      if (next === undefined || !sendNow(next)) return;
+      outboundQueue = outboundQueue.slice(1);
+    }
   };
 
   const sendNow = (event: ClientToRuntimeEvent) => {
@@ -284,7 +287,6 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   const closeSocket = () => {
     const current = socket;
     socket = null;
-    socketIsReady = false;
     if (!current) return;
     current.onopen = null;
     current.onmessage = null;

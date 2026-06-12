@@ -455,6 +455,33 @@ test("socket drop retries routing and a duplicate snapshot does not double the o
   assert.equal(harness.adapter.getState().messages[0].id, "opening");
 });
 
+test("message typed after a connected socket drops is delivered on the next connection", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+  harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
+
+  harness.sockets[0].closeFromServer();
+  assert.equal(harness.adapter.getState().connectionState, "retrying");
+
+  await harness.adapter.sendUserMessage("hello");
+
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
+
+  harness.runNextTimer();
+  await harness.flush();
+  harness.sockets[1].open();
+  harness.sockets[1].message(emptySnapshot());
+
+  assert.deepEqual(
+    harness.sockets[1].sent.map((frame) => JSON.parse(frame).type),
+    ["connect", "user_message"],
+  );
+});
+
 test("503 routing retries to the cap and then surfaces an error", async () => {
   const harness = createHarness({
     fetch: async () => response(503, {}),
