@@ -46,7 +46,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     error: null,
   };
   let socket: WebSocketLike | null = null;
-  let socketIsOpen = false;
+  let socketIsReady = false;
   let retryCancel: { cancel(): void } | null = null;
   let closed = false;
   let connectionGeneration = 0;
@@ -131,8 +131,6 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
         client_kind: "mobile",
         client_version: deps.clientVersion,
       });
-      socketIsOpen = true;
-      flushOutboundQueue();
     };
     socket.onmessage = (event) => {
       if (!isCurrentGeneration(generation)) return;
@@ -190,7 +188,9 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
           messages: event.session_snapshot.messages,
           beforeCursor: event.session_snapshot.before_cursor,
         });
+        socketIsReady = true;
         setConnection("connected");
+        flushOutboundQueue();
         return;
       case "history_backfill_response":
         dispatch({
@@ -221,7 +221,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   };
 
   const flushOutboundQueue = () => {
-    if (!socketIsOpen || outboundQueue.length === 0) return;
+    if (!socketIsReady || outboundQueue.length === 0) return;
     const pending = outboundQueue;
     outboundQueue = [];
     for (const event of pending) sendNow(event);
@@ -284,7 +284,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   const closeSocket = () => {
     const current = socket;
     socket = null;
-    socketIsOpen = false;
+    socketIsReady = false;
     if (!current) return;
     current.onopen = null;
     current.onmessage = null;

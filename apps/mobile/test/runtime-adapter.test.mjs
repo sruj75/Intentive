@@ -41,6 +41,7 @@ test("inbound companion_message appends and sends delivery_ack", async () => {
   const harness = createHarness();
   await harness.adapter.connect();
   harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
 
   harness.sockets[0].message({
     type: "companion_message",
@@ -61,6 +62,7 @@ test("sendUserMessage shows pending immediately and emits user_message", async (
   const harness = createHarness();
   await harness.adapter.connect();
   harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
 
   await harness.adapter.sendUserMessage(" hello ");
 
@@ -75,7 +77,7 @@ test("sendUserMessage shows pending immediately and emits user_message", async (
   });
 });
 
-test("sendUserMessage during routing queues one frame and flushes after socket open", async () => {
+test("sendUserMessage during routing queues one frame and flushes after hello_ok", async () => {
   let resolveFetch;
   const fetchReady = new Promise((resolve) => {
     resolveFetch = resolve;
@@ -99,6 +101,12 @@ test("sendUserMessage during routing queues one frame and flushes after socket o
 
   assert.deepEqual(
     harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
+  harness.sockets[0].message(emptySnapshot());
+
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
     ["connect", "user_message"],
   );
   assert.deepEqual(JSON.parse(harness.sockets[0].sent[1]), {
@@ -109,7 +117,7 @@ test("sendUserMessage during routing queues one frame and flushes after socket o
   });
 });
 
-test("sendUserMessage during connecting queues one frame and flushes after socket open", async () => {
+test("sendUserMessage during connecting queues one frame and flushes after hello_ok", async () => {
   const harness = createHarness();
   await harness.adapter.connect();
 
@@ -118,6 +126,13 @@ test("sendUserMessage during connecting queues one frame and flushes after socke
   assert.equal(harness.sockets[0].sent.length, 0);
 
   harness.sockets[0].open();
+
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
+
+  harness.sockets[0].message(emptySnapshot());
 
   assert.deepEqual(
     harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
@@ -131,6 +146,11 @@ test("sendUserMessage during connecting keeps hello_ok server order authoritativ
 
   await harness.adapter.sendUserMessage(" hello ");
   harness.sockets[0].open();
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
+
   harness.sockets[0].message({
     type: "hello_ok",
     session_snapshot: {
@@ -153,9 +173,13 @@ test("sendUserMessage during connecting keeps hello_ok server order authoritativ
       .messages.map((message) => `${message.id}:${message.delivery ?? "server"}`),
     ["opening:server", "id-1:pending"],
   );
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect", "user_message"],
+  );
 });
 
-test("sendUserMessage during retrying queues one frame and flushes after retry opens", async () => {
+test("sendUserMessage during retrying queues one frame and flushes after retry hello_ok", async () => {
   const fetches = [response(503, {}), okRoutingResponse()];
   const harness = createHarness({
     fetch: async () => fetches.shift(),
@@ -170,6 +194,12 @@ test("sendUserMessage during retrying queues one frame and flushes after retry o
   harness.runNextTimer();
   await harness.flush();
   harness.sockets[0].open();
+
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
+  harness.sockets[0].message(emptySnapshot());
 
   assert.deepEqual(
     harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
@@ -348,7 +378,7 @@ test("stale routing failures after newer connect do not fail pending outbound", 
   assert.equal(harness.timers.length, 0);
   assert.deepEqual(
     harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
-    ["connect", "user_message"],
+    ["connect"],
   );
 });
 
@@ -532,6 +562,16 @@ function snapshot(id) {
           via_post_message_back: false,
         },
       ],
+      before_cursor: null,
+    },
+  };
+}
+
+function emptySnapshot() {
+  return {
+    type: "hello_ok",
+    session_snapshot: {
+      messages: [],
       before_cursor: null,
     },
   };
