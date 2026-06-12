@@ -11,6 +11,25 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Protocol Runtime Adapter** ([Issue #33]) —
+  - `src/domains/chat/runtime/runtime-adapter.ts` — Protocol WebSocket client that
+    owns the in-memory **Message Store**, queues outbound frames until `hello_ok`,
+    and binds to assistant-ui via `useExternalStoreRuntime` ([ADR 0015](adr/0015-mobile-push-external-store-runtime-for-proactive-companion.md)).
+  - `src/domains/chat/service/conversation-reducer.ts` — pure merge/dedupe for
+    reconnect snapshots, history backfill, and live `companion_message` events.
+  - `src/domains/chat/service/routing-client.ts` — Control Plane `GET /agent`
+    client consumed by the Runtime Adapter.
+  - `src/domains/chat/ui/use-companion-runtime.ts` — external-store binding seam
+    between the Runtime Adapter and Intentive Chat Components.
+  - `src/domains/chat/runtime/dev-transport.ts` — dev WebSocket fixture for tests
+    and local harnesses (replaces the turn-based dev adapter).
+  - [ADR 0016](adr/0016-mobile-no-client-authored-opening-idempotent-by-store.md) —
+    server-authored opening idempotency via Message Store dedupe (no client-side
+    first-opening tracker).
+  - Tests: `runtime-adapter.test.mjs`, `conversation-reducer.test.mjs`,
+    `routing-client.test.mjs`, `dev-transport.test.mjs`; `companion-chat.rn.test.tsx`
+    updated for the external-store path.
+
 - **Monorepo import** — Mobile Client brought into the Intentive workspace as
   `@intentive/mobile` (Expo SDK 56, React Native, TypeScript, `expo-router`). Domain
   layout under `src/domains/{auth,onboarding,chat,…}/` with layer-direction lint;
@@ -98,6 +117,13 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Changed
 
+- **Companion Chat runtime** ([Issue #33]) — `CompanionChat` now renders from the
+  Runtime Adapter's push-side **Message Store** (`useExternalStoreRuntime`) instead
+  of the #22 turn-based `ChatModelAdapter`; `app/(chat)/index.tsx` wires
+  `createRuntimeAdapter` at the composition root. Outbound delivery queues until
+  `hello_ok`, retries routing failures, marks pending sends `failed` on terminal
+  errors, splits reconnect snapshots from history backfill to preserve order, and
+  ignores stale socket/routing callbacks across reconnect generations.
 - **Launch Route** — `route-for-destination.ts` owns `LaunchDestination →` splash or
   redirect href; `app/_layout.tsx` runs the redirect effect only. Node contract:
   `route-for-destination.test.mjs`. Dev/test harnesses use `createStubLaunchStateSource`
@@ -117,6 +143,9 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Removed
 
+- **Dev chat adapter** ([Issue #33]) — `src/domains/chat/runtime/dev-chat-adapter.ts`
+  and `test/dev-chat-adapter.test.mjs` (superseded by Runtime Adapter +
+  `dev-transport.ts`).
 - Dev stubs superseded by real screens: `identity-gate-stub.tsx`,
   `consent-primer-stub.tsx`, `sibling-invitation-stub.tsx`, `chat-shell-stub.tsx`.
 - Placeholder `scaffold.ts` types under `auth` and `chat` domains.
@@ -149,14 +178,15 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **#23 (remainder)** — cold-launch session restore against a real Neon session,
   https OAuth redirect / enabled providers (`NEON_ENABLED_PROVIDERS` still empty; dev
   provider remains the working path until #61).
-- **#33** — Protocol WebSocket Runtime Adapter; replace dev chat adapter; Conversation
-  History reconnect snapshot.
-- **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard.
+- **#44** — Reconnect hydration polish and scroll-back UX on top of the #33 Runtime
+  Adapter.
+- **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard;
+  styles **Delivery Status** surfaced by #33.
 - **#46** — Account Surface and sign-out UX.
 - **CI** — `test:rn` remains opt-in locally; root `pnpm test` runs Node mobile tests
   only (see `docs/TESTING.md`).
-- Production chat persistence remains out of scope per ADR/server-truth model; the
-  local runtime adapter is dev-only until `#33`.
+- The **Message Store** remains in-memory and server-truth only — no durable local
+  transcript cache until measured latency proves one is needed.
 
 [Issue #18]: https://github.com/sruj75/Intentive/issues/18
 [Issue #19]: https://github.com/sruj75/Intentive/issues/19

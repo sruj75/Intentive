@@ -33,7 +33,7 @@ The state of a single **Pre-Chat Gate**: `pending | completed | skipped`. Unifor
 _Avoid_: done flag, gate boolean
 
 **Auth Adapter**:
-The single boundary the **Identity Gate** calls to obtain or drop a session — `signIn` / `signOut`. It hides which **Auth Provider** answered; nothing else in the Mobile Client imports an auth SDK. A deep module: a tiny interface over a volatile decision (which provider, what token shape). Its `getUserJwt()` is the **only** sanctioned way to read the **User JWT** — consumed by the **Runtime Adapter** to authorize `GET /agent` (#33), never by the UI. See [`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md).
+The single boundary the **Identity Gate** calls to obtain or drop a session — `signIn` / `signOut`. It hides which **Auth Provider** answered; nothing else in the Mobile Client imports an auth SDK. A deep module: a tiny interface over a volatile decision (which provider, what token shape). Its `getUserJwt()` is the **only** sanctioned way to read the **User JWT** — consumed by the **Runtime Adapter** to authorize `GET /agent`, never by the UI. See [`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md).
 _Avoid_: auth client, login service, OAuth wrapper
 
 **Auth Provider**:
@@ -69,7 +69,7 @@ The Companion-status the chat surfaces — v1 has **Thinking** (an un-answered o
 _Avoid_: typing indicator, presence, online status, runtime-reported state
 
 **Delivery Status**:
-The per-outbound-message state the chat surfaces for a `user_message` — `pending` (handed to the WebSocket, optimistically shown), `confirmed` (the same `message_id` has returned in server truth / a snapshot), or `failed` (socket dropped with the send still pending; retryable). The Protocol has **no** runtime→client receipt for a `user_message` (the wire `delivery_ack` runs the other way — the client acking an inbound `companion_message`), so confirmation is **reconcile-by-`message_id` against server truth**, not a receipt event. The client generates the `message_id` on send: **stable across a retry** of the same message (so it reconciles to one entry, not a duplicate), **distinct** for a new message — an idempotency key. The **Runtime Adapter** owns this reconciliation (it is the Q2 dedupe doing double duty); #33 exposes the statuses, #45 styles them. Pattern: Slack `client_msg_id` + Stripe idempotency key + optimistic UI.
+The per-outbound-message state the chat surfaces for a `user_message` — `pending` (handed to the WebSocket, optimistically shown), `confirmed` (the same `message_id` has returned in server truth / a snapshot), or `failed` (socket dropped with the send still pending; retryable). The Protocol has **no** runtime→client receipt for a `user_message` (the wire `delivery_ack` runs the other way — the client acking an inbound `companion_message`), so confirmation is **reconcile-by-`message_id` against server truth**, not a receipt event. The client generates the `message_id` on send: **stable across a retry** of the same message (so it reconciles to one entry, not a duplicate), **distinct** for a new message — an idempotency key. The **Runtime Adapter** owns this reconciliation (it is the Q2 dedupe doing double duty); #45 styles the surfaced statuses. Pattern: Slack `client_msg_id` + Stripe idempotency key + optimistic UI.
 _Avoid_: read receipt, sent/delivered ticks, ack status
 
 ## Relationships
