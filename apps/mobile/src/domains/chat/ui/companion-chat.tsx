@@ -5,16 +5,16 @@
  *
  * The wrapper is the deep module: a tiny interface (`<CompanionChat adapter?/>`)
  * hiding the runtime hookup, the adapter slot, custom message rows, a custom
- * composer, and the loading/error/retry surfaces. It accepts the adapter
- * (dependency injection) so tests can feed canned/error/streaming variants and
- * #33 can feed the real Protocol-backed adapter — defaulting to the dev one.
+ * composer, and the loading/error/retry surfaces. It accepts the Runtime Adapter
+ * (dependency injection) so tests and the route can feed either the dev
+ * Protocol transport or the production Protocol-backed adapter.
  *
  * Visuals here are deliberately PLAIN placeholders. Liquid Glass message rows,
  * the floating Composer, safe-area/keyboard handling, and Dynamic Type are #45.
- * No Protocol, routing, or real streaming/Agent State semantics — that is #33.
+ * Protocol, routing, and Agent State semantics live behind the Runtime Adapter.
  *
  * assistant-ui primitive/runtime composition (niche vendor API):
- * https://www.assistant-ui.com/docs/runtimes/custom/local-runtime
+ * https://www.assistant-ui.com/docs/runtimes/external-store
  */
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -25,24 +25,25 @@ import {
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
-  type ChatModelAdapter,
-  useLocalRuntime,
 } from "@assistant-ui/react-native";
+import { useExternalStoreRuntime } from "@assistant-ui/core/react";
 
-import { createDevChatAdapter } from "../runtime/dev-chat-adapter";
+import { createDevRuntimeAdapter } from "../runtime/dev-transport";
+import type { RuntimeAdapter } from "../types/conversation";
+import { useCompanionRuntime } from "./use-companion-runtime";
 
 export interface CompanionChatProps {
   /**
-   * The Chat Primitive Engine backend. Defaults to the canned dev adapter
-   * (#22); #33 injects the real Protocol-backed adapter into this same slot.
+   * The chat domain runtime. Defaults to a Protocol-shaped dev transport with
+   * no backend so simulator smoke tests still work offline.
    */
-  readonly adapter?: ChatModelAdapter;
+  readonly adapter?: RuntimeAdapter;
 }
 
 export function CompanionChat({ adapter }: CompanionChatProps): React.JSX.Element {
-  // useLocalRuntime wants a stable adapter; the dev default is built once.
-  const resolvedAdapter = useMemo(() => adapter ?? createDevChatAdapter(), [adapter]);
-  const runtime = useLocalRuntime(resolvedAdapter);
+  const resolvedAdapter = useMemo(() => adapter ?? createDevRuntimeAdapter(), [adapter]);
+  const externalStore = useCompanionRuntime(resolvedAdapter);
+  const runtime = useExternalStoreRuntime(externalStore);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
