@@ -1,23 +1,22 @@
 /**
- * RN spike tests for the Intentive Chat Components wrapper (#22).
+ * RN tracer tests for the Intentive Chat Components wrapper (#33).
  *
- * These exercise the wrapper through its rendered output — the dev adapter is
- * the system boundary (canned, deterministic, no network), so nothing internal
- * is mocked. They prove the ADR 0009 exit criteria: vendor visuals are fully
- * overridable, the composer slot is replaceable, the adapter slot is wired, and
- * loading/error/retry are surfaceable through local components.
- *
- * Plain placeholder visuals only — Liquid Glass is #45; Protocol is #33.
+ * These keep the UI assertions intentionally small: the deep behavior lives in
+ * the pure Runtime Adapter tests. Here we prove the core external-store runtime
+ * renders under jest-expo and that the composer sends through the injected
+ * Runtime Adapter seam.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import type { ChatModelAdapter } from "@assistant-ui/react-native";
 
 import { CompanionChat } from "../src/domains/chat/ui/companion-chat";
-import { createDevChatAdapter } from "../src/domains/chat/runtime/dev-chat-adapter";
+import type {
+  ConversationMessage,
+  RuntimeAdapter,
+  RuntimeAdapterState,
+} from "../src/domains/chat/types/conversation";
 
-// The assistant-ui store notifies React on a macrotask tick, so after typing we
-// flush a timer before the composer's `canSend` reflects the text — otherwise a
-// synchronous press sees empty text and no-ops. Standard async-UI test hygiene.
+const at = "2026-06-12T00:00:00.000Z";
+
 async function flushStore() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 20));
@@ -31,66 +30,98 @@ async function typeAndSend(text: string) {
 }
 
 test("renders the Intentive-owned composer, not vendor example chrome", () => {
-  render(<CompanionChat />);
+  render(<CompanionChat adapter={createTestRuntimeAdapter().adapter} />);
   expect(screen.getByTestId("intentive-composer-input")).toBeTruthy();
   expect(screen.getByTestId("intentive-composer-send")).toBeTruthy();
 });
 
-test("sending a message renders it in an Intentive-owned user row", async () => {
-  render(<CompanionChat />);
+test("seeded messages render in Intentive-owned rows through the external-store runtime", async () => {
+  const { adapter } = createTestRuntimeAdapter([
+    companionMessage("c1", "Welcome from server truth."),
+    userMessage("u1", "hello companion", "confirmed"),
+  ]);
+
+  render(<CompanionChat adapter={adapter} />);
+
+  expect(await screen.findByTestId("intentive-assistant-row")).toHaveTextContent(
+    "Welcome from server truth.",
+  );
+  expect(await screen.findByTestId("intentive-user-row")).toHaveTextContent("hello companion");
+});
+
+test("typing and Send routes through the injected Runtime Adapter", async () => {
+  const harness = createTestRuntimeAdapter();
+  render(<CompanionChat adapter={harness.adapter} />);
+
   await typeAndSend("hello companion");
-  const userRow = await screen.findByTestId("intentive-user-row");
-  expect(userRow).toHaveTextContent("hello companion");
-});
 
-test("the dev adapter's canned reply lands in an Intentive-owned assistant row", async () => {
-  render(<CompanionChat adapter={createDevChatAdapter({ chunks: ["Canned spike reply."] })} />);
-  await typeAndSend("hi");
-  const assistantRow = await screen.findByTestId("intentive-assistant-row");
-  expect(assistantRow).toHaveTextContent("Canned spike reply.");
-});
-
-test("a thinking surface shows while the reply is in flight, then clears", async () => {
-  // Delayed multi-chunk reply keeps the thread `running` long enough to observe.
-  render(
-    <CompanionChat
-      adapter={createDevChatAdapter({ delayMs: 80, chunks: ["Part one ", "part two."] })}
-    />,
-  );
-  await typeAndSend("hi");
+  await waitFor(() => expect(harness.sent).toEqual(["hello companion"]));
+  expect(await screen.findByTestId("intentive-user-row")).toHaveTextContent("hello companion");
   expect(await screen.findByTestId("intentive-thinking")).toBeTruthy();
-  await waitFor(() =>
-    expect(screen.getByTestId("intentive-assistant-row")).toHaveTextContent("Part one part two."),
-  );
-  await waitFor(() => expect(screen.queryByTestId("intentive-thinking")).toBeNull());
 });
 
-test("a failed reply surfaces an error + retry, and retry re-runs the adapter", async () => {
-  // Fails on the first run, recovers on the second — proving retry re-invokes
-  // the adapter through the same boundary (the slot #33 fills with Protocol).
-  let calls = 0;
-  const flakyAdapter: ChatModelAdapter = {
-    async *run() {
-      calls += 1;
-      if (calls === 1) {
-        yield {
-          status: { type: "incomplete", reason: "error", error: "simulated first-attempt failure" },
-        };
-        return;
-      }
-      yield { content: [{ type: "text", text: "Recovered on retry." }] };
-    },
+function createTestRuntimeAdapter(initialMessages: readonly ConversationMessage[] = []): {
+  adapter: RuntimeAdapter;
+  sent: string[];
+} {
+  let state: RuntimeAdapterState = {
+    messages: initialMessages,
+    beforeCursor: null,
+    agentState: "available",
+    connectionState: "connected",
+    error: null,
+  };
+  const listeners = new Set<() => void>();
+  const sent: string[] = [];
+
+  const notify = () => {
+    for (const listener of listeners) listener();
   };
 
-  render(<CompanionChat adapter={flakyAdapter} />);
-  await typeAndSend("hi");
+  return {
+    sent,
+    adapter: {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getState: () => state,
+      connect: async () => {},
+      sendUserMessage: async (body) => {
+        sent.push(body);
+        state = {
+          ...state,
+          agentState: "thinking",
+          messages: [...state.messages, userMessage(`u${sent.length}`, body, "pending")],
+        };
+        notify();
+      },
+      close: () => {},
+    },
+  };
+}
 
-  expect(await screen.findByTestId("intentive-error")).toBeTruthy();
+function companionMessage(id: string, body: string): ConversationMessage {
+  return {
+    id,
+    author: "companion",
+    body,
+    at,
+    viaPostMessageBack: false,
+  };
+}
 
-  fireEvent.press(screen.getByTestId("intentive-retry"));
-  await waitFor(() =>
-    expect(screen.getByTestId("intentive-assistant-row")).toHaveTextContent("Recovered on retry."),
-  );
-  expect(calls).toBe(2);
-  await waitFor(() => expect(screen.queryByTestId("intentive-error")).toBeNull());
-});
+function userMessage(
+  id: string,
+  body: string,
+  delivery: ConversationMessage["delivery"],
+): ConversationMessage {
+  return {
+    id,
+    author: "user",
+    body,
+    at,
+    viaPostMessageBack: false,
+    delivery,
+  };
+}

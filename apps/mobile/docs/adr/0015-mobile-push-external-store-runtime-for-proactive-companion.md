@@ -12,6 +12,15 @@ external-store runtime (`useExternalStoreRuntime`): the **Runtime Adapter** owns
 normalized in-memory message store that the Protocol WebSocket pushes into as
 events arrive, and assistant-ui renders that store.
 
+Implementation note: `@assistant-ui/react-native@0.1.x` does not re-export
+`useExternalStoreRuntime`; it re-exports only the local and remote-thread-list
+runtimes. The hook lives in `@assistant-ui/core@0.2.9`, which is the same core
+package the React Native wrapper uses. The Mobile Client therefore pins
+`@assistant-ui/core` as a direct dependency and imports
+`useExternalStoreRuntime` from `@assistant-ui/core/react`. That import remains
+confined to `chat/ui/` with the other Chat Primitive Engine wiring, preserving
+ADR-0009 ejectability.
+
 This is the battle-tested architecture for proactive, server-truth conversation —
 the same shape as Slack/WhatsApp/iMessage and thread-based agent protocols
 (AG-UI, OpenAI threads): server owns the conversation, the client is a thin
@@ -32,8 +41,8 @@ function cannot.
 
 - The #22 claim that "#33 needs no UI changes" is dropped: `companion-chat.tsx`
   switches its runtime binding from `useLocalRuntime` to
-  `useExternalStoreRuntime`. Message **visuals** remain #45's; only the plumbing
-  changes here.
+  `useExternalStoreRuntime` imported from `@assistant-ui/core/react`. Message
+  **visuals** remain #45's; only the plumbing changes here.
 - assistant-ui's external store is a thin binding over the **Runtime Adapter**'s
   own store, not the architecture itself — preserving the ADR-0009 ejectability of
   the vendor Chat Primitive Engine.
