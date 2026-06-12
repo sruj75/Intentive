@@ -10,7 +10,7 @@ pub enum Tier {
     BundledOllama,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ProviderError {
     #[error("no on-device provider available")]
     Unavailable,

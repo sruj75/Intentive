@@ -8,7 +8,6 @@ use tauri::path::BaseDirectory;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::WebviewWindow;
-use tokio::sync::Mutex;
 use url::Url;
 
 use domains::capture::runtime::coordinator::CaptureSessionCoordinator;
@@ -31,55 +30,36 @@ use domains::snapshots::runtime::heartbeat::{
 };
 use domains::snapshots::types::SessionEndReason;
 use domains::summarization::config::ProviderConfig;
-use domains::summarization::service::LlmProvider;
+use domains::summarization::runtime::{
+    LazyLlmProvider, LiveProviderResolver, LlmProviderSlot, SummarizeError,
+};
 use providers::permissions::{CapturePermissions, MacosCapturePermissions};
 use tokio::sync::mpsc;
 
-/// Tauri-managed state for the resolved on-device LLM Provider. Starts as
-/// `None`; the Context Heartbeat prepares any already-available tier when a
-/// Capture Session starts, while `start_model_download` supplies Tier 3 after
-/// explicit onboarding consent. A tick skips only while no tier is ready.
-pub struct LlmProviderSlot(pub Mutex<Option<Arc<LlmProvider>>>);
-
-/// Production adapter wiring `LlmProviderSlot` behind the heartbeat's
-/// `Summarizer` seam. Lives here (not in `context_heartbeat`) because
-/// `LlmProviderSlot` is a Tauri-state concern owned by this wiring layer.
+/// Cross-domain bridge: implements the snapshots `Summarizer` trait by
+/// delegating to the summarization domain's [`LazyLlmProvider`]. The
+/// resolve-once-and-cache *behavior* lives in `summarization::runtime`; only
+/// this thin trait bridge stays in the composition root (the rust-architecture
+/// linter allows the cross-domain `Summarizer` impl only here). It maps the
+/// domain's `SummarizeError` onto the heartbeat's `SummarizerError` arms.
 struct LlmProviderSlotSummarizer {
-    slot: Arc<LlmProviderSlot>,
-    config: ProviderConfig,
-    screenpipe_endpoint: ScreenpipeEndpoint,
-    http: reqwest::Client,
+    lazy: LazyLlmProvider,
 }
 
 #[async_trait]
 impl Summarizer for LlmProviderSlotSummarizer {
     async fn prepare(&self) {
-        self.resolve_ready_if_needed().await;
+        self.lazy.prepare().await;
     }
 
     async fn summarize(&self, activity: &str) -> Result<String, SummarizerError> {
-        self.resolve_ready_if_needed().await;
-        let provider = {
-            let guard = self.slot.0.lock().await;
-            guard.as_ref().cloned().ok_or(SummarizerError::Unresolved)?
-        };
-        provider
+        self.lazy
             .summarize(activity)
             .await
-            .map_err(|e| SummarizerError::Failed(e.to_string()))
-    }
-}
-
-impl LlmProviderSlotSummarizer {
-    async fn resolve_ready_if_needed(&self) {
-        if self.slot.0.lock().await.is_some() {
-            return;
-        }
-        let mut config = self.config.clone();
-        config.screenpipe_url = self.screenpipe_endpoint.current_or_primary_url();
-        if let Ok(provider) = LlmProvider::resolve_ready(config, self.http.clone()).await {
-            *self.slot.0.lock().await = Some(Arc::new(provider));
-        }
+            .map_err(|e| match e {
+                SummarizeError::Unresolved => SummarizerError::Unresolved,
+                SummarizeError::Provider(pe) => SummarizerError::Failed(pe.to_string()),
+            })
     }
 }
 
@@ -215,7 +195,7 @@ pub fn run() {
                 config: provider_config.clone(),
                 screenpipe_endpoint: screenpipe_endpoint.clone(),
             });
-            let llm_slot = Arc::new(LlmProviderSlot(Mutex::new(None)));
+            let llm_slot = Arc::new(LlmProviderSlot::empty());
             app.manage(llm_slot.clone());
 
             // Routing + Protocol WebSocket session skeleton (Issue #31). The
@@ -269,11 +249,16 @@ pub fn run() {
                 app.state::<Arc<SnapshotStore>>().inner().clone();
             let http = reqwest::Client::new();
             let agent_sink: Arc<dyn AgentSink> = Arc::new(NoopAgentSink);
+            let resolver = Arc::new(LiveProviderResolver::new(
+                provider_config,
+                http.clone(),
+                Arc::new({
+                    let endpoint = screenpipe_endpoint.clone();
+                    move || endpoint.current_or_primary_url()
+                }),
+            ));
             let summarizer = Arc::new(LlmProviderSlotSummarizer {
-                slot: llm_slot.clone(),
-                config: provider_config,
-                screenpipe_endpoint: screenpipe_endpoint.clone(),
-                http: http.clone(),
+                lazy: LazyLlmProvider::new(llm_slot.clone(), resolver),
             });
             let activity_client = Arc::new(ReqwestActivityClient::new(http));
             let heartbeat = ContextHeartbeat::new(
