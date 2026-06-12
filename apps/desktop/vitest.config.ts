@@ -6,6 +6,16 @@ export default defineConfig({
   css: {
     postcss: { plugins: [] },
   },
+  // The shared `@intentive/*` packages are internal and never published; their
+  // `exports` runtime entry (`default`) points at `dist/`, built only by turbo's
+  // `^build`. The Desktop Vitest jobs (`desktop-ci`, `coverage`) run `vitest`
+  // directly without that build, so resolve the packages through their `source`
+  // export condition instead. This needs no per-package alias list (transitive
+  // deps and future packages are covered automatically), exercises the *live*
+  // Zod schemas with no stale dist, and the source sits outside `src/**` coverage.
+  resolve: {
+    conditions: ["source"],
+  },
   test: {
     environment: "jsdom",
     globals: false,

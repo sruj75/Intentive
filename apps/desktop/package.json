@@ -21,6 +21,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@intentive/protocol": "workspace:*",
     "@tauri-apps/cli": "^2",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^25.9.0",

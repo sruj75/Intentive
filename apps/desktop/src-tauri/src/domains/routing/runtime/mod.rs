@@ -312,6 +312,18 @@ impl WsSession {
         sender.send(frame).map_err(|_| TryEmitError::NotConnected)
     }
 
+    /// Test-only seam: install a live outbound channel without standing up a
+    /// real connection, returning the receiver. Lets the cross-domain
+    /// `WsSessionAgentSink` bridge test (in `lib.rs`) assert that framed events
+    /// reach the socket. Production code only ever populates `outbound` from the
+    /// connection loop in `run`.
+    #[cfg(test)]
+    pub(crate) async fn install_test_outbound(&self) -> mpsc::UnboundedReceiver<String> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        *self.outbound.lock().await = Some(tx);
+        rx
+    }
+
     /// Current plain-English status, replayed on demand (e.g. when the Settings
     /// window mounts). Reflects the most recent observed transition.
     pub fn current_status(&self) -> ConnectionStatus {

@@ -24,7 +24,7 @@ use domains::routing::runtime::{
 };
 use domains::routing::types::{ConnectionStatus, RoutingState, SessionState};
 use domains::snapshots::repo::SnapshotStore;
-use domains::snapshots::runtime::agent_interface::{AgentSink, NoopAgentSink, PushError};
+use domains::snapshots::runtime::agent_interface::{AgentSink, PushError};
 use domains::snapshots::runtime::heartbeat::{
     ContextHeartbeat, ReqwestActivityClient, ScreenpipeUrlSource, Summarizer, SummarizerError,
 };
@@ -84,19 +84,27 @@ impl SessionHooks for HeartbeatHooks {
         let _ = self.0.clone().start().await;
     }
 
+    /// #34 end-marker ordering guarantee. `ContextHeartbeat::stop` sequences
+    /// stop tick loop → (drain final snapshot) → emit Session End Marker before
+    /// it returns (pinned by `heartbeat::tests::stop_emits_one_session_end_marker`
+    /// and `stop_emits_marker_even_with_zero_ticks`). Capture-session teardown
+    /// (`coordinator::apply` → `StopSession`/`EndSession`) calls this hook and
+    /// never disconnects Routing — the `WsSession` is torn down only by the
+    /// independent sign-out path (`clear_login_token`). So the marker always
+    /// leaves on a still-open socket, best-effort like snapshots (ADR-0005; #38
+    /// self-corrects any stale liveness).
     async fn on_session_end(&self, reason: SessionEndReason) {
         self.0.clone().stop(reason).await;
     }
 }
 
-/// Uninstalled (#34) cross-domain bridge: implements the snapshots `AgentSink`
+/// Cross-domain bridge (installed in #34): implements the snapshots `AgentSink`
 /// by framing Context Snapshots / Session End Markers as Protocol events and
-/// pushing them through the routing `WsSession`'s dormant `try_emit` seam, and
-/// maps routing's `TryEmitError` onto the snapshots `PushError`. It lives at the
+/// pushing them through the routing `WsSession`'s `try_emit` seam, mapping
+/// routing's `TryEmitError` onto the snapshots `PushError`. It lives at the
 /// composition root because it names two domains' runtime types, which the
-/// layer rule allows only here. `lib.rs` keeps `NoopAgentSink` installed on the
-/// heartbeat; swapping in this adapter is the one-line #34 change.
-#[allow(dead_code)]
+/// layer rule allows only here. `NoopAgentSink` remains the inert default for
+/// any wiring that runs without a live session.
 struct WsSessionAgentSink {
     session: Arc<WsSession>,
 }
@@ -105,7 +113,6 @@ struct WsSessionAgentSink {
 /// `ContextSnapshot` already serializes the frozen v1 fields (`snapshot_id`,
 /// `captured_at`, `period_start`, `period_end`, `summary`); this only adds the
 /// event `type` tag from `packages/protocol`.
-#[allow(dead_code)]
 fn context_snapshot_frame(snapshot: &ContextSnapshot) -> String {
     let mut value = serde_json::to_value(snapshot).expect("ContextSnapshot serializes");
     value["type"] = serde_json::Value::String("context_snapshot".to_string());
@@ -114,7 +121,6 @@ fn context_snapshot_frame(snapshot: &ContextSnapshot) -> String {
 
 /// Frame a Session End Marker as the distinct `session_end_marker` event
 /// (canonical `ended_at` + `reason`; invariant 7).
-#[allow(dead_code)]
 fn session_end_marker_frame(marker: &SessionEndMarker) -> String {
     let mut value = serde_json::to_value(marker).expect("SessionEndMarker serializes");
     value["type"] = serde_json::Value::String("session_end_marker".to_string());
@@ -276,7 +282,7 @@ pub fn run() {
                 }),
                 Arc::new(FastrandJitter),
             );
-            app.manage(routing_session);
+            app.manage(routing_session.clone());
             let _ = app.emit(
                 "routing:status",
                 ConnectionStatus {
@@ -284,14 +290,19 @@ pub fn run() {
                 },
             );
 
-            // Context Heartbeat (Issue #8, ADR-0008). The placeholder runtime
-            // sink is intentionally inert until #34 wires actual Protocol event
-            // emission through the live routing session. It reports "not
-            // connected" so the Snapshot Store keeps `pushed_at = NULL`.
+            // Context Heartbeat (Issue #8, ADR-0008). #34 plugs the live bridge
+            // in: the heartbeat now frames Context Snapshots / Session End
+            // Markers and pushes them through the routing `WsSession`. A push
+            // that lands while the socket is down leaves `pushed_at = NULL`
+            // (ADR-0005: fire-and-forget, at-most-once — no ack, no retry).
+            // `NoopAgentSink` remains the documented inert default for any wiring
+            // that must run without a live session.
             let snapshot_store_arc: Arc<SnapshotStore> =
                 app.state::<Arc<SnapshotStore>>().inner().clone();
             let http = reqwest::Client::new();
-            let agent_sink: Arc<dyn AgentSink> = Arc::new(NoopAgentSink);
+            let agent_sink: Arc<dyn AgentSink> = Arc::new(WsSessionAgentSink {
+                session: routing_session.clone(),
+            });
             let resolver = Arc::new(LiveProviderResolver::new(
                 provider_config,
                 http.clone(),
@@ -401,10 +412,15 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_snapshot_frame, session_end_marker_frame};
+    use super::{context_snapshot_frame, session_end_marker_frame, WsSessionAgentSink};
+    use crate::domains::routing::runtime::{
+        DisabledRoutingSource, FastrandJitter, NoopRoutingObserver, TungsteniteTransport, WsSession,
+    };
+    use crate::domains::snapshots::runtime::agent_interface::{AgentSink, PushError};
     use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
     use chrono::{TimeZone, Utc};
     use serde_json::{json, Value};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     #[test]
@@ -437,6 +453,36 @@ mod tests {
         );
     }
 
+    /// The canonical Context Snapshot sample shared by the Rust golden test and
+    /// the committed `fixtures/context_snapshot.json`. Fixed values (nil UUID,
+    /// whole-second timestamps) keep the fixture stable across runs.
+    fn canonical_context_snapshot() -> ContextSnapshot {
+        ContextSnapshot {
+            snapshot_id: Uuid::nil(),
+            captured_at: Utc.timestamp_opt(1_700_000_000, 0).single().unwrap(),
+            period_start: Utc.timestamp_opt(1_699_999_400, 0).single().unwrap(),
+            period_end: Utc.timestamp_opt(1_700_000_000, 0).single().unwrap(),
+            summary: "Reviewed a pull request and replied to two messages.".to_string(),
+        }
+    }
+
+    /// The Rust serializer must reproduce the committed golden fixture that the
+    /// Desktop Vitest suite feeds through the live `@intentive/protocol` Zod
+    /// parser. Comparing as `serde_json::Value` (not byte string) makes the lock
+    /// about shape, not key order or whitespace. This is the Rust end of the
+    /// Rust ⟷ fixture ⟷ live-contract chain that guards the ack-less sender.
+    #[test]
+    fn context_snapshot_frame_matches_the_committed_golden_fixture() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../fixtures/context_snapshot.json")).unwrap();
+        let frame: Value =
+            serde_json::from_str(&context_snapshot_frame(&canonical_context_snapshot())).unwrap();
+        assert_eq!(
+            frame, fixture,
+            "context_snapshot frame drifted from fixtures/context_snapshot.json"
+        );
+    }
+
     #[test]
     fn session_end_marker_frame_is_its_own_event_with_canonical_fields() {
         let ended_at = Utc.timestamp_opt(1_700_000_500, 0).single().unwrap();
@@ -454,5 +500,77 @@ mod tests {
         assert_eq!(frame["reason"], json!("quit"));
         // Invariant 7: a distinct event of exactly `type` + `ended_at` + `reason`.
         assert_eq!(object.len(), 3, "session_end_marker fields: {object:?}");
+    }
+
+    /// Mirror of the Context Snapshot golden test for the end marker. Uses the
+    /// `user_toggle` reason — the fixture variant the Vitest suite parses — so
+    /// the snake_case enum serialization is locked from the Rust side too.
+    #[test]
+    fn session_end_marker_frame_matches_the_committed_golden_fixture() {
+        let marker = SessionEndMarker {
+            ended_at: Utc.timestamp_opt(1_700_000_000, 0).single().unwrap(),
+            reason: SessionEndReason::UserToggle,
+        };
+        let fixture: Value =
+            serde_json::from_str(include_str!("../fixtures/session_end_marker.json")).unwrap();
+        let frame: Value = serde_json::from_str(&session_end_marker_frame(&marker)).unwrap();
+        assert_eq!(
+            frame, fixture,
+            "session_end_marker frame drifted from fixtures/session_end_marker.json"
+        );
+    }
+
+    /// Build a `WsSession` with no live connection. Its `outbound` seam is
+    /// `None`, so `try_emit` (and thus the bridge) reports `NotConnected` until
+    /// a test installs a live channel.
+    fn disconnected_session() -> Arc<WsSession> {
+        WsSession::new(
+            Arc::new(DisabledRoutingSource),
+            Arc::new(TungsteniteTransport),
+            Arc::new(NoopRoutingObserver),
+            Arc::new(FastrandJitter),
+        )
+    }
+
+    /// The live half of the #34 bridge: with the routing session's outbound seam
+    /// up, `emit_context_snapshot` returns `Ok` and the framed JSON lands on the
+    /// channel; with it absent it returns `Err(PushError::NotConnected)`. The end
+    /// marker rides the same seam (best-effort, no result).
+    #[tokio::test]
+    async fn ws_session_agent_sink_emits_through_the_live_session_and_reports_disconnect() {
+        let session = disconnected_session();
+        let sink = WsSessionAgentSink {
+            session: session.clone(),
+        };
+
+        // No connection yet → the bridge maps `TryEmitError::NotConnected`.
+        let err = sink
+            .emit_context_snapshot(&canonical_context_snapshot())
+            .await
+            .expect_err("a down socket must report NotConnected");
+        assert!(matches!(err, PushError::NotConnected), "got {err:?}");
+
+        // Install a live outbound seam; the framed snapshot now reaches the wire.
+        let mut outbound = session.install_test_outbound().await;
+        sink.emit_context_snapshot(&canonical_context_snapshot())
+            .await
+            .expect("a live socket accepts the snapshot frame");
+        let frame: Value =
+            serde_json::from_str(&outbound.try_recv().expect("snapshot frame on the channel"))
+                .unwrap();
+        assert_eq!(frame["type"], json!("context_snapshot"));
+        assert_eq!(frame["snapshot_id"], json!(Uuid::nil().to_string()));
+
+        // The end marker is best-effort and rides the same seam.
+        let marker = SessionEndMarker {
+            ended_at: Utc.timestamp_opt(1_700_000_000, 0).single().unwrap(),
+            reason: SessionEndReason::UserToggle,
+        };
+        sink.emit_session_end_marker(&marker).await;
+        let marker_frame: Value =
+            serde_json::from_str(&outbound.try_recv().expect("marker frame on the channel"))
+                .unwrap();
+        assert_eq!(marker_frame["type"], json!("session_end_marker"));
+        assert_eq!(marker_frame["reason"], json!("user_toggle"));
     }
 }

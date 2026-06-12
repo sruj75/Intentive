@@ -55,6 +55,9 @@ importers:
         specifier: ^19.1.0
         version: 19.2.6(react@19.2.6)
     devDependencies:
+      '@intentive/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.11.2

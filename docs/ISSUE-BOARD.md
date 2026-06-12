@@ -175,10 +175,10 @@ flowchart TD
 ### Desktop Client (issues #7–#13, #31–#32 closed; #34–#35, #43, #53–#56 open)
 
 - `#7`–`#13` closed.
-- `#31` (Routing + Protocol WS Session) **closed** ([PR #71](https://github.com/sruj75/Intentive/pull/71)): Rust `routing` domain owns Control Plane `GET /agent`, Routing/Session state machine (`signed_out` / `signed_in` / `routing_ready` / `routing_error`), and Protocol WebSocket session lifecycle; webview syncs login tokens and Settings shows connection mood only; fixture fallback for local dev ([ADR-0019](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0019-desktop-rust-owns-routing-and-ws-session.md)). Snapshot Protocol emission stays inert until `#34`.
+- `#31` (Routing + Protocol WS Session) **closed** ([PR #71](https://github.com/sruj75/Intentive/pull/71)): Rust `routing` domain owns Control Plane `GET /agent`, Routing/Session state machine (`signed_out` / `signed_in` / `routing_ready` / `routing_error`), and Protocol WebSocket session lifecycle; webview syncs login tokens and Settings shows connection mood only; fixture fallback for local dev ([ADR-0019](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0019-desktop-rust-owns-routing-and-ws-session.md)). Live `context_snapshot` / `session_end_marker` emission is `#34`.
 - `#32` (Capture Permission Setup) **closed** ([PR #72](https://github.com/sruj75/Intentive/pull/72)): Opal-style sequential wizard (`CapturePermissionSetup.tsx`, `?surface=permission-setup`), `providers/permissions/` grant probes, `permission_monitor` poll loop, `SetupRequired` shell state with menu bar **Finish Setup…**, and local three-grant **Desktop Capture Readiness** interlock over the Control Plane capture gate ([ADR-0020](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0020-desktop-local-three-grant-interlock-authoritative-over-cp-capture-gate.md), [ADR-0021](https://github.com/sruj75/Intentive/blob/main/apps/desktop/docs/adr/0021-desktop-permission-detection-adapted-from-screenpipe.md)).
-- **Next:** `#34` (Emit Context Snapshots over Protocol) — `#31` closed and snapshot pipeline (`#10`–`#13`) exists.
-- Signed-in smoke (`#35`) follows `#34`.
+- **In flight:** `#34` (Emit Context Snapshots over Protocol) — `WsSessionAgentSink` bridge + golden contract tests on branch `issue-34`.
+- **Next after #34:** Signed-in smoke (`#35`).
 - Cross-project dependency: Snapshot emit and signed-in smoke need AR gateway semantics and protocol compatibility.
 
 ### Control Plane (issues #17, #23, #26–#27, #30 closed; #49–#50 open)

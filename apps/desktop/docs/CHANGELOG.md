@@ -7,6 +7,17 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Live Protocol snapshot emission (#34)** — The Context Heartbeat now frames
+  `context_snapshot` and `session_end_marker` events and pushes them through
+  the live Routing `WsSession` via the `WsSessionAgentSink` bridge at
+  `lib.rs`. Delivery success stamps `pushed_at` when the frame is accepted
+  into the outbound WebSocket channel (ADR-0005: at-most-once, no
+  Runtime→Client ack). Committed golden fixtures in
+  `src-tauri/fixtures/` plus `src/protocol-contract.test.ts` lock the Rust
+  serializer to the live `@intentive/protocol` Zod contract (Rust ⟷ fixture ⟷
+  Vitest). Regression coverage includes golden-frame parity and a live
+  `WsSessionAgentSink` bridge test.
+
 - **Capture Permission Setup + Desktop Capture Readiness interlock** ([Issue #32]) —
   `providers/permissions/` exposes check-only macOS grant probes behind a
   `CapturePermissions` trait seam (Screen Recording with Tauri/macOS-15+
@@ -153,6 +164,13 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Protocol delivery sink (#34)** — The heartbeat's `AgentSink` is now the live
+  `WsSessionAgentSink` bridge (replacing the inert `NoopAgentSink` installed
+  at startup). `NoopAgentSink` remains the documented default for wiring
+  without a live session. ADR-0005 consequences now spell out socket-write
+  semantics, per-tick at-most-once behavior, and matching rules for
+  `session_end_marker`.
+
 - **Capture Session lifecycle table** — the full shell-state transition table
   now lives in a pure `decide()` function in `capture/service/` (mirroring
   `routing::service::transition`). `CaptureStateMachine` is a thin state holder;
@@ -258,9 +276,6 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   than reporting a phantom `Tier::BundledOllama`. Real path lands when the
   bundled binary is acquired via Tauri resources. An `#[ignore]`d integration
   test (`integration_real_bundled_ollama_prepares_qwen`) is in place.
-- Protocol event emission through the live Routing-owned WebSocket remains #34.
-  #31 opens and maintains the line but does not send Context Snapshots or
-  Session End Markers yet.
 - Mid-session permission revocation detection is poll-only (~5s worst case) in
   #32; the ~100ms eager capture-stream-error path is deferred to #43.
 - Signed/notarized release packaging evidence remains deferred and tracked
@@ -272,3 +287,4 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 [Issue #8]: https://github.com/sruj75/Intentive/issues/8
 [Issue #31]: https://github.com/sruj75/Intentive/issues/31
 [Issue #32]: https://github.com/sruj75/Intentive/issues/32
+[Issue #34]: https://github.com/sruj75/Intentive/issues/34
