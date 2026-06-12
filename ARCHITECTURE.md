@@ -71,7 +71,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `capture` — ScreenPipe subprocess management, Capture Session lifecycle
 - `routing` — Control Plane `GET /agent`, Routing/Session state, Protocol WebSocket session (Rust-owned; JWT never in webview)
 - `summarization` — LLM Provider tier resolution, bundled-model download
-- `snapshots` — Snapshot Store (local SQLite), Context Heartbeat, inert delivery sink until #34 wires live Protocol emission
+- `snapshots` — Snapshot Store (local SQLite), Context Heartbeat, live Protocol emission via `WsSessionAgentSink` at the composition root
 - `menubar` — tray icon, capture toggle, Capture Error state
 - `account` — Settings, sibling invitation
 

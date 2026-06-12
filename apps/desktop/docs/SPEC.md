@@ -107,7 +107,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 **Context Snapshot — local write**
 
 - On each heartbeat, writes snapshot to local SQLite `snapshots` table before attempting push
-- Schema: `id` (UUID), `captured_at`, `period_start`, `period_end`, `summary`, `pushed_at` (null until confirmed)
+- Schema: `id` (UUID), `captured_at`, `period_start`, `period_end`, `summary`, `pushed_at` (null until socket-write acceptance)
 - Purges entries older than 7 days on app launch
 - Acceptance:
   - [ ] Snapshot is written locally regardless of push success or failure
@@ -210,7 +210,7 @@ Since v1 is infrastructure, success is measured by reliability and correctness �
 
 | Metric                     | Target                                                                                                |
 | -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Snapshot delivery rate     | ≥ 95% of generated snapshots `delivery_ack`'d by the Agent Runtime (non-error sessions)               |
+| Snapshot delivery rate     | ≥ 95% of generated snapshots accepted into the live WebSocket session (non-error sessions; ADR-0005)  |
 | Heartbeat cadence accuracy | Heartbeat fires every 10 minutes during Capture Sessions with no activity-gated skips                 |
 | Summarization latency      | Ollama generates summary in < 5 seconds on M-series hardware                                          |
 | First-run completion       | User reaches "ready" state (Ollama model downloaded, settings configured) without manual intervention |
@@ -242,14 +242,14 @@ No open blocking questions remain for the currently documented v1 contracts.
 
 Intentive is built incrementally. Each phase is shippable on its own.
 
-| Phase                     | What ships                                                                                                                                                  | Depends on                                       |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **1. Subprocess shell**   | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator                                                                            | Rust + Tauri CLI installed                       |
-| **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call                                                                           | Phase 1                                          |
-| **3. Context Heartbeat**  | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash                                                  | Phase 2                                          |
-| **4. Settings window**    | Neon Auth UI account surface; no manual endpoint or token fields                                                                                            | Phase 1                                          |
-| **5. Routing**            | Signed-in user calls Control Plane's `GET /agent`, receives Agent Runtime URL + JWT, Rust maintains the Protocol WebSocket session skeleton                 | Settings window, Neon Auth, Control Plane online |
-| **6. Protocol pipeline**  | `context_snapshot` + `session_end_marker` emission over the live WebSocket, `delivery_ack` stamps `pushed_at`, dropped connection leaves `pushed_at = null` | Phase 3, Routing, Agent Runtime gateway ready    |
+| Phase                     | What ships                                                                                                                                                           | Depends on                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **1. Subprocess shell**   | Tauri app skeleton, menu bar icon, ScreenPipe spawning/killing, status indicator                                                                                     | Rust + Tauri CLI installed                       |
+| **2. Ollama integration** | First-run model download UI, Ollama lifecycle management, test summarization call                                                                                    | Phase 1                                          |
+| **3. Context Heartbeat**  | Fixed 10-minute cadence, summarization pipeline, local SQLite write, Session End Marker on stop/quit/crash                                                           | Phase 2                                          |
+| **4. Settings window**    | Neon Auth UI account surface; no manual endpoint or token fields                                                                                                     | Phase 1                                          |
+| **5. Routing**            | Signed-in user calls Control Plane's `GET /agent`, receives Agent Runtime URL + JWT, Rust maintains the Protocol WebSocket session skeleton                          | Settings window, Neon Auth, Control Plane online |
+| **6. Protocol pipeline**  | `context_snapshot` + `session_end_marker` emission over the live WebSocket; socket-write acceptance stamps `pushed_at`; dropped connection leaves `pushed_at = null` | Phase 3, Routing, Agent Runtime gateway ready    |
 
 ---
 
@@ -268,7 +268,7 @@ macOS (user's machine)
 │   │   └── Routing domain
 │   │       ├── Control Plane `GET /agent` → Routing (`ws_url`, JWT, `agent_instance_id`)
 │   │       ├── Routing State (credentials) and Session State (live socket) — independent dials
-│   │       └── Protocol WebSocket session (connect + reconnect; #34 emits `context_snapshot` / `session_end_marker`)
+│   │       └── Protocol WebSocket session (connect + reconnect; emits `context_snapshot` / `session_end_marker`)
 │   └── Agent Runtime (always-alive GCE VM) ← WebSocket Protocol
 │
 ├── ScreenPipe CLI binary (bundled)

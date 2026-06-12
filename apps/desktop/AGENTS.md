@@ -9,8 +9,8 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 - Runs the bundled **ScreenPipe** subprocess to capture screen + audio
 - On a fixed 10-minute **Context Heartbeat**, summarizes the window via the **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama, in that priority)
 - Produces a **Context Snapshot** per heartbeat tick; writes it to the **Snapshot Store** (local SQLite, **local-truth, not a cache**)
-- Rust owns **Routing** end-to-end (`GET /agent`, Protocol WebSocket session skeleton, reconnect). The webview re-syncs the login token via `set_login_token` / `clear_login_token` when it changes (deduped on both sides) and receives only a plain connection mood — no JWT in UI.
-- Protocol event emission (`context_snapshot`, `session_end_marker`) over the live session is **#34**; #31 leaves the heartbeat delivery sink inert so new rows keep `pushed_at = null` until then.
+- Rust owns **Routing** end-to-end (`GET /agent`, Protocol WebSocket session, reconnect). The webview re-syncs the login token via `set_login_token` / `clear_login_token` when it changes (deduped on both sides) and receives only a plain connection mood — no JWT in UI.
+- Protocol event emission (`context_snapshot`, `session_end_marker`) rides the live `WsSessionAgentSink` bridge (#34) through `WsSession::try_emit`. A down socket leaves `pushed_at = null` (ADR-0005: at-most-once, no Runtime→Client ack).
 - Menu bar capture toggle + state. **No chat UI.**
 
 ## Domains
@@ -26,7 +26,7 @@ Rust side (`src-tauri/src/domains/<name>/`):
 - `capture` — ScreenPipe supervisor, Capture Session coordinator, shell-state FSM (`SetupRequired` included), `permission_monitor`, port resolution
 - `routing` — Control Plane `GET /agent`, Routing/Session state, Protocol WebSocket session, login-token commands
 - `summarization` — LLM Provider tier resolution + bundled-model download commands
-- `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, inert `agent_interface` delivery sink (#34 wires live emission)
+- `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, `AgentSink` seam (`WsSessionAgentSink` at `lib.rs`; `NoopAgentSink` for inert wiring)
 - `menubar` — tray icon, capture toggle, Capture Error state (Rust Tauri UI)
 
 Cross-cutting Rust helpers (port probe, macOS permission probes) live in `src-tauri/src/providers/` (`providers/permissions/` implements `CapturePermissions` + `ReadinessChecker`; setup polling via `status_emitter`). Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`, `CapturePermissions`, `Summarizer`, `AgentSink`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
