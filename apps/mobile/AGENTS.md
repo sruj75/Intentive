@@ -11,7 +11,7 @@ The Mobile Client is the **only client with a chat surface**. It:
 - Renders the **Liquid Glass Chat Shell** (no header, no bottom tabs)
 - Runs the Pre-Chat Gate sequence: Identity Gate → Consent Primer → Sibling Client Invitation
 - Connects to the **Agent Runtime** directly via WebSocket using **Protocol** schemas from `packages/protocol/`
-- Reads **Conversation History** from the WebSocket reconnect snapshot — **no local message store**
+- Renders **Conversation History** from the Runtime Adapter's in-memory **Message Store** (server-truth projection seeded by the reconnect snapshot — never persisted to disk)
 - Registers APNs token with the Control Plane; receives **Push Notifications** triggered by **Post-Message-Back**
 
 ## Domains
@@ -20,7 +20,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `auth` — **Auth Adapter**, Identity Gate, Neon/Dev providers ([`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md))
 - `onboarding` — Consent Primer + Sibling Invitation screens; **Launch State Resolver** + **Launch Route** (`service/resolve-launch-state.ts`, `service/route-for-destination.ts`)
-- `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, ADR 0009); dev adapter in `runtime/`; route composes `CompanionChat` only
+- `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, ADR 0009/0015); **Runtime Adapter** in `runtime/` + `use-companion-runtime.ts` external-store binding; `dev-transport.ts` for local fixtures; route composes `CompanionChat` only
 - `notifications` — APNs token registration, permission ask (on first chat entry, not at launch)
 - `account` — Account Surface, logout, app info
 

@@ -109,8 +109,8 @@ pnpm --dir packages/providers test
 ## Mobile Client
 
 ```bash
-pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch resolver/source/route, control-plane source, account-state mapper, route-for-destination)
-pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat / Chat Primitive Engine spike #22)
+pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch resolver/source/route, control-plane source, account-state mapper, route-for-destination, runtime adapter, conversation reducer, routing client, dev transport)
+pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat external-store runtime #33)
 pnpm --dir apps/mobile typecheck
 ```
 
@@ -208,7 +208,7 @@ vertical slices land.
 
 ## Scaffold Deployables
 
-`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` adds auth-adapter, launch-state resolver/source, control-plane launch source, `account-state-to-launch-state`, and `route-for-destination` tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Chat Primitive Engine spike tests (`companion-chat.rn.test.tsx`, `dev-chat-adapter.test.mjs`). Protocol/runtime adapter coverage grows with #33.
+`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` adds auth-adapter, launch-state resolver/source, control-plane launch source, `account-state-to-launch-state`, `route-for-destination`, Runtime Adapter (`runtime-adapter`, `conversation-reducer`, `routing-client`, `dev-transport`) tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), and Companion Chat external-store tests (`companion-chat.rn.test.tsx`, #33).
 
 ## CI Expectations
 
