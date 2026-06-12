@@ -29,7 +29,7 @@ Rust side (`src-tauri/src/domains/<name>/`):
 - `snapshots` — Snapshot Store (sqlx), Context Heartbeat, Snapshot Privacy Boundary, inert `agent_interface` delivery sink (#34 wires live emission)
 - `menubar` — tray icon, capture toggle, Capture Error state (Rust Tauri UI)
 
-Cross-cutting Rust helpers (port probe, macOS permission probes) live in `src-tauri/src/providers/` (`providers/permissions/` implements `CapturePermissions` + `ReadinessChecker`). Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`, `CapturePermissions`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
+Cross-cutting Rust helpers (port probe, macOS permission probes) live in `src-tauri/src/providers/` (`providers/permissions/` implements `CapturePermissions` + `ReadinessChecker`; setup polling via `status_emitter`). Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`, `CapturePermissions`, `Summarizer`, `AgentSink`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
 
 ## Working docs
 
