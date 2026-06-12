@@ -49,6 +49,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   let socketIsOpen = false;
   let retryCancel: { cancel(): void } | null = null;
   let closed = false;
+  let connectionGeneration = 0;
   let routingAttempts = 0;
   let outboundQueue: ClientToRuntimeEvent[] = [];
 
@@ -68,12 +69,18 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
 
   const connect = async (): Promise<void> => {
     closed = false;
+    const generation = ++connectionGeneration;
     cancelRetry();
-    await routeAndOpen();
+    closeSocket();
+    routingAttempts = 0;
+    await routeAndOpen(generation);
   };
 
-  const routeAndOpen = async (): Promise<void> => {
-    if (closed) return;
+  const isCurrentGeneration = (generation: number) =>
+    !closed && generation === connectionGeneration;
+
+  const routeAndOpen = async (generation: number): Promise<void> => {
+    if (!isCurrentGeneration(generation)) return;
     setConnection("routing");
     let result: Awaited<ReturnType<typeof getRuntimeRouting>>;
     try {
@@ -83,17 +90,18 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
         fetch: deps.fetch,
       });
     } catch {
-      scheduleRoutingRetry();
+      if (isCurrentGeneration(generation)) scheduleRoutingRetry(generation);
       return;
     }
+    if (!isCurrentGeneration(generation)) return;
 
     switch (result.status) {
       case "ok":
         routingAttempts = 0;
-        openSocket(result.routing.wsUrl, result.routing.runtimeJwt);
+        openSocket(generation, result.routing.wsUrl, result.routing.runtimeJwt);
         return;
       case "retry":
-        scheduleRoutingRetry(result.retryAfterMs);
+        scheduleRoutingRetry(generation, result.retryAfterMs);
         return;
       case "reauth":
         failPendingOutboundAndSetError(
@@ -110,12 +118,13 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     }
   };
 
-  const openSocket = (url: string, runtimeJwt: string) => {
-    if (closed) return;
+  const openSocket = (generation: number, url: string, runtimeJwt: string) => {
+    if (!isCurrentGeneration(generation)) return;
     closeSocket();
     setConnection("connecting");
     socket = deps.createWebSocket(url);
     socket.onopen = () => {
+      if (!isCurrentGeneration(generation)) return;
       sendNow({
         type: "connect",
         auth_token: runtimeJwt,
@@ -125,13 +134,18 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
       socketIsOpen = true;
       flushOutboundQueue();
     };
-    socket.onmessage = (event) => handleRuntimeFrame(event.data);
-    socket.onerror = () =>
+    socket.onmessage = (event) => {
+      if (!isCurrentGeneration(generation)) return;
+      handleRuntimeFrame(generation, event.data);
+    };
+    socket.onerror = () => {
+      if (!isCurrentGeneration(generation)) return;
       failPendingOutboundAndSetError("network", "Companion Chat connection failed.");
+    };
     socket.onclose = () => {
-      if (closed) return;
+      if (!isCurrentGeneration(generation)) return;
       markPendingOutboundFailed();
-      scheduleRoutingRetry();
+      scheduleRoutingRetry(generation);
     };
   };
 
@@ -150,20 +164,24 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   };
 
   const close = () => {
+    connectionGeneration += 1;
     closed = true;
     cancelRetry();
     closeSocket();
     setConnection("idle");
   };
 
-  const handleRuntimeFrame = (data: string) => {
+  const handleRuntimeFrame = (generation: number, data: string) => {
+    if (!isCurrentGeneration(generation)) return;
     let event: RuntimeToClientEvent;
     try {
       event = parseRuntimeToClientEvent(JSON.parse(data));
     } catch {
+      if (!isCurrentGeneration(generation)) return;
       failPendingOutboundAndSetError("protocol", "Received an invalid Protocol frame.");
       return;
     }
+    if (!isCurrentGeneration(generation)) return;
 
     switch (event.type) {
       case "hello_ok":
@@ -215,8 +233,8 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     return true;
   };
 
-  const scheduleRoutingRetry = (retryAfterMs?: number) => {
-    if (closed) return;
+  const scheduleRoutingRetry = (generation: number, retryAfterMs?: number) => {
+    if (!isCurrentGeneration(generation)) return;
     routingAttempts += 1;
     const max = deps.maxRoutingRetries ?? DEFAULT_BACKOFF_MS.length;
     if (routingAttempts > max) {
@@ -233,8 +251,9 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
       DEFAULT_BACKOFF_MS[routingAttempts - 1] ??
       MAX_BACKOFF_MS;
     retryCancel = deps.schedule(() => {
+      if (!isCurrentGeneration(generation)) return;
       retryCancel = null;
-      void routeAndOpen();
+      void routeAndOpen(generation);
     }, delayMs);
   };
 

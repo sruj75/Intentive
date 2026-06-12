@@ -276,6 +276,137 @@ test("close does not mark pending outbound failed", async () => {
   assert.equal(harness.adapter.getState().messages[0].delivery, "pending");
 });
 
+test("stale routing after reconnect cannot replace the fresh socket", async () => {
+  const slowRoute = deferred();
+  const fastRoute = deferred();
+  const fetches = [slowRoute.promise, fastRoute.promise];
+  const harness = createHarness({
+    fetch: async () => fetches.shift(),
+  });
+
+  const staleConnect = harness.adapter.connect();
+  harness.adapter.close();
+  const freshConnect = harness.adapter.connect();
+
+  fastRoute.resolve(okRoutingResponse("wss://runtime.example/fresh", "fresh-jwt"));
+  await freshConnect;
+
+  assert.equal(harness.sockets.length, 1);
+  assert.equal(harness.sockets[0].url, "wss://runtime.example/fresh");
+  harness.sockets[0].open();
+  assert.equal(JSON.parse(harness.sockets[0].sent[0]).auth_token, "fresh-jwt");
+
+  slowRoute.resolve(okRoutingResponse("wss://runtime.example/stale", "stale-jwt"));
+  await staleConnect;
+
+  assert.equal(harness.sockets.length, 1);
+  assert.equal(harness.sockets[0].url, "wss://runtime.example/fresh");
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).auth_token).filter(Boolean),
+    ["fresh-jwt"],
+  );
+});
+
+test("stale routing after close creates no socket and leaves the adapter idle", async () => {
+  const route = deferred();
+  const harness = createHarness({
+    fetch: async () => route.promise,
+  });
+
+  const connecting = harness.adapter.connect();
+  harness.adapter.close();
+
+  route.resolve(okRoutingResponse("wss://runtime.example/stale", "stale-jwt"));
+  await connecting;
+
+  assert.equal(harness.sockets.length, 0);
+  assert.equal(harness.adapter.getState().connectionState, "idle");
+});
+
+test("stale routing failures after newer connect do not fail pending outbound", async () => {
+  const staleRoute = deferred();
+  const freshRoute = deferred();
+  const fetches = [staleRoute.promise, freshRoute.promise];
+  const harness = createHarness({
+    fetch: async () => fetches.shift(),
+  });
+
+  const staleConnect = harness.adapter.connect();
+  await harness.adapter.sendUserMessage("hello");
+  const freshConnect = harness.adapter.connect();
+
+  freshRoute.resolve(okRoutingResponse("wss://runtime.example/fresh", "fresh-jwt"));
+  await freshConnect;
+  harness.sockets[0].open();
+
+  staleRoute.resolve(response(401, {}));
+  await staleConnect;
+
+  assert.equal(harness.adapter.getState().connectionState, "connecting");
+  assert.equal(harness.adapter.getState().error, null);
+  assert.equal(harness.adapter.getState().messages[0].delivery, "pending");
+  assert.equal(harness.timers.length, 0);
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect", "user_message"],
+  );
+});
+
+test("stale retry timers after reconnect are ignored", async () => {
+  const fetches = [
+    response(503, {}),
+    okRoutingResponse("wss://runtime.example/fresh", "fresh-jwt"),
+  ];
+  const harness = createHarness({
+    fetch: async () => fetches.shift(),
+  });
+
+  await harness.adapter.connect();
+  assert.equal(harness.adapter.getState().connectionState, "retrying");
+
+  const freshConnect = harness.adapter.connect();
+  await freshConnect;
+  harness.sockets[0].open();
+
+  harness.runNextTimer({ forceCancelled: true });
+  await harness.flush();
+
+  assert.equal(harness.sockets.length, 1);
+  assert.equal(harness.sockets[0].url, "wss://runtime.example/fresh");
+  assert.equal(JSON.parse(harness.sockets[0].sent[0]).auth_token, "fresh-jwt");
+});
+
+test("stale socket callbacks after reconnect cannot mutate state or flush the queue", async () => {
+  let routeCount = 0;
+  const harness = createHarness({
+    fetch: async () => okRoutingResponse(`wss://runtime.example/${++routeCount}`, "jwt"),
+  });
+
+  await harness.adapter.connect();
+  const staleSocket = harness.sockets[0];
+  staleSocket.open();
+  staleSocket.message(snapshot("stale-opening"));
+
+  const freshConnect = harness.adapter.connect();
+  await harness.adapter.sendUserMessage("hello");
+  await freshConnect;
+
+  staleSocket.message(snapshot("late-stale-opening"));
+  staleSocket.errorFromSocket();
+  staleSocket.closeFromServer();
+
+  assert.equal(harness.adapter.getState().connectionState, "connecting");
+  assert.equal(harness.adapter.getState().error, null);
+  assert.deepEqual(
+    harness.adapter.getState().messages.map((message) => message.id),
+    ["stale-opening", "id-1"],
+  );
+  assert.deepEqual(
+    staleSocket.sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
+});
+
 test("socket drop retries routing and a duplicate snapshot does not double the opening", async () => {
   const harness = createHarness();
   await harness.adapter.connect();
@@ -321,8 +452,8 @@ function createHarness(options = {}) {
     baseUrl: "https://control.example",
     getUserJwt: async () => "user-jwt",
     fetch: options.fetch ?? (async () => okRoutingResponse()),
-    createWebSocket: () => {
-      const socket = new FakeSocket();
+    createWebSocket: (url) => {
+      const socket = new FakeSocket(url);
       sockets.push(socket);
       return socket;
     },
@@ -341,15 +472,20 @@ function createHarness(options = {}) {
   return {
     adapter,
     sockets,
-    runNextTimer() {
+    timers,
+    runNextTimer(options = {}) {
       const timer = timers.shift();
-      if (timer && !timer.cancelled) timer.fn();
+      if (timer && (!timer.cancelled || options.forceCancelled)) timer.fn();
     },
     flush: () => new Promise((resolve) => setTimeout(resolve, 0)),
   };
 }
 
 class FakeSocket {
+  constructor(url) {
+    this.url = url;
+  }
+
   onopen = null;
   onmessage = null;
   onerror = null;
@@ -411,10 +547,18 @@ function response(status, body) {
   };
 }
 
-function okRoutingResponse() {
+function okRoutingResponse(wsUrl = "wss://runtime.example/session", runtimeJwt = "runtime-jwt") {
   return response(200, {
     agent_instance_id: "agent-1",
-    ws_url: "wss://runtime.example/session",
-    runtime_jwt: "runtime-jwt",
+    ws_url: wsUrl,
+    runtime_jwt: runtimeJwt,
   });
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
 }
