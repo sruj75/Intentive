@@ -3,16 +3,18 @@
 //! macOS has no push API for permission changes, so the detection engine polls.
 //! This mirrors ScreenPipe's detector-emits pattern (ADR-0021) and the
 //! `capture::runtime::permission_monitor` shape: a Rust-side poller samples
-//! [`CapturePermissions::snapshot`] on a short interval while the Capture
-//! Permission Setup surface is active and emits the full [`PermissionSet`] under
+//! [`CapturePermissions::snapshot`] on a short interval after the Capture
+//! Permission Setup surface opens and emits the full [`PermissionSet`] under
 //! `permissions:status` only on change. The webview is a pure subscriber — it
 //! does not run its own granular poll.
 //!
-//! Lifecycle: started when `open_permission_setup_window` opens the wizard, and
-//! self-terminates once every grant is live (grant completion), so there is no
-//! permanent background loop.
+//! Lifecycle: [`PermissionEmitterSupervisor`] is re-ensured every time the setup
+//! surface opens and keeps exactly one task alive. The task self-terminates once
+//! every grant is live (grant completion). It is intentionally not tied to the
+//! setup window hide event: Settings is hidden rather than destroyed, and the
+//! single-instance guard plus self-termination bound the cost.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::Emitter;
@@ -26,6 +28,24 @@ use super::{CapturePermissions, PermissionSet, PERMISSIONS_STATUS_EVENT};
 /// each grant in System Settings.
 pub const POLL_INTERVAL: Duration = Duration::from_millis(1500);
 pub const WAKE_GRACE: Duration = Duration::from_secs(10);
+
+#[derive(Default)]
+pub struct PermissionEmitterSupervisor {
+    handle: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl PermissionEmitterSupervisor {
+    pub fn ensure_running(&self, spawn: impl FnOnce() -> JoinHandle<()>) {
+        let mut handle = self.handle.lock().unwrap();
+        if handle
+            .as_ref()
+            .is_some_and(|existing| !existing.is_finished())
+        {
+            return;
+        }
+        *handle = Some(spawn());
+    }
+}
 
 /// Where an emitted snapshot goes. Production wraps the Tauri `AppHandle`; tests
 /// record so the poller can be exercised without a Tauri runtime.
@@ -86,10 +106,13 @@ impl PermissionStatusEmitter {
         }
     }
 
-    /// Spawn the emitter for the Tauri app while the Capture Permission Setup
-    /// surface is open. Returns immediately when the slot is already fully
-    /// granted (no work to do).
-    pub fn spawn_for(app: tauri::AppHandle, permissions: Arc<dyn CapturePermissions>) -> JoinHandle<()> {
+    /// Spawn the emitter for the Tauri app after the Capture Permission Setup
+    /// surface opens. The supervisor owns single-instance enforcement; the
+    /// spawned task returns immediately when every grant is already live.
+    pub fn spawn_for(
+        app: tauri::AppHandle,
+        permissions: Arc<dyn CapturePermissions>,
+    ) -> JoinHandle<()> {
         let sink = Arc::new(TauriPermissionStatusSink::new(app));
         Self::new(permissions, sink).spawn()
     }
@@ -121,7 +144,8 @@ impl PermissionStatusEmitter {
             // After a sleep/wake gap the probes can briefly read a live grant as
             // missing; suppress surfacing that regression during the grace
             // window (mirrors `permission_monitor`'s false suppression).
-            if !current.all_granted() && suppress_regression_until.is_some_and(|until| now < until) {
+            if !current.all_granted() && suppress_regression_until.is_some_and(|until| now < until)
+            {
                 continue;
             }
             suppress_regression_until = None;
@@ -140,6 +164,8 @@ impl PermissionStatusEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
 
     use crate::providers::permissions::StubCapturePermissions;
@@ -167,6 +193,57 @@ mod tests {
             microphone,
             accessibility,
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn supervisor_spawns_when_idle() {
+        let supervisor = PermissionEmitterSupervisor::default();
+        let spawned = Arc::new(AtomicUsize::new(0));
+        let spawned_for_closure = spawned.clone();
+
+        supervisor.ensure_running(move || {
+            spawned_for_closure.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async {})
+        });
+
+        assert_eq!(spawned.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn supervisor_does_not_stack_while_running() {
+        let supervisor = PermissionEmitterSupervisor::default();
+        let spawned = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..2 {
+            let spawned_for_closure = spawned.clone();
+            supervisor.ensure_running(move || {
+                spawned_for_closure.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(future::pending())
+            });
+        }
+
+        assert_eq!(spawned.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn supervisor_respawns_after_completion() {
+        let supervisor = PermissionEmitterSupervisor::default();
+        let spawned = Arc::new(AtomicUsize::new(0));
+
+        let first_spawned = spawned.clone();
+        supervisor.ensure_running(move || {
+            first_spawned.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async {})
+        });
+        tokio::task::yield_now().await;
+
+        let second_spawned = spawned.clone();
+        supervisor.ensure_running(move || {
+            second_spawned.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async {})
+        });
+
+        assert_eq!(spawned.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test(start_paused = true)]

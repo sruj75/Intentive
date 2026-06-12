@@ -33,7 +33,7 @@ use domains::summarization::config::ProviderConfig;
 use domains::summarization::runtime::{
     LazyLlmProvider, LiveProviderResolver, LlmProviderSlot, SummarizeError,
 };
-use providers::permissions::status_emitter::PermissionStatusEmitter;
+use providers::permissions::status_emitter::PermissionEmitterSupervisor;
 use providers::permissions::{CapturePermissions, MacosCapturePermissions};
 use tokio::sync::mpsc;
 
@@ -164,12 +164,6 @@ fn open_onboarding_window(window: &WebviewWindow) {
     let _ = window.set_focus();
 }
 
-fn open_permission_setup_window(window: &WebviewWindow) {
-    let _ = window.eval("window.location.search = '?surface=permission-setup';");
-    let _ = window.show();
-    let _ = window.set_focus();
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -190,6 +184,7 @@ pub fn run() {
             let signed_in = auth.is_signed_in();
             let permissions = Arc::new(MacosCapturePermissions);
             app.manage(permissions.clone() as Arc<dyn CapturePermissions>);
+            app.manage(PermissionEmitterSupervisor::default());
             let coordinator: Arc<CaptureSessionCoordinator> = CaptureSessionCoordinator::new(
                 supervisor.clone() as Arc<dyn Supervisor>,
                 events_rx,
@@ -335,15 +330,7 @@ pub fn run() {
             // disk probe, and failsafe direction live inside the helper.
             if let Some(window) = app.get_webview_window("settings") {
                 if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
-                    open_permission_setup_window(&window);
-                    // Detector-emits (ADR-0021): the Rust detection engine polls
-                    // and emits `permissions:status` while the wizard is open, so
-                    // the webview is a pure subscriber. Self-terminates on grant
-                    // completion.
-                    PermissionStatusEmitter::spawn_for(
-                        app.handle().clone(),
-                        permissions.clone() as Arc<dyn CapturePermissions>,
-                    );
+                    domains::menubar::ui::open_permission_setup_window(app.handle());
                 } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
                     && domains::summarization::service::bundled::bundled_model_needs_install()
                 {

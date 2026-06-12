@@ -18,6 +18,10 @@ use crate::domains::capture::types::state::CaptureState;
 use crate::domains::capture::types::state::ErrorReason;
 use crate::domains::menubar::service::icon::path_for;
 use crate::domains::menubar::service::menu::{describe, MenuItemDescriptor};
+use crate::providers::permissions::status_emitter::{
+    PermissionEmitterSupervisor, PermissionStatusEmitter,
+};
+use crate::providers::permissions::CapturePermissions;
 
 /// Whether macOS should treat the tray icon as a template image (auto-tint
 /// for light/dark mode). Template mode strips color, so the capturing/error
@@ -139,6 +143,11 @@ pub(crate) fn open_permission_setup_window(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+
+    let supervisor = app.state::<PermissionEmitterSupervisor>();
+    let permissions = app.state::<Arc<dyn CapturePermissions>>().inner().clone();
+    let handle = app.clone();
+    supervisor.ensure_running(move || PermissionStatusEmitter::spawn_for(handle, permissions));
 }
 
 pub(crate) fn refresh_tray(app: &AppHandle, state: &CaptureState) {
