@@ -5,7 +5,31 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ## [Unreleased]
 
+### Changed
+
+- **Session End Marker now emits before ScreenPipe shutdown (#35, ADR-0022)** —
+  On a capture Stop, the coordinator's `Effect::StopSession` now stops the
+  Context Heartbeat (which drains a final snapshot and emits the
+  `session_end_marker`) **before** stopping the ScreenPipe Supervisor, reversing
+  the prior order. The marker needs neither ScreenPipe alive nor a fresh tick and
+  rides the independent Routing `WsSession`, so it provably leaves the process
+  before ScreenPipe exits. Pinned by a coordinator ordering test and asserted
+  end-to-end by the #35 smoke. No wire-format change.
+
 ### Added
+
+- **Signed-in Capture Session smoke (#35)** — A demoable, AFK-runnable harness
+  (`apps/desktop/smoke/`, the `@intentive/desktop-smoke` workspace package) that
+  proves the full assembled chain on a signed-in Mac: routing from a Control
+  Plane stub (real `createJwtVerifier` JWT verification) → real ScreenPipe
+  capture → Context Heartbeat → Snapshot Store (written before delivery) →
+  `context_snapshot` Protocol event to a recording gateway (real
+  `@intentive/protocol` parser) → `session_end_marker` before ScreenPipe
+  shutdown. Dev-only, `#[cfg(debug_assertions)]`-gated smoke hooks
+  (`providers/smoke.rs`): compressed heartbeat cadence, deterministic stub
+  summarizer, startup login-token injection, and a structured `SMOKE {json}`
+  trace — all absent from the notarized release. Runbook:
+  [`docs/SMOKE.md`](SMOKE.md).
 
 - **Live Protocol snapshot emission (#34)** — The Context Heartbeat now frames
   `context_snapshot` and `session_end_marker` events and pushes them through
@@ -288,3 +312,4 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 [Issue #31]: https://github.com/sruj75/Intentive/issues/31
 [Issue #32]: https://github.com/sruj75/Intentive/issues/32
 [Issue #34]: https://github.com/sruj75/Intentive/issues/34
+[Issue #35]: https://github.com/sruj75/Intentive/issues/35

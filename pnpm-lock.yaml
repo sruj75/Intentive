@@ -92,6 +92,21 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@25.9.1)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@25.0.1)(vite@7.3.3(@types/node@25.9.1)(lightningcss@1.32.0)(terser@5.48.0)(yaml@2.9.0))
 
+  apps/desktop/smoke:
+    dependencies:
+      '@intentive/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@intentive/providers':
+        specifier: workspace:*
+        version: link:../../../packages/providers
+      jose:
+        specifier: ^6.1.2
+        version: 6.1.2
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
+
   apps/mobile:
     dependencies:
       '@assistant-ui/core':

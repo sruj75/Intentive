@@ -203,6 +203,14 @@ impl Supervisor for ScreenpipeSupervisor {
 
 impl Inner {
     fn emit(&self, event: SupervisorEvent) {
+        // Dev-only smoke evidence (#35): every terminal supervisor event marks
+        // ScreenPipe leaving. The signed-in smoke asserts the Session End
+        // Marker is recorded by the gateway *before* this line's timestamp.
+        #[cfg(debug_assertions)]
+        crate::providers::smoke::smoke_event(
+            "screenpipe_exited",
+            serde_json::json!({ "outcome": format!("{event:?}") }),
+        );
         // Receiver gone is benign — the coordinator may have shut down
         // already.
         let _ = self.events_tx.send(event);
@@ -264,6 +272,13 @@ impl Inner {
             }
         };
         self.endpoint.record_port(port);
+
+        // Dev-only smoke evidence (#35): ScreenPipe is live on `port`.
+        #[cfg(debug_assertions)]
+        crate::providers::smoke::smoke_event(
+            "screenpipe_started",
+            serde_json::json!({ "port": port }),
+        );
 
         let (kill_tx, kill_rx) = oneshot::channel();
         let watcher = {

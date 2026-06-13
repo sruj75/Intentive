@@ -50,26 +50,30 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 
 ### Desktop Client — `apps/desktop/docs/adr/`
 
-| #    | Title                                                         | Status                                                                                           |
-| ---- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 0001 | Tauri over Electron                                           | accepted                                                                                         |
-| 0002 | Wrap ScreenPipe CLI binary                                    | accepted                                                                                         |
-| 0003 | Menu-bar-only UI v1                                           | accepted                                                                                         |
-| 0004 | Push Context Snapshots to the agent                           | **superseded by monorepo 0001** (delivery is now over the WebSocket Protocol, not HTTPS webhook) |
-| 0005 | Drop failed snapshot pushes v1                                | accepted (channel changed; principle holds)                                                      |
-| 0006 | Ollama for on-device summarization                            | accepted                                                                                         |
-| 0007 | Local snapshot log with retention                             | accepted                                                                                         |
-| 0008 | Fixed-interval Heartbeat with Session End Marker              | accepted                                                                                         |
-| 0009 | Auto-start capture after auth with consent at sign-in         | accepted                                                                                         |
-| 0010 | Neon Auth for user-owned agent config                         | accepted                                                                                         |
-| 0011 | No ScreenPipe crash retry in v1                               | accepted                                                                                         |
-| 0012 | Subprocess manager shutdown intent flag                       | accepted                                                                                         |
-| 0013 | Unique local ports for bundled binaries                       | accepted                                                                                         |
-| 0014 | macOS CPU variants for bundled native artifacts               | accepted                                                                                         |
-| 0015 | Product-owned macOS permission identity and release packaging | accepted                                                                                         |
-| 0016 | sqlx for Snapshot Store                                       | accepted                                                                                         |
-| 0017 | Context Snapshot in shared snapshot module                    | accepted                                                                                         |
-| 0018 | Bundled model download during onboarding                      | accepted                                                                                         |
+| #    | Title                                                          | Status                                                                                           |
+| ---- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 0001 | Tauri over Electron                                            | accepted                                                                                         |
+| 0002 | Wrap ScreenPipe CLI binary                                     | accepted                                                                                         |
+| 0003 | Menu-bar-only UI v1                                            | accepted                                                                                         |
+| 0004 | Push Context Snapshots to the agent                            | **superseded by monorepo 0001** (delivery is now over the WebSocket Protocol, not HTTPS webhook) |
+| 0005 | Drop failed snapshot pushes v1                                 | accepted (channel changed; principle holds)                                                      |
+| 0006 | Ollama for on-device summarization                             | accepted                                                                                         |
+| 0007 | Local snapshot log with retention                              | accepted                                                                                         |
+| 0008 | Fixed-interval Heartbeat with Session End Marker               | accepted                                                                                         |
+| 0009 | Auto-start capture after auth with consent at sign-in          | accepted                                                                                         |
+| 0010 | Neon Auth for user-owned agent config                          | accepted                                                                                         |
+| 0011 | No ScreenPipe crash retry in v1                                | accepted                                                                                         |
+| 0012 | Subprocess manager shutdown intent flag                        | accepted                                                                                         |
+| 0013 | Unique local ports for bundled binaries                        | accepted                                                                                         |
+| 0014 | macOS CPU variants for bundled native artifacts                | accepted                                                                                         |
+| 0015 | Product-owned macOS permission identity and release packaging  | accepted                                                                                         |
+| 0016 | sqlx for Snapshot Store                                        | accepted                                                                                         |
+| 0017 | Context Snapshot in shared snapshot module                     | accepted                                                                                         |
+| 0018 | Bundled model download during onboarding                       | accepted                                                                                         |
+| 0019 | Rust owns Routing and WS session                               | accepted                                                                                         |
+| 0020 | Local three-grant interlock authoritative over CP capture gate | accepted                                                                                         |
+| 0021 | Permission detection adapted from ScreenPipe                   | accepted                                                                                         |
+| 0022 | Session End Marker before ScreenPipe shutdown                  | accepted                                                                                         |
 
 ### Control Plane — `services/control-plane/docs/adr/`
 

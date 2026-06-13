@@ -91,6 +91,16 @@ For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the
 
 See also [`apps/desktop/README.md`](../apps/desktop/README.md) (environment variables) and [`apps/desktop/CONTEXT.md`](../apps/desktop/CONTEXT.md) (**Routing State** vs **Session State**).
 
+### Signed-in Capture Session smoke (#35)
+
+The routing smoke above stubs out capture. The **signed-in Capture Session smoke** proves the full assembled chain on a real, signed-in Mac: Routing from the Control Plane stub (real JWT verification) → capture auto-starts → real ScreenPipe captures → Context Heartbeat produces a sanitized Context Snapshot → written to the Snapshot Store before delivery → emitted as a `context_snapshot` Protocol event → Stop emits a `session_end_marker` **before** ScreenPipe shutdown (ADR-0022).
+
+```bash
+pnpm --filter ./apps/desktop smoke   # or: node apps/desktop/smoke/run-smoke.mjs
+```
+
+It requires a Mac that is already signed in with all three macOS grants (Screen Recording, Microphone, Accessibility) — capture is readiness-gated and that gate cannot be automated. After ≥2 heartbeat cycles land as gateway receipts, toggle capture **off** in the menu bar (Capturing → Stopped) to emit the marker; the harness then prints a PASS/FAIL table mapping each AC to its evidence. Full runbook, two modes, and the dev-only env vars: [`apps/desktop/docs/SMOKE.md`](../apps/desktop/docs/SMOKE.md).
+
 ## Shared Contracts
 
 `packages/protocol` and `packages/api-contract` own wire and HTTP shapes. Contract changes must update the schemas and their Node tests together:

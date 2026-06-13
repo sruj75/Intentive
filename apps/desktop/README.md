@@ -46,10 +46,22 @@ INTENTIVE_CONTROL_PLANE_URL=<Control Plane base URL>   # live GET /agent
 INTENTIVE_DESKTOP_ROUTING_FIXTURE='{"ws_url":"...","runtime_jwt":"...","agent_instance_id":"..."}'  # dev/smoke without Control Plane
 ```
 
+Signed-in Capture Session smoke (#35) — **dev-only**, read solely under
+`#[cfg(debug_assertions)]`, absent from the notarized release. The harness sets
+these for you; see [`docs/SMOKE.md`](docs/SMOKE.md):
+
+```bash
+INTENTIVE_HEARTBEAT_INTERVAL_SECS=30   # compress the 600s cadence for the smoke
+INTENTIVE_SMOKE_STUB_SUMMARIZER=1      # deterministic summary so ticks never skip (ScreenPipe still real)
+INTENTIVE_SMOKE_LOGIN_TOKEN=<jwt>      # inject a login token at startup for an AFK GET /agent run
+INTENTIVE_SMOKE_CAPTURE_SIGNED_IN=1    # drive the capture FSM to signed-in so capture auto-starts AFK
+INTENTIVE_SMOKE_LOG=<path>             # append the structured SMOKE {json} trace to a file
+```
+
 ## Release
 
 v1 ships a Developer ID signed and notarized Apple Silicon `.dmg` containing only `Intentive.app`. The release pipeline lives in the monorepo's `.github/workflows/desktop-release.yml`. `tauri dev` is not a valid final-evidence build for macOS Privacy Settings identity.
 
 See [`CHANGELOG.md`](docs/CHANGELOG.md) for user-visible changes.
 
-For local Routing/WebSocket smoke without Control Plane, see [`docs/TESTING.md` § Routing session smoke](../../docs/TESTING.md#routing-session-smoke-local).
+For local Routing/WebSocket smoke without Control Plane, see [`docs/TESTING.md` § Routing session smoke](../../docs/TESTING.md#routing-session-smoke-local). For the full signed-in Capture Session chain (#35), see [`docs/SMOKE.md`](docs/SMOKE.md).

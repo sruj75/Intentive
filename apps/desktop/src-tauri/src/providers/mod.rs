@@ -4,3 +4,8 @@
 
 pub mod permissions;
 pub mod port;
+
+/// Dev-only structured smoke trace (#35). Present only in `debug_assertions`
+/// builds so it can never ship in the notarized release.
+#[cfg(debug_assertions)]
+pub mod smoke;
