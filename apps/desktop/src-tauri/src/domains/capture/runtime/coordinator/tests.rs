@@ -22,14 +22,29 @@ use crate::domains::snapshots::types::SessionEndReason;
 
 use super::{CaptureSessionCoordinator, CoordinatorCommand, StateObserver};
 
+/// Ordered cross-collaborator trace shared by `FakeSupervisor` and
+/// `RecordingHooks`, so a test can assert the relative order of
+/// `on_session_end` (Session End Marker emit) vs `supervisor.stop`.
+type EventLog = Arc<Mutex<Vec<&'static str>>>;
+
 /// Records calls so coordinator tests can assert "supervisor.stop was called".
+/// When handed a shared [`EventLog`], it also appends an ordered trace entry so
+/// teardown ordering can be asserted against the heartbeat hooks.
 #[derive(Default)]
 struct FakeSupervisor {
     start_calls: AtomicUsize,
     stop_calls: AtomicUsize,
+    log: Option<EventLog>,
 }
 
 impl FakeSupervisor {
+    fn with_log(log: EventLog) -> Self {
+        Self {
+            log: Some(log),
+            ..Default::default()
+        }
+    }
+
     fn start_count(&self) -> usize {
         self.start_calls.load(Ordering::SeqCst)
     }
@@ -48,6 +63,9 @@ impl Supervisor for FakeSupervisor {
 
     async fn stop(&self) -> Result<(), SupervisorError> {
         self.stop_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(log) = &self.log {
+            log.lock().unwrap().push("supervisor.stop");
+        }
         Ok(())
     }
 }
@@ -59,9 +77,17 @@ impl Supervisor for FakeSupervisor {
 struct RecordingHooks {
     starts: AtomicUsize,
     ends: Mutex<Vec<SessionEndReason>>,
+    log: Option<EventLog>,
 }
 
 impl RecordingHooks {
+    fn with_log(log: EventLog) -> Self {
+        Self {
+            log: Some(log),
+            ..Default::default()
+        }
+    }
+
     fn start_count(&self) -> usize {
         self.starts.load(Ordering::SeqCst)
     }
@@ -79,6 +105,9 @@ impl SessionHooks for RecordingHooks {
 
     async fn on_session_end(&self, reason: SessionEndReason) {
         self.ends.lock().unwrap().push(reason);
+        if let Some(log) = &self.log {
+            log.lock().unwrap().push("on_session_end");
+        }
     }
 }
 
@@ -198,6 +227,36 @@ async fn stop_session_effect_stops_supervisor_and_ends_heartbeat() {
     wait_for(&observer, CaptureState::SetupRequired).await;
     assert_eq!(supervisor.stop_count(), 1);
     assert_eq!(hooks.end_reasons(), vec![SessionEndReason::Quit]);
+}
+
+#[tokio::test]
+async fn stop_session_emits_marker_before_stopping_supervisor() {
+    // #35 (ADR-0022): a coordinator-initiated `StopSession` must emit the
+    // Session End Marker (via `on_session_end`) BEFORE `supervisor.stop()`, so
+    // the marker provably leaves the process before ScreenPipe exits. Both
+    // collaborators append to a shared ordered log; the marker hook must land
+    // first.
+    let log: EventLog = Arc::new(Mutex::new(Vec::new()));
+    let supervisor = Arc::new(FakeSupervisor::with_log(log.clone()));
+    let (_sup_tx, sup_rx) = spawn_supervisor_channel();
+    let auth = StubAuthChecker::new(true);
+    let readiness = Arc::new(StubReadinessChecker::new(true));
+    let coord = CaptureSessionCoordinator::new(supervisor.clone(), sup_rx, &auth, readiness);
+    let hooks = Arc::new(RecordingHooks::with_log(log.clone()));
+    coord.set_heartbeat(hooks.clone());
+    let observer = Arc::new(RecordingObserver::default());
+    coord.subscribe(observer.clone());
+    assert_eq!(coord.snapshot(), CaptureState::Capturing);
+    tokio::spawn(coord.clone().run());
+
+    coord.submit(CoordinatorCommand::ReadinessChanged(false));
+
+    wait_for(&observer, CaptureState::SetupRequired).await;
+    assert_eq!(
+        log.lock().unwrap().clone(),
+        vec!["on_session_end", "supervisor.stop"],
+        "the Session End Marker must be emitted before ScreenPipe is stopped",
+    );
 }
 
 #[tokio::test]

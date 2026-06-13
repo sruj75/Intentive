@@ -64,6 +64,38 @@ impl Summarizer for LlmProviderSlotSummarizer {
     }
 }
 
+/// Dev-only deterministic summarizer (#35). When `INTENTIVE_SMOKE_STUB_SUMMARIZER=1`
+/// the smoke harness swaps this in for the on-device LLM so heartbeat ticks
+/// never skip on "provider not resolved" — keeping the run fast, repeatable, and
+/// AFK. ScreenPipe is still real; only the summary text is stubbed. Compiled
+/// only under `debug_assertions`.
+#[cfg(debug_assertions)]
+struct SmokeStubSummarizer;
+
+#[cfg(debug_assertions)]
+#[async_trait]
+impl Summarizer for SmokeStubSummarizer {
+    async fn summarize(&self, _activity: &str) -> Result<String, SummarizerError> {
+        Ok("Smoke session summary (deterministic stub).".to_string())
+    }
+}
+
+/// Dev-only FSM state tracer (#35). Subscribed to the coordinator so every
+/// shell-state transition lands in the structured smoke log as ordering
+/// evidence. Compiled only under `debug_assertions`.
+#[cfg(debug_assertions)]
+struct SmokeStateObserver;
+
+#[cfg(debug_assertions)]
+impl domains::capture::types::session::StateObserver for SmokeStateObserver {
+    fn on_state(&self, state: &CaptureState) {
+        providers::smoke::smoke_event(
+            "fsm_state",
+            serde_json::json!({ "state": format!("{state:?}") }),
+        );
+    }
+}
+
 /// Composition-root adapter exposing the capture domain's `ScreenpipeEndpoint`
 /// through the snapshots domain's `ScreenpipeUrlSource` seam. Lives here so
 /// neither domain depends on the other — only `lib.rs` knows both.
@@ -93,6 +125,11 @@ impl SessionHooks for HeartbeatHooks {
     /// independent sign-out path (`clear_login_token`). So the marker always
     /// leaves on a still-open socket, best-effort like snapshots (ADR-0005; #38
     /// self-corrects any stale liveness).
+    ///
+    /// #35 sharpened the `StopSession` path so the coordinator runs this hook
+    /// *before* `supervisor.stop()` — the marker now provably leaves the process
+    /// before ScreenPipe exits (the marker needs neither ScreenPipe nor a fresh
+    /// tick). See ADR-0022.
     async fn on_session_end(&self, reason: SessionEndReason) {
         self.0.clone().stop(reason).await;
     }
@@ -130,6 +167,13 @@ fn session_end_marker_frame(marker: &SessionEndMarker) -> String {
 #[async_trait]
 impl AgentSink for WsSessionAgentSink {
     async fn emit_context_snapshot(&self, snapshot: &ContextSnapshot) -> Result<(), PushError> {
+        // Dev-only smoke evidence (#35): one line per heartbeat tick, keyed by
+        // snapshot_id so `assert.mjs` can correlate store rows ↔ gateway receipts.
+        #[cfg(debug_assertions)]
+        providers::smoke::smoke_event(
+            "snapshot_emit",
+            serde_json::json!({ "snapshot_id": snapshot.snapshot_id.to_string() }),
+        );
         self.session
             .try_emit(context_snapshot_frame(snapshot))
             .await
@@ -138,6 +182,13 @@ impl AgentSink for WsSessionAgentSink {
     }
 
     async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
+        // Dev-only smoke evidence (#35): this line's timestamp must precede the
+        // supervisor's `screenpipe_exited` line (ADR-0022 stop ordering).
+        #[cfg(debug_assertions)]
+        providers::smoke::smoke_event(
+            "marker_emit",
+            serde_json::json!({ "reason": format!("{:?}", marker.reason) }),
+        );
         let _ = self.session.try_emit(session_end_marker_frame(marker)).await;
     }
 }
@@ -199,6 +250,12 @@ pub fn run() {
             );
             app.manage(coordinator.clone() as Arc<dyn CaptureSessionControl>);
             app.manage(supervisor.clone());
+
+            // Dev-only smoke FSM tracer (#35). Subscribed before `run()` is
+            // spawned so it records the very first transition (the signed-in
+            // auto-start). Absent from release builds.
+            #[cfg(debug_assertions)]
+            coordinator.subscribe(Arc::new(SmokeStateObserver));
 
             // Snapshot Store (Issue #6, ADR-0007). Opens or creates the local
             // SQLite file, runs migrations, and purges rows older than 7 days
@@ -283,6 +340,24 @@ pub fn run() {
                 Arc::new(FastrandJitter),
             );
             app.manage(routing_session.clone());
+
+            // Dev-only login-token injection (#35). Lets the AFK smoke harness
+            // drive the *real* `GET /agent` → Protocol handshake without
+            // scripting the webview sign-in. Empty/whitespace reads as unset
+            // (see `smoke::dev_env`), and the whole block is absent from release
+            // builds — the only sanctioned reason it stays AFK. See ADR-0022.
+            #[cfg(debug_assertions)]
+            if let Some(token) = providers::smoke::dev_env(providers::smoke::LOGIN_TOKEN_ENV) {
+                eprintln!(
+                    "⚠️  SMOKE: {} set — injecting a login token at startup (dev-only)",
+                    providers::smoke::LOGIN_TOKEN_ENV
+                );
+                let session = routing_session.clone();
+                tauri::async_runtime::spawn(async move {
+                    session.set_login_token(token).await;
+                });
+            }
+
             let _ = app.emit(
                 "routing:status",
                 ConnectionStatus {
@@ -311,17 +386,79 @@ pub fn run() {
                     move || endpoint.current_or_primary_url()
                 }),
             ));
-            let summarizer = Arc::new(LlmProviderSlotSummarizer {
+            let real_summarizer = Arc::new(LlmProviderSlotSummarizer {
                 lazy: LazyLlmProvider::new(llm_slot.clone(), resolver),
             });
+            // Dev-only: the deterministic stub (#35) keeps the smoke AFK by never
+            // skipping a tick on an unresolved provider. Release always uses the
+            // real on-device LLM.
+            let summarizer: Arc<dyn Summarizer> = {
+                #[cfg(debug_assertions)]
+                {
+                    if providers::smoke::dev_env(providers::smoke::STUB_SUMMARIZER_ENV).as_deref()
+                        == Some("1")
+                    {
+                        eprintln!(
+                            "⚠️  SMOKE: {}=1 — using the deterministic stub summarizer (dev-only)",
+                            providers::smoke::STUB_SUMMARIZER_ENV
+                        );
+                        Arc::new(SmokeStubSummarizer) as Arc<dyn Summarizer>
+                    } else {
+                        real_summarizer as Arc<dyn Summarizer>
+                    }
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    real_summarizer as Arc<dyn Summarizer>
+                }
+            };
             let activity_client = Arc::new(ReqwestActivityClient::new(http));
-            let heartbeat = ContextHeartbeat::new(
-                summarizer,
-                activity_client,
-                Arc::new(screenpipe_endpoint) as Arc<dyn ScreenpipeUrlSource>,
-                snapshot_store_arc,
-                agent_sink,
-            );
+            let screenpipe_url_source =
+                Arc::new(screenpipe_endpoint) as Arc<dyn ScreenpipeUrlSource>;
+            // Dev-only: a compressed heartbeat cadence (#35) lets the smoke finish
+            // in ~2 short cycles. Release compiles only the 600s `::new` path so a
+            // 30-second heartbeat can never ship.
+            let heartbeat = {
+                #[cfg(debug_assertions)]
+                {
+                    match providers::smoke::dev_env(providers::smoke::HEARTBEAT_INTERVAL_ENV)
+                        .and_then(|raw| raw.parse::<u64>().ok())
+                        .filter(|secs| *secs > 0)
+                    {
+                        Some(secs) => {
+                            eprintln!(
+                                "⚠️  SMOKE: {}={secs} — non-default heartbeat cadence (dev-only)",
+                                providers::smoke::HEARTBEAT_INTERVAL_ENV
+                            );
+                            ContextHeartbeat::with_interval(
+                                summarizer,
+                                activity_client,
+                                screenpipe_url_source,
+                                snapshot_store_arc,
+                                agent_sink,
+                                std::time::Duration::from_secs(secs),
+                            )
+                        }
+                        None => ContextHeartbeat::new(
+                            summarizer,
+                            activity_client,
+                            screenpipe_url_source,
+                            snapshot_store_arc,
+                            agent_sink,
+                        ),
+                    }
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    ContextHeartbeat::new(
+                        summarizer,
+                        activity_client,
+                        screenpipe_url_source,
+                        snapshot_store_arc,
+                        agent_sink,
+                    )
+                }
+            };
             coordinator.set_heartbeat(Arc::new(HeartbeatHooks(heartbeat)));
 
             // Signed-in launch auto-starts a Capture Session per ADR-0009.

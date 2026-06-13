@@ -1,0 +1,17 @@
+{
+  "name": "@intentive/desktop-smoke",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Signed-in Capture Session happy-path smoke harness (#35). Dev/test only — never shipped.",
+  "scripts": {
+    "smoke": "node run-smoke.mjs",
+    "assert": "node assert.mjs"
+  },
+  "dependencies": {
+    "@intentive/protocol": "workspace:*",
+    "@intentive/providers": "workspace:*",
+    "jose": "^6.1.2",
+    "ws": "^8.21.0"
+  }
+}

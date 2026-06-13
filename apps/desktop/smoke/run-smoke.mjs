@@ -1,0 +1,167 @@
+// Orchestrator for the signed-in Capture Session happy-path smoke (#35).
+//
+// Stands up the controlled Control Plane + gateway, mints a real Neon-Auth-shaped
+// login JWT, exports the dev-only smoke env, and launches the *real* Desktop app
+// (`tauri dev`) so real ScreenPipe boots and the real FSM/heartbeat/emit/routing
+// path runs. It waits AFK for ≥2 heartbeat cycles to land as gateway receipts,
+// then waits for the operator's single Stop click (the one device-local action —
+// see risk #2 in the plan and `docs/SMOKE.md`), then correlates evidence into a
+// PASS/FAIL table.
+//
+// CP/provenance mode is the default. Set INTENTIVE_DESKTOP_ROUTING_FIXTURE to a
+// gateway-pointing fixture JSON to run the faster inner-loop variant instead —
+// which does NOT satisfy the provenance AC (documented in SMOKE.md).
+
+import { spawn, execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import { startControlPlane } from "./control-plane.mjs";
+import { startGateway } from "./gateway.mjs";
+import { resolveSnapshotDbPath, runAssertions, printTable } from "./assert.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "../../..");
+const OUT_DIR = join(HERE, ".out");
+
+const MIN_SNAPSHOTS = Number(process.env.INTENTIVE_SMOKE_MIN_SNAPSHOTS ?? 2);
+const HEARTBEAT_SECS = process.env.INTENTIVE_HEARTBEAT_INTERVAL_SECS ?? "30";
+// Generous ceilings: boot + MIN_SNAPSHOTS cycles, then the operator's Stop click.
+const SNAPSHOT_TIMEOUT_MS = Number(process.env.INTENTIVE_SMOKE_SNAPSHOT_TIMEOUT_MS ?? 360_000);
+const MARKER_TIMEOUT_MS = Number(process.env.INTENTIVE_SMOKE_MARKER_TIMEOUT_MS ?? 300_000);
+
+function readReceiptCounts(receiptsPath) {
+  if (!existsSync(receiptsPath)) return { snapshots: 0, markers: 0 };
+  const lines = readFileSync(receiptsPath, "utf8")
+    .split("\n")
+    .filter((l) => l.trim());
+  let snapshots = 0;
+  let markers = 0;
+  for (const line of lines) {
+    const r = JSON.parse(line);
+    if (r.type === "context_snapshot" && r.ok) snapshots += 1;
+    if (r.type === "session_end_marker" && r.ok) markers += 1;
+  }
+  return { snapshots, markers };
+}
+
+async function waitUntil(predicate, { timeoutMs, label }) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await sleep(1500);
+  }
+  throw new Error(`timed out after ${Math.round(timeoutMs / 1000)}s waiting for: ${label}`);
+}
+
+async function main() {
+  mkdirSync(OUT_DIR, { recursive: true });
+  const receiptsPath = join(OUT_DIR, "receipts.jsonl");
+  const smokeLogPath = join(OUT_DIR, "smoke.log");
+  writeFileSync(smokeLogPath, ""); // fresh log per run
+
+  // The .mjs imports resolve `@intentive/{protocol,providers}` to their built
+  // dist/. Build them up front so a clean checkout works.
+  console.log("🔧 building @intentive/protocol and @intentive/providers …");
+  execFileSync(
+    "pnpm",
+    ["--filter", "@intentive/protocol", "--filter", "@intentive/providers", "build"],
+    {
+      cwd: REPO_ROOT,
+      stdio: "inherit",
+    },
+  );
+
+  const usingFixture = Boolean(process.env.INTENTIVE_DESKTOP_ROUTING_FIXTURE?.trim());
+
+  const gateway = await startGateway({ receiptsPath });
+  console.log(`🛰  gateway listening at ${gateway.url}`);
+
+  const controlPlane = await startControlPlane({ wsUrl: gateway.url });
+  console.log(`🛂 control-plane listening at ${controlPlane.url}`);
+  const loginToken = await controlPlane.mintLoginToken();
+
+  const env = {
+    ...process.env,
+    INTENTIVE_CONTROL_PLANE_URL: controlPlane.url,
+    INTENTIVE_SMOKE_LOGIN_TOKEN: loginToken,
+    INTENTIVE_HEARTBEAT_INTERVAL_SECS: HEARTBEAT_SECS,
+    INTENTIVE_SMOKE_STUB_SUMMARIZER: "1",
+    INTENTIVE_SMOKE_LOG: smokeLogPath,
+  };
+  if (usingFixture) {
+    console.log(
+      "⚠️  fixture mode: INTENTIVE_DESKTOP_ROUTING_FIXTURE is set — provenance AC NOT proven.",
+    );
+  } else {
+    // Force the real CP path: a stale fixture would short-circuit provenance.
+    delete env.INTENTIVE_DESKTOP_ROUTING_FIXTURE;
+  }
+
+  console.log("🚀 launching Desktop app (tauri dev) — real ScreenPipe will boot …");
+  const app = spawn("pnpm", ["--filter", "./apps/desktop", "tauri", "dev"], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: "inherit",
+    detached: true, // own process group, so teardown can reap the whole tree
+  });
+
+  let exitCode = 1;
+  try {
+    console.log(
+      `⏳ waiting for ≥${MIN_SNAPSHOTS} context_snapshot receipt(s) (~${HEARTBEAT_SECS}s/cycle) …`,
+    );
+    await waitUntil(() => readReceiptCounts(receiptsPath).snapshots >= MIN_SNAPSHOTS, {
+      timeoutMs: SNAPSHOT_TIMEOUT_MS,
+      label: `${MIN_SNAPSHOTS} context_snapshot receipts (is the Mac signed-in with all three grants?)`,
+    });
+    console.log(`✅ saw ${readReceiptCounts(receiptsPath).snapshots} snapshot(s).`);
+
+    console.log(
+      "\n▶️  ACTION: click the Intentive menu bar → toggle capture OFF (Capturing → Stopped).",
+    );
+    console.log("   This emits the session_end_marker before ScreenPipe shuts down.\n");
+    await waitUntil(() => readReceiptCounts(receiptsPath).markers >= 1, {
+      timeoutMs: MARKER_TIMEOUT_MS,
+      label: "one session_end_marker receipt (did you toggle capture OFF?)",
+    });
+    console.log("✅ saw the session_end_marker.");
+
+    // Give the supervisor a beat to publish its terminal screenpipe_exited line.
+    await sleep(2000);
+
+    const outcome = runAssertions({
+      receiptsPath,
+      smokeLogPath,
+      dbPath: process.env.INTENTIVE_SMOKE_DB ?? resolveSnapshotDbPath(),
+    });
+    printTable(outcome);
+    if (usingFixture) {
+      console.log("ℹ️  fixture mode: the routing-provenance AC is NOT covered by this run.");
+    }
+    exitCode = outcome.ok ? 0 : 1;
+  } catch (err) {
+    console.error(`\n❌ ${err.message}`);
+    exitCode = 1;
+  } finally {
+    console.log("🧹 tearing down (app, gateway, control-plane) …");
+    try {
+      process.kill(-app.pid, "SIGTERM");
+    } catch {}
+    await sleep(1500);
+    try {
+      process.kill(-app.pid, "SIGKILL");
+    } catch {}
+    await gateway.close();
+    await controlPlane.close();
+  }
+
+  process.exit(exitCode);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

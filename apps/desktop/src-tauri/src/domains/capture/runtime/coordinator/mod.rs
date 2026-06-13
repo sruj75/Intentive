@@ -175,9 +175,11 @@ impl Inner {
                 let _ = self.supervisor.start().await;
                 self.start_heartbeat().await;
             }
+            // Heartbeat before supervisor: the Session End Marker needs the
+            // socket, not ScreenPipe — reverse StartSession ordering.
             Effect::StopSession(reason) => {
-                let _ = self.supervisor.stop().await;
                 self.stop_heartbeat(reason).await;
+                let _ = self.supervisor.stop().await;
             }
             // ScreenPipe is already gone (supervisor reported Stopped/Crashed):
             // end the heartbeat without re-issuing supervisor.stop().

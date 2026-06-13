@@ -33,6 +33,7 @@ _Avoid_: routing state, auth state, login state
 - **Routing State** and **Session State** are independent. A WebSocket drop moves only Session State (`connected → reconnecting`); Routing State changes only when Routing is fetched, refreshed, or rejected (`auth_failed`).
 - A snapshot is emitted only when **Routing State** is `routing_ready` **and** **Session State** is `connected`. Otherwise it stays in the **Snapshot Store** with `pushed_at = null`.
 - **Capture** is gated by sign-in + **Desktop Capture Readiness**, not by Routing/Session State. A down connection never stops capture (at-most-once, local-truth).
+- On a capture **Stop**, the coordinator emits the **Session End Marker** (via the Context Heartbeat) **before** it stops ScreenPipe — the marker needs neither ScreenPipe alive nor a fresh tick, and rides the independent Routing `WsSession` (ADR-0022, amending the #34 ordering note).
 
 ## Flagged ambiguities
 

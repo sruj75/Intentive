@@ -1,5 +1,9 @@
 packages:
   - "apps/*"
+  # Signed-in Capture Session smoke harness (#35). Nested under apps/desktop but
+  # its own workspace member so it can declare `ws`/`jose` without bloating the
+  # Desktop app's runtime deps. Not a deployable.
+  - "apps/desktop/smoke"
   - "services/*"
   - "packages/*"
   - "tools/linters/*"
