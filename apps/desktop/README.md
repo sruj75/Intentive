@@ -64,4 +64,4 @@ v1 ships a Developer ID signed and notarized Apple Silicon `.dmg` containing onl
 
 See [`CHANGELOG.md`](docs/CHANGELOG.md) for user-visible changes.
 
-For local Routing/WebSocket smoke without Control Plane, see [`docs/TESTING.md` § Routing session smoke](../../docs/TESTING.md#routing-session-smoke-local).
+For local Routing/WebSocket smoke without Control Plane, see [`docs/TESTING.md` § Routing session smoke](../../docs/TESTING.md#routing-session-smoke-local). For the full signed-in Capture Session chain (#35), see [`docs/SMOKE.md`](docs/SMOKE.md).

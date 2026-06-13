@@ -312,3 +312,4 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 [Issue #31]: https://github.com/sruj75/Intentive/issues/31
 [Issue #32]: https://github.com/sruj75/Intentive/issues/32
 [Issue #34]: https://github.com/sruj75/Intentive/issues/34
+[Issue #35]: https://github.com/sruj75/Intentive/issues/35
