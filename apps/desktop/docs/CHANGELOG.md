@@ -7,6 +7,12 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Changed
 
+- **Signed-in Capture Session smoke launch hardening (#35)** — Desktop startup
+  now starts the permission monitor through Tauri's async runtime, avoiding the
+  pre-reactor launch panic seen in `tauri dev`. The smoke runner also loads the
+  local ScreenPipe API token and passes it to heartbeat requests so live
+  `/activity-summary` calls work when ScreenPipe local API auth is enabled.
+
 - **Session End Marker now emits before ScreenPipe shutdown (#35, ADR-0022)** —
   On a capture Stop, the coordinator's `Effect::StopSession` now stops the
   Context Heartbeat (which drains a final snapshot and emits the

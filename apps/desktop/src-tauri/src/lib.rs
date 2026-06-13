@@ -273,11 +273,13 @@ pub fn run() {
             app.manage(Arc::new(snapshot_store));
 
             tauri::async_runtime::spawn(coordinator.clone().run());
-            PermissionMonitor::new(
-                permissions.clone() as Arc<dyn ReadinessChecker>,
-                coordinator.clone() as Arc<dyn CaptureSessionControl>,
-            )
-            .spawn();
+            tauri::async_runtime::spawn(
+                PermissionMonitor::new(
+                    permissions.clone() as Arc<dyn ReadinessChecker>,
+                    coordinator.clone() as Arc<dyn CaptureSessionControl>,
+                )
+                .run(),
+            );
 
             domains::menubar::ui::install(
                 app,

@@ -31,7 +31,10 @@ reliability+privacy harness (#43), or AR runtime snapshot semantics (#38/#40).
    and the smoke times out waiting for snapshots.
 2. **Apple Silicon** (V1 only) with the bundled ScreenPipe resource present
    (`src-tauri/resources/screenpipe`).
-3. Node + pnpm ≥ 11. The harness is the workspace package
+3. ScreenPipe local API auth must be initialized. The harness reads the bundled
+   binary's `auth token` output and passes it to heartbeat requests; it does not
+   print the token.
+4. Node + pnpm ≥ 11. The harness is the workspace package
    `@intentive/desktop-smoke` under `apps/desktop/smoke/`.
 
 ## Run it
@@ -54,8 +57,9 @@ What the orchestrator does:
    RSA keypair, serves its JWKS, and validates the `Authorization: Bearer` login
    token with the **real** `createJwtVerifier` from `@intentive/providers/auth`.
    A valid token → `200` routing pointing at the gateway; invalid → `401`.
-4. Mints a login JWT, exports the dev-only env (below), and launches the **real**
-   Desktop app with `tauri dev` (real ScreenPipe boots).
+4. Mints a login JWT, exports the dev-only env (below), loads the local
+   ScreenPipe API token for heartbeat requests, and launches the **real** Desktop
+   app with `tauri dev` (real ScreenPipe boots).
 5. Waits AFK for ≥2 heartbeat cycles to arrive as gateway receipts.
 6. **You then toggle capture OFF in the menu bar** (Capturing → Stopped). This is
    the one manual step — it is the same device-local action the grants gate
@@ -100,7 +104,9 @@ Harness-side knobs (read by `run-smoke.mjs`, not the app):
 `INTENTIVE_SMOKE_FIXTURE=1` (opt into fixture fast-loop),
 `INTENTIVE_SMOKE_MIN_SNAPSHOTS` (default 2),
 `INTENTIVE_SMOKE_SNAPSHOT_TIMEOUT_MS`, `INTENTIVE_SMOKE_MARKER_TIMEOUT_MS`,
-`INTENTIVE_SMOKE_DB` (override the resolved Snapshot Store path).
+`INTENTIVE_SMOKE_DB` (override the resolved Snapshot Store path). The runner
+also sets `SCREENPIPE_API_KEY` from the bundled ScreenPipe binary when available
+so authenticated local API requests can reach `/activity-summary`.
 
 ## AC → evidence checklist
 
@@ -144,5 +150,9 @@ The PASS/FAIL table maps each Acceptance Criterion to the source that proves it:
   missing (capture parked in `SetupRequired`), or ScreenPipe failed its health
   check on `127.0.0.1:44380`. Watch the inherited `tauri dev` console for the
   `SMOKE` lines (`screenpipe_started`, `fsm_state`).
+- **`activity query failed: non-2xx response: 403 Forbidden`** → ScreenPipe local
+  API auth is enabled but the heartbeat request has no valid `SCREENPIPE_API_KEY`.
+  Let the harness load the token, or run the bundled `screenpipe auth token`
+  command and export the value for manual app launches.
 - **Times out waiting for the marker** → did you toggle capture **off** (not
   Quit)?

@@ -26,6 +26,7 @@ import { resolveSnapshotDbPath, runAssertions, printTable } from "./assert.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
 const OUT_DIR = join(HERE, ".out");
+const SCREENPIPE_BINARY = join(REPO_ROOT, "apps/desktop/src-tauri/resources/screenpipe");
 
 const MIN_SNAPSHOTS = Number(process.env.INTENTIVE_SMOKE_MIN_SNAPSHOTS ?? 2);
 const HEARTBEAT_SECS = process.env.INTENTIVE_HEARTBEAT_INTERVAL_SECS ?? "30";
@@ -46,6 +47,18 @@ function readReceiptCounts(receiptsPath) {
     if (r.type === "session_end_marker" && r.ok) markers += 1;
   }
   return { snapshots, markers };
+}
+
+function readScreenpipeApiKey() {
+  try {
+    return execFileSync(SCREENPIPE_BINARY, ["auth", "token"], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return "";
+  }
 }
 
 async function waitUntil(predicate, { timeoutMs, label }) {
@@ -95,6 +108,11 @@ async function main() {
     // Drive the capture FSM to signed-in in both modes (independent of Routing).
     INTENTIVE_SMOKE_CAPTURE_SIGNED_IN: "1",
   };
+  const screenpipeApiKey = readScreenpipeApiKey();
+  if (screenpipeApiKey) {
+    env.SCREENPIPE_API_KEY = screenpipeApiKey;
+    console.log("🔐 ScreenPipe local API token loaded for heartbeat requests.");
+  }
   if (usingFixture) {
     // Skip GET /agent + JWT verification, but the fixture MUST point at THIS
     // runner's gateway or the receipts file the assertions read stays empty.

@@ -33,11 +33,19 @@ pub trait ActivityClient: Send + Sync + 'static {
 /// or relative strings like "10m ago" (see the module-level docs link).
 pub struct ReqwestActivityClient {
     http: reqwest::Client,
+    screenpipe_api_key: Option<String>,
 }
 
 impl ReqwestActivityClient {
     pub fn new(http: reqwest::Client) -> Self {
-        Self { http }
+        let screenpipe_api_key = std::env::var("SCREENPIPE_API_KEY")
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        Self {
+            http,
+            screenpipe_api_key,
+        }
     }
 }
 
@@ -47,9 +55,11 @@ impl ActivityClient for ReqwestActivityClient {
         let url = screenpipe_url
             .join("/activity-summary?start_time=10m%20ago&end_time=now")
             .map_err(|e| ActivityError::Http(e.to_string()))?;
-        let response = self
-            .http
-            .get(url)
+        let mut request = self.http.get(url);
+        if let Some(api_key) = &self.screenpipe_api_key {
+            request = request.bearer_auth(api_key);
+        }
+        let response = request
             .send()
             .await
             .map_err(|e| ActivityError::Http(e.to_string()))?;
