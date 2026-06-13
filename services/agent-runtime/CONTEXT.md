@@ -42,6 +42,10 @@ _Avoid_: keep-alive ping, presence beacon (those are transport-layer concerns)
 The single monitoring mechanism: one real agent turn in the main session that asks "should I intervene right now?", reading the immutable `HEARTBEAT.md` procedure + the user's `MEMORY.md` watch-list + the injected sensory buffer, then staying silent or calling **Post-Message-Back**. It has **two triggers** — a **Heartbeat** tick (timer) or an arriving **Context Snapshot** (perception) — not two systems. One judgment per wake enters the thread, not each raw snapshot. Distinct from **Cron** (absolute-time scheduled action). See ADR-0015.
 _Avoid_: monitoring loop / monitoring system (implies a separate brain), saliency gate (no shell-side judgment), snapshot message (snapshots enter via the sensory buffer, not as thread messages)
 
+**Interactive Turn**:
+A `user_message`-triggered agent turn whose returned final message **is** the reply — delivered and persisted as a `companion_message`, with no shell-side output classification (ADR-0013). The interactive counterpart to the **Monitoring Turn**; both run one-at-a-time on the **Per-User Channel**. Distinct from a _proactive_ turn (cron fire / heartbeat tick / context snapshot), which is silent by default and speaks only via **Post-Message-Back**.
+_Avoid_: chat turn, reply turn, normal turn
+
 **Persistence Adapter**:
 The thin repo-owned wrapper that the `runtime/` and `memory/` domains use to save and load DeepAgents checkpoints. Wraps LangGraph's Postgres checkpoint store internally so that shell code never imports LangGraph checkpoint types directly.
 _Avoid_: LangGraph store (as a direct domain dependency), checkpoint store (too generic), DIY checkpoint tables
@@ -49,6 +53,10 @@ _Avoid_: LangGraph store (as a direct domain dependency), checkpoint store (too 
 **Checkpoint**:
 The thread state LangGraph saves to Postgres after each DeepAgents step (tool calls, reasoning traces, partial results) and accumulates across turns. Because `thread_id` is stable per user, the persisted thread state **is the model's cross-turn working memory**, bounded by DeepAgents' native summarization/offloading middleware — not a mid-turn-only scratchpad. Managed by the Persistence Adapter; shell code does not read or write checkpoint rows directly. See ADR-0012.
 _Avoid_: state snapshot, agent state (ambiguous with Agent Instance status)
+
+**Runtime Turn**:
+The durable per-turn record (the `runtime_turns` row: `trace_id`, `thread_id`, `model`, `status`, timestamps; `bundle_version` added once #37 lands) — the observability/eval anchor that joins our relational record to the **Langfuse** trace answering "what did the model see on turn N?" (ADR-0012). Written by the shell in one transaction with the companion `conversation_messages` append, so the product record and the turn record stay mutually consistent. Distinct from the opaque **Checkpoint** (the model's working memory) and from the turn _execution_ itself.
+_Avoid_: turn log, run row (too generic), runtime event (that is the ingress ledger)
 
 **Bundle Path Set**:
 The canonical list of VFS paths the `bundles/` domain knows to resolve at session start. Defines _where_ the shell looks, not _what is inside_. Bundle paths resolve overlay-first (user overlay wins over the pinned bundle default). Content of each path is a product concern seeded separately and evolves independently of the shell build.
@@ -243,3 +251,6 @@ Deliberately **absent in v1**: web search, code/shell exec, calendar/email write
 
 **One eternal Companion conversation per user — no conversation reset in v1.**
 Decided 2026-06-13. There is a single continuous **Conversation History** per `user_id`; `conversation_messages` is one unbroken stream, never segmented into per-conversation transcripts and never wiped. We deliberately **do not** adopt OpenClaw's `/new`, daily-reset (4am), or idle-expiry rollover into a new `sessionId`. The product is an always-on companion relationship, not discrete task sessions, and **compaction** (not reset) bounds context growth. This is a deliberate OpenClaw divergence under ADR-0001 and is consistent with ADR-0001's "one active continuous session per user." No user-initiated "start over" or forget seam is reserved in v1. See ADR-0011.
+
+**Ingress ack is decoupled from turn success; turn failures are contained, not thrown.**
+Decided 2026-06-14. The **Interactive Turn** runs inside the same Per-User Channel task as ingress (`txn{ledger + user-msg}` → `invoke` → `txn{companion append + runtime_turns}`). An **ingress-transaction** failure rejects `accept` (the message was not durably accepted); a **turn** failure (invoke/append) is **caught**, recorded as `runtime_turns(status = failed)`, and `accept` **resolves** — silent to the user, loud in the **Runtime Turn** record and logs, never thrown out of the lane (which would falsely signal ingress failure and leak an unhandled rejection out of `user-queue.ts`). No auto-retry in v1; crash-mid-turn resume is the checkpoint concern of ADR-0018. See ADR-0020.
