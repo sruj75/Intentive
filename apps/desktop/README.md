@@ -54,6 +54,7 @@ these for you; see [`docs/SMOKE.md`](docs/SMOKE.md):
 INTENTIVE_HEARTBEAT_INTERVAL_SECS=30   # compress the 600s cadence for the smoke
 INTENTIVE_SMOKE_STUB_SUMMARIZER=1      # deterministic summary so ticks never skip (ScreenPipe still real)
 INTENTIVE_SMOKE_LOGIN_TOKEN=<jwt>      # inject a login token at startup for an AFK GET /agent run
+INTENTIVE_SMOKE_CAPTURE_SIGNED_IN=1    # drive the capture FSM to signed-in so capture auto-starts AFK
 INTENTIVE_SMOKE_LOG=<path>             # append the structured SMOKE {json} trace to a file
 ```
 

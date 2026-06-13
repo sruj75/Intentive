@@ -67,14 +67,19 @@ What the orchestrator does:
 
 ## Two modes
 
-| Mode                          | How                                                                               | Proves                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **CP / provenance (default)** | as above                                                                          | the **front** of the chain (routing came from CP + a verified JWT) **and** the full chain |
-| **Fixture fast-loop**         | export `INTENTIVE_DESKTOP_ROUTING_FIXTURE` pointing at the same gateway, then run | only the heartbeat→store→emit→marker half, fast, for inner-loop reruns                    |
+| Mode                          | How                                      | Proves                                                                                    |
+| ----------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **CP / provenance (default)** | as above                                 | the **front** of the chain (routing came from CP + a verified JWT) **and** the full chain |
+| **Fixture fast-loop**         | `INTENTIVE_SMOKE_FIXTURE=1 pnpm … smoke` | only the heartbeat→store→emit→marker half, fast, for inner-loop reruns                    |
+
+Fixture mode is opt-in via the harness knob `INTENTIVE_SMOKE_FIXTURE=1` — **not**
+by pre-exporting `INTENTIVE_DESKTOP_ROUTING_FIXTURE`, which cannot name the
+gateway's ephemeral port. The runner synthesizes the routing fixture from its own
+`gateway.url` and drops the Control Plane / login-token env.
 
 **Fixture mode does NOT satisfy the routing-provenance AC** — it bypasses
 `GET /agent` and the JWT verification. The harness prints a reminder when it
-detects the fixture env.
+runs in fixture mode.
 
 ## Dev-only environment variables
 
@@ -83,14 +88,16 @@ notarized release build (`apps/desktop/src-tauri/src/providers/smoke.rs` +
 `lib.rs`). `run-smoke.mjs` sets them for you; they are listed here for manual
 runs and for the README.
 
-| Var                                 | Effect                                                                                                                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `INTENTIVE_HEARTBEAT_INTERVAL_SECS` | Override the 600s cadence so the smoke finishes in ~2 short cycles. Release compiles only the 600s path.                                                                                   |
-| `INTENTIVE_SMOKE_STUB_SUMMARIZER`   | `=1` swaps the on-device LLM for a deterministic stub so ticks never skip on an unresolved provider. ScreenPipe is still real.                                                             |
-| `INTENTIVE_SMOKE_LOGIN_TOKEN`       | A minted login JWT injected at startup via `set_login_token`, so the AFK run drives the real `GET /agent` path without scripting the webview. Empty/whitespace reads as unset.             |
-| `INTENTIVE_SMOKE_LOG`               | File to append the structured `SMOKE {json}` trace to (FSM state changes, `screenpipe_started`/`screenpipe_exited`, `snapshot_emit`, `marker_emit`). Without it, events go to stderr only. |
+| Var                                 | Effect                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `INTENTIVE_HEARTBEAT_INTERVAL_SECS` | Override the 600s cadence so the smoke finishes in ~2 short cycles. Release compiles only the 600s path.                                                                                                                                                                  |
+| `INTENTIVE_SMOKE_STUB_SUMMARIZER`   | `=1` swaps the on-device LLM for a deterministic stub so ticks never skip on an unresolved provider. ScreenPipe is still real.                                                                                                                                            |
+| `INTENTIVE_SMOKE_LOGIN_TOKEN`       | A minted login JWT injected at startup via `set_login_token`, so the AFK run drives the real `GET /agent` path without scripting the webview. Empty/whitespace reads as unset. (CP mode only — absent in fixture mode.)                                                   |
+| `INTENTIVE_SMOKE_CAPTURE_SIGNED_IN` | `=1` drives the capture FSM to signed-in at startup (submits `SignInCompleted` after the heartbeat is wired), mirroring the menu-bar sign-in surface so the AFK run auto-starts a Capture Session. Independent of Routing — set in **both** modes (fixture has no token). |
+| `INTENTIVE_SMOKE_LOG`               | File to append the structured `SMOKE {json}` trace to (FSM state changes, `screenpipe_started`/`screenpipe_exited`, `snapshot_emit`, `marker_emit`). Without it, events go to stderr only.                                                                                |
 
 Harness-side knobs (read by `run-smoke.mjs`, not the app):
+`INTENTIVE_SMOKE_FIXTURE=1` (opt into fixture fast-loop),
 `INTENTIVE_SMOKE_MIN_SNAPSHOTS` (default 2),
 `INTENTIVE_SMOKE_SNAPSHOT_TIMEOUT_MS`, `INTENTIVE_SMOKE_MARKER_TIMEOUT_MS`,
 `INTENTIVE_SMOKE_DB` (override the resolved Snapshot Store path).

@@ -8,8 +8,9 @@
 // see risk #2 in the plan and `docs/SMOKE.md`), then correlates evidence into a
 // PASS/FAIL table.
 //
-// CP/provenance mode is the default. Set INTENTIVE_DESKTOP_ROUTING_FIXTURE to a
-// gateway-pointing fixture JSON to run the faster inner-loop variant instead —
+// CP/provenance mode is the default. Set INTENTIVE_SMOKE_FIXTURE=1 to run the
+// faster inner-loop variant instead — the runner then synthesizes a routing
+// fixture pointing at its own gateway (bypassing GET /agent + JWT verification),
 // which does NOT satisfy the provenance AC (documented in SMOKE.md).
 
 import { spawn, execFileSync } from "node:child_process";
@@ -74,7 +75,10 @@ async function main() {
     },
   );
 
-  const usingFixture = Boolean(process.env.INTENTIVE_DESKTOP_ROUTING_FIXTURE?.trim());
+  // Fixture fast-loop is opt-in via this harness knob — NOT by pre-exporting
+  // INTENTIVE_DESKTOP_ROUTING_FIXTURE, which can't name the gateway's ephemeral
+  // port. The runner synthesizes the fixture from `gateway.url` below.
+  const usingFixture = Boolean(process.env.INTENTIVE_SMOKE_FIXTURE?.trim());
 
   const gateway = await startGateway({ receiptsPath });
   console.log(`🛰  gateway listening at ${gateway.url}`);
@@ -85,19 +89,32 @@ async function main() {
 
   const env = {
     ...process.env,
-    INTENTIVE_CONTROL_PLANE_URL: controlPlane.url,
-    INTENTIVE_SMOKE_LOGIN_TOKEN: loginToken,
     INTENTIVE_HEARTBEAT_INTERVAL_SECS: HEARTBEAT_SECS,
     INTENTIVE_SMOKE_STUB_SUMMARIZER: "1",
     INTENTIVE_SMOKE_LOG: smokeLogPath,
+    // Drive the capture FSM to signed-in in both modes (independent of Routing).
+    INTENTIVE_SMOKE_CAPTURE_SIGNED_IN: "1",
   };
   if (usingFixture) {
+    // Skip GET /agent + JWT verification, but the fixture MUST point at THIS
+    // runner's gateway or the receipts file the assertions read stays empty.
+    // Synthesize it from gateway.url and drop the CP/login env so nothing
+    // short-circuits to the wrong place. Provenance AC is NOT proven here.
+    env.INTENTIVE_DESKTOP_ROUTING_FIXTURE = JSON.stringify({
+      ws_url: gateway.url,
+      runtime_jwt: "fixture-runtime-jwt",
+      agent_instance_id: "agent_fixture",
+    });
+    delete env.INTENTIVE_CONTROL_PLANE_URL;
+    delete env.INTENTIVE_SMOKE_LOGIN_TOKEN;
     console.log(
-      "⚠️  fixture mode: INTENTIVE_DESKTOP_ROUTING_FIXTURE is set — provenance AC NOT proven.",
+      `⚠️  fixture mode: routing synthesized to ${gateway.url} — provenance AC NOT proven.`,
     );
   } else {
-    // Force the real CP path: a stale fixture would short-circuit provenance.
+    // Real CP path: a stray fixture would short-circuit provenance.
     delete env.INTENTIVE_DESKTOP_ROUTING_FIXTURE;
+    env.INTENTIVE_CONTROL_PLANE_URL = controlPlane.url;
+    env.INTENTIVE_SMOKE_LOGIN_TOKEN = loginToken;
   }
 
   console.log("🚀 launching Desktop app (tauri dev) — real ScreenPipe will boot …");

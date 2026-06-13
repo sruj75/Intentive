@@ -468,6 +468,27 @@ pub fn run() {
                 coordinator.submit(CoordinatorCommand::SignInCompleted);
             }
 
+            // Dev-only (#35): the AFK smoke needs capture to auto-start, but the
+            // login-token injection above only moves *Routing* to signed-in —
+            // `set_login_token` does not flip the capture FSM (Routing State and
+            // capture sign-in are independent; see CONTEXT.md). Mirror the
+            // menu-bar sign-in surface here so the harness doesn't have to drive
+            // the tray. Keyed off its own env (not the login token) because
+            // fixture fast-loop mode has no token. Submitted *after* the
+            // heartbeat is wired (above), exactly as the `signed_in` branch
+            // requires, so the StartSession effect has a Context Heartbeat.
+            #[cfg(debug_assertions)]
+            if !signed_in
+                && providers::smoke::dev_env(providers::smoke::CAPTURE_SIGNED_IN_ENV).as_deref()
+                    == Some("1")
+            {
+                eprintln!(
+                    "⚠️  SMOKE: {}=1 — driving the capture FSM to signed-in at startup (dev-only)",
+                    providers::smoke::CAPTURE_SIGNED_IN_ENV
+                );
+                coordinator.submit(CoordinatorCommand::SignInCompleted);
+            }
+
             // Onboarding-window open logic (Issue #7, ADR-0018). Open the
             // onboarding surface only when the user is signed in (FSM in
             // Capturing per ADR-0009) and the bundled model is not yet on

@@ -30,6 +30,13 @@ pub const STUB_SUMMARIZER_ENV: &str = "INTENTIVE_SMOKE_STUB_SUMMARIZER";
 /// `GET /agent` path without scripting the webview.
 pub const LOGIN_TOKEN_ENV: &str = "INTENTIVE_SMOKE_LOGIN_TOKEN";
 
+/// `=1` drives the capture FSM to signed-in at startup so the AFK harness can
+/// auto-start a Capture Session without the menu-bar sign-in surface. This is
+/// **independent of Routing** (the login token only moves Routing State): in
+/// fixture fast-loop mode there is no login token at all, so the capture
+/// sign-in must have its own dedicated trigger. See `lib.rs` and `docs/SMOKE.md`.
+pub const CAPTURE_SIGNED_IN_ENV: &str = "INTENTIVE_SMOKE_CAPTURE_SIGNED_IN";
+
 /// Read a dev-only smoke env var, treating an absent **or** empty/whitespace
 /// value as unset. Centralizing this here is the single seam the smoke wiring
 /// reads, and keeps the "an empty token must not trigger injection" rule
