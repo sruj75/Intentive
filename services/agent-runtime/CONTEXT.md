@@ -59,20 +59,20 @@ The durable per-turn record (the `runtime_turns` row: `trace_id`, `thread_id`, `
 _Avoid_: turn log, run row (too generic), runtime event (that is the ingress ledger)
 
 **Bundle Path Set**:
-The canonical list of VFS paths the `bundles/` domain knows to resolve at session start. Defines _where_ the shell looks, not _what is inside_. Bundle paths resolve overlay-first (user overlay wins over the pinned bundle default). Content of each path is a product concern seeded separately and evolves independently of the shell build.
-_Avoid_: bundle content, document templates, workspace files (too implementation-specific)
+_Superseded 2026-06-15 (ADR-0021)._ v1 is not a fixed set of VFS paths. The model splits into the **Procedure Floor** (injected versioned product content) and the **Per-User Memory** namespace (StoreBackend). Use those two terms; do not reintroduce a "six-path set."
+_Avoid_: six-path set, bundle content, document templates, workspace files
 
-**Bundle Default**:
-The immutable, versioned document stored at a bundle path for all users. Read when no user overlay exists for that path.
-_Avoid_: system prompt, base document
+**Procedure Floor** (was **Bundle Default**):
+The immutable, versioned product content that defines how the Companion reasons and behaves — `SOUL`, `AGENTS`, `BOOTSTRAP`, `HEARTBEAT`. Managed in **Langfuse Prompt Management** (ADR-0022), resolved by the `production` label, and **injected** into the per-turn system prompt by the prompt-assembly middleware — not stored as a VFS file and not agent-writable. A deploy-bundled copy is the fallback if Langfuse is unreachable.
+_Avoid_: system prompt (as a static string), base document, bundle document (Neon row)
 
 **Pinned Bundle Version**:
-The single bundle version a connection's turns resolve Bundle Defaults against. Resolved once at `hello_ok` from the then-latest version and held fixed for the life of the WebSocket connection. A reconnect re-resolves and is the only migration boundary. Recorded on each turn record for observability.
+The Procedure Floor version a connection's turns are composed against — the **Langfuse prompt version(s)** resolved from the `production` label once at `hello_ok`, cached and held fixed for the life of the WebSocket connection. A reconnect re-resolves and is the only migration boundary. Recorded on each Runtime Turn (`bundle_version`) for the eval loop. See ADR-0022.
 _Avoid_: active version, current bundle, live version
 
-**User Overlay**:
-A mutable document stored per `(user_id, path)`. Written by the agent (e.g. USER.md, MEMORY.md) or seeded empty on first session. Takes precedence over the Bundle Default on read.
-_Avoid_: user file, personal context file, user document
+**Per-User Memory** (was **User Overlay**):
+The agent's mutable per-user documents, stored in the DeepAgents **`StoreBackend`** over Neon, namespaced `(user_id,)`. Two kinds, one store, two injection policies: **`USER.md`** — the compact OpenClaw-style user profile the shell **injects every turn** (kept compact by instruction); and the **`/memories/` namespace** — multi-file long-term memory the agent reads/writes **on demand** via DeepAgents VFS tools (`ls`/`read`/`grep`/`glob`/`write`/`edit`), which the shell never auto-loads (DeepAgents owns LTM). Nothing here shadows a Procedure Floor document — there is no overlay merge in v1. See ADR-0021.
+_Avoid_: user overlay, overlay-first, user file, personal context file, custom Neon backend
 
 **Session Snapshot**:
 The authoritative read projection of Conversation History returned in `hello_ok.session_snapshot` on every reconnect. A history read-model, deliberately separate from the live wire events. Shape: `{ messages: SessionMessage[], before_cursor: string | null }` where `messages` is the most recent N entries (default 50) oldest-first, and `before_cursor` is non-null when older history exists.
@@ -109,15 +109,16 @@ _Avoid_: chat context (too narrow), perception thread, isolated session
 - The **Unified Working Context** is fed by every source (user messages, Context Snapshots, temporal grounding); the shell delivers reality and executes actions but never judges intervention.
 - The **Per-User Channel** is the single run-loop: every trigger (`user_message`, Context Snapshot, Heartbeat tick, Cron fire) is arbitrated there and exactly one agent turn runs at a time against that user's checkpoint (ADR-0016).
 - One process-wide **scheduler** holds all users' heartbeat cadence + cron due-times and _wakes_ a user's Per-User Channel for offline triggers; the per-user brain is hydrated on demand and evicted when idle (ADR-0018).
-- The **Bundle Path Set** defines what paths the `bundles/` domain resolves at session start.
-- Each path resolves to either a **User Overlay** (if one exists for that `user_id`) or a **Bundle Default**.
-- Content inside each path is not a shell concern — the shell loads whatever is there and passes it to DeepAgents.
+- The **Procedure Floor** (`SOUL`/`AGENTS`/`BOOTSTRAP`/`HEARTBEAT`) is versioned product content in Langfuse, injected per turn — not resolved from the VFS (ADR-0021/0022).
+- **Per-User Memory** (`USER.md` + `/memories/`) lives in the DeepAgents `StoreBackend` over Neon, namespaced `(user_id,)`; `USER.md` is injected, `/memories/` is read on demand. Nothing shadows a Procedure Floor document (no overlay merge in v1).
+- Procedure-floor content is a product concern (authored/versioned in Langfuse); per-user memory content is authored by the agent. The shell injects the floor + `USER.md` and otherwise lets DeepAgents own the memory filesystem.
 
 ## Flagged ambiguities
 
 - "checkpoint" vs "snapshot" — resolved: **Checkpoint** is LangGraph turn state; **Context Snapshot** is the Desktop's screen-capture summary event; **Session Snapshot** is the reconnect history projection. Three unrelated concepts that all once read as "snapshot."
 - "session" must never mean the conversation/transcript — resolved 2026-06-13. The continuous companion conversation is **Conversation History** owned by the **Agent Instance**, not a "session." The only legitimate qualified uses of "session" are **Bound Session** (the authenticated WebSocket connection), **Capture Session** (the Desktop screen-capture period ended by `session_end_marker`), and **Session Snapshot** (the reconnect history projection). OpenClaw's conversation-`session`/`sessionId` concept (with daily/idle reset) does **not** exist in our system — see the "one eternal conversation" decision below.
 - `hello_ok.session_snapshot` was typed `z.unknown()` in `packages/protocol` — resolved to the **Session Snapshot** shape above and implemented as explicit `session_message`/`session_snapshot` Zod schemas (see ADR-0006).
+- "overlay-first read resolution" implied a per-read merge of Bundle Default + User Overlay — resolved 2026-06-15 (ADR-0021): in v1 no path has both (procedure floor injected, memory store-only), so the merge never fires. "Resolution" is static routing by path-kind, not a merge; the general merge engine is deferred with agent self-personalization (ADR-0005).
 - "monitoring" must never imply a separate brain or a screen-capture dependency — resolved 2026-06-13. The **Monitoring Turn** is one main-session agent turn (ADR-0015); the **Heartbeat** is the connection-independent proactivity engine (ADR-0018); **Context Snapshots** only enrich a turn when present. Avoid "monitoring loop/system," "saliency gate," and "snapshot message."
 
 ## Decisions
@@ -126,9 +127,13 @@ _Avoid_: chat context (too narrow), perception thread, isolated session
 Decided 2026-05-29. Shell domains import the Persistence Adapter interface; LangGraph checkpoint types stay inside the adapter implementation. This keeps the `runtime/` and `memory/` domains free of LangGraph internals and makes the store swappable without touching domain code. Alternatives considered: DIY Postgres checkpoint tables (too much duplicated logic) and raw LangGraph store usage in domain code (too coupled to LangGraph internals).
 
 **v1 Bundle Path Set is locked to six paths**
+_Superseded 2026-06-15 by ADR-0021._ The "six paths in one VFS" framing is replaced by two things: an **injected procedure floor** (`SOUL.md`, `AGENTS.md`, `BOOTSTRAP.md`, `HEARTBEAT.md` — versioned product content composed into the system prompt by the prompt-assembly middleware, **never** routed into the agent's filesystem) and a **per-user memory namespace** (`USER.md` profile + a `/memories/`-style folder the agent manages) exposed to the agent via the native DeepAgents `CompositeBackend`'s `StoreBackend` route over Neon. The original text below is retained for history.
+
 Decided 2026-05-29. The `bundles/` domain resolves exactly these paths at session start: `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `USER.md`, `MEMORY.md`. All six are seeded as empty Bundle Defaults on first deploy. `USER.md` and `MEMORY.md` are User Overlay paths — DeepAgents writes their content over time via the VFS backend; the shell does not author them. `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, and `HEARTBEAT.md` are Bundle Defaults whose content is a product concern, authored and versioned separately from the shell build.
 
 **VFS write policy: procedure files immutable, knowledge files writable**
+_Refined 2026-06-15 by ADR-0021._ Procedure files are **not routed into the agent's VFS at all** — immutability is **structural** (the agent cannot see or write them), so the "reject writes" guard is unnecessary and dropped. The procedure/knowledge distinction below stands; only its enforcement mechanism changed.
+
 Decided 2026-05-29. The VFS backend splits the path set into two buckets by what the file _is_:
 
 - **Procedure (immutable in v1):** `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`. These define how the Companion reasons and behave as the centrally-controlled product floor. Agent writes to these paths are **rejected** — they are not routed to overlays. This preserves the ability to ship a fixed/improved bundle version (e.g. from Langfuse eval signal) to all users, including existing ones, without a user overlay shadowing the update.
@@ -137,6 +142,8 @@ Decided 2026-05-29. The VFS backend splits the path set into two buckets by what
 Personalization in v1 expresses through the knowledge layer plus **Cron** (scheduled actions), not by the agent editing its own procedure files. This includes **what the Companion watches for**: the agent "programs its own monitoring" by writing per-user **watch-items** into the writable knowledge layer (`MEMORY.md`), _not_ by editing `HEARTBEAT.md`. `HEARTBEAT.md` stays the immutable procedure for _how_ to run a Monitoring Turn; `MEMORY.md` carries the personal watch-list of _what_ to watch. A Monitoring Turn reads both. Worked example: the agent learns "user takes a pill ~9pm" → writes the fact (and any "watch for evening-routine drift" watch-item) to `USER.md`/`MEMORY.md`, creates a Cron job to fire at 9pm; `HEARTBEAT.md` is read (never written) to decide whether a given tick is worth a Post-Message-Back. See ADR-0015.
 
 **Bundle version is pinned per WebSocket connection**
+_Source resolved 2026-06-15 by ADR-0022:_ the procedure floor is managed in **Langfuse Prompt Management** (registry-first); pinning = resolve the `production` label once at `hello_ok`, cache for the connection, re-resolve on reconnect. `runtime_turns.bundle_version` records the resolved Langfuse prompt version(s). A cached + deploy-bundled **fallback** procedure floor keeps the always-alive runtime up if Langfuse is unreachable.
+
 Decided 2026-05-29. The Pinned Bundle Version is resolved once at `hello_ok` (from the then-latest version) and held fixed for the connection's lifetime; every turn on that connection resolves Bundle Defaults against it. A reconnect is the migration boundary — it re-resolves to whatever is latest at that moment. The resolved version is written to each `runtime_turns` row so "which bundle produced this behavior?" is always answerable (matters for the Langfuse eval loop). This honors ADR-0004's "migrate at reconnect, never mid-turn" boundary. Alternatives rejected: per-turn pinning (risks behavioral drift within one conversation) and explicit `agent_instance`-level migration jobs (more control than v1 needs; can strand users on stale bundles).
 
 **Agent-driven behavioral self-personalization is deferred to its own ADR.** Letting the agent overlay procedure files (`AGENTS.md`/`HEARTBEAT.md`) is a hard, near-irreversible mechanism entangling override-vs-augment semantics, base-version migration, and the safety floor. It must not be a silent Phase 0 default. When built, it should be **augment** (base always loaded, learned layer composed on top) rather than **replace** (overlay shadows base), so central bundle improvements still reach personalized users.
@@ -145,7 +152,7 @@ Decided 2026-05-29. The Pinned Bundle Version is resolved once at `hello_ok` (fr
 Decided 2026-06-09. Everything the Runtime persists lands in Neon, but it splits into three storages with different access patterns and guarantees, and they are never conflated:
 
 - **Event / conversation log** — relational tables (`runtime_events` ledger, `conversation_messages`). Needs per-`user_id` time-ordering and unique-constraint idempotency. Shell-owned. This is the OpenClaw transcript equivalent.
-- **Agent document workspace (VFS)** — path-addressed documents (the **Bundle Path Set**: `USER.md`, `MEMORY.md`, …), exposed to DeepAgents as a virtual filesystem (`ls`/`read`/`write`/`edit`/`glob`/`grep`) over a custom Neon-backed DeepAgents backend (rows keyed by path). The OpenClaw workspace-files equivalent.
+- **Agent document workspace (VFS)** — **Per-User Memory** (`USER.md`, `/memories/`) exposed to DeepAgents as a virtual filesystem (`ls`/`read`/`write`/`edit`/`glob`/`grep`) over the **native DeepAgents `StoreBackend`** (a `PostgresStore` on Neon, namespaced `(user_id,)`) — _not_ a hand-rolled backend (ADR-0021). The OpenClaw workspace-files equivalent.
 - **Agent mid-turn state (Checkpoints)** — opaque per-step serialized state, managed by the **Persistence Adapter** over LangGraph's Postgres checkpoint store.
 
 The event log is deliberately **not** a VFS file: idempotency (unique constraint) and ordering are relational powers a path-keyed store cannot give, and they are exactly what the per-user serialization invariant depends on. OpenClaw splits the same way (transcript dir vs workspace files vs agent state); we back all three with Neon instead of local disk. `runtime_events` (#28) touches only the first concern.
@@ -153,10 +160,12 @@ The event log is deliberately **not** a VFS file: idempotency (unique constraint
 This grouping is by **storage family** (relational, Neon, shell-owned), **not** by module ownership. Within the event/conversation log family, `runtime_events` and `conversation_messages` live in **different domains** because they hide independently-varying decisions: `sessions` owns ordering + idempotency (`runtime_events`), and `conversation` owns the readable transcript + Session Snapshot projection (`conversation_messages`). See ADR-0008. Do not read "one storage family" as "one domain."
 
 **Prompt assembly: eager-inject the procedure floor via trigger-aware dynamic middleware; read knowledge on demand via the VFS.**
+_Clarified 2026-06-15 (ADR-0021/0022)._ The only per-turn injections are the **procedure floor** (now sourced from Langfuse, ADR-0022) and the OpenClaw-style **USER.md profile** (a `StoreBackend` file the shell reads + injects, kept compact by instruction). **All other memory is DeepAgents-native:** the agent reads/writes its `/memories/` folder on demand via DeepAgents VFS tools over the `StoreBackend`; the **shell does not auto-load memory** (honoring the reference invariant "do not implement LTM in the shell — DeepAgents owns it"). OpenClaw's shell-side auto-load / distillation / decay are **not** ported; that shape, if wanted, is agent behavior driven by the procedure floor, not shell machinery.
+
 Decided 2026-06-13. DeepAgents owns the _mechanism_ (system-prompt assembly, skills progressive disclosure, VFS read tools); Intentive's `bundles`/`memory` domains own the _content + overlay resolution_ and feed a **dynamic prompt middleware**. The split follows the existing procedure/knowledge line (ADR-0005):
 
 - **Eager-injected** into the per-turn system prompt: the procedure floor (`SOUL.md`, `AGENTS.md`), the compact `USER.md` profile — composed by a middleware that is **trigger-aware** (`HEARTBEAT.md` on perception/heartbeat turns, `BOOTSTRAP.md` on first run).
-- **Read on demand** via DeepAgents VFS tools over our custom Neon backend: `MEMORY.md`/daily traces — progressive disclosure that keeps an unbounded memory from blowing the window.
+- **Read on demand** via DeepAgents VFS tools over the native `StoreBackend` on Neon: the `/memories/` namespace — progressive disclosure that keeps an unbounded memory from blowing the window.
 
 The prompt the model sees is assembled **per turn, per user, per trigger** — not a static string. Mirrors OpenClaw's hybrid (inject `SOUL`/`AGENTS`, read memory on demand) using DeepAgents-native mechanisms, so it does not fight the library. (**v1 has no skills** — see the next decision; when skills land they slot into this same eager-list / read-body-on-demand shape.)
 
@@ -226,7 +235,7 @@ Decided 2026-06-13. Both OpenClaw and DeepAgents are battle-tested; the rule is 
 
 - **Model working memory (cross-turn)** = the LangGraph **thread checkpoint** (`thread_id` per user), carried natively across turns and bounded by DeepAgents' **summarization/offloading middleware**. We do not rebuild context from `conversation_messages`, and we do not hand-persist compaction summaries — the compacted state lives in the checkpoint.
 - **`conversation_messages`** = a **parallel durable record** for client reads (Session Snapshot, History Backfill) and as the eval anchor, dual-written per turn. It is **not** the model's memory; the checkpoint is opaque, so clients need this queryable transcript regardless.
-- **Long-term curated memory** = USER.md/MEMORY.md **User Overlays** via a custom Neon `BackendProtocolV2` backend namespaced by `user_id` (the docs' Postgres-VFS pattern) — the one piece the shell builds, using DeepAgents' own extension point.
+- **Long-term curated memory** = **Per-User Memory** (`USER.md` + `/memories/`) via the **native DeepAgents `StoreBackend`** over a `PostgresStore` on Neon, namespaced `(user_id,)` (the docs' Postgres-VFS pattern). The shell only wires the native backend + namespace — it does **not** hand-roll a `BackendProtocolV2` (corrected by ADR-0021).
 - **"What did the model see on turn N?"** is answered by **Langfuse traces** (actual per-turn model input), not by replaying the transcript.
 
 Risk parked to Phase 11: with one eternal thread per user (next decision), that thread is summarized indefinitely — summary-of-summary drift is a retention concern, not solved here.
@@ -245,7 +254,7 @@ Decided 2026-06-13. The v1 Companion _perceives, remembers, talks, and schedules
 
 - `post_message_back(...)` — the one proactive egress (the agent's only path to a user-facing message on a proactive turn; handler persists + delivers-live-or-pushes).
 - a self-scheduling `schedule_cron(...)` tool.
-- DeepAgents' **built-in** VFS tools (`read`/`write`/`edit`/`ls`/`grep`/`glob`) over our custom Neon backend, for `USER.md`/`MEMORY.md` — native, not custom; the agent's memory is just file I/O.
+- DeepAgents' **built-in** VFS tools (`read`/`write`/`edit`/`ls`/`grep`/`glob`) over the native `StoreBackend` on Neon, for `USER.md`/`/memories/` — native, not custom; the agent's memory is just file I/O.
 
 Deliberately **absent in v1**: web search, code/shell exec, calendar/email writes, arbitrary HTTP. Because no v1 tool has dangerous external side effects, there is **no per-call approval gating** — all registered tools are allowed, and audit is just **tracing every tool call** (Langfuse + structured logs) plus the durable Post-Message-Back record. A trust-tier/approval model is built **later**, when the exocortex grows real-world hands (writing the user's calendar, sending on their behalf, spending money); building it now would be speculative.
 

@@ -42,7 +42,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 The [`reference/`](reference/) directory contains OpenClaw and Hermes pattern packs as **input** — not architecture to copy verbatim. Use them when implementing gateway, sessions, cron, channels, heartbeat, memory, hooks, workspace, etc. Always read the topic card under `reference/topics/` first; raw `*-llms.txt` is a fallback.
 
-A related reference implementation worth reading: [`czl9707/build-your-own-openclaw`](https://github.com/czl9707/build-your-own-openclaw) — module-by-module walk through chat-loop, tools, persistence, compaction, event-driven, channels, websocket, cron-heartbeat, multi-layer-prompts, post-message-back, memory.
+LangChain Deep Agents upstream guide: [Going to production](https://docs.langchain.com/oss/python/deepagents/going-to-production) — memory scoping, execution environments, guardrails, and deployment options.
 
 ## Guardrails specific to this deployable
 

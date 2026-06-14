@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (supersedes ADR-0010)
+Accepted (supersedes ADR-0010) — amended by ADR-0021 (2026-06-15): the "long-term curated memory" row below is realized by the **native DeepAgents `CompositeBackend`** — `StateBackend` default + a `StoreBackend` route namespaced by `(user_id,)` over a Postgres store on Neon — **not** a hand-rolled custom `BackendProtocolV2`. Memory is a per-user namespace (folder), not a single `MEMORY.md`.
 
 ## Date
 
