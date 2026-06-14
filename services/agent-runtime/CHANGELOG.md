@@ -6,6 +6,20 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **DeepAgents Interactive Turn** ([Issue #36]) — `runtime/` domain slice:
+  `createDeepAgentsAdapter` (DeepAgents + LangGraph Postgres checkpoint),
+  `createTurnRunner` (invoke → companion append + `runtime_turns` in one
+  transaction), and `createRuntimeTurnsRepo`; migration
+  `migrations/0003_runtime_turns.sql`. The **Per-User Channel** accepts an
+  optional `runTurn` hook: after a new `user_message` ingress commit it runs an
+  **Interactive Turn** whose returned final message is persisted as
+  `companion_message` (ADR-0013). Turn failures are contained inside the lane
+  and recorded as `runtime_turns(status = failed)` without rejecting ingress
+  ack (ADR-0020). `src/main.ts` wires OpenRouter model settings from
+  `loadConfig.model`. Tests: `test/turn-runner.test.mjs`,
+  `test/runtime-adapter.integration.test.mjs`, extended
+  `test/per-user-channel.test.mjs` and
+  `test/runtime-ingress-projection.integration.test.mjs`.
 - **Conversation History, reconnect snapshot, and history backfill** ([Issue #29]) —
   dedicated `conversation` domain (ADR-0008) with Neon-backed `conversation_messages`,
   `append` / `readSnapshot` projection, and migration `migrations/0002_conversation.sql`.
@@ -47,6 +61,13 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **`src/config/env.ts` and `loadConfig`** ([Issue #36]) — required
+  `OPENROUTER_API_KEY`; defaults for `OPENROUTER_BASE_URL` and `RUNTIME_MODEL`;
+  optional paired `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (with optional
+  `LANGFUSE_BASE_URL`) exposed as `config.langfuse` when both keys are set.
+  Tests: extended `test/config-env.test.mjs`.
+- **`src/index.ts`** ([Issue #36]) — exports runtime adapter/turn-runner factories
+  and turn types for tests and composition roots.
 - **Per-User Channel deepening refactor** — consolidated the per-`user_id` write and read
   paths that `main.ts` previously assembled from five collaborators into one deep module,
   `sessions/runtime/per-user-channel.ts` (`createPerUserChannel`). Its `accept` commits the

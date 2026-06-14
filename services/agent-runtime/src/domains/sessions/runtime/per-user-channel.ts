@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { SessionSnapshotReader } from "../../conversation/types/conversation.js";
+import type { TurnRunner } from "../../runtime/types/turn.js";
 import type { EventLedger } from "../repo/event-ledger.js";
 import type { SqlQuery, TransactionalSql } from "../repo/sql.js";
 import type {
@@ -30,6 +31,8 @@ export function createPerUserChannel(deps: {
   ledger: EventLedger;
   conversation: SessionSnapshotReader;
   project: (session: BoundSession, event: RuntimeIngressEvent) => SqlQuery[];
+  runTurn?: TurnRunner;
+  onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
   newDedupKey?: () => string;
 }): PerUserChannel {
   const newDedupKey = deps.newDedupKey ?? randomUUID;
@@ -39,10 +42,25 @@ export function createPerUserChannel(deps: {
     accept(session, event) {
       return queue.submit(session.userId, async () => {
         const record = toLedgerRecord(session, event, newDedupKey);
-        await deps.sql.transaction([
+        const results = await deps.sql.transaction([
           deps.ledger.recordQuery(record),
           ...deps.project(session, event),
         ]);
+        if (event.type === "user_message" && deps.runTurn && insertedLedgerRow(results)) {
+          try {
+            await deps.runTurn(session, event);
+          } catch (error) {
+            const context = {
+              userId: session.userId,
+              messageId: event.message_id,
+            };
+            if (deps.onTurnError) {
+              deps.onTurnError(error, context);
+            } else {
+              console.error("Interactive Turn failed after ingress commit", { ...context, error });
+            }
+          }
+        }
       });
     },
 
@@ -50,6 +68,11 @@ export function createPerUserChannel(deps: {
       return queue.submit(userId, () => deps.conversation.readSnapshot(userId, before, limit));
     },
   };
+}
+
+function insertedLedgerRow(results: unknown[]): boolean {
+  const ledgerRows = results[0];
+  return Array.isArray(ledgerRows) && ledgerRows.length > 0;
 }
 
 function toLedgerRecord(

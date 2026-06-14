@@ -17,6 +17,9 @@ import { createConnectHandler } from "./domains/gateway/service/connect.js";
 import { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 import { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
 import { createInternalApp } from "./domains/internal/ui/app.js";
+import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
+import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
 import { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 import { createAgentInstanceRepo } from "./domains/sessions/repo/instance-registry.js";
 import type { TransactionalSql } from "./domains/sessions/repo/sql.js";
@@ -35,6 +38,24 @@ const verifier = createJwtVerifier({
 const registry = createAgentInstanceRepo(sql);
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
+const runtimeTurns = createRuntimeTurnsRepo(sql);
+const runtimeAdapter = createDeepAgentsAdapter({
+  connectionUri: config.neon.url,
+  modelName: config.model.model,
+  systemPrompt: "You are the Intentive Companion. Reply clearly and briefly.",
+  openRouter: {
+    apiKey: config.model.apiKey,
+    baseUrl: config.model.baseUrl,
+  },
+});
+await runtimeAdapter.setup();
+const runTurn = createTurnRunner({
+  sql,
+  adapter: runtimeAdapter,
+  conversation,
+  runtimeTurns,
+  fallbackModel: config.model.model,
+});
 const channel = createPerUserChannel({
   sql,
   ledger,
@@ -48,6 +69,7 @@ const channel = createPerUserChannel({
     const entry = toConversationEntry(session.userId, event);
     return entry ? [conversation.appendQuery(entry)] : [];
   },
+  runTurn,
 });
 const startSession = createStartSession({
   registry,

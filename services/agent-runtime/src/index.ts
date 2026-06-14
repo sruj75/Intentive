@@ -23,6 +23,18 @@ export type {
   ConversationRepo,
   SessionSnapshotReader,
 } from "./domains/conversation/types/conversation.js";
+export { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
+export { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+export type { RuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+export { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
+export type {
+  DeepAgentsAdapter,
+  RuntimeTurnInput,
+  RuntimeTurnOutput,
+  RuntimeTurnRecord,
+  RuntimeTurnStatus,
+  TurnRunner,
+} from "./domains/runtime/types/turn.js";
 export { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 export type { EventLedger } from "./domains/sessions/repo/event-ledger.js";
 export {

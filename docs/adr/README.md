@@ -98,6 +98,17 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0007 | Event ledger and in-memory per-user ordering                          | accepted                                                  |
 | 0008 | Conversation History owns its own domain                              | accepted                                                  |
 | 0009 | Transactional ingress projections                                     | accepted; amended 2026-06-11 (commit in Per-User Channel) |
+| 0010 | Transcript-authoritative context rebuild; checkpointer mid-turn only  | **superseded by 0012**                                    |
+| 0011 | One eternal Companion conversation per user — no reset in v1          | accepted                                                  |
+| 0012 | DeepAgents-native two-tier memory model                               | accepted (supersedes 0010)                                |
+| 0013 | Egress via explicit tools + trigger-type default                      | accepted                                                  |
+| 0014 | Single unified brain; shell is senses and hands                       | accepted                                                  |
+| 0015 | Monitoring Turn — one mechanism, two triggers                         | accepted                                                  |
+| 0016 | Per-User Channel is the single run-loop; trigger arbitration          | accepted                                                  |
+| 0017 | v1 Cron runs in main session; isolated cron deferred                  | accepted                                                  |
+| 0018 | Agent Instance lifecycle — lazy hydration, idle eviction, scheduler   | accepted                                                  |
+| 0019 | v1 has no skills and no subagents                                     | accepted                                                  |
+| 0020 | Ingress ack decoupled from turn success; failures contained           | accepted                                                  |
 
 ## Migration map (old unified number → new per-context number)
 
