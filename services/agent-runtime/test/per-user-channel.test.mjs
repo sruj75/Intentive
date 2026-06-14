@@ -164,6 +164,66 @@ test("a snapshot read submitted behind a pending accept observes it (read-after-
   assert.deepEqual(order, ["accept:start", "accept:end", "read"]);
 });
 
+test("turn failures are contained after ingress commits and the user lane keeps draining", async () => {
+  const order = [];
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => {
+        order.push("ingress");
+        return [[{ id: "ledger_1" }]];
+      },
+    },
+    ledger: { recordQuery: () => Promise.resolve([{ id: "ledger" }]) },
+    conversation: {
+      readSnapshot: async () => {
+        order.push("read");
+        return emptySnapshot();
+      },
+    },
+    project: () => [],
+    onTurnError: () => {},
+    runTurn: async () => {
+      order.push("turn");
+      throw new Error("model failed");
+    },
+  });
+
+  await assert.doesNotReject(channel.accept(session, userMessage("message_1")));
+  await channel.readSnapshot(session.userId);
+
+  assert.deepEqual(order, ["ingress", "turn", "read"]);
+});
+
+test("runTurn is called once for a new user message and not for duplicates or non-user events", async () => {
+  const turnEvents = [];
+  const transactionResults = [[[{ id: "ledger_1" }]], [[]], [[{ id: "ledger_2" }]]];
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => transactionResults.shift(),
+    },
+    ledger: { recordQuery: () => Promise.resolve([{ id: "ledger" }]) },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: () => [],
+    runTurn: async (_session, event) => {
+      turnEvents.push(event);
+    },
+  });
+
+  const message = userMessage("message_1");
+  await channel.accept(session, message);
+  await channel.accept(session, message);
+  await channel.accept(session, {
+    type: "context_snapshot",
+    snapshot_id: "snapshot_1",
+    captured_at: "2026-06-09T00:00:00.000Z",
+    period_start: "2026-06-08T23:55:00.000Z",
+    period_end: "2026-06-09T00:00:00.000Z",
+    summary: "screen summary",
+  });
+
+  assert.deepEqual(turnEvents, [message]);
+});
+
 function emptySnapshot() {
   return { messages: [], before_cursor: null };
 }

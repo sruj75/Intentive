@@ -17,6 +17,12 @@ const EnvSchema = z.object({
   NEON_AUTH_JWKS_URL: z.string().url(),
   NEON_AUTH_ISSUER: z.string().min(1),
   NEON_AUTH_AUDIENCE: z.string().min(1),
+  OPENROUTER_API_KEY: z.string().min(1),
+  OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
+  RUNTIME_MODEL: z.string().min(1).default("nvidia/nemotron-3-ultra-550b-a55b:free"),
+  LANGFUSE_PUBLIC_KEY: z.string().min(1).optional(),
+  LANGFUSE_SECRET_KEY: z.string().min(1).optional(),
+  LANGFUSE_BASE_URL: z.string().url().optional(),
 });
 
 export interface AgentRuntimeConfig {
@@ -30,6 +36,16 @@ export interface AgentRuntimeConfig {
     readonly issuer: string;
     readonly audience: string;
   };
+  readonly model: {
+    readonly apiKey: string;
+    readonly baseUrl: string;
+    readonly model: string;
+  };
+  readonly langfuse: {
+    readonly publicKey: string;
+    readonly secretKey: string;
+    readonly baseUrl?: string;
+  } | null;
 }
 
 /**
@@ -68,5 +84,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
       issuer: e.NEON_AUTH_ISSUER,
       audience: e.NEON_AUTH_AUDIENCE,
     }),
+    model: Object.freeze({
+      apiKey: e.OPENROUTER_API_KEY,
+      baseUrl: e.OPENROUTER_BASE_URL,
+      model: e.RUNTIME_MODEL,
+    }),
+    langfuse:
+      e.LANGFUSE_PUBLIC_KEY && e.LANGFUSE_SECRET_KEY
+        ? Object.freeze({
+            publicKey: e.LANGFUSE_PUBLIC_KEY,
+            secretKey: e.LANGFUSE_SECRET_KEY,
+            baseUrl: e.LANGFUSE_BASE_URL,
+          })
+        : null,
   });
 }

@@ -13,6 +13,7 @@ const validEnv = {
   NEON_AUTH_JWKS_URL: "https://auth.example.com/.well-known/jwks.json",
   NEON_AUTH_ISSUER: "https://auth.example.com",
   NEON_AUTH_AUDIENCE: "intentive-runtime",
+  OPENROUTER_API_KEY: "openrouter-secret",
 };
 
 test("loadConfig returns grouped Agent Runtime config for valid env", () => {
@@ -26,6 +27,12 @@ test("loadConfig returns grouped Agent Runtime config for valid env", () => {
       issuer: "https://auth.example.com",
       audience: "intentive-runtime",
     },
+    model: {
+      apiKey: "openrouter-secret",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+    },
+    langfuse: null,
   });
 });
 
@@ -34,6 +41,8 @@ test("loadConfig applies Agent Runtime boot defaults", () => {
     PORT: _port,
     INTERNAL_PORT: _internalPort,
     NEON_DATABASE_ROLE: _role,
+    OPENROUTER_BASE_URL: _baseUrl,
+    RUNTIME_MODEL: _model,
     ...envWithoutDefaults
   } = validEnv;
 
@@ -42,16 +51,45 @@ test("loadConfig applies Agent Runtime boot defaults", () => {
   assert.equal(config.port, 8080);
   assert.equal(config.internalInbound.port, 8081);
   assert.equal(config.neon.role, "agent_runtime_app");
+  assert.equal(config.model.baseUrl, "https://openrouter.ai/api/v1");
+  assert.equal(config.model.model, "nvidia/nemotron-3-ultra-550b-a55b:free");
+  assert.equal(config.langfuse, null);
+});
+
+test("loadConfig accepts model and optional Langfuse overrides", () => {
+  const config = loadConfig({
+    ...validEnv,
+    OPENROUTER_BASE_URL: "https://openrouter.example.com/v1",
+    RUNTIME_MODEL: "openai/gpt-test",
+    LANGFUSE_PUBLIC_KEY: "pk-test",
+    LANGFUSE_SECRET_KEY: "sk-test",
+    LANGFUSE_BASE_URL: "https://cloud.langfuse.com",
+  });
+
+  assert.deepEqual(config.model, {
+    apiKey: "openrouter-secret",
+    baseUrl: "https://openrouter.example.com/v1",
+    model: "openai/gpt-test",
+  });
+  assert.deepEqual(config.langfuse, {
+    publicKey: "pk-test",
+    secretKey: "sk-test",
+    baseUrl: "https://cloud.langfuse.com",
+  });
 });
 
 test("loadConfig names missing required Agent Runtime env keys", () => {
-  const { NEON_DATABASE_URL: _databaseUrl, ...envWithoutDatabaseUrl } = validEnv;
+  const {
+    NEON_DATABASE_URL: _databaseUrl,
+    OPENROUTER_API_KEY: _openRouterApiKey,
+    ...envWithoutRequiredKeys
+  } = validEnv;
 
   assert.throws(
-    () => loadConfig(envWithoutDatabaseUrl),
+    () => loadConfig(envWithoutRequiredKeys),
     (error) => {
       assert.equal(error instanceof AgentRuntimeConfigError, true);
-      assert.deepEqual(error.invalidKeys, ["NEON_DATABASE_URL"]);
+      assert.deepEqual(error.invalidKeys, ["NEON_DATABASE_URL", "OPENROUTER_API_KEY"]);
       return true;
     },
   );
@@ -84,6 +122,7 @@ test("loadConfig errors never leak Agent Runtime env values", () => {
       assert.match(error.message, /INTERNAL_SECRET_FROM_CONTROL_PLANE/);
       assert.match(error.message, /NEON_DATABASE_URL/);
       assert.equal(error.message.includes(badUrl), false);
+      assert.equal(error.message.includes(validEnv.OPENROUTER_API_KEY), false);
       return true;
     },
   );
