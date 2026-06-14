@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
+This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
 
 ## Bird's-eye Overview
 
@@ -15,22 +15,16 @@ Mobile Client                 Desktop Client
         \-------- WebSocket Protocol-/
                        |
                     gateway
-             auth, connect, protocol
+             auth, connect, post-connect routing
                        |
-                    sessions
-          user_id queue and idempotency
+              Per-User Channel (sessions)
+     txn ingress + queue-serialized reads
                        |
-                 conversation
-        transcript + Session Snapshot reads
+              runtime (Interactive Turn)
+           DeepAgents invoke + runtime_turns
                        |
-                    protocol
-          inbound event -> runtime command
-                       |
-                    runtime
-              DeepAgents invocation
-                       |
-        memory + bundles + Conversation History
-              Neon Runtime schema
+              conversation + checkpoints
+                 Neon Runtime schema
                        |
        companion_message / Post-Message-Back
 ```
@@ -45,7 +39,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Agent-facing deployable guide. Read it before changing this service.
 
 `CONTEXT.md`
-: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning. Read alongside the root `CONTEXT-MAP.md`.
+: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning. Read alongside the root `CONTEXT-MAP.md`.
 
 `README.md`
 : Operator/developer entrypoint for the deployable.
@@ -66,7 +60,16 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs the **Per-User Channel** (the single per-`user_id` serialization point owning transactional ingress + queue-serialized snapshot reads) and injects the `sessions` → `conversation` projection seam, serves the private Internal API, and attaches the public WebSocket gateway.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs the DeepAgents adapter and **Interactive Turn** runner, constructs the **Per-User Channel** (transactional ingress + `runTurn` + queue-serialized snapshot reads), serves the private Internal API, and attaches the public WebSocket gateway.
+
+`src/domains/runtime/repo/deep-agents-adapter.ts`
+: Repo-owned DeepAgents + LangGraph Postgres checkpoint adapter (`createDeepAgentsAdapter`).
+
+`src/domains/runtime/service/turn-runner.ts`
+: Service-owned **Interactive Turn** orchestration — invoke model, dual-write companion message + **Runtime Turn** record.
+
+`src/domains/runtime/repo/runtime-turns.ts`
+: Durable `runtime_turns` insert queries for observability/eval anchoring.
 
 `migrations/`
 : Runtime-owned Neon schema migrations (`agent_runtime.*`). See `migrations/README.md`.
@@ -92,10 +95,10 @@ This block is the _map_, not a build order. Per [ADR-0002](docs/adr/0002-agent-r
 Domain responsibilities:
 
 - `gateway`: WebSocket server, handshake-first connect flow, JWT verification, socket lifecycle, post-connect routing for `history_backfill_request`. Protocol-version compatibility is enforced at build time by the single shared `packages/protocol` import (monorepo "one protocol version" rule), **not** negotiated per connection; `client_version` on `connect` is informational, and the `protocol_unsupported` error code is reserved/unused in v1.
-- `sessions`: Agent Instance lookup, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, and queue-serialized Conversation History reads), connected-client presence. Exposes the `BoundSession` and `PerUserChannel` types as its public `types/` contract.
+- `sessions`: Agent Instance lookup, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, queue-serialized Conversation History reads, and **Interactive Turn** dispatch via injected `runTurn`), connected-client presence. Exposes the `BoundSession` and `PerUserChannel` types as its public `types/` contract.
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
-- `runtime`: DeepAgents construction/invocation, turn lifecycle, result classification, trace/run IDs.
+- `runtime`: DeepAgents adapter, **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
 - `memory`: DeepAgents memory configuration, Runtime-owned durable memory, VFS backend integration.
 - `bundles`: immutable Runtime bundle versions, prompt document loading, overlay resolution.
 - `cron`: durable scheduled-trigger primitive and fire ledger.
@@ -167,9 +170,9 @@ Control Plane boundary:
 
 DeepAgents boundary:
 
-- Runtime shell invokes DeepAgents per ordered Runtime event.
+- Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel**.
 - DeepAgents receives session context, bundle version, memory/VFS backend, and registered tools.
-- DeepAgents output is a candidate result; shell classifies it as silent, normal reply, or Post-Message-Back.
+- Trigger type sets egress default (ADR-0013): an **Interactive Turn** delivers the agent's returned final message as the reply; proactive turns stay silent unless the agent calls **Post-Message-Back**. Ingress ack is decoupled from turn success (ADR-0020).
 
 Neon boundary:
 
@@ -221,5 +224,5 @@ Testing:
 - **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
 - **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors; #28 covers per-user queue ordering/isolation and ingest idempotency.
 - **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
-- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`). Future slices add Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`). Future slices add Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

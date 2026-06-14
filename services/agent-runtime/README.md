@@ -29,8 +29,11 @@ branch when `NEON_API_KEY` and `NEON_PROJECT_ID` are set; without them those tes
 
 Configuration is validated at boot through `loadConfig` in `src/config/env.ts` (required
 env keys: `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`, `NEON_DATABASE_URL`,
-`NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`, `NEON_AUTH_AUDIENCE`; defaults for `PORT`,
-`INTERNAL_PORT`, and `NEON_DATABASE_ROLE`). Domains must not re-parse `process.env`.
+`NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`, `NEON_AUTH_AUDIENCE`, `OPENROUTER_API_KEY`;
+defaults for `PORT`, `INTERNAL_PORT`, `NEON_DATABASE_ROLE`, `OPENROUTER_BASE_URL`, and
+`RUNTIME_MODEL`; optional paired `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` with
+optional `LANGFUSE_BASE_URL`). Copy [`.env.example`](.env.example) to `.env` for local
+boot. Domains must not re-parse `process.env`.
 
 ## Deployment
 

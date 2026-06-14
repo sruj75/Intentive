@@ -2,6 +2,7 @@
 node_modules/
 .env
 .env.*
+!.env.example
 
 # Cursor project skills (use personal ~/.cursor/skills/reference-txt-manager)
 .cursor/

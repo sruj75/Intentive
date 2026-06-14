@@ -18,10 +18,10 @@ The always-alive, multi-tenant service that runs **Companion** behavior. Built o
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
-- `sessions` — the Per-User Channel: per-user serialization point for ordering, message idempotency, transactional ingress, and queue-serialized Conversation History reads
+- `sessions` — the Per-User Channel: per-user serialization point for ordering, message idempotency, transactional ingress, queue-serialized Conversation History reads, and optional **Interactive Turn** dispatch (`runTurn` after ingress commit; turn failures contained per ADR-0020)
 - `conversation` — durable Conversation History transcript (`conversation_messages`), Session Snapshot projection (`readSnapshot`), history backfill reads (ADR-0008)
 - `protocol` — inbound/outbound event handling (every event type in `packages/protocol/`)
-- `runtime` — DeepAgents loop, Agent Instance lifecycle
+- `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), **Interactive Turn** runner (`service/turn-runner.ts`), durable **Runtime Turn** records (`repo/runtime-turns.ts`, migration `0003_runtime_turns.sql`)
 - `cron` — scheduled-trigger primitive
 - `heartbeat` — interval-trigger primitive
 - `memory` — runtime memory, Neon-backed durable store, virtual filesystem overlay
@@ -31,11 +31,11 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 ## Stack & deploy
 
 - Node / TypeScript + LangChain DeepAgents
-- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; see `test/config-env.test.mjs`
+- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; requires `OPENROUTER_API_KEY`; optional Langfuse keys; see [`.env.example`](.env.example) and `test/config-env.test.mjs`
 - Domain folders are **lazy** (ADR-0002): add `src/domains/<name>/…` only when implementing that slice, not empty layer trees upfront
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane); SQL migrations live in `migrations/`
-- Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; harness: `pnpm harness --scope services/agent-runtime`
+- Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; `#36` adds `test/turn-runner.test.mjs`, `test/runtime-adapter.integration.test.mjs`, and turn coverage in `test/per-user-channel.test.mjs` / `test/runtime-ingress-projection.integration.test.mjs`; harness: `pnpm harness --scope services/agent-runtime`
 - Plans: [`docs/plans/agent-runtime-v1-implementation-plan.md`](docs/plans/agent-runtime-v1-implementation-plan.md)
 
 ## Reference patterns
