@@ -6,6 +6,14 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Sensory Buffer and perception injection** ([Issue #38]) — `sessions/` adds a
+  `SensoryBufferReader` read projection over `runtime_events` for the most
+  recent `context_snapshot` or `session_end_marker`, with no new table or
+  migration. **Interactive Turn** prompt assembly now receives the single most
+  recent perception fact via `RECENT_PERCEPTION`, and the **Per-User Channel**
+  raises a no-op `PerceptionArrivedSink` only for newly inserted perception
+  events. Tests: `test/sensory-buffer.integration.test.mjs`, plus extended
+  prompt, turn-runner, adapter, and channel coverage.
 - **Procedure Floor, native Per-User Memory, and `bundle_version`** ([Issue #37]) —
   `bundles/` domain slice for deploy-bundled fallback prompts, Langfuse Prompt
   Management source, fallback resolver, and trigger-aware prompt assembly;

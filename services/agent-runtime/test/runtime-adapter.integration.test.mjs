@@ -84,6 +84,7 @@ test(
         threadId,
         body: "hello",
         userProfile: "prefers concise answers",
+        recentPerception: "Most recent perception: reading test output",
         pinnedFloor: floor("floor_v2"),
       }),
     );
@@ -95,6 +96,10 @@ test(
     );
     assert.equal(
       callText.some((content) => content.includes("prefers concise answers")),
+      true,
+    );
+    assert.equal(
+      callText.some((content) => content.includes("reading test output")),
       true,
     );
     assert.equal(output.bundleVersion, "floor_v2");
@@ -184,7 +189,13 @@ class RecordingChatModel extends BaseChatModel {
   }
 }
 
-function turnInput({ threadId, body, userProfile = "", pinnedFloor = floor("floor_v1") }) {
+function turnInput({
+  threadId,
+  body,
+  userProfile = "",
+  recentPerception = null,
+  pinnedFloor = floor("floor_v1"),
+}) {
   return {
     userId: threadId,
     threadId,
@@ -192,6 +203,7 @@ function turnInput({ threadId, body, userProfile = "", pinnedFloor = floor("floo
     trigger: "user_message",
     pinnedFloor,
     userProfile,
+    recentPerception,
   };
 }
 

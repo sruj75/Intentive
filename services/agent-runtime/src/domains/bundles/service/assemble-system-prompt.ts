@@ -4,6 +4,7 @@ export function assembleSystemPrompt(input: {
   readonly floor: PinnedProcedureFloor;
   readonly trigger: TurnTrigger;
   readonly userProfile?: string | null;
+  readonly recentPerception?: string | null;
   readonly firstRun?: boolean;
 }): string {
   const sections = [
@@ -22,6 +23,11 @@ export function assembleSystemPrompt(input: {
   const profile = input.userProfile?.trim();
   if (profile) {
     sections.push(section("USER.md", profile));
+  }
+
+  const perception = input.recentPerception?.trim();
+  if (perception) {
+    sections.push(section("RECENT_PERCEPTION", perception));
   }
 
   return sections.join("\n\n");

@@ -14,6 +14,7 @@ interface TurnRunnerParams {
   readonly runtimeTurns: RuntimeTurnsRepo;
   readonly fallbackModel: string;
   readonly readUserProfile?: (userId: string) => Promise<string>;
+  readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newMessageId?: () => string;
 }
 
@@ -31,6 +32,9 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
       const userProfile = params.readUserProfile
         ? await params.readUserProfile(session.userId)
         : "";
+      const recentPerception = params.readRecentPerception
+        ? await params.readRecentPerception(session.userId)
+        : undefined;
       const output = await params.adapter.invoke({
         userId: session.userId,
         threadId,
@@ -38,6 +42,7 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
         trigger: event.type,
         pinnedFloor: session.pinnedFloor,
         userProfile,
+        ...(params.readRecentPerception ? { recentPerception } : {}),
       });
       await params.sql.transaction([
         params.conversation.appendQuery({

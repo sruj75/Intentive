@@ -56,6 +56,8 @@ export type {
 } from "./domains/runtime/types/turn.js";
 export { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 export type { EventLedger } from "./domains/sessions/repo/event-ledger.js";
+export { createSensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
+export type { SensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
 export {
   createAgentInstanceRepo,
   createInMemoryAgentInstanceRegistry,
@@ -73,6 +75,7 @@ export type {
   EventProcessor,
   LedgerRecord,
   PerUserChannel,
+  PerceptionArrivedSink,
   RuntimeEventKind,
   RuntimeIngressEvent,
 } from "./domains/sessions/types/event.js";

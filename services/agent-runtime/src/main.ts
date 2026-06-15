@@ -29,6 +29,7 @@ import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js"
 import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
 import { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 import { createAgentInstanceRepo } from "./domains/sessions/repo/instance-registry.js";
+import { createSensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
 import type { TransactionalSql } from "./domains/sessions/repo/sql.js";
 import { createPerUserChannel } from "./domains/sessions/runtime/per-user-channel.js";
 import { createStartSession } from "./domains/sessions/service/start-session.js";
@@ -45,6 +46,7 @@ const verifier = createJwtVerifier({
 const registry = createAgentInstanceRepo(sql);
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
+const sensoryBuffer = createSensoryBufferReader(sql);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
 await memoryStore.setup();
@@ -91,6 +93,7 @@ const runTurn = createTurnRunner({
   runtimeTurns,
   fallbackModel: config.model.model,
   readUserProfile: (userId) => readUserProfile(memoryStore, userId),
+  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
 });
 const channel = createPerUserChannel({
   sql,
@@ -106,6 +109,7 @@ const channel = createPerUserChannel({
     return entry ? [conversation.appendQuery(entry)] : [];
   },
   runTurn,
+  onPerceptionArrived: () => {},
 });
 const startSession = createStartSession({
   registry,

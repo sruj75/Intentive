@@ -225,6 +225,54 @@ test("runTurn is called once for a new user message and not for duplicates or no
   assert.deepEqual(turnEvents, [message]);
 });
 
+test("onPerceptionArrived fires once for new perception events only", async () => {
+  const perceptions = [];
+  const turnEvents = [];
+  const transactionResults = [
+    [[{ id: "snapshot_ledger" }]],
+    [[]],
+    [[{ id: "marker_ledger" }]],
+    [[{ id: "message_ledger" }]],
+  ];
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => transactionResults.shift(),
+    },
+    ledger: { recordQuery: () => Promise.resolve([{ id: "ledger" }]) },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: () => [],
+    onPerceptionArrived: (seenSession, event) => {
+      perceptions.push([seenSession.userId, event.type]);
+    },
+    runTurn: async (_session, event) => {
+      turnEvents.push(event.type);
+    },
+  });
+
+  const snapshot = {
+    type: "context_snapshot",
+    snapshot_id: "snapshot_1",
+    captured_at: "2026-06-09T00:00:00.000Z",
+    period_start: "2026-06-08T23:55:00.000Z",
+    period_end: "2026-06-09T00:00:00.000Z",
+    summary: "screen summary",
+  };
+  await channel.accept(session, snapshot);
+  await channel.accept(session, snapshot);
+  await channel.accept(session, {
+    type: "session_end_marker",
+    ended_at: "2026-06-09T00:01:00.000Z",
+    reason: "quit",
+  });
+  await channel.accept(session, userMessage("message_1"));
+
+  assert.deepEqual(perceptions, [
+    [session.userId, "context_snapshot"],
+    [session.userId, "session_end_marker"],
+  ]);
+  assert.deepEqual(turnEvents, ["user_message"]);
+});
+
 function emptySnapshot() {
   return { messages: [], before_cursor: null };
 }

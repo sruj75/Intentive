@@ -25,6 +25,11 @@ export interface BoundSession {
 
 export type RuntimeIngressEvent = UserMessage | ContextSnapshot | SessionEndMarker;
 
+export type PerceptionArrivedSink = (
+  session: BoundSession,
+  event: ContextSnapshot | SessionEndMarker,
+) => void;
+
 export interface LedgerRecord {
   readonly userId: string;
   readonly kind: RuntimeEventKind;
