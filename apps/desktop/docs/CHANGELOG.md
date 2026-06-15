@@ -24,6 +24,15 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Host timezone on connect (#84)** — Routing now reports the Mac IANA zone as
+  optional `client_tz` on every `connect` frame so the Runtime can resolve
+  wall-clock Cron schedules while the user is offline (same contract as Mobile;
+  Runtime ADR-0025). The zone is read at the I/O edge via `iana_time_zone::get_timezone()`
+  (promoted to a direct dependency) and a pure `build_connect_frame` helper inserts
+  the field only when it resolves; an unresolvable zone omits it and the Runtime
+  falls back to UTC. Re-read per connection, so a reconnect after travel reports
+  the new zone (last-write-wins). `src-tauri/src/domains/routing/runtime/mod.rs`.
+
 - **Signed-in Capture Session smoke (#35)** — A demoable, AFK-runnable harness
   (`apps/desktop/smoke/`, the `@intentive/desktop-smoke` workspace package) that
   proves the full assembled chain on a signed-in Mac: routing from a Control

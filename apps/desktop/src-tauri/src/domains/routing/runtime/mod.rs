@@ -464,6 +464,22 @@ struct ConnectionExit {
     cause: ReconnectCause,
 }
 
+/// Build the Protocol `connect` frame. Pure JSON construction kept separate from
+/// the I/O edge so the wire shape lives in one place and is unit-testable: the
+/// optional `client_tz` is inserted only when the host zone resolved.
+fn build_connect_frame(routing: &Routing, client_tz: Option<&str>) -> serde_json::Value {
+    let mut frame = serde_json::json!({
+        "type": "connect",
+        "auth_token": routing.runtime_jwt,
+        "client_kind": CLIENT_KIND,
+        "client_version": CLIENT_VERSION,
+    });
+    if let Some(tz) = client_tz {
+        frame["client_tz"] = serde_json::Value::String(tz.to_string());
+    }
+    frame
+}
+
 async fn drive_connection(
     routing: &Routing,
     transport: &dyn WsTransport,
@@ -481,12 +497,11 @@ async fn drive_connection(
         }
     };
 
-    let connect = serde_json::json!({
-        "type": "connect",
-        "auth_token": routing.runtime_jwt,
-        "client_kind": CLIENT_KIND,
-        "client_version": CLIENT_VERSION,
-    });
+    // Read the host zone at the I/O edge; `Err` (no resolvable zone) omits the
+    // field so the Runtime falls back to UTC. Re-read per connection so a
+    // reconnect after travel reports the new zone (last-write-wins).
+    let client_tz = iana_time_zone::get_timezone().ok();
+    let connect = build_connect_frame(routing, client_tz.as_deref());
     if let Err(e) = connection.send_text(connect.to_string()).await {
         eprintln!("routing: websocket connect frame failed: {e}");
         observe_event(RoutingEvent::TransportDropped);
@@ -789,6 +804,36 @@ mod tests {
         }
     }
 
+    #[test]
+    fn build_connect_frame_includes_client_tz_when_resolved() {
+        let frame = build_connect_frame(&sample_routing(), Some("America/New_York"));
+        assert_eq!(
+            frame,
+            serde_json::json!({
+                "type": "connect",
+                "auth_token": "runtime-token",
+                "client_kind": "desktop",
+                "client_version": CLIENT_VERSION,
+                "client_tz": "America/New_York"
+            })
+        );
+    }
+
+    #[test]
+    fn build_connect_frame_omits_client_tz_when_unresolved() {
+        let frame = build_connect_frame(&sample_routing(), None);
+        assert_eq!(frame.get("client_tz"), None);
+        assert_eq!(
+            frame,
+            serde_json::json!({
+                "type": "connect",
+                "auth_token": "runtime-token",
+                "client_kind": "desktop",
+                "client_version": CLIENT_VERSION
+            })
+        );
+    }
+
     #[tokio::test]
     async fn websocket_connect_sends_protocol_connect_frame() {
         let transport =
@@ -805,15 +850,23 @@ mod tests {
         .await;
 
         let sent = transport.sent.lock().await;
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&sent[0]).unwrap(),
-            serde_json::json!({
-                "type": "connect",
-                "auth_token": "runtime-token",
-                "client_kind": "desktop",
-                "client_version": CLIENT_VERSION
-            })
-        );
+        let frame = serde_json::from_str::<serde_json::Value>(&sent[0]).unwrap();
+        assert_eq!(frame["type"], "connect");
+        assert_eq!(frame["auth_token"], "runtime-token");
+        assert_eq!(frame["client_kind"], "desktop");
+        assert_eq!(frame["client_version"], CLIENT_VERSION);
+        // The host zone is non-deterministic, but a real machine resolves one
+        // straight from the OS tz database (so it is inherently a valid IANA
+        // name). Sanity-check the shape: a non-empty `Area/Location` or a bare
+        // special like `UTC`. (Some CI sandboxes can't resolve a zone, in which
+        // case the field is legitimately absent.)
+        if let Some(tz) = frame.get("client_tz") {
+            let tz = tz.as_str().expect("client_tz is a string");
+            assert!(
+                !tz.is_empty() && (tz.contains('/') || tz == "UTC"),
+                "client_tz {tz} is not a plausible IANA zone"
+            );
+        }
         assert!(events.contains(&RoutingEvent::HandshakeAccepted));
         assert_eq!(exit.cause, ReconnectCause::TransportDropped);
     }

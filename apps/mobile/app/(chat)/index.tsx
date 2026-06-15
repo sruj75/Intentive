@@ -5,6 +5,7 @@ import { useAuthAdapter } from "../../src/domains/auth/ui/auth-context";
 import { createDevRuntimeAdapter } from "../../src/domains/chat/runtime/dev-transport";
 import {
   createRuntimeAdapter,
+  defaultResolveTimeZone,
   type WebSocketLike,
 } from "../../src/domains/chat/runtime/runtime-adapter";
 import { CompanionChat } from "../../src/domains/chat/ui/companion-chat";
@@ -27,6 +28,7 @@ export default function ChatRoute(): React.JSX.Element {
         const timer = setTimeout(fn, delayMs);
         return { cancel: () => clearTimeout(timer) };
       },
+      resolveTimeZone: defaultResolveTimeZone,
     });
   }, [authAdapter]);
 

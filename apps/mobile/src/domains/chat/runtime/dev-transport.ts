@@ -1,7 +1,11 @@
 import { GetAgentResponse } from "@intentive/api-contract";
 import { companion_message, hello_ok } from "@intentive/protocol";
 
-import { createRuntimeAdapter, type WebSocketLike } from "./runtime-adapter.js";
+import {
+  createRuntimeAdapter,
+  defaultResolveTimeZone,
+  type WebSocketLike,
+} from "./runtime-adapter.js";
 
 declare const setTimeout: (fn: () => void, delayMs: number) => TimerHandle;
 declare const clearTimeout: (timer: TimerHandle) => void;
@@ -32,6 +36,7 @@ export function createDevRuntimeAdapter() {
       const timer = setTimeout(fn, delayMs);
       return { cancel: () => clearTimeout(timer) };
     },
+    resolveTimeZone: defaultResolveTimeZone,
     backoffMs: [20, 40, 80],
   });
 }
