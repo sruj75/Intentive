@@ -48,6 +48,8 @@ LangChain Deep Agents production guide (load before changing memory, backends, o
 
 Agent-authored scheduling only — no shell cron CRUD tools ([ADR-0026](docs/adr/0026-agent-runtime-cron-is-deepagents-native-filesystem-card.md)).
 
+**Procedure Floor mirror:** user-facing cron authoring guidance lives at [`src/domains/bundles/repo/floor/cron-authoring.md`](src/domains/bundles/repo/floor/cron-authoring.md) (#85); promote it into Langfuse `companion-agents` — the deploy bundled fallback does not load it automatically.
+
 **Create or edit a job:** the agent writes a markdown **cron card** under `/crons/<name>.md` via built-in filesystem tools. Frontmatter: `name`, `schedule` (`at` / `every` / `cron` + expression), optional per-job `tz`, `status` (`active` | `cancelled`), shell-computed `next_fire_at`. Body: the fire prompt. Minimum interval: **5 minutes** (`config/schedule.ts`).
 
 **Cancel:** `edit_file` with `status: cancelled` (poll loop ignores non-active rows). One-shots (`at`) delete after a successful fire.
