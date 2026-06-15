@@ -55,7 +55,7 @@ The thread state LangGraph saves to Postgres after each DeepAgents step (tool ca
 _Avoid_: state snapshot, agent state (ambiguous with Agent Instance status)
 
 **Runtime Turn**:
-The durable per-turn record (the `runtime_turns` row: `trace_id`, `thread_id`, `model`, `status`, timestamps; `bundle_version` added once #37 lands) — the observability/eval anchor that joins our relational record to the **Langfuse** trace answering "what did the model see on turn N?" (ADR-0012). Written by the shell in one transaction with the companion `conversation_messages` append, so the product record and the turn record stay mutually consistent. Distinct from the opaque **Checkpoint** (the model's working memory) and from the turn _execution_ itself.
+The durable per-turn record (the `runtime_turns` row: `trace_id`, `thread_id`, `model`, `status`, `bundle_version`, timestamps) — the observability/eval anchor that joins our relational record to the **Langfuse** trace answering "what did the model see on turn N?" (ADR-0012). Written by the shell in one transaction with the companion `conversation_messages` append, so the product record and the turn record stay mutually consistent. Distinct from the opaque **Checkpoint** (the model's working memory) and from the turn _execution_ itself.
 _Avoid_: turn log, run row (too generic), runtime event (that is the ingress ledger)
 
 **Bundle Path Set**:

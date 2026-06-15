@@ -60,7 +60,16 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs the DeepAgents adapter and **Interactive Turn** runner, constructs the **Per-User Channel** (transactional ingress + `runTurn` + queue-serialized snapshot reads), serves the private Internal API, and attaches the public WebSocket gateway.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs Procedure Floor resolver + memory backend + DeepAgents adapter and **Interactive Turn** runner, constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + queue-serialized snapshot reads), serves the private Internal API, and attaches the public WebSocket gateway.
+
+`src/domains/bundles/service/procedure-floor-resolver.ts`
+: Service-owned Procedure Floor resolution — Langfuse fetch when configured, deploy-bundled fallback otherwise; pins floor once per connection.
+
+`src/domains/bundles/service/assemble-system-prompt.ts`
+: Trigger-aware system-prompt assembly from the pinned Procedure Floor + injected `USER.md`.
+
+`src/domains/memory/repo/memory-backend.ts`
+: Repo-owned DeepAgents `CompositeBackend` / `StoreBackend` wiring over Neon, namespaced by `user_id`.
 
 `src/domains/runtime/repo/deep-agents-adapter.ts`
 : Repo-owned DeepAgents + LangGraph Postgres checkpoint adapter (`createDeepAgentsAdapter`).
@@ -171,7 +180,7 @@ Control Plane boundary:
 DeepAgents boundary:
 
 - Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel**.
-- DeepAgents receives session context, bundle version, memory/VFS backend, and registered tools.
+- DeepAgents receives session context, pinned Procedure Floor, memory/VFS backend, and registered tools.
 - Trigger type sets egress default (ADR-0013): an **Interactive Turn** delivers the agent's returned final message as the reply; proactive turns stay silent unless the agent calls **Post-Message-Back**. Ingress ack is decoupled from turn success (ADR-0020).
 
 Neon boundary:
@@ -224,5 +233,5 @@ Testing:
 - **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
 - **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors; #28 covers per-user queue ordering/isolation and ingest idempotency.
 - **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
-- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`). Future slices add Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`); #37 covers Procedure Floor pinning at connect, `USER.md` injection, memory backend wiring, and `bundle_version` on successful turns. Future slices add Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

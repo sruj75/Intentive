@@ -35,7 +35,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - Domain folders are **lazy** (ADR-0002): add `src/domains/<name>/…` only when implementing that slice, not empty layer trees upfront
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane); SQL migrations live in `migrations/`
-- Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; `#36` adds `test/turn-runner.test.mjs`, `test/runtime-adapter.integration.test.mjs`, and turn coverage in `test/per-user-channel.test.mjs` / `test/runtime-ingress-projection.integration.test.mjs`; harness: `pnpm harness --scope services/agent-runtime`
+- Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; `#36` adds `test/turn-runner.test.mjs`, `test/runtime-adapter.integration.test.mjs`, and turn coverage in `test/per-user-channel.test.mjs` / `test/runtime-ingress-projection.integration.test.mjs`; `#37` adds `test/bundled-fallback.test.mjs`, `test/assemble-system-prompt.test.mjs`, `test/procedure-floor-resolver.test.mjs`, `test/langfuse-floor-source.test.mjs`, `test/memory-backend.test.mjs`, plus extended connect/turn/runtime coverage; harness: `pnpm harness --scope services/agent-runtime`
 - Plans: [`docs/plans/agent-runtime-v1-implementation-plan.md`](docs/plans/agent-runtime-v1-implementation-plan.md)
 
 ## Reference patterns
