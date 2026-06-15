@@ -11,6 +11,16 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Device timezone on connect** ([Issue #83]) — the Runtime Adapter now reports
+  the device IANA zone as optional `client_tz` on every `connect` frame so the
+  Runtime can resolve wall-clock Cron schedules while the user is offline (Runtime
+  ADR-0025). Resolution is injected via a new `resolveTimeZone` dep (defaulting to
+  `Intl.DateTimeFormat().resolvedOptions().timeZone`) and read inside `onopen`, so
+  each reconnect re-reports (travel-correct, last-write-wins). The field is omitted
+  when the platform cannot resolve a zone (Runtime falls back to UTC).
+  `src/domains/chat/runtime/runtime-adapter.ts`; covered by
+  `test/runtime-adapter.test.mjs`.
+
 - **Protocol Runtime Adapter** ([Issue #33]) —
   - `src/domains/chat/runtime/runtime-adapter.ts` — Protocol WebSocket client that
     owns the in-memory **Message Store**, queues outbound frames until `hello_ok`,
@@ -197,3 +207,4 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 [Issue #33]: https://github.com/sruj75/Intentive/issues/33
 [Issue #45]: https://github.com/sruj75/Intentive/issues/45
 [Issue #46]: https://github.com/sruj75/Intentive/issues/46
+[Issue #83]: https://github.com/sruj75/Intentive/issues/83

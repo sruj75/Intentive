@@ -10,12 +10,16 @@ test("connect sends the Protocol connect frame and hello_ok seeds the store", as
   await harness.adapter.connect();
 
   harness.sockets[0].open();
-  assert.deepEqual(JSON.parse(harness.sockets[0].sent[0]), {
+  const connectFrame = JSON.parse(harness.sockets[0].sent[0]);
+  assert.deepEqual(connectFrame, {
     type: "connect",
     auth_token: "runtime-jwt",
     client_kind: "mobile",
     client_version: "test-version",
+    client_tz: "America/New_York",
   });
+  // The reported zone must be a real IANA zone the Runtime can resolve.
+  assert.doesNotThrow(() => new Intl.DateTimeFormat("en-US", { timeZone: connectFrame.client_tz }));
 
   harness.sockets[0].message({
     type: "hello_ok",
@@ -35,6 +39,15 @@ test("connect sends the Protocol connect frame and hello_ok seeds the store", as
 
   assert.equal(harness.adapter.getState().connectionState, "connected");
   assert.equal(harness.adapter.getState().messages[0].body, "hello");
+});
+
+test("connect omits client_tz when the platform cannot resolve a zone", async () => {
+  const harness = createHarness({ resolveTimeZone: () => undefined });
+  await harness.adapter.connect();
+
+  harness.sockets[0].open();
+  const connectFrame = JSON.parse(harness.sockets[0].sent[0]);
+  assert.equal("client_tz" in connectFrame, false);
 });
 
 test("inbound companion_message appends and sends delivery_ack", async () => {
@@ -515,6 +528,8 @@ function createHarness(options = {}) {
       return socket;
     },
     clientVersion: "test-version",
+    resolveTimeZone:
+      "resolveTimeZone" in options ? options.resolveTimeZone : () => "America/New_York",
     now: () => at,
     id: () => `id-${++ids}`,
     schedule: (fn) => {

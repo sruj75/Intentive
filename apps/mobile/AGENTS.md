@@ -44,6 +44,6 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - The Mobile Client is **not** the Agent Runtime, Control Plane, or DeepAgents. It is a view.
 - Persist **nothing** durably about messages — the server is truth.
-- **`connect.client_tz`:** include the device IANA zone on every reconnect (e.g. `Intl.DateTimeFormat().resolvedOptions().timeZone` in `chat/runtime/runtime-adapter.ts`). Last report wins across devices; omit only when the platform cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
+- **`connect.client_tz`:** include the device IANA zone on every reconnect via injectable `resolveTimeZone` in `chat/runtime/runtime-adapter.ts` (defaults to `defaultResolveTimeZone` → `Intl.DateTimeFormat().resolvedOptions().timeZone`). Last report wins across devices; omit only when the platform cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
 - Defer notification permission until the user enters chat for the first time.
 - Keep `@assistant-ui/react-native` behind Intentive Chat Components — never let vendor visuals or data shapes leak into product code.

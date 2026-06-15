@@ -54,7 +54,7 @@ Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke 
 ## Guardrails specific to this deployable
 
 - **No chat UI.** Desktop's WebSocket connection sends only `context_snapshot` and `session_end_marker`.
-- **`connect.client_tz`:** include the host IANA zone on every reconnect in `routing/runtime/mod.rs` alongside `auth_token` / `client_kind` / `client_version`. Last report wins across devices; omit only when the OS cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
+- **`connect.client_tz`:** include the host IANA zone on every reconnect in `routing/runtime/mod.rs` (`iana_time_zone::get_timezone()` at the I/O edge; pure `build_connect_frame` helper) alongside `auth_token` / `client_kind` / `client_version`. Last report wins across devices; omit only when the OS cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
 - **Snapshot Privacy Boundary is structural.** The `ContextSnapshot` Rust struct has no fields for raw ScreenPipe data. Do not add any.
 - **Bundled native artifacts** match the host **Mac CPU variant**, not the signed-in user.
 - ScreenPipe is an internal implementation detail — never user-visible. macOS Privacy Settings should present "Intentive" or fallback "Intentive Capture", never "ScreenPipe".

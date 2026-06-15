@@ -33,10 +33,25 @@ export interface RuntimeAdapterDeps {
   readonly schedule: (fn: () => void, delayMs: number) => { cancel(): void };
   readonly maxRoutingRetries?: number;
   readonly backoffMs?: readonly number[];
+  /**
+   * Resolves the device IANA timezone for the `connect.client_tz` field. Injected
+   * (matching `now`/`id`/`clientVersion`) so tests stay deterministic without
+   * monkeypatching `Intl`. Returns `undefined` when the platform cannot resolve a
+   * zone — the field is then omitted and the Runtime falls back to UTC.
+   */
+  readonly resolveTimeZone?: () => string | undefined;
 }
 
 const DEFAULT_BACKOFF_MS = [250, 500, 1000, 2000, 5000] as const;
 const MAX_BACKOFF_MS = 5000;
+
+export const defaultResolveTimeZone = (): string | undefined => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   const listeners = new Set<() => void>();
@@ -124,11 +139,15 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     socket = deps.createWebSocket(url);
     socket.onopen = () => {
       if (!isCurrentGeneration(generation)) return;
+      const clientTz = (deps.resolveTimeZone ?? defaultResolveTimeZone)();
       sendNow({
         type: "connect",
         auth_token: runtimeJwt,
         client_kind: "mobile",
         client_version: deps.clientVersion,
+        // Last-write-wins: resolved per reconnect so travel re-reports the new zone.
+        // Omitted when undefined so the Runtime cleanly falls back to UTC.
+        ...(clientTz !== undefined ? { client_tz: clientTz } : {}),
       });
     };
     socket.onmessage = (event) => {
