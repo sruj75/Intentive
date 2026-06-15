@@ -4,6 +4,12 @@
 
 Accepted
 
+Amended 2026-06-16 by issue #39 implementation: the `/crons/` filesystem route is
+fronted by a purpose-built `cron_jobs` table through a custom `BackendProtocolV2`
+backend. The "no bespoke cron tools" and "card is the row" decisions remain; the
+incidental claim that cron shares the same `StoreBackend` instance as memory is
+superseded because `next_fire_at` must be a real indexed column.
+
 ## Date
 
 2026-06-15
@@ -36,8 +42,9 @@ Running the requirement through first principles breaks that assumption:
 ## Decision
 
 **A cron job is a markdown "cron card" the agent authors with DeepAgents' built-in
-filesystem tools under a reserved `/crons/` route on the Neon `StoreBackend`. There are
-no bespoke cron CRUD tools. Self-scheduling is file I/O, exactly like memory.**
+filesystem tools under a reserved `/crons/` route backed by the `cron_jobs` table.
+There are no bespoke cron CRUD tools. Self-scheduling is file I/O, exactly like memory
+from the agent's point of view.**
 
 1. **CRUD = filesystem verbs the agent already has.**
    - create → `write_file("/crons/<id>.md", …)`
@@ -49,9 +56,9 @@ no bespoke cron CRUD tools. Self-scheduling is file I/O, exactly like memory.**
      after firing).
 
 2. **The card carries the OpenClaw card fields.** Frontmatter: `name`, `schedule`
-   (`at`/`every`/`cron`), optional `tz` (ADR-0025), `session` (`main` in v1, ADR-0017),
-   `status`, and the shell-computed `next_fire_at`. The body is the **prompt** — the
-   "why I woke you" intent dispatched into the turn on fire.
+   (`at`/`every`/`cron`), optional `tz` (ADR-0025), `status`, and the shell-computed
+   `next_fire_at`. The body is the **prompt** — the "why I woke you" intent dispatched
+   into the turn on fire.
 
 3. **The write-route owns validation and `next_fire_at`.** Writes under `/crons/` pass
    through a shell-side route that parses the schedule with **croner**, enforces the
@@ -59,11 +66,10 @@ no bespoke cron CRUD tools. Self-scheduling is file I/O, exactly like memory.**
    through the `write_file` result, and computes/persists `next_fire_at` onto the card.
    The agent authors intent; the shell owns correctness and scheduling math.
 
-4. **One file surface, two reserved routes, one backend.** `USER.md` / `/memories/` for
-   memory and `/crons/` for scheduling are both routes on the same Neon `StoreBackend`,
-   `user_id`-scoped. The poll loop (ADR-0024) queries due cards across all users directly
-   over that backend — the cross-user query that once argued for a separate table is one
-   indexed scan here, because the backend is Postgres.
+4. **One file surface, two reserved routes, two storage shapes.** `USER.md` /
+   `/memories/` stay on the native Neon `StoreBackend`; `/crons/` is a custom
+   `BackendProtocolV2` route backed by `cron_jobs`, `user_id`-scoped. The poll loop
+   (ADR-0024) queries due cards across all users through a real `next_fire_at` index.
 
 5. **Post-Message-Back stays a real tool; scheduling does not.** Egress reaches a human
    and has external blast radius, so it must be an explicit, auditable tool call
@@ -80,15 +86,15 @@ no bespoke cron CRUD tools. Self-scheduling is file I/O, exactly like memory.**
   built-in file verbs, and still duplicates the filesystem.
 - **On-disk `CRON.md` files (the tutorial's literal storage).** Rejected as the _storage_
   (no shared disk in a multi-tenant process; no cross-user query) — but adopted as the
-  _card shape_, persisted via the Neon `StoreBackend` instead of the local filesystem.
+  _card shape_, persisted via `cron_jobs` instead of the local filesystem.
 
 ## Consequences
 
 ### Positive
 
 - Zero new tools: smaller manifest, cheaper/faster turns, less misuse surface.
-- One fewer storage family and no projection layer — the card is the row.
-- Reuses memory's proven `StoreBackend` + VFS-route machinery; cron is "just file I/O."
+- No projection layer — the cron card is the `cron_jobs` row.
+- Reuses memory's proven VFS-route mental model; cron is "just file I/O" to the agent.
 - Dissolves the file-vs-DB debate: file to the agent, row to the shell.
 
 ### Negative
@@ -111,7 +117,7 @@ no bespoke cron CRUD tools. Self-scheduling is file I/O, exactly like memory.**
 
 - ADR-0012 (native DeepAgents memory model — the precedent: files over `StoreBackend`)
 - ADR-0013 (egress via explicit tools; why Post-Message-Back stays a tool)
-- ADR-0017 (v1 cron runs in the main session; `session: main` card field)
+- ADR-0017 (historical main-session leaning; issue #39 fires on an ephemeral thread)
 - ADR-0019 (v1 minimal tool surface — no skills/subagents)
 - ADR-0021 (native VFS + per-user store memory)
 - ADR-0024 (poll-loop scheduler that reads due cards)

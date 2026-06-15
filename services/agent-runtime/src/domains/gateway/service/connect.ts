@@ -16,6 +16,7 @@ export interface GatewaySessionRegistry {
   loadSessionByAuthSubject(input: {
     readonly authSubject: string;
     readonly clientKind: ClientKind;
+    readonly clientTz?: string;
   }): Promise<Omit<BoundSession, "pinnedFloor"> | null>;
 }
 
@@ -54,6 +55,7 @@ export function createConnectHandler(deps: {
         session = await deps.sessions.loadSessionByAuthSubject({
           authSubject: principal.user_id,
           clientKind: parsed.data.client_kind,
+          clientTz: parsed.data.client_tz,
         });
       } catch (error) {
         return {

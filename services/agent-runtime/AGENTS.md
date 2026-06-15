@@ -22,7 +22,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - `conversation` — durable Conversation History transcript (`conversation_messages`), Session Snapshot projection (`readSnapshot`), history backfill reads (ADR-0008)
 - `protocol` — inbound/outbound event handling (every event type in `packages/protocol/`)
 - `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), **Interactive Turn** runner (`service/turn-runner.ts`, optional `readRecentPerception`), durable **Runtime Turn** records (`repo/runtime-turns.ts`, migration `0003_runtime_turns.sql`)
-- `cron` — scheduled-trigger primitive
+- `cron` — scheduled-trigger primitive: `/crons/` filesystem cards backed by `cron_jobs`, poll scheduler, and `cron_runs`
 - `heartbeat` — interval proactivity trigger (connection-independent, ADR-0018)
 - `memory` — DeepAgents-native Per-User Memory: `StoreBackend` over Neon plus the `/memories/` VFS route and injected `USER.md` profile
 - `bundles` — Procedure Floor resolution and prompt assembly: Langfuse Prompt Management when configured, deploy-bundled fallback otherwise; injects optional `RECENT_PERCEPTION` when present

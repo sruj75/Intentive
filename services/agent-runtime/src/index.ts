@@ -37,10 +37,30 @@ export type {
   TurnTrigger,
 } from "./domains/bundles/types/floor.js";
 export {
+  createAgentBackend,
   createMemoryBackend,
   readUserProfile,
   userMemoryNamespace,
 } from "./domains/memory/repo/memory-backend.js";
+export { computeNextFireAt, parseSchedule, resolveTz } from "./domains/cron/config/schedule.js";
+export { createCronBackend } from "./domains/cron/repo/cron-backend.js";
+export { createCronJobsRepo } from "./domains/cron/repo/cron-jobs.js";
+export type { CronJobsRepo } from "./domains/cron/repo/cron-jobs.js";
+export { createCronRunsRepo } from "./domains/cron/repo/cron-runs.js";
+export type { CronRunsRepo } from "./domains/cron/repo/cron-runs.js";
+export { createCronScheduler } from "./domains/cron/runtime/cron-scheduler.js";
+export { createCronTurnHandler, isTransient } from "./domains/cron/service/cron-turn.js";
+export { parseCard, renderCard } from "./domains/cron/config/cron-card.js";
+export type {
+  CronCardFields,
+  CronFireEvent,
+  CronJob,
+  CronJobStatus,
+  CronRunRecord,
+  CronRunStatus,
+  ParsedSchedule,
+  ScheduleKind,
+} from "./domains/cron/types/cron.js";
 export type { UserMemoryStore, UserMemoryStoreItem } from "./domains/memory/types/store.js";
 export { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 export { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";

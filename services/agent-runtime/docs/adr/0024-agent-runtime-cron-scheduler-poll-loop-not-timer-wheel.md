@@ -46,8 +46,8 @@ no per-minute schedule re-matching.**
 
 2. **Each job persists its own `next_fire_at`.** On create and after every fire, the
    shell computes the next instant with **croner** (from the job's `at`/`every`/`cron`
-   schedule + resolved timezone) and writes it onto the cron card. The DB column is the
-   single source of truth for "when next," not an in-memory structure.
+   schedule + resolved timezone) and writes it onto the cron card. The `cron_jobs`
+   column is the single source of truth for "when next," not an in-memory structure.
 
 3. **Restart-survival and missed fires fall out of the same query.** Because due-ness
    is `next_fire_at <= now()`, anything that came due during downtime is simply found
@@ -55,10 +55,10 @@ no per-minute schedule re-matching.**
    rebuilt timer wheel. A job is never "missed"; at worst it fires late by up to the
    poll interval plus downtime.
 
-4. **Firing enqueues onto the Per-User Channel.** A due job does not run inline in the
-   loop; it enqueues a `cron` trigger on the user's Per-User Channel (ADR-0016), where
-   it is arbitrated against other triggers and runs one-at-a-time against the user's
-   checkpoint. The poll loop never blocks on turn execution.
+4. **Firing is selected by the poll loop and run by the cron fire handler.** A due job
+   does not mutate the user's main checkpoint in the issue #39 slice. It runs a silent
+   ephemeral cron turn, records `cron_runs`, and applies lifecycle/retry updates. The
+   poll loop is still bounded by batch size and does not maintain per-job timers.
 
 5. **Overdue is handled gently, not stampeded.** After firing, recurring jobs recompute
    `next_fire_at` _forward from now_ (catch-up fires are coalesced to one, not replayed
@@ -97,18 +97,20 @@ no per-minute schedule re-matching.**
 
 ### Neutral / Follow-up
 
-- The exact poll interval, batch size, and the index on `next_fire_at` are
-  implementation/tuning details, not fixed here.
+- The exact poll interval and batch size are implementation/tuning details, not fixed
+  here. The implementation uses a real partial index on `cron_jobs(next_fire_at) WHERE
+status = 'active'`.
 - OpenClaw's auto-stagger jitter (spreading top-of-hour recurring jobs by up to 5 min)
   is a separate thundering-herd refinement, deferred; the 5-min minimum-interval floor
   (a frequency guard, distinct from jitter) ships in v1.
-- Storage of the cron card itself is ADR-0026 (filesystem card on the Neon
-  `StoreBackend`); this ADR only fixes _how the loop finds and fires_ due cards.
+- Storage of the cron card itself is ADR-0026 (filesystem card fronting the
+  purpose-built `cron_jobs` table); this ADR only fixes _how the loop finds and fires_
+  due cards.
 
 ## Related
 
 - ADR-0016 (Per-User Channel run-loop; cron trigger arbitration, skip-when-busy)
-- ADR-0017 (v1 cron runs in the main session; isolation deferred)
+- ADR-0017 (historical main-session leaning; issue #39 fires on an ephemeral thread)
 - ADR-0018 (instance lifecycle: lazy hydration, idle eviction; scheduler wakes lanes)
 - ADR-0025 (device-reported timezone resolved at fire time for `next_fire_at`)
 - ADR-0026 (cron is a DeepAgents-native filesystem card; no bespoke tools)

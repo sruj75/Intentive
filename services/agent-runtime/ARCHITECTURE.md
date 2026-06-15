@@ -70,7 +70,10 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Trigger-aware system-prompt assembly from the pinned Procedure Floor + injected `USER.md` + optional `RECENT_PERCEPTION` (single latest perception from the Sensory Buffer).
 
 `src/domains/memory/repo/memory-backend.ts`
-: Repo-owned DeepAgents `CompositeBackend` / `StoreBackend` wiring over Neon, namespaced by `user_id`.
+: Repo-owned DeepAgents `CompositeBackend` route map: `/memories/` uses `StoreBackend` over Neon, and `/crons/` can mount the Cron backend.
+
+`src/domains/cron/repo/cron-backend.ts`
+: Repo-owned `/crons/` DeepAgents backend. Presents markdown cron cards to built-in filesystem tools while persisting rows in `cron_jobs`.
 
 `src/domains/runtime/repo/deep-agents-adapter.ts`
 : Repo-owned DeepAgents + LangGraph Postgres checkpoint adapter (`createDeepAgentsAdapter`).
@@ -114,7 +117,7 @@ Domain responsibilities:
 - `runtime`: DeepAgents adapter, **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
 - `memory`: DeepAgents memory configuration, `StoreBackend` namespace wiring, injected `USER.md` profile reads, and the `/memories/` durable VFS route.
 - `bundles`: Procedure Floor source resolution, Langfuse prompt handles, deploy-bundled fallback, per-connection pinning, and trigger-aware prompt assembly.
-- `cron`: durable scheduled-trigger primitive and fire ledger.
+- `cron`: durable scheduled-trigger primitive, `/crons/` filesystem-card backend, poll scheduler, fire ledger, and silent ephemeral cron-turn lifecycle.
 - `heartbeat`: connection-independent interval proactivity trigger (ADR-0018), silent outcome handling; no stored capture-liveness state (ADR-0023).
 - `internal`: private Control Plane calls such as `POST /internal/sessions/start`.
 
@@ -183,7 +186,7 @@ Control Plane boundary:
 
 DeepAgents boundary:
 
-- Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel**.
+- Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel** for main-checkpoint turns; issue #39 Cron fires use a silent ephemeral thread until Post-Message-Back lands.
 - DeepAgents receives session context, pinned Procedure Floor, optional latest perception (`RECENT_PERCEPTION`), memory/VFS backend, and registered tools.
 - Trigger type sets egress default (ADR-0013): an **Interactive Turn** delivers the agent's returned final message as the reply; proactive turns stay silent unless the agent calls **Post-Message-Back**. Ingress ack is decoupled from turn success (ADR-0020).
 

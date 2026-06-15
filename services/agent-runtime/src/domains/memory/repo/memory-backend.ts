@@ -1,17 +1,31 @@
-import { CompositeBackend, StateBackend, StoreBackend } from "deepagents";
+import { CompositeBackend, StateBackend, StoreBackend, type AnyBackendProtocol } from "deepagents";
 
 import type { UserMemoryStore } from "../types/store.js";
 
 export function createMemoryBackend(params: { readonly store: unknown }): {
   readonly backend: CompositeBackend;
 } {
-  return {
-    backend: new CompositeBackend(new StateBackend(), {
-      "/memories/": new StoreBackend({
-        store: params.store as never,
-        namespace: ({ config }) => ["memories", userIdFromConfig(config?.configurable)],
-      }),
+  return createAgentBackend(params);
+}
+
+export function createAgentBackend(params: {
+  readonly store: unknown;
+  readonly cronBackend?: AnyBackendProtocol;
+}): {
+  readonly backend: CompositeBackend;
+} {
+  const routes: Record<string, AnyBackendProtocol> = {
+    "/memories/": new StoreBackend({
+      store: params.store as never,
+      namespace: ({ config }) => ["memories", userIdFromConfig(config?.configurable)],
     }),
+  };
+  if (params.cronBackend) {
+    routes["/crons/"] = params.cronBackend;
+  }
+
+  return {
+    backend: new CompositeBackend(new StateBackend(), routes),
   };
 }
 

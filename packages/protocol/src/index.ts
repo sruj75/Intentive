@@ -23,6 +23,7 @@ export const connect = z
     auth_token: z.string(),
     client_kind: ClientKind,
     client_version: z.string(),
+    client_tz: z.string().optional(),
   })
   .strict();
 export type Connect = z.infer<typeof connect>;
