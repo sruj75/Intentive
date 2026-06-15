@@ -8,6 +8,7 @@ export interface RuntimeTurnInput {
   readonly trigger: TurnTrigger;
   readonly pinnedFloor: PinnedProcedureFloor;
   readonly userProfile: string;
+  readonly recentPerception?: string | null;
   readonly firstRun?: boolean;
 }
 

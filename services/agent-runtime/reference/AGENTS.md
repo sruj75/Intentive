@@ -5,9 +5,10 @@ Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangC
 ## How to read (progressive disclosure)
 
 1. Open the **topic card** for your task: [`topics/`](topics/).
-2. Run the card’s `rg -n "SECTION:…"` commands against the listed pack — **do not load full `*-llms.txt` files**.
-3. `Read` only ~200–400 lines around each hit (use line numbers from `rg` or [`ANCHORS.md`](ANCHORS.md)).
-4. Implement in **our** TypeScript shell; use **DeepAgents** for brain/tools/memory/subagents.
+2. For **DeepAgents production** (memory scoping, backends, guardrails, deployment): read [`topics/going-to-production.md`](topics/going-to-production.md) → [`deepagents/going-to-production.md`](deepagents/going-to-production.md).
+3. For OpenClaw parity: run the card’s `rg -n "SECTION:…"` commands against the listed pack — **do not load full `*-llms.txt` files**.
+4. `Read` only ~200–400 lines around each hit (use line numbers from `rg` or [`ANCHORS.md`](ANCHORS.md)).
+5. Implement in **our** TypeScript shell; use **DeepAgents** for brain/tools/memory/subagents.
 
 ## Brain vs shell
 
@@ -27,20 +28,21 @@ Upstream pattern ground truth for building an **OpenClaw-like shell** on **LangC
 
 ## Topic index (1:1 with `*-llms.txt`)
 
-| Card                                     | Load when                                                    |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| [architecture](topics/architecture.md)   | Brain vs shell, product shape                                |
-| [gateway](topics/gateway.md)             | WS, protocol, auth, HTTP APIs                                |
-| [channels](topics/channels.md)           | Future external channel adapters only; not Mobile/Desktop v1 |
-| [sessions](topics/sessions.md)           | Session keys, store, compaction                              |
-| [cron](topics/cron.md)                   | Scheduler, task ledger                                       |
-| [heartbeat](topics/heartbeat.md)         | Periodic wake, HEARTBEAT_OK                                  |
-| [workspace](topics/workspace.md)         | SOUL, AGENTS, SKILL layout                                   |
-| [routing](topics/routing.md)             | Multi-tenant routing                                         |
-| [hooks](topics/hooks.md)                 | Hooks, event bus                                             |
-| [memory](topics/memory.md)               | Parity only — DeepAgents LTM                                 |
-| [tools](topics/tools.md)                 | Parity only — DeepAgents tools                               |
-| [subagents](topics/subagents.md)         | Parity only — DeepAgents subagents                           |
-| [agent-runtime](topics/agent-runtime.md) | Parity only — inner loop                                     |
+| Card                                                 | Load when                                                                  |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| [architecture](topics/architecture.md)               | Brain vs shell, product shape                                              |
+| [gateway](topics/gateway.md)                         | WS, protocol, auth, HTTP APIs                                              |
+| [channels](topics/channels.md)                       | Future external channel adapters only; not Mobile/Desktop v1               |
+| [sessions](topics/sessions.md)                       | Session keys, store, compaction                                            |
+| [cron](topics/cron.md)                               | Scheduler, task ledger                                                     |
+| [heartbeat](topics/heartbeat.md)                     | Periodic wake, HEARTBEAT_OK                                                |
+| [workspace](topics/workspace.md)                     | SOUL, AGENTS, SKILL layout                                                 |
+| [routing](topics/routing.md)                         | Multi-tenant routing                                                       |
+| [hooks](topics/hooks.md)                             | Hooks, event bus                                                           |
+| [memory](topics/memory.md)                           | Parity only — DeepAgents LTM                                               |
+| [going-to-production](topics/going-to-production.md) | **DeepAgents upstream** — memory scoping, backends, guardrails, deployment |
+| [tools](topics/tools.md)                             | Parity only — DeepAgents tools                                             |
+| [subagents](topics/subagents.md)                     | Parity only — DeepAgents subagents                                         |
+| [agent-runtime](topics/agent-runtime.md)             | Parity only — inner loop                                                   |
 
 Regenerate packs: `node scripts/generate-reference-llms.mjs` — see [README.md](README.md).

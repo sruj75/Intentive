@@ -14,6 +14,7 @@ type PromptAssembler = (input: {
   readonly floor: PinnedProcedureFloor;
   readonly trigger: TurnTrigger;
   readonly userProfile?: string | null;
+  readonly recentPerception?: string | null;
   readonly firstRun?: boolean;
 }) => string;
 
@@ -65,6 +66,7 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
           floor: input.pinnedFloor,
           trigger: input.trigger,
           userProfile: input.userProfile,
+          recentPerception: input.recentPerception,
           firstRun: input.firstRun,
         });
       if (!systemPrompt) {

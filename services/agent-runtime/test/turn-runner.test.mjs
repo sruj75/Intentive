@@ -52,6 +52,7 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
     newMessageId: () => "companion_1",
     fallbackModel: "fallback-model",
     readUserProfile: async () => "likes direct answers",
+    readRecentPerception: async () => "Most recent perception: reviewing a design doc",
   });
 
   await runTurn(session, userMessage("message_1", "hello"));
@@ -64,6 +65,7 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
       trigger: "user_message",
       pinnedFloor: floor("floor_v1"),
       userProfile: "likes direct answers",
+      recentPerception: "Most recent perception: reviewing a design doc",
     },
   ]);
   assert.deepEqual(companionEntries, [
@@ -87,6 +89,38 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
     },
   ]);
   assert.deepEqual(transactions, [[queries.companion, queries.turn]]);
+});
+
+test("runTurn omits recentPerception when no Sensory Buffer reader is injected", async () => {
+  const adapterCalls = [];
+  const runTurn = createTurnRunner({
+    sql: {
+      transaction: async () => [],
+    },
+    adapter: {
+      invoke: async (input) => {
+        adapterCalls.push(input);
+        return {
+          reply: "hello from Companion",
+          traceId: "trace_1",
+          model: "test-model",
+          bundleVersion: "floor_v1",
+        };
+      },
+    },
+    conversation: {
+      appendQuery: () => Promise.resolve([]),
+    },
+    runtimeTurns: {
+      recordQuery: () => Promise.resolve([]),
+    },
+    newMessageId: () => "companion_1",
+    fallbackModel: "fallback-model",
+  });
+
+  await runTurn(session, userMessage("message_1", "hello"));
+
+  assert.equal(Object.hasOwn(adapterCalls[0], "recentPerception"), false);
 });
 
 test("runTurn records a failed Runtime Turn when invoke fails", async () => {

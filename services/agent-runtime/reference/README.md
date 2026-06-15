@@ -4,12 +4,13 @@ Progressive-disclosure context for coding agents building an OpenClaw-like **she
 
 ## Three layers
 
-| Layer | Path | Purpose |
-|-------|------|---------|
-| Map | [AGENTS.md](AGENTS.md) | How to read; topic index (~50 lines) |
-| Cards | [topics/](topics/) | Per-topic invariants + `rg SECTION:` breadcrumbs |
-| Depth | `openclaw/*-llms.txt` | Repomix packs with `SECTION:` markers |
-| Index | [ANCHORS.md](ANCHORS.md) | Generated section id → line (after regen) |
+| Layer      | Path                       | Purpose                                                   |
+| ---------- | -------------------------- | --------------------------------------------------------- |
+| Map        | [AGENTS.md](AGENTS.md)     | How to read; topic index (~50 lines)                      |
+| Cards      | [topics/](topics/)         | Per-topic invariants + `rg SECTION:` breadcrumbs          |
+| DeepAgents | [deepagents/](deepagents/) | Upstream production guides (memory, backends, guardrails) |
+| Depth      | `openclaw/*-llms.txt`      | Repomix packs with `SECTION:` markers                     |
+| Index      | [ANCHORS.md](ANCHORS.md)   | Generated section id → line (after regen)                 |
 
 **Start at [AGENTS.md](AGENTS.md) → a topic card.** Do not load full `*-llms.txt` files into context.
 

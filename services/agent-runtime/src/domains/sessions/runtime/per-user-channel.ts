@@ -8,6 +8,7 @@ import type {
   BoundSession,
   LedgerRecord,
   PerUserChannel,
+  PerceptionArrivedSink,
   RuntimeIngressEvent,
 } from "../types/event.js";
 import { createUserQueue } from "./user-queue.js";
@@ -32,6 +33,7 @@ export function createPerUserChannel(deps: {
   conversation: SessionSnapshotReader;
   project: (session: BoundSession, event: RuntimeIngressEvent) => SqlQuery[];
   runTurn?: TurnRunner;
+  onPerceptionArrived?: PerceptionArrivedSink;
   onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
   newDedupKey?: () => string;
 }): PerUserChannel {
@@ -46,7 +48,11 @@ export function createPerUserChannel(deps: {
           deps.ledger.recordQuery(record),
           ...deps.project(session, event),
         ]);
-        if (event.type === "user_message" && deps.runTurn && insertedLedgerRow(results)) {
+        const inserted = insertedLedgerRow(results);
+        if (inserted && isPerceptionEvent(event)) {
+          deps.onPerceptionArrived?.(session, event);
+        }
+        if (event.type === "user_message" && deps.runTurn && inserted) {
           try {
             await deps.runTurn(session, event);
           } catch (error) {
@@ -68,6 +74,12 @@ export function createPerUserChannel(deps: {
       return queue.submit(userId, () => deps.conversation.readSnapshot(userId, before, limit));
     },
   };
+}
+
+function isPerceptionEvent(
+  event: RuntimeIngressEvent,
+): event is Extract<RuntimeIngressEvent, { type: "context_snapshot" | "session_end_marker" }> {
+  return event.type === "context_snapshot" || event.type === "session_end_marker";
 }
 
 function insertedLedgerRow(results: unknown[]): boolean {

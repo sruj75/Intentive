@@ -14,3 +14,4 @@ SQL migrations for the Runtime-owned Neon schema.
 - `0002_conversation.sql` — durable `conversation_messages` transcript and Session Snapshot projection indexes (#29).
 - `0003_runtime_turns.sql` — durable `runtime_turns` per-turn observability anchor (#36).
 - `0004_runtime_turns_bundle_version.sql` — `bundle_version` stamp for each Runtime Turn (#37).
+- `0005_runtime_events_user_created_at.sql` — `(user_id, created_at DESC)` index backing the Sensory Buffer latest-perception read (#38).

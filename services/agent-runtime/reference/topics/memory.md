@@ -18,9 +18,10 @@
 
 ## Dig deeper
 
-| Source | Command |
-|--------|---------|
-| OpenClaw | `rg -n "SECTION:memory:config-doc" reference/openclaw/memory-llms.txt` |
+| Source                                  | Command / path                                                                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| DeepAgents production (user-scoped LTM) | [`going-to-production.md`](going-to-production.md) → [`../deepagents/going-to-production.md`](../deepagents/going-to-production.md) |
+| OpenClaw                                | `rg -n "SECTION:memory:config-doc" reference/openclaw/memory-llms.txt`                                                              |
 
 ## Last resort
 
