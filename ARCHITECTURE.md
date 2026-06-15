@@ -91,7 +91,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `conversation` — durable Conversation History transcript, Session Snapshot projection, history backfill reads
 - `protocol` — inbound/outbound event handling (`user_message`, `context_snapshot`, `session_end_marker`, `history_backfill_request`, `companion_message`, `presence_update`, `delivery_ack`)
 - `runtime` — DeepAgents loop integration, Agent Instance lifecycle
-- `cron` — scheduled-trigger primitive
+- `cron` — `/crons/` filesystem cards, poll scheduler, ephemeral fire turns (#39)
 - `heartbeat` — interval-trigger primitive
 - `memory` — DeepAgents Per-User Memory: `StoreBackend` namespace wiring, injected `USER.md`, `/memories/` VFS route
 - `bundles` — Procedure Floor resolution (Langfuse Prompt Management + deploy-bundled fallback), per-connection pinning, trigger-aware prompt assembly

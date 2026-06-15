@@ -19,11 +19,16 @@ import { assembleSystemPrompt } from "./domains/bundles/service/assemble-system-
 import { createProcedureFloorResolver } from "./domains/bundles/service/procedure-floor-resolver.js";
 import { createConversationRepo } from "./domains/conversation/repo/conversation.js";
 import { toConversationEntry } from "./domains/conversation/service/project-ingress.js";
+import { createCronBackend } from "./domains/cron/repo/cron-backend.js";
+import { createCronJobsRepo } from "./domains/cron/repo/cron-jobs.js";
+import { createCronRunsRepo } from "./domains/cron/repo/cron-runs.js";
+import { createCronScheduler } from "./domains/cron/runtime/cron-scheduler.js";
+import { createCronTurnHandler } from "./domains/cron/service/cron-turn.js";
 import { createConnectHandler } from "./domains/gateway/service/connect.js";
 import { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 import { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
 import { createInternalApp } from "./domains/internal/ui/app.js";
-import { createMemoryBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
+import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
@@ -48,9 +53,15 @@ const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const sensoryBuffer = createSensoryBufferReader(sql);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
+const cronJobs = createCronJobsRepo(sql);
+const cronRuns = createCronRunsRepo(sql);
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
 await memoryStore.setup();
-const memoryBackend = createMemoryBackend({ store: memoryStore });
+const cronBackend = createCronBackend({
+  repo: cronJobs,
+  loadUserTz: (userId) => registry.loadUserTz(userId),
+});
+const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
 const fallbackFloorSource = createBundledFallbackSource();
 const langfuseConfig = config.langfuse;
 const langfuseClient = langfuseConfig
@@ -69,7 +80,7 @@ const runtimeAdapter = createDeepAgentsAdapter({
   modelName: config.model.model,
   assemblePrompt: assembleSystemPrompt,
   store: memoryStore,
-  backend: memoryBackend.backend,
+  backend: agentBackend.backend,
   // A fresh handler per turn (not one shared instance) keeps each turn's trace
   // isolated; langfuse's handler holds the active trace on mutable state.
   createCallbackHandler: langfuseConfig
@@ -95,6 +106,20 @@ const runTurn = createTurnRunner({
   readUserProfile: (userId) => readUserProfile(memoryStore, userId),
   readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
 });
+const fireCron = createCronTurnHandler({
+  sql,
+  adapter: runtimeAdapter,
+  cronJobs,
+  cronRuns,
+  floorResolver,
+  loadUserTz: (userId) => registry.loadUserTz(userId),
+  readUserProfile: (userId) => readUserProfile(memoryStore, userId),
+  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
+});
+const cronScheduler = createCronScheduler({
+  cronJobsRepo: cronJobs,
+  fireCron,
+});
 const channel = createPerUserChannel({
   sql,
   ledger,
@@ -105,6 +130,9 @@ const channel = createPerUserChannel({
   // directly. This mapping is the `sessions` → `conversation` seam and must
   // stay one line (ADR-0008 / ADR-0009).
   project: (session, event) => {
+    if (event.type === "cron") {
+      return [];
+    }
     const entry = toConversationEntry(session.userId, event);
     return entry ? [conversation.appendQuery(entry)] : [];
   },
@@ -124,7 +152,8 @@ const connectHandler = createConnectHandler({
   conversation: channel,
   floorResolver,
   sessions: {
-    async loadSessionByAuthSubject({ authSubject, clientKind }) {
+    async loadSessionByAuthSubject({ authSubject, clientKind, clientTz }) {
+      await registry.recordClientTzByAuthSubject(authSubject, clientTz);
       const agentInstance = await registry.loadByAuthSubject(authSubject);
       if (!agentInstance) {
         return null;
@@ -150,3 +179,4 @@ wss.on("connection", (socket) => {
 
 console.info(`Agent Runtime public WebSocket listening on :${config.port}`);
 console.info(`Agent Runtime Internal API listening on :${config.internalInbound.port}`);
+cronScheduler.start();

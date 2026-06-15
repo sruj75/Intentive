@@ -7,6 +7,7 @@ import type {
 } from "@intentive/protocol";
 
 import type { PinnedProcedureFloor } from "../../bundles/types/floor.js";
+import type { CronFireEvent } from "../../cron/types/cron.js";
 
 export type RuntimeEventKind =
   | "user_message"
@@ -18,12 +19,12 @@ export type RuntimeEventKind =
 
 export interface BoundSession {
   readonly userId: string;
-  readonly clientKind: ClientKind;
+  readonly clientKind: ClientKind | "system";
   readonly agentInstanceId: string;
   readonly pinnedFloor: PinnedProcedureFloor;
 }
 
-export type RuntimeIngressEvent = UserMessage | ContextSnapshot | SessionEndMarker;
+export type RuntimeIngressEvent = UserMessage | ContextSnapshot | SessionEndMarker | CronFireEvent;
 
 export type PerceptionArrivedSink = (
   session: BoundSession,
@@ -63,6 +64,7 @@ export function isRuntimeIngressEvent(event: {
   return (
     event.type === "user_message" ||
     event.type === "context_snapshot" ||
-    event.type === "session_end_marker"
+    event.type === "session_end_marker" ||
+    event.type === "cron"
   );
 }

@@ -212,10 +212,12 @@ test("malformed inbound events are rejected as invalid_connect", async () => {
 
 test("connect resolves the WebSocket session from the verified auth subject, not by creating an Agent Instance from it", async () => {
   let seenSubject;
+  let seenClientTz;
   const handler = createConnectHandler({
     sessions: {
-      loadSessionByAuthSubject: async ({ authSubject, clientKind }) => {
+      loadSessionByAuthSubject: async ({ authSubject, clientKind, clientTz }) => {
         seenSubject = authSubject;
+        seenClientTz = clientTz;
         return {
           userId: "00000000-0000-4000-8000-000000000001",
           clientKind,
@@ -228,9 +230,10 @@ test("connect resolves the WebSocket session from the verified auth subject, not
     conversation: snapshotReader(),
   });
 
-  const result = await handler.handle(validConnect);
+  const result = await handler.handle({ ...validConnect, client_tz: "Asia/Kolkata" });
 
   assert.equal(seenSubject, "auth-sub-not-a-uuid");
+  assert.equal(seenClientTz, "Asia/Kolkata");
   assert.equal(result.closeSocket, false);
   assert.deepEqual(result.session, {
     userId: "00000000-0000-4000-8000-000000000001",

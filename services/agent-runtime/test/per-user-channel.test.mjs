@@ -225,6 +225,48 @@ test("runTurn is called once for a new user message and not for duplicates or no
   assert.deepEqual(turnEvents, [message]);
 });
 
+test("cron events use fire-time idempotency and can dispatch a turn without conversation projection", async () => {
+  const records = [];
+  const projected = [];
+  const turnEvents = [];
+  const transactionResults = [[[{ id: "cron_ledger" }]], [[]]];
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => transactionResults.shift(),
+    },
+    ledger: {
+      recordQuery: (record) => {
+        records.push(record);
+        return Promise.resolve([{ id: "ledger" }]);
+      },
+    },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: (_session, event) => {
+      projected.push(event.type);
+      return [];
+    },
+    runTurn: async (_session, event) => {
+      turnEvents.push(event);
+    },
+  });
+  const event = {
+    type: "cron",
+    job_id: "job_1",
+    fire_at: "2026-06-16T00:00:00.000Z",
+    body: "wake",
+  };
+
+  await channel.accept({ ...session, clientKind: "system" }, event);
+  await channel.accept({ ...session, clientKind: "system" }, event);
+
+  assert.deepEqual(
+    records.map((record) => record.dedupKey),
+    ["cron:job_1:2026-06-16T00:00:00.000Z", "cron:job_1:2026-06-16T00:00:00.000Z"],
+  );
+  assert.deepEqual(projected, ["cron", "cron"]);
+  assert.deepEqual(turnEvents, [event]);
+});
+
 test("onPerceptionArrived fires once for new perception events only", async () => {
   const perceptions = [];
   const turnEvents = [];

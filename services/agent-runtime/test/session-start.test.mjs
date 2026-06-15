@@ -34,3 +34,15 @@ test("startSession is idempotent per User and distinct across Users", async () =
   assert.equal(again.agent_instance_id, first.agent_instance_id);
   assert.equal(other.agent_instance_id, "agent_instance_2");
 });
+
+test("in-memory Agent Instance Registry stores the last reported client timezone", async () => {
+  const registry = createInMemoryAgentInstanceRegistry({ newId: () => "agent_instance_1" });
+  await registry.loadOrCreate({
+    authSubject: "sub_1",
+    userId: "user_1",
+    clientTz: "America/New_York",
+  });
+  await registry.recordClientTzByAuthSubject("sub_1", "Asia/Kolkata");
+
+  assert.equal(await registry.loadUserTz("user_1"), "Asia/Kolkata");
+});

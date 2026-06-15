@@ -11,23 +11,27 @@ DeepAgents is the brain. The Intentive Runtime shell is the product boundary aro
 ```text
 Mobile Client                 Desktop Client
   user_message                  context_snapshot/session_end_marker
+  connect (+ client_tz)         connect (+ client_tz)
        \                              /
         \-------- WebSocket Protocol-/
                        |
                     gateway
              auth, connect, post-connect routing
                        |
-              Per-User Channel (sessions)
-     txn ingress + queue-serialized reads
-     Sensory Buffer read (latest perception)
-                       |
-              runtime (Interactive Turn)
-           DeepAgents invoke + runtime_turns
+         +-------------+-------------+
+         |                           |
+  Per-User Channel (sessions)   cron scheduler
+  txn ingress + queue reads     poll loop (Neon due scan)
+  Sensory Buffer (latest)              |
+         |                      cron (ephemeral fire turn)
+  runtime (Interactive Turn)    silent invoke + cron_runs
+  DeepAgents + runtime_turns           |
+         +-------------+-------------+
                        |
               conversation + checkpoints
                  Neon Runtime schema
                        |
-       companion_message / Post-Message-Back
+       companion_message / Post-Message-Back (#41)
 ```
 
 DeepAgents owns planning, tool execution, VFS semantics, skills, memory surface, subagents, and compaction. The Intentive shell owns WebSocket ingress, user isolation, event ordering, Cron, Heartbeat, Post-Message-Back, Control Plane handoff, Neon persistence policy, and deployment liveness.
@@ -61,7 +65,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, conversation repos, and **Sensory Buffer** reader, constructs Procedure Floor resolver + memory backend + DeepAgents adapter and **Interactive Turn** runner (`readRecentPerception`), constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + no-op `onPerceptionArrived` + queue-serialized snapshot reads), serves the private Internal API, and attaches the public WebSocket gateway.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, and **Sensory Buffer** reader, constructs Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter and **Interactive Turn** runner (`readRecentPerception`), constructs the **Cron** poll scheduler + ephemeral fire handler, constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + no-op `onPerceptionArrived` + queue-serialized snapshot reads), serves the private Internal API, attaches the public WebSocket gateway, and starts the cron scheduler.
 
 `src/domains/bundles/service/procedure-floor-resolver.ts`
 : Service-owned Procedure Floor resolution — Langfuse fetch when configured, deploy-bundled fallback otherwise; pins floor once per connection.
@@ -70,7 +74,10 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Trigger-aware system-prompt assembly from the pinned Procedure Floor + injected `USER.md` + optional `RECENT_PERCEPTION` (single latest perception from the Sensory Buffer).
 
 `src/domains/memory/repo/memory-backend.ts`
-: Repo-owned DeepAgents `CompositeBackend` / `StoreBackend` wiring over Neon, namespaced by `user_id`.
+: Repo-owned DeepAgents `CompositeBackend` route map: `/memories/` uses `StoreBackend` over Neon, and `/crons/` can mount the Cron backend.
+
+`src/domains/cron/repo/cron-backend.ts`
+: Repo-owned `/crons/` DeepAgents backend. Presents markdown cron cards to built-in filesystem tools while persisting rows in `cron_jobs`.
 
 `src/domains/runtime/repo/deep-agents-adapter.ts`
 : Repo-owned DeepAgents + LangGraph Postgres checkpoint adapter (`createDeepAgentsAdapter`).
@@ -114,7 +121,7 @@ Domain responsibilities:
 - `runtime`: DeepAgents adapter, **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
 - `memory`: DeepAgents memory configuration, `StoreBackend` namespace wiring, injected `USER.md` profile reads, and the `/memories/` durable VFS route.
 - `bundles`: Procedure Floor source resolution, Langfuse prompt handles, deploy-bundled fallback, per-connection pinning, and trigger-aware prompt assembly.
-- `cron`: durable scheduled-trigger primitive and fire ledger.
+- `cron`: durable scheduled-trigger primitive, `/crons/` filesystem-card backend, poll scheduler, fire ledger, and silent ephemeral cron-turn lifecycle.
 - `heartbeat`: connection-independent interval proactivity trigger (ADR-0018), silent outcome handling; no stored capture-liveness state (ADR-0023).
 - `internal`: private Control Plane calls such as `POST /internal/sessions/start`.
 
@@ -183,7 +190,7 @@ Control Plane boundary:
 
 DeepAgents boundary:
 
-- Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel**.
+- Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel** for main-checkpoint turns; issue #39 Cron fires use a silent ephemeral thread until Post-Message-Back lands.
 - DeepAgents receives session context, pinned Procedure Floor, optional latest perception (`RECENT_PERCEPTION`), memory/VFS backend, and registered tools.
 - Trigger type sets egress default (ADR-0013): an **Interactive Turn** delivers the agent's returned final message as the reply; proactive turns stay silent unless the agent calls **Post-Message-Back**. Ingress ack is decoupled from turn success (ADR-0020).
 
@@ -237,5 +244,5 @@ Testing:
 - **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
 - **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors; #28 covers per-user queue ordering/isolation and ingest idempotency.
 - **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
-- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`); #37 covers Procedure Floor pinning at connect, `USER.md` injection, memory backend wiring, and `bundle_version` on successful turns; #38 covers **Sensory Buffer** read projection (`test/sensory-buffer.integration.test.mjs`), `RECENT_PERCEPTION` prompt injection, and `onPerceptionArrived` on newly inserted perception events. Future slices add Monitoring Turn run-loop (#40), Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`); #37 covers Procedure Floor pinning at connect, `USER.md` injection, memory backend wiring, and `bundle_version` on successful turns; #38 covers **Sensory Buffer** read projection (`test/sensory-buffer.integration.test.mjs`), `RECENT_PERCEPTION` prompt injection, and `onPerceptionArrived` on newly inserted perception events; #39 covers cron card parsing/validation, poll-loop due selection, ephemeral cron-turn lifecycle, and `client_tz` persistence (`test/cron-*.test.mjs`). Future slices add Monitoring Turn run-loop (#40), Heartbeat silent outcome, and Post-Message-Back handoff.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

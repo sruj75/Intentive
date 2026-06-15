@@ -6,6 +6,10 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 
 ### Added
 
+- **`@intentive/protocol` — optional `client_tz` on `connect`** ([Issue #39]) —
+  clients may report an IANA timezone on every WebSocket handshake so the Agent
+  Runtime can resolve wall-clock Cron schedules while the user is offline.
+  Tests: extended `protocol/test/contract.test.mjs`.
 - **`@intentive/boundary`** ([monorepo ADR-0004](../docs/adr/0004-shared-boundary-decode-package.md)) —
   the one leak-free parse-at-boundary decode for every inbound boundary: `parseBoundary` and
   `BoundaryParseError` (key paths only, never values). Sits below both wire packages (`zod`-only).

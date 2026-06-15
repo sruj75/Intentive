@@ -52,13 +52,13 @@ export function createPerUserChannel(deps: {
         if (inserted && isPerceptionEvent(event)) {
           deps.onPerceptionArrived?.(session, event);
         }
-        if (event.type === "user_message" && deps.runTurn && inserted) {
+        if ((event.type === "user_message" || event.type === "cron") && deps.runTurn && inserted) {
           try {
             await deps.runTurn(session, event);
           } catch (error) {
             const context = {
               userId: session.userId,
-              messageId: event.message_id,
+              messageId: event.type === "user_message" ? event.message_id : event.job_id,
             };
             if (deps.onTurnError) {
               deps.onTurnError(error, context);
@@ -108,5 +108,7 @@ function dedupKeyFor(event: RuntimeIngressEvent, newDedupKey: () => string): str
       return event.snapshot_id;
     case "session_end_marker":
       return newDedupKey();
+    case "cron":
+      return `cron:${event.job_id}:${event.fire_at}`;
   }
 }

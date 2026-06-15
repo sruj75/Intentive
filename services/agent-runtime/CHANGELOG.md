@@ -6,6 +6,19 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Cron scheduler, filesystem cards, and ephemeral fire turns** ([Issue #39]) —
+  `cron/` domain slice: `/crons/` DeepAgents backend over `cron_jobs`, `croner`
+  schedule validation (5-minute minimum interval), poll-loop scheduler
+  (`next_fire_at <= now()`), silent ephemeral-thread fire handler with
+  `cron_runs` ledger and transient-error retry. Connect persists optional
+  `client_tz` on the Agent Instance row for offline wall-clock resolution
+  (ADR-0025). Migrations `migrations/0006_cron_jobs.sql`,
+  `migrations/0007_cron_runs.sql`, `migrations/0008_agent_instances_client_tz.sql`.
+  `memory/` `CompositeBackend` mounts the cron route alongside `/memories/`.
+  Tests: `test/cron-backend.test.mjs`, `test/cron-card.test.mjs`,
+  `test/cron-schedule.test.mjs`, `test/cron-scheduler.test.mjs`,
+  `test/cron-turn.test.mjs`, plus extended `test/connect-handler.test.mjs`,
+  `test/per-user-channel.test.mjs`, and `test/session-start.test.mjs`.
 - **Sensory Buffer and perception injection** ([Issue #38]) — `sessions/` adds a
   `SensoryBufferReader` read projection over `runtime_events` for the most
   recent `context_snapshot` or `session_end_marker`, with no new table or

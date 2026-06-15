@@ -19,6 +19,7 @@
     "@langchain/langgraph-checkpoint-postgres": "^1.0.3",
     "@langchain/openai": "^1.4.7",
     "@neondatabase/serverless": "^1.1.0",
+    "croner": "^10.0.1",
     "deepagents": "^1.10.2",
     "hono": "^4.12.23",
     "langfuse-langchain": "^3.38.20",
