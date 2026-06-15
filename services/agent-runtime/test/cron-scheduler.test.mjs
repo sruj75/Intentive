@@ -22,6 +22,41 @@ test("cron scheduler tick fires due rows once and respects batch limit", async (
   assert.deepEqual(fired, [["job_1", "2026-06-16T00:00:00.000Z"]]);
 });
 
+test("cron scheduler start contains tick failures inside the poll loop", async () => {
+  const unhandled = [];
+  const logged = [];
+  const onUnhandled = (error) => {
+    unhandled.push(error);
+  };
+  process.on("unhandledRejection", onUnhandled);
+  const originalError = console.error;
+  console.error = (...args) => {
+    logged.push(args);
+  };
+
+  const scheduler = createCronScheduler({
+    cronJobsRepo: {
+      selectDue: async () => {
+        throw new Error("database unavailable");
+      },
+    },
+    fireCron: async () => {},
+    pollIntervalMs: 1_000,
+  });
+
+  try {
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    scheduler.stop();
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    console.error = originalError;
+  }
+
+  assert.deepEqual(unhandled, []);
+  assert.equal(logged.length, 1);
+});
+
 function job(id) {
   return {
     id,

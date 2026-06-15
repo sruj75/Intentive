@@ -26,6 +26,18 @@ test("connect accepts optional client timezone and keeps strict unknown-key beha
   assert.equal(result.success, true);
 });
 
+test("connect rejects malformed client timezone values", () => {
+  const result = protocol.connect.safeParse({
+    type: "connect",
+    auth_token: "jwt",
+    client_kind: "desktop",
+    client_version: "1.0.0",
+    client_tz: "GMT+05:30",
+  });
+
+  assert.equal(result.success, false);
+});
+
 test("connect rejects legacy negotiation fields and unknown keys", () => {
   const withLegacy = protocol.connect.safeParse({
     type: "connect",

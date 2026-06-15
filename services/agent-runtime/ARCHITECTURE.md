@@ -11,23 +11,27 @@ DeepAgents is the brain. The Intentive Runtime shell is the product boundary aro
 ```text
 Mobile Client                 Desktop Client
   user_message                  context_snapshot/session_end_marker
+  connect (+ client_tz)         connect (+ client_tz)
        \                              /
         \-------- WebSocket Protocol-/
                        |
                     gateway
              auth, connect, post-connect routing
                        |
-              Per-User Channel (sessions)
-     txn ingress + queue-serialized reads
-     Sensory Buffer read (latest perception)
-                       |
-              runtime (Interactive Turn)
-           DeepAgents invoke + runtime_turns
+         +-------------+-------------+
+         |                           |
+  Per-User Channel (sessions)   cron scheduler
+  txn ingress + queue reads     poll loop (Neon due scan)
+  Sensory Buffer (latest)              |
+         |                      cron (ephemeral fire turn)
+  runtime (Interactive Turn)    silent invoke + cron_runs
+  DeepAgents + runtime_turns           |
+         +-------------+-------------+
                        |
               conversation + checkpoints
                  Neon Runtime schema
                        |
-       companion_message / Post-Message-Back
+       companion_message / Post-Message-Back (#41)
 ```
 
 DeepAgents owns planning, tool execution, VFS semantics, skills, memory surface, subagents, and compaction. The Intentive shell owns WebSocket ingress, user isolation, event ordering, Cron, Heartbeat, Post-Message-Back, Control Plane handoff, Neon persistence policy, and deployment liveness.

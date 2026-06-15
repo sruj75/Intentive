@@ -5,7 +5,7 @@ The cross-deployable shared kernel: the wire/HTTP contracts and cross-cutting cl
 ## Language
 
 **Protocol**:
-The shared WebSocket message contract every client speaks and the Agent Runtime understands. Defined once in `packages/protocol/` (Zod schemas). Imported by Mobile Client, Desktop Client, future Android Client, and Agent Runtime. **This is where client unification lives** — not in network topology.
+The shared WebSocket message contract every client speaks and the Agent Runtime understands. Defined once in `packages/protocol/` (Zod schemas). Imported by Mobile Client, Desktop Client, future Android Client, and Agent Runtime. **This is where client unification lives** — not in network topology. The `connect` event carries optional `client_tz` (IANA timezone) so the Runtime can resolve wall-clock Cron schedules for offline users.
 _Avoid_: client SDK, wire format, message format (those are implementation details under Protocol)
 
 **Context Snapshot**:

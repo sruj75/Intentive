@@ -10,6 +10,7 @@ macOS Tauri app. **Capture-only in V1 — no chat UI.** Chat lives on the Mobile
 - On a fixed 10-minute **Context Heartbeat**, summarizes the window via the **LLM Provider** (Apple Intelligence → existing Ollama → bundled Ollama, in that priority)
 - Produces a **Context Snapshot** per heartbeat tick; writes it to the **Snapshot Store** (local SQLite, **local-truth, not a cache**)
 - Rust owns **Routing** end-to-end (`GET /agent`, Protocol WebSocket session, reconnect). The webview re-syncs the login token via `set_login_token` / `clear_login_token` when it changes (deduped on both sides) and receives only a plain connection mood — no JWT in UI.
+- Reports the Mac **IANA timezone** as optional `client_tz` on every `connect` frame (same contract as Mobile; see Runtime [ADR-0025](https://github.com/sruj75/Intentive/blob/main/services/agent-runtime/docs/adr/0025-agent-runtime-device-reported-user-timezone.md))
 - Protocol event emission (`context_snapshot`, `session_end_marker`) rides the live `WsSessionAgentSink` bridge (#34) through `WsSession::try_emit`. A down socket leaves `pushed_at = null` (ADR-0005: at-most-once, no Runtime→Client ack).
 - On capture **Stop**, the coordinator emits the **Session End Marker** before stopping ScreenPipe (ADR-0022).
 - Menu bar capture toggle + state. **No chat UI.**
@@ -53,6 +54,7 @@ Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke 
 ## Guardrails specific to this deployable
 
 - **No chat UI.** Desktop's WebSocket connection sends only `context_snapshot` and `session_end_marker`.
+- **`connect.client_tz`:** include the host IANA zone on every reconnect in `routing/runtime/mod.rs` alongside `auth_token` / `client_kind` / `client_version`. Last report wins across devices; omit only when the OS cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
 - **Snapshot Privacy Boundary is structural.** The `ContextSnapshot` Rust struct has no fields for raw ScreenPipe data. Do not add any.
 - **Bundled native artifacts** match the host **Mac CPU variant**, not the signed-in user.
 - ScreenPipe is an internal implementation detail — never user-visible. macOS Privacy Settings should present "Intentive" or fallback "Intentive Capture", never "ScreenPipe".

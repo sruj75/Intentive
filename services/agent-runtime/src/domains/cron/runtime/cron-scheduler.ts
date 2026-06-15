@@ -31,6 +31,8 @@ export function createCronScheduler(params: {
   async function loop(): Promise<void> {
     try {
       await tick();
+    } catch (error) {
+      console.error("Cron scheduler tick failed", { error });
     } finally {
       if (!stopped) {
         timer = setTimeout(() => void loop(), pollIntervalMs);

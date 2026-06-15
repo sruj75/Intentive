@@ -23,7 +23,10 @@ export const connect = z
     auth_token: z.string(),
     client_kind: ClientKind,
     client_version: z.string(),
-    client_tz: z.string().optional(),
+    client_tz: z
+      .string()
+      .refine(isValidIanaTimezone, "client_tz must be an IANA timezone")
+      .optional(),
   })
   .strict();
 export type Connect = z.infer<typeof connect>;
@@ -186,6 +189,15 @@ export const runtimeToClientEvent = z.discriminatedUnion("type", [
   runtime_error,
 ]);
 export type RuntimeToClientEvent = z.infer<typeof runtimeToClientEvent>;
+
+function isValidIanaTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ---------- Parse-at-boundary helpers ----------
 

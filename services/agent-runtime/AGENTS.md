@@ -44,6 +44,20 @@ The [`reference/`](reference/) directory contains OpenClaw and Hermes pattern pa
 
 LangChain Deep Agents production guide (load before changing memory, backends, or guardrails): [`reference/topics/going-to-production.md`](reference/topics/going-to-production.md) → [`reference/deepagents/going-to-production.md`](reference/deepagents/going-to-production.md). Upstream: [Going to production](https://docs.langchain.com/oss/python/deepagents/going-to-production#user-recommended).
 
+## Cron operations
+
+Agent-authored scheduling only — no shell cron CRUD tools ([ADR-0026](docs/adr/0026-agent-runtime-cron-is-deepagents-native-filesystem-card.md)).
+
+**Create or edit a job:** the agent writes a markdown **cron card** under `/crons/<name>.md` via built-in filesystem tools. Frontmatter: `name`, `schedule` (`at` / `every` / `cron` + expression), optional per-job `tz`, `status` (`active` | `cancelled`), shell-computed `next_fire_at`. Body: the fire prompt. Minimum interval: **5 minutes** (`config/schedule.ts`).
+
+**Cancel:** `edit_file` with `status: cancelled` (poll loop ignores non-active rows). One-shots (`at`) delete after a successful fire.
+
+**Timezone:** wall-clock schedules resolve against per-job `tz`, else the user's persisted `client_tz` from the latest `connect`, else UTC ([ADR-0025](docs/adr/0025-agent-runtime-device-reported-user-timezone.md)). Clients must report `client_tz` on every connect — see mobile/desktop `AGENTS.md`.
+
+**Fire path:** `createCronScheduler` polls Neon every **60s** (`selectDue` on `cron_jobs.next_fire_at`), runs `createCronTurnHandler` on an **ephemeral thread** (no main-checkpoint or Conversation History mutation; Post-Message-Back egress is #41).
+
+**Debug due fires:** inspect `agent_runtime.cron_jobs` (`status`, `next_fire_at`, `attempt_count`) and `cron_runs`; confirm `agent_instances.client_tz`; run `pnpm --filter ./services/agent-runtime test -- test/cron-*.test.mjs`. Vocabulary and tradeoffs: [`CONTEXT.md`](CONTEXT.md) → **Cron**; scheduler shape: [ADR-0024](docs/adr/0024-agent-runtime-cron-scheduler-poll-loop-not-timer-wheel.md).
+
 ## Guardrails specific to this deployable
 
 - **WebSocket-only public ingress.** Pre-handshake, only `connect` is accepted; everything else is rejected with structured protocol error.

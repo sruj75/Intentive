@@ -11,6 +11,7 @@ The Mobile Client is the **only client with a chat surface**. It:
 - Renders the **Liquid Glass Chat Shell** (no header, no bottom tabs)
 - Runs the Pre-Chat Gate sequence: Identity Gate → Consent Primer → Sibling Client Invitation
 - Connects to the **Agent Runtime** directly via WebSocket using **Protocol** schemas from `packages/protocol/`
+- Reports the device **IANA timezone** as optional `client_tz` on every `connect` frame so the Runtime can resolve wall-clock Cron schedules while the user is offline ([ADR-0025](https://github.com/sruj75/Intentive/blob/main/services/agent-runtime/docs/adr/0025-agent-runtime-device-reported-user-timezone.md) on the Runtime side)
 - Renders **Conversation History** from the Runtime Adapter's in-memory **Message Store** (server-truth projection seeded by the reconnect snapshot — never persisted to disk)
 - Registers APNs token with the Control Plane; receives **Push Notifications** triggered by **Post-Message-Back**
 
@@ -43,5 +44,6 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - The Mobile Client is **not** the Agent Runtime, Control Plane, or DeepAgents. It is a view.
 - Persist **nothing** durably about messages — the server is truth.
+- **`connect.client_tz`:** include the device IANA zone on every reconnect (e.g. `Intl.DateTimeFormat().resolvedOptions().timeZone` in `chat/runtime/runtime-adapter.ts`). Last report wins across devices; omit only when the platform cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
 - Defer notification permission until the user enters chat for the first time.
 - Keep `@assistant-ui/react-native` behind Intentive Chat Components — never let vendor visuals or data shapes leak into product code.
