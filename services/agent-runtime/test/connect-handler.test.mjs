@@ -45,6 +45,7 @@ test("connect handshake verifies the JWT and returns hello_ok with the User's re
         return { user_id: "auth-sub-1" };
       },
     },
+    floorResolver: floorResolver(),
     conversation: {
       readSnapshot: async (userId) => {
         seenUserId = userId;
@@ -66,6 +67,7 @@ test("connect handshake verifies the JWT and returns hello_ok with the User's re
     userId: "00000000-0000-4000-8000-000000000001",
     clientKind: "mobile",
     agentInstanceId: "agent_instance_1",
+    pinnedFloor: floor("floor_v1"),
   });
 });
 
@@ -84,6 +86,7 @@ test("connect handshake maps JWT verification failures to structured runtime err
       verifier: {
         verify: async () => Promise.reject(new JwtVerificationError(reason, "verification failed")),
       },
+      floorResolver: floorResolver(),
       conversation: snapshotReader(),
     });
 
@@ -103,6 +106,7 @@ test("connect handshake maps Session Snapshot read failures to the history failu
       agentInstanceId: "agent_instance_1",
     }),
     verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    floorResolver: floorResolver(),
     conversation: {
       readSnapshot: async () => {
         throw new Error("history unavailable");
@@ -131,6 +135,7 @@ test("connect handshake still maps JWT failures through the auth taxonomy", asyn
       verify: async () =>
         Promise.reject(new JwtVerificationError("invalid_signature", "verification failed")),
     },
+    floorResolver: floorResolver(),
     conversation: {
       readSnapshot: async () => {
         throw new Error("must not read history after auth failure");
@@ -159,6 +164,7 @@ test("pre-handshake non-connect events are rejected before JWT verification", as
         return { user_id: "auth-sub-1" };
       },
     },
+    floorResolver: floorResolver(),
     conversation: snapshotReader(),
   });
 
@@ -192,6 +198,7 @@ test("malformed inbound events are rejected as invalid_connect", async () => {
         return { user_id: "auth-sub-1" };
       },
     },
+    floorResolver: floorResolver(),
     conversation: snapshotReader(),
   });
 
@@ -217,6 +224,7 @@ test("connect resolves the WebSocket session from the verified auth subject, not
       },
     },
     verifier: { verify: async () => ({ user_id: "auth-sub-not-a-uuid" }) },
+    floorResolver: floorResolver(),
     conversation: snapshotReader(),
   });
 
@@ -228,6 +236,7 @@ test("connect resolves the WebSocket session from the verified auth subject, not
     userId: "00000000-0000-4000-8000-000000000001",
     clientKind: "mobile",
     agentInstanceId: "agent_instance_1",
+    pinnedFloor: floor("floor_v1"),
   });
 });
 
@@ -235,6 +244,7 @@ test("connect rejects valid JWTs that have not gone through Session Start", asyn
   const handler = createConnectHandler({
     sessions: { loadSessionByAuthSubject: async () => null },
     verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    floorResolver: floorResolver(),
     conversation: snapshotReader(),
   });
 
@@ -255,5 +265,22 @@ function sessionRegistry({ authSubject, userId, agentInstanceId }) {
       clientKind: input.clientKind,
       agentInstanceId,
     }),
+  };
+}
+
+function floorResolver() {
+  return { resolve: async () => floor("floor_v1") };
+}
+
+function floor(version) {
+  return {
+    version,
+    documents: {
+      SOUL: "soul",
+      AGENTS: "agents",
+      BOOTSTRAP: "bootstrap",
+      HEARTBEAT: "heartbeat",
+    },
+    langfusePrompts: [],
   };
 }

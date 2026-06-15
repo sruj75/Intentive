@@ -5,7 +5,7 @@ import { after, before, test } from "node:test";
 import { AIMessage } from "@langchain/core/messages";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
-import { createDeepAgentsAdapter } from "../dist/index.js";
+import { assembleSystemPrompt, createDeepAgentsAdapter } from "../dist/index.js";
 import { applySql, createBranch, dropBranch, hasNeonBranchCreds } from "./helpers/neon-branch.mjs";
 
 const skip = !hasNeonBranchCreds();
@@ -39,7 +39,7 @@ test(
     });
     await firstAdapter.setup();
 
-    await firstAdapter.invoke({ threadId, body: "my name is Alice" });
+    await firstAdapter.invoke(turnInput({ threadId, body: "my name is Alice" }));
 
     const secondModel = new RecordingChatModel(["I remember your name is Alice."]);
     const secondAdapter = createDeepAgentsAdapter({
@@ -50,7 +50,7 @@ test(
     });
     await secondAdapter.setup();
 
-    await secondAdapter.invoke({ threadId, body: "what is my name?" });
+    await secondAdapter.invoke(turnInput({ threadId, body: "what is my name?" }));
 
     const secondCallText = secondModel.calls.at(-1).map((message) => String(message.content));
     assert.equal(
@@ -61,6 +61,43 @@ test(
       secondCallText.some((content) => content.includes("Nice to meet you, Alice.")),
       true,
     );
+  },
+);
+
+test(
+  "DeepAgents adapter assembles the pinned floor and USER.md profile into the model prompt",
+  { skip },
+  async () => {
+    const threadId = randomUUID();
+    const model = new RecordingChatModel(["hello"]);
+    const adapter = createDeepAgentsAdapter({
+      connectionUri,
+      model,
+      modelName: "test-model",
+      assemblePrompt: assembleSystemPrompt,
+    });
+    await adapter.setup();
+
+    const output = await adapter.invoke(
+      turnInput({
+        threadId,
+        body: "hello",
+        userProfile: "prefers concise answers",
+        pinnedFloor: floor("floor_v2"),
+      }),
+    );
+
+    const callText = model.calls.at(-1).map((message) => String(message.content));
+    assert.equal(
+      callText.some((content) => content.includes("soul floor_v2")),
+      true,
+    );
+    assert.equal(
+      callText.some((content) => content.includes("prefers concise answers")),
+      true,
+    );
+    assert.equal(output.bundleVersion, "floor_v2");
+    assert.equal(output.traceId, null);
   },
 );
 
@@ -93,4 +130,28 @@ class RecordingChatModel extends BaseChatModel {
       ],
     };
   }
+}
+
+function turnInput({ threadId, body, userProfile = "", pinnedFloor = floor("floor_v1") }) {
+  return {
+    userId: threadId,
+    threadId,
+    body,
+    trigger: "user_message",
+    pinnedFloor,
+    userProfile,
+  };
+}
+
+function floor(version) {
+  return {
+    version,
+    documents: {
+      SOUL: `soul ${version}`,
+      AGENTS: `agents ${version}`,
+      BOOTSTRAP: `bootstrap ${version}`,
+      HEARTBEAT: `heartbeat ${version}`,
+    },
+    langfusePrompts: [],
+  };
 }

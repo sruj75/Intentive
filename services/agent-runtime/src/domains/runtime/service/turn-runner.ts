@@ -13,6 +13,7 @@ interface TurnRunnerParams {
   readonly conversation: Pick<ConversationRepo, "appendQuery">;
   readonly runtimeTurns: RuntimeTurnsRepo;
   readonly fallbackModel: string;
+  readonly readUserProfile?: (userId: string) => Promise<string>;
   readonly newMessageId?: () => string;
 }
 
@@ -27,7 +28,17 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
     const threadId = session.userId;
 
     try {
-      const output = await params.adapter.invoke({ threadId, body: event.body });
+      const userProfile = params.readUserProfile
+        ? await params.readUserProfile(session.userId)
+        : "";
+      const output = await params.adapter.invoke({
+        userId: session.userId,
+        threadId,
+        body: event.body,
+        trigger: event.type,
+        pinnedFloor: session.pinnedFloor,
+        userProfile,
+      });
       await params.sql.transaction([
         params.conversation.appendQuery({
           userId: session.userId,
@@ -41,6 +52,7 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
           threadId,
           traceId: output.traceId,
           model: output.model,
+          bundleVersion: output.bundleVersion,
           status: "ok",
           error: null,
         }),
@@ -67,6 +79,7 @@ function failedTurnRecord(
     threadId,
     traceId: null,
     model,
+    bundleVersion: null,
     status: "failed",
     error: errorMessage(error),
   };

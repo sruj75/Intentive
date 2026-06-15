@@ -18,6 +18,7 @@ test("a real WebSocket connection receives hello_ok after connect", async () => 
   const connectHandler = createConnectHandler({
     sessions: sessionRegistry("agent_instance_1"),
     verifier: { verify: async () => ({ user_id: "user_1" }) },
+    floorResolver: floorResolver(),
     conversation: emptyConversation,
   });
 
@@ -66,6 +67,7 @@ test("post-handshake client events are parsed and delegated without re-running c
         return { user_id: "user_1" };
       },
     },
+    floorResolver: floorResolver(),
     conversation: emptyConversation,
   });
 
@@ -109,6 +111,7 @@ test("post-handshake client events are parsed and delegated without re-running c
               userId: "user_1",
               clientKind: "mobile",
               agentInstanceId: "agent_instance_1",
+              pinnedFloor: floor("floor_v1"),
             });
             assert.deepEqual(seenEvent, { type: "presence_update", foreground: true });
             assert.equal(verifierCalls, 1);
@@ -130,6 +133,7 @@ test("post-handshake async handler failures are sent as runtime_error frames", a
   const connectHandler = createConnectHandler({
     sessions: sessionRegistry("agent_instance_1"),
     verifier: { verify: async () => ({ user_id: "user_1" }) },
+    floorResolver: floorResolver(),
     conversation: emptyConversation,
   });
 
@@ -184,6 +188,7 @@ test("malformed post-handshake events return invalid_connect without closing the
   const connectHandler = createConnectHandler({
     sessions: sessionRegistry("agent_instance_1"),
     verifier: { verify: async () => ({ user_id: "user_1" }) },
+    floorResolver: floorResolver(),
     conversation: emptyConversation,
   });
 
@@ -247,6 +252,7 @@ test("History Backfill read failures send the history error and keep the socket 
   const connectHandler = createConnectHandler({
     sessions: sessionRegistry("agent_instance_1"),
     verifier: { verify: async () => ({ user_id: "user_1" }) },
+    floorResolver: floorResolver(),
     conversation: emptyConversation,
   });
 
@@ -322,6 +328,23 @@ function sessionRegistry(agentInstanceId) {
       clientKind,
       agentInstanceId,
     }),
+  };
+}
+
+function floorResolver() {
+  return { resolve: async () => floor("floor_v1") };
+}
+
+function floor(version) {
+  return {
+    version,
+    documents: {
+      SOUL: "soul",
+      AGENTS: "agents",
+      BOOTSTRAP: "bootstrap",
+      HEARTBEAT: "heartbeat",
+    },
+    langfusePrompts: [],
   };
 }
 

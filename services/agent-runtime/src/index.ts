@@ -23,6 +23,25 @@ export type {
   ConversationRepo,
   SessionSnapshotReader,
 } from "./domains/conversation/types/conversation.js";
+export { createBundledFallbackSource } from "./domains/bundles/repo/bundled-fallback.js";
+export { createLangfuseFloorSource } from "./domains/bundles/repo/langfuse-floor-source.js";
+export type { LangfusePromptClient } from "./domains/bundles/repo/langfuse-floor-source.js";
+export { assembleSystemPrompt } from "./domains/bundles/service/assemble-system-prompt.js";
+export { createProcedureFloorResolver } from "./domains/bundles/service/procedure-floor-resolver.js";
+export type {
+  FloorSource,
+  PinnedProcedureFloor,
+  ProcedureFloorDocument,
+  ProcedureFloorDocuments,
+  ProcedureFloorResolver,
+  TurnTrigger,
+} from "./domains/bundles/types/floor.js";
+export {
+  createMemoryBackend,
+  readUserProfile,
+  userMemoryNamespace,
+} from "./domains/memory/repo/memory-backend.js";
+export type { UserMemoryStore, UserMemoryStoreItem } from "./domains/memory/types/store.js";
 export { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 export { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 export type { RuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";

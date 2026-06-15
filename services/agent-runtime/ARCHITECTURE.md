@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
+This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Procedure Floor, Pinned Bundle Version, Per-User Memory, Session Snapshot, History Backfill) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
 
 ## Bird's-eye Overview
 
@@ -39,7 +39,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Agent-facing deployable guide. Read it before changing this service.
 
 `CONTEXT.md`
-: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning. Read alongside the root `CONTEXT-MAP.md`.
+: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Procedure Floor, Pinned Bundle Version, Per-User Memory, Session Snapshot, History Backfill. Read alongside the root `CONTEXT-MAP.md`.
 
 `README.md`
 : Operator/developer entrypoint for the deployable.
@@ -99,8 +99,8 @@ Domain responsibilities:
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
 - `runtime`: DeepAgents adapter, **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
-- `memory`: DeepAgents memory configuration, Runtime-owned durable memory, VFS backend integration.
-- `bundles`: immutable Runtime bundle versions, prompt document loading, overlay resolution.
+- `memory`: DeepAgents memory configuration, `StoreBackend` namespace wiring, injected `USER.md` profile reads, and the `/memories/` durable VFS route.
+- `bundles`: Procedure Floor source resolution, Langfuse prompt handles, deploy-bundled fallback, per-connection pinning, and trigger-aware prompt assembly.
 - `cron`: durable scheduled-trigger primitive and fire ledger.
 - `heartbeat`: interval/liveness-trigger primitive, silent outcome handling, capture-session awareness.
 - `internal`: private Control Plane calls such as `POST /internal/sessions/start`.
@@ -177,15 +177,15 @@ DeepAgents boundary:
 Neon boundary:
 
 - Runtime uses its own Neon schema and Postgres role, separate from Control Plane auth/lifecycle tables.
-- Runtime owns Conversation History, Runtime events, Runtime turns, checkpoints, bundle versions, VFS overlay documents, Cron records, Heartbeat state, and Post-Message-Back records.
+- Runtime owns Conversation History, Runtime events, Runtime turns, checkpoints, Procedure Floor version pins, Per-User Memory store rows, Cron records, Heartbeat state, and Post-Message-Back records.
 - User-owned Runtime rows are keyed by `user_id`.
 
-Bundle and VFS boundary:
+Procedure Floor and memory boundary:
 
-- Bundle documents are immutable versioned defaults.
-- User overlays are mutable documents keyed by `user_id` and path.
-- Reads resolve overlay first, pinned bundle default second.
-- Writes must pass path policy; immutable bundle defaults are not mutated in place.
+- The Procedure Floor (`SOUL`, `AGENTS`, `BOOTSTRAP`, `HEARTBEAT`) is immutable product content resolved by label, pinned once per connection, and injected into each turn's prompt.
+- Langfuse is optional: any fetch failure or missing config falls back to the deploy-bundled placeholder floor so the Agent Runtime can still run.
+- Per-User Memory is separate from the Procedure Floor: `USER.md` is read from the user's StoreBackend namespace and injected; `/memories/` is exposed to DeepAgents VFS tools for on-demand reads/writes.
+- Procedure Floor documents are never routed into the agent's filesystem, so immutability is structural rather than a write-rejection policy.
 
 Deployment boundary:
 

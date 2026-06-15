@@ -8,15 +8,22 @@
 import { serve } from "@hono/node-server";
 import { neon } from "@neondatabase/serverless";
 import { createJwtVerifier } from "@intentive/providers/auth";
+import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
+import { CallbackHandler, Langfuse } from "langfuse-langchain";
 import { WebSocketServer } from "ws";
 
 import { loadConfig } from "./config/env.js";
+import { createBundledFallbackSource } from "./domains/bundles/repo/bundled-fallback.js";
+import { createLangfuseFloorSource } from "./domains/bundles/repo/langfuse-floor-source.js";
+import { assembleSystemPrompt } from "./domains/bundles/service/assemble-system-prompt.js";
+import { createProcedureFloorResolver } from "./domains/bundles/service/procedure-floor-resolver.js";
 import { createConversationRepo } from "./domains/conversation/repo/conversation.js";
 import { toConversationEntry } from "./domains/conversation/service/project-ingress.js";
 import { createConnectHandler } from "./domains/gateway/service/connect.js";
 import { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 import { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
 import { createInternalApp } from "./domains/internal/ui/app.js";
+import { createMemoryBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
@@ -39,10 +46,34 @@ const registry = createAgentInstanceRepo(sql);
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
+const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
+await memoryStore.setup();
+const memoryBackend = createMemoryBackend({ store: memoryStore });
+const fallbackFloorSource = createBundledFallbackSource();
+const langfuseClient = config.langfuse
+  ? new Langfuse({
+      publicKey: config.langfuse.publicKey,
+      secretKey: config.langfuse.secretKey,
+      baseUrl: config.langfuse.baseUrl,
+    })
+  : null;
+const floorResolver = createProcedureFloorResolver({
+  source: langfuseClient ? createLangfuseFloorSource({ client: langfuseClient }) : null,
+  fallback: fallbackFloorSource,
+});
 const runtimeAdapter = createDeepAgentsAdapter({
   connectionUri: config.neon.url,
   modelName: config.model.model,
-  systemPrompt: "You are the Intentive Companion. Reply clearly and briefly.",
+  assemblePrompt: assembleSystemPrompt,
+  store: memoryStore,
+  backend: memoryBackend.backend,
+  callbackHandler: config.langfuse
+    ? new CallbackHandler({
+        publicKey: config.langfuse.publicKey,
+        secretKey: config.langfuse.secretKey,
+        baseUrl: config.langfuse.baseUrl,
+      })
+    : null,
   openRouter: {
     apiKey: config.model.apiKey,
     baseUrl: config.model.baseUrl,
@@ -55,6 +86,7 @@ const runTurn = createTurnRunner({
   conversation,
   runtimeTurns,
   fallbackModel: config.model.model,
+  readUserProfile: (userId) => readUserProfile(memoryStore, userId),
 });
 const channel = createPerUserChannel({
   sql,
@@ -82,6 +114,7 @@ const internalApp = createInternalApp({
 const connectHandler = createConnectHandler({
   verifier,
   conversation: channel,
+  floorResolver,
   sessions: {
     async loadSessionByAuthSubject({ authSubject, clientKind }) {
       const agentInstance = await registry.loadByAuthSubject(authSubject);

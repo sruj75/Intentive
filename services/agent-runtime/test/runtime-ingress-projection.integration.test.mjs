@@ -26,6 +26,10 @@ const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 const sessionsMigration = path.join(migrationsDir, "0001_sessions.sql");
 const conversationMigration = path.join(migrationsDir, "0002_conversation.sql");
 const runtimeTurnsMigration = path.join(migrationsDir, "0003_runtime_turns.sql");
+const runtimeTurnsBundleVersionMigration = path.join(
+  migrationsDir,
+  "0004_runtime_turns_bundle_version.sql",
+);
 
 let branchId;
 let sql;
@@ -41,6 +45,7 @@ before(async () => {
   await applyMigrationFile(branch.connectionUri, sessionsMigration);
   await applyMigrationFile(branch.connectionUri, conversationMigration);
   await applyMigrationFile(branch.connectionUri, runtimeTurnsMigration);
+  await applyMigrationFile(branch.connectionUri, runtimeTurnsBundleVersionMigration);
   sql = await connect(branch.connectionUri);
   ledger = createEventLedger(sql);
   conversation = createConversationRepo(sql);
@@ -168,7 +173,12 @@ test(
       adapter: {
         invoke: async (input) => {
           adapterCalls.push(input);
-          return { reply: "companion reply", traceId: "trace_1", model: "test-model" };
+          return {
+            reply: "companion reply",
+            traceId: "trace_1",
+            model: "test-model",
+            bundleVersion: "floor_v1",
+          };
         },
       },
       conversation,
@@ -194,10 +204,19 @@ test(
         ["companion", "companion_1", "companion reply"],
       ],
     );
-    assert.deepEqual(adapterCalls, [{ threadId: session.userId, body: "hello" }]);
+    assert.deepEqual(adapterCalls, [
+      {
+        userId: session.userId,
+        threadId: session.userId,
+        body: "hello",
+        trigger: "user_message",
+        pinnedFloor: floor("floor_v1"),
+        userProfile: "",
+      },
+    ]);
 
     const rows = await sql`
-    SELECT thread_id, trace_id, model, status, error
+    SELECT thread_id, trace_id, model, bundle_version, status, error
     FROM agent_runtime.runtime_turns
     WHERE user_id = ${session.userId}
   `;
@@ -206,6 +225,7 @@ test(
         thread_id: session.userId,
         trace_id: "trace_1",
         model: "test-model",
+        bundle_version: "floor_v1",
         status: "ok",
         error: null,
       },
@@ -258,7 +278,7 @@ test(
     );
 
     const rows = await sql`
-    SELECT thread_id, trace_id, model, status, error
+    SELECT thread_id, trace_id, model, bundle_version, status, error
     FROM agent_runtime.runtime_turns
     WHERE user_id = ${session.userId}
   `;
@@ -267,6 +287,7 @@ test(
         thread_id: session.userId,
         trace_id: null,
         model: "test-model",
+        bundle_version: null,
         status: "failed",
         error: "model unavailable",
       },
@@ -298,6 +319,7 @@ function boundSession(userId) {
     userId,
     clientKind: "mobile",
     agentInstanceId: randomUUID(),
+    pinnedFloor: floor("floor_v1"),
   };
 }
 
@@ -307,5 +329,18 @@ function userMessage(messageId) {
     message_id: messageId,
     body: "hello",
     sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+function floor(version) {
+  return {
+    version,
+    documents: {
+      SOUL: "soul",
+      AGENTS: "agents",
+      BOOTSTRAP: "bootstrap",
+      HEARTBEAT: "heartbeat",
+    },
+    langfusePrompts: [],
   };
 }

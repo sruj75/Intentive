@@ -7,6 +7,7 @@ const session = {
   userId: "00000000-0000-4000-8000-000000000001",
   clientKind: "mobile",
   agentInstanceId: "00000000-0000-4000-8000-000000000010",
+  pinnedFloor: floor("floor_v1"),
 };
 
 test("runTurn writes the companion reply and ok Runtime Turn in one transaction", async () => {
@@ -28,7 +29,12 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
     adapter: {
       invoke: async (input) => {
         adapterCalls.push(input);
-        return { reply: "hello from Companion", traceId: "trace_1", model: "test-model" };
+        return {
+          reply: "hello from Companion",
+          traceId: "trace_1",
+          model: "test-model",
+          bundleVersion: "floor_v1",
+        };
       },
     },
     conversation: {
@@ -45,11 +51,21 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
     },
     newMessageId: () => "companion_1",
     fallbackModel: "fallback-model",
+    readUserProfile: async () => "likes direct answers",
   });
 
   await runTurn(session, userMessage("message_1", "hello"));
 
-  assert.deepEqual(adapterCalls, [{ threadId: session.userId, body: "hello" }]);
+  assert.deepEqual(adapterCalls, [
+    {
+      userId: session.userId,
+      threadId: session.userId,
+      body: "hello",
+      trigger: "user_message",
+      pinnedFloor: floor("floor_v1"),
+      userProfile: "likes direct answers",
+    },
+  ]);
   assert.deepEqual(companionEntries, [
     {
       userId: session.userId,
@@ -65,6 +81,7 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
       threadId: session.userId,
       traceId: "trace_1",
       model: "test-model",
+      bundleVersion: "floor_v1",
       status: "ok",
       error: null,
     },
@@ -114,6 +131,7 @@ test("runTurn records a failed Runtime Turn when invoke fails", async () => {
       threadId: session.userId,
       traceId: null,
       model: "fallback-model",
+      bundleVersion: null,
       status: "failed",
       error: "model unavailable",
     },
@@ -127,5 +145,18 @@ function userMessage(messageId, body) {
     message_id: messageId,
     body,
     sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+function floor(version) {
+  return {
+    version,
+    documents: {
+      SOUL: "soul",
+      AGENTS: "agents",
+      BOOTSTRAP: "bootstrap",
+      HEARTBEAT: "heartbeat",
+    },
+    langfusePrompts: [],
   };
 }

@@ -24,8 +24,8 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), **Interactive Turn** runner (`service/turn-runner.ts`), durable **Runtime Turn** records (`repo/runtime-turns.ts`, migration `0003_runtime_turns.sql`)
 - `cron` — scheduled-trigger primitive
 - `heartbeat` — interval-trigger primitive
-- `memory` — runtime memory, Neon-backed durable store, virtual filesystem overlay
-- `bundles` — runtime bundle documents (`AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md` — immutable; `USER.md`, `MEMORY.md` — agent-writable overlays), overlay resolution
+- `memory` — DeepAgents-native Per-User Memory: `StoreBackend` over Neon plus the `/memories/` VFS route and injected `USER.md` profile
+- `bundles` — Procedure Floor resolution and prompt assembly: Langfuse Prompt Management when configured, deploy-bundled fallback otherwise
 - `internal` — server-to-server API surface (Session Start)
 
 ## Stack & deploy

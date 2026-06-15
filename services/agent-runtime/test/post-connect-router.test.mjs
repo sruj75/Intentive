@@ -7,6 +7,16 @@ const session = {
   userId: "00000000-0000-4000-8000-000000000001",
   clientKind: "mobile",
   agentInstanceId: "agent_instance_1",
+  pinnedFloor: {
+    version: "floor_v1",
+    documents: {
+      SOUL: "soul",
+      AGENTS: "agents",
+      BOOTSTRAP: "bootstrap",
+      HEARTBEAT: "heartbeat",
+    },
+    langfusePrompts: [],
+  },
 };
 
 test("a History Backfill request is a read: it calls the channel reader and returns a snapshot response", async () => {
