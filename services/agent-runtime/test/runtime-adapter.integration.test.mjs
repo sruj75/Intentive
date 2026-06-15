@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { AIMessage } from "@langchain/core/messages";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
@@ -100,6 +101,57 @@ test(
     assert.equal(output.traceId, null);
   },
 );
+
+test(
+  "DeepAgents adapter records each turn's own trace via a per-turn callback handler",
+  { skip },
+  async () => {
+    const threadId = randomUUID();
+    const model = new RecordingChatModel(["first reply", "second reply"]);
+    const handlers = [];
+    const adapter = createDeepAgentsAdapter({
+      connectionUri,
+      model,
+      modelName: "test-model",
+      assemblePrompt: assembleSystemPrompt,
+      createCallbackHandler: () => {
+        const handler = new FakeTracingHandler(`trace_${handlers.length}`);
+        handlers.push(handler);
+        return handler;
+      },
+    });
+    await adapter.setup();
+
+    const first = await adapter.invoke(turnInput({ threadId, body: "first" }));
+    const second = await adapter.invoke(turnInput({ threadId, body: "second" }));
+
+    // A fresh handler per turn, and each turn reports its own handler's trace —
+    // never a value left on a process-shared instance by another turn.
+    assert.equal(handlers.length, 2);
+    assert.equal(first.traceId, "trace_0");
+    assert.equal(second.traceId, "trace_1");
+    assert.equal(handlers[0].flushed, true);
+  },
+);
+
+class FakeTracingHandler extends BaseCallbackHandler {
+  name = "FakeTracingHandler";
+  flushed = false;
+  #traceId;
+
+  constructor(traceId) {
+    super();
+    this.#traceId = traceId;
+  }
+
+  getTraceId() {
+    return this.#traceId;
+  }
+
+  async flushAsync() {
+    this.flushed = true;
+  }
+}
 
 class RecordingChatModel extends BaseChatModel {
   calls = [];

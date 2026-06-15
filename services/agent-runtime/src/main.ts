@@ -50,11 +50,12 @@ const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "age
 await memoryStore.setup();
 const memoryBackend = createMemoryBackend({ store: memoryStore });
 const fallbackFloorSource = createBundledFallbackSource();
-const langfuseClient = config.langfuse
+const langfuseConfig = config.langfuse;
+const langfuseClient = langfuseConfig
   ? new Langfuse({
-      publicKey: config.langfuse.publicKey,
-      secretKey: config.langfuse.secretKey,
-      baseUrl: config.langfuse.baseUrl,
+      publicKey: langfuseConfig.publicKey,
+      secretKey: langfuseConfig.secretKey,
+      baseUrl: langfuseConfig.baseUrl,
     })
   : null;
 const floorResolver = createProcedureFloorResolver({
@@ -67,12 +68,15 @@ const runtimeAdapter = createDeepAgentsAdapter({
   assemblePrompt: assembleSystemPrompt,
   store: memoryStore,
   backend: memoryBackend.backend,
-  callbackHandler: config.langfuse
-    ? new CallbackHandler({
-        publicKey: config.langfuse.publicKey,
-        secretKey: config.langfuse.secretKey,
-        baseUrl: config.langfuse.baseUrl,
-      })
+  // A fresh handler per turn (not one shared instance) keeps each turn's trace
+  // isolated; langfuse's handler holds the active trace on mutable state.
+  createCallbackHandler: langfuseConfig
+    ? () =>
+        new CallbackHandler({
+          publicKey: langfuseConfig.publicKey,
+          secretKey: langfuseConfig.secretKey,
+          baseUrl: langfuseConfig.baseUrl,
+        })
     : null,
   openRouter: {
     apiKey: config.model.apiKey,

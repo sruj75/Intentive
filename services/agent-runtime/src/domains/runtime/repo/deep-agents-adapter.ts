@@ -17,6 +17,11 @@ type PromptAssembler = (input: {
   readonly firstRun?: boolean;
 }) => string;
 
+type CallbackHandlerLike = BaseCallbackHandler & {
+  getTraceId?: () => string | undefined;
+  flushAsync?: () => Promise<unknown>;
+};
+
 interface DeepAgentsAdapterParams {
   readonly connectionUri: string;
   readonly modelName: string;
@@ -24,9 +29,7 @@ interface DeepAgentsAdapterParams {
   readonly model?: BaseChatModel;
   readonly store?: unknown;
   readonly backend?: AnyBackendProtocol;
-  readonly callbackHandler?:
-    | (BaseCallbackHandler & { getTraceId?: () => string | undefined })
-    | null;
+  readonly createCallbackHandler?: (() => CallbackHandlerLike | null) | null;
   readonly assemblePrompt?: PromptAssembler;
   readonly openRouter?: {
     readonly apiKey: string;
@@ -76,7 +79,12 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
         backend: params.backend,
         systemPrompt,
       });
-      const callbacks = params.callbackHandler ? [params.callbackHandler] : undefined;
+      // A langfuse CallbackHandler carries the active trace on mutable instance
+      // state, so a single shared handler cross-attributes traces (and child
+      // generations) when turns for different users overlap. Create a fresh
+      // handler per turn so the trace this turn records is unambiguously its own.
+      const callbackHandler = params.createCallbackHandler?.() ?? null;
+      const callbacks = callbackHandler ? [callbackHandler] : undefined;
       const result = await agent.invoke(
         {
           messages: [
@@ -102,9 +110,14 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
         },
       );
 
+      const traceId = callbackHandler?.getTraceId?.() ?? null;
+      // Per-turn handler owns a per-turn buffer; flush it so the trace is not
+      // lost to GC. Telemetry is best-effort and must not fail the turn.
+      void callbackHandler?.flushAsync?.().catch(() => {});
+
       return {
         reply: extractReply(result),
-        traceId: params.callbackHandler?.getTraceId?.() ?? null,
+        traceId,
         model: params.modelName,
         bundleVersion: input.pinnedFloor.version,
       };
