@@ -6,6 +6,8 @@ import type {
   UserMessage,
 } from "@intentive/protocol";
 
+import type { PinnedProcedureFloor } from "../../bundles/types/floor.js";
+
 export type RuntimeEventKind =
   | "user_message"
   | "context_snapshot"
@@ -18,6 +20,7 @@ export interface BoundSession {
   readonly userId: string;
   readonly clientKind: ClientKind;
   readonly agentInstanceId: string;
+  readonly pinnedFloor: PinnedProcedureFloor;
 }
 
 export type RuntimeIngressEvent = UserMessage | ContextSnapshot | SessionEndMarker;

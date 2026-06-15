@@ -7,6 +7,7 @@ const session = {
   userId: "00000000-0000-4000-8000-000000000001",
   clientKind: "mobile",
   agentInstanceId: "00000000-0000-4000-8000-000000000010",
+  pinnedFloor: floor("floor_v1"),
 };
 
 test("accept commits the ledger marker before projection queries in one transaction", async () => {
@@ -234,6 +235,19 @@ function userMessage(messageId) {
     message_id: messageId,
     body: "hello",
     sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+function floor(version) {
+  return {
+    version,
+    documents: {
+      SOUL: "soul",
+      AGENTS: "agents",
+      BOOTSTRAP: "bootstrap",
+      HEARTBEAT: "heartbeat",
+    },
+    langfusePrompts: [],
   };
 }
 

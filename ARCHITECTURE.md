@@ -93,8 +93,8 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `runtime` — DeepAgents loop integration, Agent Instance lifecycle
 - `cron` — scheduled-trigger primitive
 - `heartbeat` — interval-trigger primitive
-- `memory` — runtime memory + Neon-backed durable store
-- `bundles` — runtime bundle documents, overlay resolution
+- `memory` — DeepAgents Per-User Memory: `StoreBackend` namespace wiring, injected `USER.md`, `/memories/` VFS route
+- `bundles` — Procedure Floor resolution (Langfuse Prompt Management + deploy-bundled fallback), per-connection pinning, trigger-aware prompt assembly
 - `internal` — server-to-server API surface (Session Start, etc.)
 
 Each domain follows the layer rule internally. A new contributor (or agent) should be able to look at one domain folder and understand its full surface area without reading any other.

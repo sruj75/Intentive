@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
+This document is the deployable-local architecture contract for `services/agent-runtime/`. It extends the monorepo-wide rules in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md); it does not replace them. For vocabulary, read [`CONTEXT.md`](CONTEXT.md) (Agent Runtime: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Procedure Floor, Pinned Bundle Version, Per-User Memory, Session Snapshot, History Backfill) and the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md) (context map + shared product language) first.
 
 ## Bird's-eye Overview
 
@@ -39,7 +39,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Agent-facing deployable guide. Read it before changing this service.
 
 `CONTEXT.md`
-: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Bundle Path Set, Session Snapshot, History Backfill, VFS write policy, bundle version pinning. Read alongside the root `CONTEXT-MAP.md`.
+: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Interactive Turn, Runtime Turn, Persistence Adapter, Procedure Floor, Pinned Bundle Version, Per-User Memory, Session Snapshot, History Backfill. Read alongside the root `CONTEXT-MAP.md`.
 
 `README.md`
 : Operator/developer entrypoint for the deployable.
@@ -60,7 +60,16 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs the DeepAgents adapter and **Interactive Turn** runner, constructs the **Per-User Channel** (transactional ingress + `runTurn` + queue-serialized snapshot reads), serves the private Internal API, and attaches the public WebSocket gateway.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance, event-ledger, and conversation repos, constructs Procedure Floor resolver + memory backend + DeepAgents adapter and **Interactive Turn** runner, constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + queue-serialized snapshot reads), serves the private Internal API, and attaches the public WebSocket gateway.
+
+`src/domains/bundles/service/procedure-floor-resolver.ts`
+: Service-owned Procedure Floor resolution — Langfuse fetch when configured, deploy-bundled fallback otherwise; pins floor once per connection.
+
+`src/domains/bundles/service/assemble-system-prompt.ts`
+: Trigger-aware system-prompt assembly from the pinned Procedure Floor + injected `USER.md`.
+
+`src/domains/memory/repo/memory-backend.ts`
+: Repo-owned DeepAgents `CompositeBackend` / `StoreBackend` wiring over Neon, namespaced by `user_id`.
 
 `src/domains/runtime/repo/deep-agents-adapter.ts`
 : Repo-owned DeepAgents + LangGraph Postgres checkpoint adapter (`createDeepAgentsAdapter`).
@@ -99,8 +108,8 @@ Domain responsibilities:
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
 - `runtime`: DeepAgents adapter, **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
-- `memory`: DeepAgents memory configuration, Runtime-owned durable memory, VFS backend integration.
-- `bundles`: immutable Runtime bundle versions, prompt document loading, overlay resolution.
+- `memory`: DeepAgents memory configuration, `StoreBackend` namespace wiring, injected `USER.md` profile reads, and the `/memories/` durable VFS route.
+- `bundles`: Procedure Floor source resolution, Langfuse prompt handles, deploy-bundled fallback, per-connection pinning, and trigger-aware prompt assembly.
 - `cron`: durable scheduled-trigger primitive and fire ledger.
 - `heartbeat`: interval/liveness-trigger primitive, silent outcome handling, capture-session awareness.
 - `internal`: private Control Plane calls such as `POST /internal/sessions/start`.
@@ -171,21 +180,21 @@ Control Plane boundary:
 DeepAgents boundary:
 
 - Runtime shell invokes DeepAgents per ordered Runtime event on the **Per-User Channel**.
-- DeepAgents receives session context, bundle version, memory/VFS backend, and registered tools.
+- DeepAgents receives session context, pinned Procedure Floor, memory/VFS backend, and registered tools.
 - Trigger type sets egress default (ADR-0013): an **Interactive Turn** delivers the agent's returned final message as the reply; proactive turns stay silent unless the agent calls **Post-Message-Back**. Ingress ack is decoupled from turn success (ADR-0020).
 
 Neon boundary:
 
 - Runtime uses its own Neon schema and Postgres role, separate from Control Plane auth/lifecycle tables.
-- Runtime owns Conversation History, Runtime events, Runtime turns, checkpoints, bundle versions, VFS overlay documents, Cron records, Heartbeat state, and Post-Message-Back records.
+- Runtime owns Conversation History, Runtime events, Runtime turns, checkpoints, Procedure Floor version pins, Per-User Memory store rows, Cron records, Heartbeat state, and Post-Message-Back records.
 - User-owned Runtime rows are keyed by `user_id`.
 
-Bundle and VFS boundary:
+Procedure Floor and memory boundary:
 
-- Bundle documents are immutable versioned defaults.
-- User overlays are mutable documents keyed by `user_id` and path.
-- Reads resolve overlay first, pinned bundle default second.
-- Writes must pass path policy; immutable bundle defaults are not mutated in place.
+- The Procedure Floor (`SOUL`, `AGENTS`, `BOOTSTRAP`, `HEARTBEAT`) is immutable product content resolved by label, pinned once per connection, and injected into each turn's prompt.
+- Langfuse is optional: any fetch failure or missing config falls back to the deploy-bundled placeholder floor so the Agent Runtime can still run.
+- Per-User Memory is separate from the Procedure Floor: `USER.md` is read from the user's StoreBackend namespace and injected; `/memories/` is exposed to DeepAgents VFS tools for on-demand reads/writes.
+- Procedure Floor documents are never routed into the agent's filesystem, so immutability is structural rather than a write-rejection policy.
 
 Deployment boundary:
 
@@ -224,5 +233,5 @@ Testing:
 - **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
 - **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors; #28 covers per-user queue ordering/isolation and ingest idempotency.
 - **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
-- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`). Future slices add Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`); #37 covers Procedure Floor pinning at connect, `USER.md` injection, memory backend wiring, and `bundle_version` on successful turns. Future slices add Cron fire, Heartbeat silent outcome, and Post-Message-Back handoff.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

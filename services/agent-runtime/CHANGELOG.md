@@ -6,6 +6,19 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Procedure Floor, native Per-User Memory, and `bundle_version`** ([Issue #37]) —
+  `bundles/` domain slice for deploy-bundled fallback prompts, Langfuse Prompt
+  Management source, fallback resolver, and trigger-aware prompt assembly;
+  `memory/` domain slice for DeepAgents `CompositeBackend` / `StoreBackend`
+  wiring and `USER.md` profile reads. Connect pins the Procedure Floor once at
+  `hello_ok`; `BoundSession` carries it; `runTurn` injects `USER.md`; the
+  DeepAgents adapter passes `user_id`, `trigger`, store/backend, optional
+  Langfuse callback metadata, and returns `bundleVersion`. Migration
+  `migrations/0004_runtime_turns_bundle_version.sql` adds nullable
+  `runtime_turns.bundle_version`, now written on successful turns. Tests:
+  `test/bundled-fallback.test.mjs`, `test/assemble-system-prompt.test.mjs`,
+  `test/procedure-floor-resolver.test.mjs`, `test/langfuse-floor-source.test.mjs`,
+  `test/memory-backend.test.mjs`, plus extended connect/turn/runtime coverage.
 - **DeepAgents Interactive Turn** ([Issue #36]) — `runtime/` domain slice:
   `createDeepAgentsAdapter` (DeepAgents + LangGraph Postgres checkpoint),
   `createTurnRunner` (invoke → companion append + `runtime_turns` in one

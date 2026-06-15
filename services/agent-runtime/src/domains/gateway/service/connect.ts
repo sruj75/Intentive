@@ -8,6 +8,7 @@ import { asJwtVerificationFailure, type JwtVerifier } from "@intentive/providers
 
 import type { SessionSnapshotReader } from "../../conversation/types/conversation.js";
 import type { BoundSession } from "../../sessions/types/event.js";
+import type { ProcedureFloorResolver } from "../../bundles/types/floor.js";
 import { mapJwtVerificationErrorToRuntimeError } from "./auth-failure.js";
 import { conversationHistoryUnavailableError } from "./history-unavailable.js";
 
@@ -15,7 +16,7 @@ export interface GatewaySessionRegistry {
   loadSessionByAuthSubject(input: {
     readonly authSubject: string;
     readonly clientKind: ClientKind;
-  }): Promise<BoundSession | null>;
+  }): Promise<Omit<BoundSession, "pinnedFloor"> | null>;
 }
 
 export interface ConnectHandlerResult {
@@ -38,6 +39,7 @@ export function createConnectHandler(deps: {
   verifier: JwtVerifier;
   sessions: GatewaySessionRegistry;
   conversation: SessionSnapshotReader;
+  floorResolver: ProcedureFloorResolver;
 }): ConnectHandler {
   return {
     async handle(raw: unknown): Promise<ConnectHandlerResult> {
@@ -46,7 +48,7 @@ export function createConnectHandler(deps: {
         return { response: invalidConnect, closeSocket: true };
       }
 
-      let session: BoundSession | null;
+      let session: Omit<BoundSession, "pinnedFloor"> | null;
       try {
         const principal = await deps.verifier.verify(parsed.data.auth_token);
         session = await deps.sessions.loadSessionByAuthSubject({
@@ -72,13 +74,15 @@ export function createConnectHandler(deps: {
       }
 
       try {
+        const pinnedFloor = await deps.floorResolver.resolve("production");
+        const boundSession: BoundSession = { ...session, pinnedFloor };
         return {
           response: {
             type: "hello_ok",
-            session_snapshot: await deps.conversation.readSnapshot(session.userId),
+            session_snapshot: await deps.conversation.readSnapshot(boundSession.userId),
           },
           closeSocket: false,
-          session,
+          session: boundSession,
         };
       } catch {
         return {

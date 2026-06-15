@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted — refined by ADR-0021 (2026-06-15): in v1 the procedure files are **not routed into the agent's VFS at all**, so their immutability is **structural** (the agent cannot see or write them) and the "reject writes to procedure paths" guard below is unnecessary and dropped. The procedure/knowledge split and the deferral of agent self-personalization are unchanged.
 
 ## Date
 
@@ -10,7 +10,7 @@ accepted
 
 ## Context
 
-ADR-0004 established the DB-backed VFS overlay model (immutable versioned Bundle Defaults + per-`(user_id, path)` User Overlays, overlay-first read resolution) but deliberately left the *write* policy open: it said "immutable bundle defaults are not mutated in place" without specifying what happens when DeepAgents calls `write`/`edit` on an immutable bundle path.
+ADR-0004 established the DB-backed VFS overlay model (immutable versioned Bundle Defaults + per-`(user_id, path)` User Overlays, overlay-first read resolution) but deliberately left the _write_ policy open: it said "immutable bundle defaults are not mutated in place" without specifying what happens when DeepAgents calls `write`/`edit` on an immutable bundle path.
 
 The v1 Bundle Path Set is six paths: `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md`, `USER.md`, `MEMORY.md`. These fall into two kinds:
 
@@ -21,13 +21,13 @@ A tempting model is copy-on-write: an agent write to any path silently creates a
 
 ## Decision
 
-The VFS backend splits the path set by what each file *is*:
+The VFS backend splits the path set by what each file _is_:
 
 1. **Procedure files are immutable in v1.** Agent writes to `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, `HEARTBEAT.md` are **rejected** — not routed to overlays. This preserves the ability to ship a fixed/improved bundle version to all users (including existing ones) without an overlay shadowing it.
 
 2. **Knowledge files are agent-writable overlays.** `USER.md` and `MEMORY.md` are User Overlays with no Bundle Default to shadow; the agent writes learned personal facts here over time.
 
-3. **Personalization in v1 expresses through the knowledge layer plus Cron, not through self-editing procedure files.** Worked example: the agent learns "user takes a pill ~9pm" → writes the fact to `USER.md`/`MEMORY.md` and creates a Cron job to fire at 9pm; `HEARTBEAT.md` is *read* (never written) to decide whether a given tick is worth a Post-Message-Back.
+3. **Personalization in v1 expresses through the knowledge layer plus Cron, not through self-editing procedure files.** Worked example: the agent learns "user takes a pill ~9pm" → writes the fact to `USER.md`/`MEMORY.md` and creates a Cron job to fire at 9pm; `HEARTBEAT.md` is _read_ (never written) to decide whether a given tick is worth a Post-Message-Back.
 
 ## Considered Options
 
