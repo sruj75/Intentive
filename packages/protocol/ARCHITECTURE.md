@@ -11,7 +11,7 @@ The single source of truth for the **WebSocket** message contract between every 
 Defined in `src/index.ts`:
 
 - **Shared primitives** — `ClientKind` (`mobile | desktop | android`, Zod enum derived from `@intentive/domain-types` `CLIENT_KINDS`).
-- **Client → Runtime** (`clientToRuntimeEvent` discriminated union): `connect`, `user_message`, `presence_update`, `delivery_ack`, `context_snapshot`, `session_end_marker`.
+- **Client → Runtime** (`clientToRuntimeEvent` discriminated union): `connect` (optional `client_tz` IANA timezone for Cron wall-clock resolution), `user_message`, `presence_update`, `delivery_ack`, `context_snapshot`, `session_end_marker`.
 - **Runtime → Client** (`runtimeToClientEvent` discriminated union): `hello_ok`, `companion_message`, `runtime_error`.
 - **Runtime error envelope** — one typed error event shape with `code`, `message`, and optional `details`.
 - **Single-live shape policy** — no backward-compatible alias exports; only canonical schema names are exported.
