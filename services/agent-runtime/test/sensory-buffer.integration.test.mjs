@@ -21,6 +21,7 @@ import {
 const skip = !hasNeonBranchCreds();
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../migrations");
 const sessionsMigration = path.join(migrationsDir, "0001_sessions.sql");
+const eventsIndexMigration = path.join(migrationsDir, "0005_runtime_events_user_created_at.sql");
 
 let branchId;
 let sql;
@@ -33,6 +34,7 @@ before(async () => {
   branchId = branch.branchId;
   await applySql(branch.connectionUri, "CREATE SCHEMA IF NOT EXISTS agent_runtime;");
   await applyMigrationFile(branch.connectionUri, sessionsMigration);
+  await applyMigrationFile(branch.connectionUri, eventsIndexMigration);
   sql = await connect(branch.connectionUri);
   ledger = createEventLedger(sql);
   sensoryBuffer = createSensoryBufferReader(sql);
@@ -99,6 +101,60 @@ test(
     assert.match(snapshotLatest, /2026-06-09T00:10:00.000Z/);
   },
 );
+
+test(
+  "latest-perception read resolves via the created_at index without sorting the User's whole event set",
+  { skip },
+  async () => {
+    // Accumulate enough perception events that a sort-the-whole-set plan would
+    // be visibly distinct from an index walk (see migration 0005 / #38).
+    const session = boundSession(randomUUID());
+    const channel = channelFor();
+    for (let i = 0; i < 200; i += 1) {
+      await channel.accept(
+        session,
+        contextSnapshot(
+          `bulk_${i}`,
+          `2026-06-09T00:00:${String(i % 60).padStart(2, "0")}.000Z`,
+          `bulk ${i}`,
+        ),
+      );
+    }
+
+    const plan = await sql.query(
+      `EXPLAIN (FORMAT JSON)
+       SELECT payload
+       FROM agent_runtime.runtime_events
+       WHERE user_id = $1
+         AND kind IN ('context_snapshot', 'session_end_marker')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [session.userId],
+    );
+    const rootPlan = plan[0]["QUERY PLAN"][0].Plan;
+
+    assert.ok(
+      planUsesIndex(rootPlan, "runtime_events_user_created_at"),
+      "expected the latest-perception read to scan runtime_events_user_created_at",
+    );
+    assert.ok(
+      !planContainsNode(rootPlan, "Sort"),
+      "expected no Sort node — the index should make the read order-free",
+    );
+  },
+);
+
+function planNodes(node) {
+  return [node, ...(node.Plans ?? []).flatMap(planNodes)];
+}
+
+function planUsesIndex(rootPlan, indexName) {
+  return planNodes(rootPlan).some((n) => n["Index Name"] === indexName);
+}
+
+function planContainsNode(rootPlan, nodeType) {
+  return planNodes(rootPlan).some((n) => n["Node Type"] === nodeType);
+}
 
 function channelFor() {
   return createPerUserChannel({
