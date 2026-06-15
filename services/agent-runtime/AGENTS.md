@@ -42,7 +42,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 The [`reference/`](reference/) directory contains OpenClaw and Hermes pattern packs as **input** — not architecture to copy verbatim. Use them when implementing gateway, sessions, cron, channels, heartbeat, memory, hooks, workspace, etc. Always read the topic card under `reference/topics/` first; raw `*-llms.txt` is a fallback.
 
-LangChain Deep Agents upstream guide: [Going to production](https://docs.langchain.com/oss/python/deepagents/going-to-production) — memory scoping, execution environments, guardrails, and deployment options.
+LangChain Deep Agents production guide (load before changing memory, backends, or guardrails): [`reference/topics/going-to-production.md`](reference/topics/going-to-production.md) → [`reference/deepagents/going-to-production.md`](reference/deepagents/going-to-production.md). Upstream: [Going to production](https://docs.langchain.com/oss/python/deepagents/going-to-production#user-recommended).
 
 ## Guardrails specific to this deployable
 
