@@ -91,6 +91,47 @@ test("runTurn writes the companion reply and ok Runtime Turn in one transaction"
   assert.deepEqual(transactions, [[queries.companion, queries.turn]]);
 });
 
+test("runTurn delivers the persisted companion reply after a successful transaction", async () => {
+  const deliveries = [];
+  const runTurn = createTurnRunner({
+    sql: {
+      transaction: async () => [],
+    },
+    adapter: {
+      invoke: async () => ({
+        reply: "hello from Companion",
+        traceId: "trace_1",
+        model: "test-model",
+        bundleVersion: "floor_v1",
+      }),
+    },
+    conversation: {
+      appendQuery: () => Promise.resolve([]),
+    },
+    runtimeTurns: {
+      recordQuery: () => Promise.resolve([]),
+    },
+    deliveryPort: {
+      deliver: async (message, mode) => deliveries.push([message, mode]),
+    },
+    newMessageId: () => "companion_1",
+    fallbackModel: "fallback-model",
+  });
+
+  await runTurn(session, userMessage("message_1", "hello"));
+
+  assert.deepEqual(deliveries, [
+    [
+      {
+        userId: session.userId,
+        messageId: "companion_1",
+        body: "hello from Companion",
+      },
+      "reply",
+    ],
+  ]);
+});
+
 test("runTurn omits recentPerception when no Sensory Buffer reader is injected", async () => {
   const adapterCalls = [];
   const runTurn = createTurnRunner({
@@ -159,6 +200,7 @@ test("runTurn records a failed Runtime Turn when invoke fails", async () => {
   await assert.rejects(runTurn(session, userMessage("message_1", "hello")), /model unavailable/);
 
   assert.deepEqual(companionEntries, []);
+  // The failed turn has no persisted companion reply and therefore no delivery.
   assert.deepEqual(turnRecords, [
     {
       userId: session.userId,

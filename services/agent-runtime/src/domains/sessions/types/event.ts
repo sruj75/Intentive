@@ -52,6 +52,10 @@ export interface PerUserChannel {
   accept(session: BoundSession, event: RuntimeIngressEvent): Promise<void>;
   /** Serialized read: observes earlier accepted writes for this User. */
   readSnapshot(userId: string, before?: string, limit?: number): Promise<SessionSnapshot>;
+  /** Serialized committed work such as a due Cron fire. */
+  enqueueCommitted(userId: string, run: () => Promise<void> | void): Promise<void>;
+  /** Collapsible best-effort Monitoring Turn work such as Heartbeat or perception. */
+  enqueueBestEffort(userId: string, run: () => Promise<void> | void): boolean;
 }
 
 export function isRuntimeIngressEvent(event: {

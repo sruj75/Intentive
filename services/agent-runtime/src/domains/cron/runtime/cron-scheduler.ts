@@ -9,7 +9,7 @@ export interface CronScheduler {
 
 export function createCronScheduler(params: {
   readonly cronJobsRepo: Pick<CronJobsRepo, "selectDue">;
-  readonly fireCron: (job: CronJob, context: { firedAt: Date }) => Promise<void>;
+  readonly enqueueCron: (job: CronJob, context: { firedAt: Date }) => Promise<void>;
   readonly clock?: () => Date;
   readonly pollIntervalMs?: number;
   readonly batchLimit?: number;
@@ -24,7 +24,7 @@ export function createCronScheduler(params: {
     const now = clock();
     const due = await params.cronJobsRepo.selectDue({ now, limit: batchLimit });
     for (const job of due) {
-      await params.fireCron(job, { firedAt: now });
+      await params.enqueueCron(job, { firedAt: now });
     }
   }
 

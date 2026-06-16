@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { PinnedProcedureFloor, ProcedureFloorResolver } from "../../bundles/types/floor.js";
 import type { DeepAgentsAdapter, Turn } from "../../runtime/types/turn.js";
 import { computeNextFireAt, resolveTz } from "../config/schedule.js";
@@ -24,9 +22,7 @@ export function createCronTurnHandler(params: {
   readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newThreadId?: (job: CronJob, firedAt: Date) => string;
 }): (job: CronJob, context: { firedAt: Date }) => Promise<void> {
-  const newThreadId =
-    params.newThreadId ??
-    ((job, firedAt) => `cron:${job.id}:${firedAt.toISOString()}:${randomUUID()}`);
+  const newThreadId = params.newThreadId ?? ((job) => job.userId);
 
   return async (job, { firedAt }) => {
     if (job.status !== "active") {

@@ -24,13 +24,22 @@ import { createCronJobsRepo } from "./domains/cron/repo/cron-jobs.js";
 import { createCronRunsRepo } from "./domains/cron/repo/cron-runs.js";
 import { createCronScheduler } from "./domains/cron/runtime/cron-scheduler.js";
 import { createCronTurnHandler } from "./domains/cron/service/cron-turn.js";
+import { createCpPushClient } from "./domains/delivery/repo/cp-push-client.js";
+import { createDeliveriesRepo } from "./domains/delivery/repo/deliveries.js";
+import { createDeliveryPort } from "./domains/delivery/service/delivery-port.js";
+import { createPostMessageBack } from "./domains/delivery/service/post-message-back.js";
+import { createPostMessageBackTool } from "./domains/delivery/service/post-message-back-tool.js";
+import { createConnectionRegistry } from "./domains/gateway/runtime/connection-registry.js";
 import { createConnectHandler } from "./domains/gateway/service/connect.js";
 import { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
 import { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
+import { createHeartbeatScheduleRepo } from "./domains/heartbeat/repo/heartbeat-schedule.js";
+import { createHeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
 import { createInternalApp } from "./domains/internal/ui/app.js";
 import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+import { createMonitoringTurn } from "./domains/runtime/service/monitoring-turn.js";
 import { createTurn } from "./domains/runtime/service/turn.js";
 import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
 import { createWorkingContext } from "./domains/runtime/service/working-context.js";
@@ -40,6 +49,7 @@ import { createSensoryBufferReader } from "./domains/sessions/repo/sensory-buffe
 import type { TransactionalSql } from "./domains/sessions/repo/sql.js";
 import { createPerUserChannel } from "./domains/sessions/runtime/per-user-channel.js";
 import { createStartSession } from "./domains/sessions/service/start-session.js";
+import type { PerUserChannel } from "./domains/sessions/types/event.js";
 
 const config = loadConfig();
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
@@ -57,6 +67,21 @@ const sensoryBuffer = createSensoryBufferReader(sql);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
 const cronJobs = createCronJobsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
+const connectionRegistry = createConnectionRegistry();
+const deliveries = createDeliveriesRepo(sql);
+const cpPush = createCpPushClient({
+  baseUrl: config.controlPlane.baseUrl,
+  internalSecret: config.controlPlane.internalSecret,
+});
+const deliveryPort = createDeliveryPort({
+  registry: connectionRegistry,
+  deliveries,
+  cpPush,
+});
+const postMessageBack = createPostMessageBack({
+  conversation,
+  deliveryPort,
+});
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
 await memoryStore.setup();
 const cronBackend = createCronBackend({
@@ -93,6 +118,7 @@ const runtimeAdapter = createDeepAgentsAdapter({
           baseUrl: langfuseConfig.baseUrl,
         })
     : null,
+  createTools: (input) => [createPostMessageBackTool({ postMessageBack, userId: input.userId })],
   openRouter: {
     apiKey: config.model.apiKey,
     baseUrl: config.model.baseUrl,
@@ -114,6 +140,7 @@ const runTurn = createTurnRunner({
   conversation,
   runtimeTurns,
   fallbackModel: config.model.model,
+  deliveryPort,
   turn,
 });
 const fireCron = createCronTurnHandler({
@@ -125,11 +152,15 @@ const fireCron = createCronTurnHandler({
   loadUserTz: (userId) => registry.loadUserTz(userId),
   turn,
 });
-const cronScheduler = createCronScheduler({
-  cronJobsRepo: cronJobs,
-  fireCron,
+const monitoringTurn = createMonitoringTurn({
+  sql,
+  floorResolver,
+  runtimeTurns,
+  fallbackModel: config.model.model,
+  turn,
 });
-const channel = createPerUserChannel({
+let channel: PerUserChannel;
+channel = createPerUserChannel({
   sql,
   ledger,
   conversation,
@@ -143,7 +174,20 @@ const channel = createPerUserChannel({
     return entry ? [conversation.appendQuery(entry)] : [];
   },
   runTurn,
-  onPerceptionArrived: () => {},
+  onPerceptionArrived: (session) => {
+    channel.enqueueBestEffort(session.userId, () =>
+      monitoringTurn(session.userId, "context_snapshot"),
+    );
+  },
+});
+const cronScheduler = createCronScheduler({
+  cronJobsRepo: cronJobs,
+  enqueueCron: (job, context) => channel.enqueueCommitted(job.userId, () => fireCron(job, context)),
+});
+const heartbeatScheduler = createHeartbeatScheduler({
+  scheduleRepo: createHeartbeatScheduleRepo(sql),
+  enqueueHeartbeat: (userId) =>
+    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
 });
 const startSession = createStartSession({
   registry,
@@ -180,9 +224,15 @@ const routePostConnectEvent = createPostConnectRouter({ channel });
 
 const wss = new WebSocketServer({ port: config.port });
 wss.on("connection", (socket) => {
-  attachGatewayWebSocketHandler(socket, connectHandler, routePostConnectEvent);
+  attachGatewayWebSocketHandler(
+    socket,
+    connectHandler,
+    routePostConnectEvent,
+    (session, connectedSocket) => connectionRegistry.register(session, connectedSocket),
+  );
 });
 
 console.info(`Agent Runtime public WebSocket listening on :${config.port}`);
 console.info(`Agent Runtime Internal API listening on :${config.internalInbound.port}`);
 cronScheduler.start();
+heartbeatScheduler.start();

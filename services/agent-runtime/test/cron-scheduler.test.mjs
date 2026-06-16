@@ -10,7 +10,7 @@ test("cron scheduler tick fires due rows once and respects batch limit", async (
     cronJobsRepo: {
       selectDue: async ({ limit }) => due.slice(0, limit),
     },
-    fireCron: async (cronJob, context) => {
+    enqueueCron: async (cronJob, context) => {
       fired.push([cronJob.id, context.firedAt.toISOString()]);
     },
     clock: () => new Date("2026-06-16T00:00:00.000Z"),
@@ -40,7 +40,7 @@ test("cron scheduler start contains tick failures inside the poll loop", async (
         throw new Error("database unavailable");
       },
     },
-    fireCron: async () => {},
+    enqueueCron: async () => {},
     pollIntervalMs: 1_000,
   });
 

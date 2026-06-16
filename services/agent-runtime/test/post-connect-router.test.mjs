@@ -110,7 +110,42 @@ test("a state-mutating event is accepted by the channel and produces no direct r
   assert.equal(response, undefined);
 });
 
-test("an unknown post-connect event is rejected explicitly and touches neither path", async () => {
+test("presence_update updates the connection foreground state and produces no direct reply", async () => {
+  let acceptCalls = 0;
+  let readCalls = 0;
+  const foreground = [];
+
+  const route = createPostConnectRouter({
+    channel: {
+      accept: async () => {
+        acceptCalls += 1;
+      },
+      readSnapshot: async () => {
+        readCalls += 1;
+        return { messages: [], before_cursor: null };
+      },
+    },
+  });
+
+  const response = await route(session, { type: "presence_update", foreground: true });
+
+  assert.equal(acceptCalls, 0);
+  assert.equal(readCalls, 0);
+  assert.deepEqual(foreground, []);
+  assert.equal(response, undefined);
+
+  await route(
+    session,
+    { type: "presence_update", foreground: false },
+    {
+      setForeground: (value) => foreground.push(value),
+      unregister: () => {},
+    },
+  );
+  assert.deepEqual(foreground, [false]);
+});
+
+test("delivery_ack is accepted as a no-op and unknown events are rejected explicitly", async () => {
   let acceptCalls = 0;
   let readCalls = 0;
 
@@ -126,7 +161,9 @@ test("an unknown post-connect event is rejected explicitly and touches neither p
     },
   });
 
-  const response = await route(session, { type: "presence_update", foreground: true });
+  assert.equal(await route(session, { type: "delivery_ack", message_id: "m1" }), undefined);
+
+  const response = await route(session, { type: "unknown_event" });
 
   assert.equal(acceptCalls, 0);
   assert.equal(readCalls, 0);

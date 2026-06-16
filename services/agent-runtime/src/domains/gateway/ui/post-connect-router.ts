@@ -25,7 +25,7 @@ const unsupportedPostConnectEvent: RuntimeError = {
  *   silent no-op.
  */
 export function createPostConnectRouter(deps: { channel: PerUserChannel }): GatewayEventHandler {
-  return async (session, event) => {
+  return async (session, event, connection) => {
     if (event.type === "history_backfill_request") {
       try {
         const session_snapshot = await deps.channel.readSnapshot(
@@ -45,6 +45,15 @@ export function createPostConnectRouter(deps: { channel: PerUserChannel }): Gate
 
     if (isRuntimeIngressEvent(event)) {
       await deps.channel.accept(session, event);
+      return undefined;
+    }
+
+    if (event.type === "presence_update") {
+      connection?.setForeground(event.foreground);
+      return undefined;
+    }
+
+    if (event.type === "delivery_ack") {
       return undefined;
     }
 

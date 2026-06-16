@@ -73,6 +73,14 @@ export function createPerUserChannel(deps: {
     readSnapshot(userId, before, limit) {
       return queue.submit(userId, () => deps.conversation.readSnapshot(userId, before, limit));
     },
+
+    enqueueCommitted(userId, run) {
+      return queue.submit(userId, run);
+    },
+
+    enqueueBestEffort(userId, run) {
+      return queue.tryBestEffort(userId, run);
+    },
   };
 }
 

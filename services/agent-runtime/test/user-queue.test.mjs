@@ -64,6 +64,76 @@ test("user queue continues later work for a User after a rejected task", async (
   assert.deepEqual(seen, ["first", "second"]);
 });
 
+test("user queue runs best-effort when idle and collapses concurrent best-effort work", async () => {
+  const queue = createUserQueue();
+  const seen = [];
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  assert.equal(
+    queue.tryBestEffort("00000000-0000-4000-8000-000000000001", async () => {
+      seen.push("best:start");
+      await gate;
+      seen.push("best:end");
+    }),
+    true,
+  );
+  await waitFor(() => seen.includes("best:start"));
+  assert.equal(
+    queue.tryBestEffort("00000000-0000-4000-8000-000000000001", () => {
+      seen.push("dropped");
+    }),
+    false,
+  );
+
+  release();
+  await waitFor(() => seen.includes("best:end"));
+
+  assert.deepEqual(seen, ["best:start", "best:end"]);
+});
+
+test("user queue gives committed work priority over pending best-effort work", async () => {
+  const queue = createUserQueue();
+  const seen = [];
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+
+  const first = queue.submit("00000000-0000-4000-8000-000000000001", async () => {
+    seen.push("first:start");
+    await firstGate;
+    seen.push("first:end");
+  });
+  await waitFor(() => seen.includes("first:start"));
+
+  assert.equal(
+    queue.tryBestEffort("00000000-0000-4000-8000-000000000001", () => {
+      seen.push("best");
+    }),
+    true,
+  );
+  const second = queue.submit("00000000-0000-4000-8000-000000000001", () => {
+    seen.push("second");
+  });
+
+  releaseFirst();
+  await Promise.all([first, second]);
+  await waitFor(() => seen.includes("best"));
+
+  assert.deepEqual(seen, ["first:start", "first:end", "second", "best"]);
+});
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate) {
+  for (let i = 0; i < 20; i += 1) {
+    if (predicate()) return;
+    await delay(1);
+  }
+  assert.equal(predicate(), true);
 }

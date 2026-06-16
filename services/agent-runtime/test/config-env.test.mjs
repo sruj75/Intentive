@@ -8,6 +8,8 @@ const validEnv = {
   INTERNAL_PORT: "9091",
   PUBLIC_WS_URL: "wss://runtime.example.com/ws",
   INTERNAL_SECRET_FROM_CONTROL_PLANE: "runtime-inbound-secret",
+  CONTROL_PLANE_INTERNAL_BASE_URL: "https://control-plane.internal",
+  INTERNAL_SECRET_TO_CONTROL_PLANE: "runtime-outbound-secret",
   NEON_DATABASE_URL: "https://runtime-db.example.com",
   NEON_DATABASE_ROLE: "agent_runtime_writer",
   NEON_AUTH_JWKS_URL: "https://auth.example.com/.well-known/jwks.json",
@@ -20,6 +22,10 @@ test("loadConfig returns grouped Agent Runtime config for valid env", () => {
   assert.deepEqual(loadConfig(validEnv), {
     port: 9090,
     internalInbound: { port: 9091, secret: "runtime-inbound-secret" },
+    controlPlane: {
+      baseUrl: "https://control-plane.internal",
+      internalSecret: "runtime-outbound-secret",
+    },
     publicWsUrl: "wss://runtime.example.com/ws",
     neon: { url: "https://runtime-db.example.com", role: "agent_runtime_writer" },
     neonAuth: {
@@ -81,6 +87,7 @@ test("loadConfig accepts model and optional Langfuse overrides", () => {
 test("loadConfig names missing required Agent Runtime env keys", () => {
   const {
     NEON_DATABASE_URL: _databaseUrl,
+    CONTROL_PLANE_INTERNAL_BASE_URL: _controlPlaneBaseUrl,
     OPENROUTER_API_KEY: _openRouterApiKey,
     ...envWithoutRequiredKeys
   } = validEnv;
@@ -89,7 +96,11 @@ test("loadConfig names missing required Agent Runtime env keys", () => {
     () => loadConfig(envWithoutRequiredKeys),
     (error) => {
       assert.equal(error instanceof AgentRuntimeConfigError, true);
-      assert.deepEqual(error.invalidKeys, ["NEON_DATABASE_URL", "OPENROUTER_API_KEY"]);
+      assert.deepEqual(error.invalidKeys, [
+        "CONTROL_PLANE_INTERNAL_BASE_URL",
+        "NEON_DATABASE_URL",
+        "OPENROUTER_API_KEY",
+      ]);
       return true;
     },
   );

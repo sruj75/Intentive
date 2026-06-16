@@ -68,18 +68,18 @@ Mobile Client                 Desktop Client
 
 Use a separate Agent Runtime schema and Postgres role from the Control Plane schema.
 
-| Table family                 | Purpose                                                                                                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `agent_instances`            | One logical Agent Instance per `user_id`.                                                                |
-| `conversation_messages`      | Authoritative Conversation History.                                                                      |
-| `runtime_events`             | Durable inbound/system event ledger with idempotency keys.                                               |
-| `runtime_turns`              | DeepAgents invocation records, status, timing, and trace IDs.                                            |
-| `runtime_checkpoints`        | LangGraph/DeepAgents checkpoint persistence if not fully handled by a library storage adapter.           |
-| `runtime_bundle_versions`    | Immutable product behavior documents such as `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, and `HEARTBEAT.md`. |
-| `runtime_vfs_documents`      | User overlay documents keyed by `user_id` and path.                                                      |
-| `cron_jobs`                  | Scheduled trigger definitions and next-fire state.                                                       |
-| `heartbeat_states`           | Per-user heartbeat policy, liveness, and last evaluation state.                                          |
-| `post_message_back_requests` | Proactive delivery ledger and Control Plane notification handoff status.                                 |
+| Table family                    | Purpose                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `agent_instances`               | One logical Agent Instance per `user_id`.                                                                       |
+| `conversation_messages`         | Authoritative Conversation History.                                                                             |
+| `runtime_events`                | Durable inbound/system event ledger with idempotency keys.                                                      |
+| `runtime_turns`                 | DeepAgents invocation records, status, timing, and trace IDs.                                                   |
+| `runtime_checkpoints`           | LangGraph/DeepAgents checkpoint persistence if not fully handled by a library storage adapter.                  |
+| `runtime_bundle_versions`       | Immutable product behavior documents such as `AGENTS.md`, `SOUL.md`, `BOOTSTRAP.md`, and `HEARTBEAT.md`.        |
+| `runtime_vfs_documents`         | User overlay documents keyed by `user_id` and path.                                                             |
+| `cron_jobs` / `cron_runs`       | Scheduled trigger definitions, due-fire state, and fire outcome ledger (#39; main-thread flip ADR-0029 in #41). |
+| `deliveries`                    | Unified Companion message delivery attempt ledger (`stream`/`push` paths; ADR-0028, #41).                       |
+| _(deferred)_ `heartbeat_states` | Not built in v1 — Heartbeat due-ness is computed from `agent_instances` + `runtime_turns` (ADR-0027, #40).      |
 
 All user-owned Runtime rows are scoped by `user_id`. The User is the tenant in v1.
 
@@ -140,10 +140,10 @@ Exit criteria:
 
 ## Phase 4: Conversation History and reconnect snapshot
 
-1. Persist the **user-authored** half of the timeline in `conversation_messages` via the `conversation` domain (#29). `companion_message` persistence is one `conversation.append` call in #36; live outbound delivery is #41.
+1. Persist the **user-authored** half of the timeline in `conversation_messages` via the `conversation` domain (#29). `companion_message` persistence is one `conversation.append` call in #36; live outbound delivery landed in #41.
 2. Define the reconnect snapshot shape in `packages/protocol` instead of leaving it as `unknown` (done in Phase 0 / ADR-0006).
 3. Serve reconnect snapshot and `history_backfill_request` / `history_backfill_response` over the WebSocket (#29).
-4. Stream new outbound messages to connected Mobile clients (#41).
+4. Stream new outbound messages to connected Mobile clients (#41, branch `issue-40and41`).
 5. Return delivery acks/status only where useful for Desktop capture events.
 
 Exit criteria:
@@ -197,6 +197,8 @@ Exit criteria:
 
 ## Phase 8: Cron
 
+_Shipped in #39 (branch `issue-39`); main-thread Per-User Channel enqueue and Post-Message-Back egress landed in #41 (ADR-0029)._
+
 1. Add durable `cron_jobs` records with user scope, schedule, payload, status, and next-fire time.
 2. Run a non-blocking scheduler loop in the always-alive Runtime process.
 3. On fire, append a runtime event into that User's ordered queue.
@@ -210,6 +212,8 @@ Exit criteria:
 - Cron trigger does not equal notification.
 
 ## Phase 9: Heartbeat
+
+_Shipped in #40 (branch `issue-40and41`, ADR-0027); zero stored heartbeat state — due-ness computed from existing rows._
 
 1. Add per-user heartbeat state and policy.
 2. Run interval ticks only when policy/liveness says they are allowed.
@@ -225,10 +229,12 @@ Exit criteria:
 
 ## Phase 10: Post-Message-Back and push handoff
 
+_Shipped in #41 (branch `issue-40and41`, ADR-0028/0029)._
+
 1. Model Post-Message-Back as a distinct Runtime primitive, not as "any assistant reply while offline."
 2. Persist the message into Conversation History.
 3. If the User has no connected Mobile client, call Control Plane `POST /internal/notifications/push`.
-4. Store push handoff outcome in `post_message_back_requests`.
+4. Record delivery attempts in the unified `deliveries` ledger (not a separate `post_message_back_requests` table).
 5. Keep APNs credentials and device-token routing exclusively in the Control Plane.
 
 Exit criteria:
