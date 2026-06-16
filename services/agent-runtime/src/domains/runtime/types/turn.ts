@@ -19,6 +19,22 @@ export interface RuntimeTurnOutput {
   readonly bundleVersion: string;
 }
 
+export type TurnSqlQuery = Promise<unknown[]>;
+
+export interface TurnExecution {
+  readonly userId: string;
+  readonly threadId: string;
+  readonly body: string;
+  readonly trigger: TurnTrigger;
+  readonly floor: PinnedProcedureFloor;
+  readonly firstRun?: boolean;
+  readonly onSuccess: (output: RuntimeTurnOutput) => TurnSqlQuery[];
+  readonly onFailure: (error: unknown) => {
+    readonly queries: TurnSqlQuery[];
+    readonly rethrow: boolean;
+  };
+}
+
 export interface DeepAgentsAdapter {
   setup(): Promise<void>;
   invoke(input: RuntimeTurnInput): Promise<RuntimeTurnOutput>;
@@ -37,3 +53,5 @@ export interface RuntimeTurnRecord {
 }
 
 export type TurnRunner = (session: BoundSession, event: RuntimeIngressEvent) => Promise<void>;
+
+export type Turn = (execution: TurnExecution) => Promise<void>;

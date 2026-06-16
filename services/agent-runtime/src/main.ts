@@ -31,7 +31,9 @@ import { createInternalApp } from "./domains/internal/ui/app.js";
 import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+import { createTurn } from "./domains/runtime/service/turn.js";
 import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
+import { createWorkingContext } from "./domains/runtime/service/working-context.js";
 import { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 import { createAgentInstanceRepo } from "./domains/sessions/repo/instance-registry.js";
 import { createSensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
@@ -97,14 +99,22 @@ const runtimeAdapter = createDeepAgentsAdapter({
   },
 });
 await runtimeAdapter.setup();
+const workingContext = createWorkingContext({
+  readUserProfile: (userId) => readUserProfile(memoryStore, userId),
+  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
+});
+const turn = createTurn({
+  sql,
+  adapter: runtimeAdapter,
+  workingContext,
+});
 const runTurn = createTurnRunner({
   sql,
   adapter: runtimeAdapter,
   conversation,
   runtimeTurns,
   fallbackModel: config.model.model,
-  readUserProfile: (userId) => readUserProfile(memoryStore, userId),
-  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
+  turn,
 });
 const fireCron = createCronTurnHandler({
   sql,
@@ -113,8 +123,7 @@ const fireCron = createCronTurnHandler({
   cronRuns,
   floorResolver,
   loadUserTz: (userId) => registry.loadUserTz(userId),
-  readUserProfile: (userId) => readUserProfile(memoryStore, userId),
-  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
+  turn,
 });
 const cronScheduler = createCronScheduler({
   cronJobsRepo: cronJobs,
@@ -130,9 +139,6 @@ const channel = createPerUserChannel({
   // directly. This mapping is the `sessions` → `conversation` seam and must
   // stay one line (ADR-0008 / ADR-0009).
   project: (session, event) => {
-    if (event.type === "cron") {
-      return [];
-    }
     const entry = toConversationEntry(session.userId, event);
     return entry ? [conversation.appendQuery(entry)] : [];
   },

@@ -44,10 +44,3 @@ export interface CronRunRecord {
   readonly attempt: number;
   readonly firedAt: Date;
 }
-
-export interface CronFireEvent {
-  readonly type: "cron";
-  readonly job_id: string;
-  readonly fire_at: string;
-  readonly body: string;
-}

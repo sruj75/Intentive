@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; amended 2026-06-16 by issue #39.
 
 ## Date
 
@@ -39,6 +39,14 @@ examples are "ping the user at 9am about the deadline" and "user takes a pill
 **v1 Cron runs in the main session. A Cron fire is a scheduled main-session wake
 against the user's one checkpoint, on the Per-User Channel. Isolated/custom cron
 sessions are deferred to the first background-chore use case.**
+
+**Amendment 2026-06-16:** issue #39 supersedes the main-session implementation
+for the first Cron slice. A due Cron hydrates the Procedure Floor, `USER.md`, and
+recent perception, invokes DeepAgents with `trigger: "cron"` on a silent
+ephemeral thread, records `cron_runs`, and applies lifecycle/retry updates. It
+does not route through the Per-User Channel, write `runtime_events`, append
+Conversation History, or mutate the user's main checkpoint. Main-thread delivery
+returns with Post-Message-Back.
 
 1. **Main-session wake.** A Cron fire behaves like a timer-triggered Monitoring
    Turn: it runs against the user's single checkpoint via the Per-User Channel

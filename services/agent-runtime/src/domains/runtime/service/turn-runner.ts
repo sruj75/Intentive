@@ -5,7 +5,9 @@ import type { RuntimeIngressEvent } from "../../sessions/types/event.js";
 import type { RuntimeTurnsRepo } from "../repo/runtime-turns.js";
 import type { TransactionalSql } from "../repo/sql.js";
 import type { BoundSession } from "../../sessions/types/event.js";
-import type { DeepAgentsAdapter, RuntimeTurnRecord, TurnRunner } from "../types/turn.js";
+import type { DeepAgentsAdapter, RuntimeTurnRecord, Turn, TurnRunner } from "../types/turn.js";
+import { createTurn } from "./turn.js";
+import { createWorkingContext, type WorkingContext } from "./working-context.js";
 
 interface TurnRunnerParams {
   readonly sql: Pick<TransactionalSql, "transaction">;
@@ -13,6 +15,8 @@ interface TurnRunnerParams {
   readonly conversation: Pick<ConversationRepo, "appendQuery">;
   readonly runtimeTurns: RuntimeTurnsRepo;
   readonly fallbackModel: string;
+  readonly turn?: Turn;
+  readonly workingContext?: WorkingContext;
   readonly readUserProfile?: (userId: string) => Promise<string>;
   readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newMessageId?: () => string;
@@ -20,6 +24,18 @@ interface TurnRunnerParams {
 
 export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
   const newMessageId = params.newMessageId ?? randomUUID;
+  const runExecution =
+    params.turn ??
+    createTurn({
+      sql: params.sql,
+      adapter: params.adapter,
+      workingContext:
+        params.workingContext ??
+        createWorkingContext({
+          readUserProfile: params.readUserProfile ?? (async () => ""),
+          readRecentPerception: params.readRecentPerception,
+        }),
+    });
 
   return async (session: BoundSession, event: RuntimeIngressEvent): Promise<void> => {
     if (event.type !== "user_message") {
@@ -27,24 +43,13 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
     }
 
     const threadId = session.userId;
-
-    try {
-      const userProfile = params.readUserProfile
-        ? await params.readUserProfile(session.userId)
-        : "";
-      const recentPerception = params.readRecentPerception
-        ? await params.readRecentPerception(session.userId)
-        : undefined;
-      const output = await params.adapter.invoke({
-        userId: session.userId,
-        threadId,
-        body: event.body,
-        trigger: event.type,
-        pinnedFloor: session.pinnedFloor,
-        userProfile,
-        ...(params.readRecentPerception ? { recentPerception } : {}),
-      });
-      await params.sql.transaction([
+    await runExecution({
+      userId: session.userId,
+      threadId,
+      body: event.body,
+      trigger: "user_message",
+      floor: session.pinnedFloor,
+      onSuccess: (output) => [
         params.conversation.appendQuery({
           userId: session.userId,
           messageId: newMessageId(),
@@ -61,15 +66,16 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
           status: "ok",
           error: null,
         }),
-      ]);
-    } catch (error) {
-      await params.sql.transaction([
-        params.runtimeTurns.recordQuery(
-          failedTurnRecord(session.userId, threadId, params.fallbackModel, error),
-        ),
-      ]);
-      throw error;
-    }
+      ],
+      onFailure: (error) => ({
+        queries: [
+          params.runtimeTurns.recordQuery(
+            failedTurnRecord(session.userId, threadId, params.fallbackModel, error),
+          ),
+        ],
+        rethrow: true,
+      }),
+    });
   };
 }
 

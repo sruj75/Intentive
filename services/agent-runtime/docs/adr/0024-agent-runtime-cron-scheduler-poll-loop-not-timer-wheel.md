@@ -62,8 +62,8 @@ no per-minute schedule re-matching.**
 
 5. **Overdue is handled gently, not stampeded.** After firing, recurring jobs recompute
    `next_fire_at` _forward from now_ (catch-up fires are coalesced to one, not replayed
-   per missed interval); one-shots auto-delete. The Per-User Channel's
-   one-turn-at-a-time + skip-when-busy (ADR-0016) bounds any post-downtime burst.
+   per missed interval); one-shots auto-delete. The poll loop's batch size bounds
+   issue #39 Cron bursts; ADR-0016 bounds main-thread Monitoring Turn bursts.
 
 ## Considered Options
 
@@ -111,7 +111,7 @@ status = 'active'`.
 
 - ADR-0016 (Per-User Channel run-loop; cron trigger arbitration, skip-when-busy)
 - ADR-0017 (historical main-session leaning; issue #39 fires on an ephemeral thread)
-- ADR-0018 (instance lifecycle: lazy hydration, idle eviction; scheduler wakes lanes)
+- ADR-0018 (instance lifecycle: lazy hydration, idle eviction; always-running scheduler)
 - ADR-0025 (device-reported timezone resolved at fire time for `next_fire_at`)
 - ADR-0026 (cron is a DeepAgents-native filesystem card; no bespoke tools)
 - `CONTEXT.md` — Cron term

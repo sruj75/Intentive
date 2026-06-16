@@ -44,7 +44,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Agent-facing deployable guide. Read it before changing this service.
 
 `CONTEXT.md`
-: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Monitoring Turn, Interactive Turn, Runtime Turn, Persistence Adapter, Procedure Floor, Pinned Bundle Version, Per-User Memory, Sensory Buffer, Session Snapshot, History Backfill. Read alongside the root `CONTEXT-MAP.md`.
+: Agent Runtime vocabulary: Agent Runtime, Agent Instance, Post-Message-Back, Cron, Heartbeat, Monitoring Turn, Interactive Turn, Turn Execution, Runtime Turn, Persistence Adapter, Procedure Floor, Pinned Bundle Version, Per-User Memory, Sensory Buffer, Session Snapshot, History Backfill. Read alongside the root `CONTEXT-MAP.md`.
 
 `README.md`
 : Operator/developer entrypoint for the deployable.
@@ -65,7 +65,7 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, and **Sensory Buffer** reader, constructs Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter and **Interactive Turn** runner (`readRecentPerception`), constructs the **Cron** poll scheduler + ephemeral fire handler, constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + no-op `onPerceptionArrived` + queue-serialized snapshot reads), serves the private Internal API, attaches the public WebSocket gateway, and starts the cron scheduler.
+: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, and **Sensory Buffer** reader, constructs Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter, builds one working-context assembler and **Turn Execution** spine shared by the **Interactive Turn** runner and **Cron** fire handler, constructs the **Cron** poll scheduler, constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + no-op `onPerceptionArrived` + queue-serialized snapshot reads), serves the private Internal API, attaches the public WebSocket gateway, and starts the cron scheduler.
 
 `src/domains/bundles/service/procedure-floor-resolver.ts`
 : Service-owned Procedure Floor resolution — Langfuse fetch when configured, deploy-bundled fallback otherwise; pins floor once per connection.
@@ -82,8 +82,14 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 `src/domains/runtime/repo/deep-agents-adapter.ts`
 : Repo-owned DeepAgents + LangGraph Postgres checkpoint adapter (`createDeepAgentsAdapter`).
 
+`src/domains/runtime/service/working-context.ts`
+: Service-owned context assembler for what the model sees: Procedure Floor supplied by the caller plus `USER.md` and latest Sensory Buffer perception.
+
+`src/domains/runtime/service/turn.ts`
+: Service-owned **Turn Execution** spine: assemble working context, invoke DeepAgents, then record trigger-specific success or failure rows in one transaction.
+
 `src/domains/runtime/service/turn-runner.ts`
-: Service-owned **Interactive Turn** orchestration — optional Sensory Buffer read, invoke model, dual-write companion message + **Runtime Turn** record.
+: Thin **Interactive Turn** execution builder over `turn.ts` — stable main thread, companion-message append, **Runtime Turn** record, and rethrow-on-failure policy.
 
 `src/domains/runtime/repo/runtime-turns.ts`
 : Durable `runtime_turns` insert queries for observability/eval anchoring.
@@ -118,7 +124,7 @@ Domain responsibilities:
 - `sessions`: Agent Instance lookup, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, queue-serialized Conversation History reads, **Interactive Turn** dispatch via injected `runTurn`, and optional `onPerceptionArrived` for newly inserted perception events), **Sensory Buffer** read projection over `runtime_events`, connected-client presence. Exposes the `BoundSession`, `PerUserChannel`, and `PerceptionArrivedSink` types as its public `types/` contract.
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
-- `runtime`: DeepAgents adapter, **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
+- `runtime`: DeepAgents adapter, **Turn Execution** spine (`turn` + `working-context`), **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
 - `memory`: DeepAgents memory configuration, `StoreBackend` namespace wiring, injected `USER.md` profile reads, and the `/memories/` durable VFS route.
 - `bundles`: Procedure Floor source resolution, Langfuse prompt handles, deploy-bundled fallback, per-connection pinning, and trigger-aware prompt assembly.
 - `cron`: durable scheduled-trigger primitive, `/crons/` filesystem-card backend, poll scheduler, fire ledger, and silent ephemeral cron-turn lifecycle.

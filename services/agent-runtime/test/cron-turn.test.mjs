@@ -1,25 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCronTurnHandler, isTransient } from "../dist/index.js";
+import {
+  createCronTurnHandler,
+  createTurn,
+  createWorkingContext,
+  isTransient,
+} from "../dist/index.js";
 
 test("cron turn invokes the adapter on an ephemeral thread and records a silent successful run", async () => {
   const invocations = [];
   const transactions = [];
-  const handler = createCronTurnHandler({
-    sql: { transaction: async (queries) => transactions.push(queries) },
-    adapter: {
-      invoke: async (input) => {
-        invocations.push(input);
-        return { reply: "", traceId: "trace_1", model: "model", bundleVersion: "floor_v1" };
-      },
+  const adapter = {
+    invoke: async (input) => {
+      invocations.push(input);
+      return { reply: "", traceId: "trace_1", model: "model", bundleVersion: "floor_v1" };
     },
+  };
+  const sql = { transaction: async (queries) => transactions.push(queries) };
+  const handler = createCronTurnHandler({
+    sql,
+    adapter,
     cronJobs: {
       deleteQuery: (id) => Promise.resolve([{ id, op: "delete" }]),
       rescheduleQuery: () => Promise.resolve([]),
     },
     cronRuns: { recordQuery: (record) => Promise.resolve([{ id: "run_1", record }]) },
     floorResolver: { resolve: async () => floor("floor_v1") },
+    turn: createTurn({
+      sql,
+      adapter,
+      workingContext: createWorkingContext({
+        readUserProfile: async () => "profile",
+        readRecentPerception: async () => null,
+      }),
+    }),
     readUserProfile: async () => "profile",
     readRecentPerception: async () => null,
     newThreadId: () => "cron-thread",
@@ -39,9 +54,11 @@ test("cron turn invokes the adapter on an ephemeral thread and records a silent 
 
 test("cron turn retries transient failures with cross-tick backoff", async () => {
   const transactions = [];
+  const adapter = { invoke: async () => Promise.reject(new Error("network timeout")) };
+  const sql = { transaction: async (queries) => transactions.push(queries) };
   const handler = createCronTurnHandler({
-    sql: { transaction: async (queries) => transactions.push(queries) },
-    adapter: { invoke: async () => Promise.reject(new Error("network timeout")) },
+    sql,
+    adapter,
     cronJobs: {
       deleteQuery: () => Promise.resolve([]),
       rescheduleQuery: (id, nextFireAt, attemptCount) =>
@@ -49,6 +66,13 @@ test("cron turn retries transient failures with cross-tick backoff", async () =>
     },
     cronRuns: { recordQuery: (record) => Promise.resolve([{ id: "run_1", record }]) },
     floorResolver: { resolve: async () => floor("floor_v1") },
+    turn: createTurn({
+      sql,
+      adapter,
+      workingContext: createWorkingContext({
+        readUserProfile: async () => "",
+      }),
+    }),
     newThreadId: () => "cron-thread",
   });
 

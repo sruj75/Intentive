@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type { ProcedureFloorResolver } from "../../bundles/types/floor.js";
-import type { DeepAgentsAdapter } from "../../runtime/types/turn.js";
+import type { PinnedProcedureFloor, ProcedureFloorResolver } from "../../bundles/types/floor.js";
+import type { DeepAgentsAdapter, Turn } from "../../runtime/types/turn.js";
 import { computeNextFireAt, resolveTz } from "../config/schedule.js";
 import type { CronJobsRepo } from "../repo/cron-jobs.js";
 import type { CronRunsRepo } from "../repo/cron-runs.js";
+import type { SqlQuery } from "../repo/sql.js";
 import type { TransactionalSql } from "../repo/sql.js";
 import type { CronJob } from "../types/cron.js";
 
@@ -18,6 +19,7 @@ export function createCronTurnHandler(params: {
   readonly cronRuns: CronRunsRepo;
   readonly floorResolver: ProcedureFloorResolver;
   readonly loadUserTz?: (userId: string) => Promise<string | null>;
+  readonly turn: Turn;
   readonly readUserProfile?: (userId: string) => Promise<string>;
   readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newThreadId?: (job: CronJob, firedAt: Date) => string;
@@ -32,34 +34,25 @@ export function createCronTurnHandler(params: {
     }
 
     const threadId = newThreadId(job, firedAt);
+    let pinnedFloor: PinnedProcedureFloor;
+    let userTz: string | null | undefined;
     try {
-      const [pinnedFloor, userProfile, recentPerception] = await Promise.all([
+      [pinnedFloor, userTz] = await Promise.all([
         params.floorResolver.resolve("production"),
-        params.readUserProfile?.(job.userId) ?? Promise.resolve(""),
-        params.readRecentPerception?.(job.userId) ?? Promise.resolve(null),
+        params.loadUserTz?.(job.userId),
       ]);
-      await params.adapter.invoke({
-        userId: job.userId,
-        threadId,
-        body: job.prompt,
-        trigger: "cron",
-        pinnedFloor,
-        userProfile,
-        recentPerception,
-      });
-      const lifecycleQuery =
-        job.scheduleKind === "at"
-          ? params.cronJobs.deleteQuery(job.id)
-          : params.cronJobs.rescheduleQuery(
-              job.id,
-              computeNextFireAt(
-                { kind: job.scheduleKind, expr: job.scheduleExpr },
-                resolveTz(job.tz, await params.loadUserTz?.(job.userId)),
-                firedAt,
-              ),
-              0,
-            );
-      await params.sql.transaction([
+    } catch (error) {
+      await params.sql.transaction(failureQueries(params, job, threadId, firedAt, userTz, error));
+      return;
+    }
+
+    await params.turn({
+      userId: job.userId,
+      threadId,
+      body: job.prompt,
+      trigger: "cron",
+      floor: pinnedFloor,
+      onSuccess: () => [
         params.cronRuns.recordQuery({
           userId: job.userId,
           cronJobId: job.id,
@@ -70,44 +63,90 @@ export function createCronTurnHandler(params: {
           attempt: job.attemptCount,
           firedAt,
         }),
-        lifecycleQuery,
-      ]);
-    } catch (error) {
-      const message = errorMessage(error);
-      const nextAttempt = job.attemptCount + 1;
-      const retry =
-        isTransient(error) && nextAttempt < MAX_ATTEMPTS
-          ? params.cronJobs.rescheduleQuery(
-              job.id,
-              new Date(firedAt.getTime() + backoffMs(job.attemptCount)),
-              nextAttempt,
-            )
-          : job.scheduleKind === "at"
-            ? params.cronJobs.deleteQuery(job.id)
-            : params.cronJobs.rescheduleQuery(
-                job.id,
-                computeNextFireAt(
-                  { kind: job.scheduleKind, expr: job.scheduleExpr },
-                  resolveTz(job.tz, await params.loadUserTz?.(job.userId)),
-                  firedAt,
-                ),
-                0,
-              );
-      await params.sql.transaction([
-        params.cronRuns.recordQuery({
-          userId: job.userId,
-          cronJobId: job.id,
-          threadId,
-          trigger: "cron",
-          status: "failed",
-          error: message,
-          attempt: job.attemptCount,
-          firedAt,
-        }),
-        retry,
-      ]);
-    }
+        successLifecycleQuery(params, job, firedAt, userTz),
+      ],
+      onFailure: (error) => ({
+        queries: failureQueries(params, job, threadId, firedAt, userTz, error),
+        rethrow: false,
+      }),
+    });
   };
+}
+
+function successLifecycleQuery(
+  params: {
+    readonly cronJobs: Pick<CronJobsRepo, "deleteQuery" | "rescheduleQuery">;
+  },
+  job: CronJob,
+  firedAt: Date,
+  userTz: string | null | undefined,
+): SqlQuery {
+  return job.scheduleKind === "at"
+    ? params.cronJobs.deleteQuery(job.id)
+    : params.cronJobs.rescheduleQuery(
+        job.id,
+        computeNextFireAt(
+          { kind: job.scheduleKind, expr: job.scheduleExpr },
+          resolveTz(job.tz, userTz),
+          firedAt,
+        ),
+        0,
+      );
+}
+
+function failureQueries(
+  params: {
+    readonly cronJobs: Pick<CronJobsRepo, "deleteQuery" | "rescheduleQuery">;
+    readonly cronRuns: CronRunsRepo;
+  },
+  job: CronJob,
+  threadId: string,
+  firedAt: Date,
+  userTz: string | null | undefined,
+  error: unknown,
+): SqlQuery[] {
+  return [
+    params.cronRuns.recordQuery({
+      userId: job.userId,
+      cronJobId: job.id,
+      threadId,
+      trigger: "cron",
+      status: "failed",
+      error: errorMessage(error),
+      attempt: job.attemptCount,
+      firedAt,
+    }),
+    failureLifecycleQuery(params, job, firedAt, userTz, error),
+  ];
+}
+
+function failureLifecycleQuery(
+  params: {
+    readonly cronJobs: Pick<CronJobsRepo, "deleteQuery" | "rescheduleQuery">;
+  },
+  job: CronJob,
+  firedAt: Date,
+  userTz: string | null | undefined,
+  error: unknown,
+): SqlQuery {
+  const nextAttempt = job.attemptCount + 1;
+  return isTransient(error) && nextAttempt < MAX_ATTEMPTS
+    ? params.cronJobs.rescheduleQuery(
+        job.id,
+        new Date(firedAt.getTime() + backoffMs(job.attemptCount)),
+        nextAttempt,
+      )
+    : job.scheduleKind === "at"
+      ? params.cronJobs.deleteQuery(job.id)
+      : params.cronJobs.rescheduleQuery(
+          job.id,
+          computeNextFireAt(
+            { kind: job.scheduleKind, expr: job.scheduleExpr },
+            resolveTz(job.tz, userTz),
+            firedAt,
+          ),
+          0,
+        );
 }
 
 export function isTransient(error: unknown): boolean {
