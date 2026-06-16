@@ -135,21 +135,19 @@ const turn = createTurn({
   sql,
   adapter: runtimeAdapter,
   workingContext,
+  runtimeTurns,
+  fallbackModel: config.model.model,
   logger: log,
 });
 const runTurn = createTurnRunner({
   sql,
   adapter: runtimeAdapter,
   conversation,
-  runtimeTurns,
-  fallbackModel: config.model.model,
   deliveryPort,
   turn,
   logger: log,
 });
 const fireCron = createCronTurnHandler({
-  sql,
-  adapter: runtimeAdapter,
   cronJobs,
   cronRuns,
   floorResolver,
@@ -158,10 +156,7 @@ const fireCron = createCronTurnHandler({
   logger: log,
 });
 const monitoringTurn = createMonitoringTurn({
-  sql,
   floorResolver,
-  runtimeTurns,
-  fallbackModel: config.model.model,
   turn,
 });
 let channel: PerUserChannel;

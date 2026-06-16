@@ -26,9 +26,12 @@ export interface TurnExecution {
   readonly threadId: string;
   readonly body: string;
   readonly trigger: TurnTrigger;
-  readonly floor: PinnedProcedureFloor;
+  /** Floor source, resolved inside the spine's try so resolution failures become normal failed turns. */
+  readonly floor: () => Promise<PinnedProcedureFloor>;
   readonly firstRun?: boolean;
+  /** Trigger-specific durable rows only; the spine appends the `runtime_turns` anchor. */
   readonly onSuccess: (output: RuntimeTurnOutput) => TurnSqlQuery[];
+  /** Trigger-specific durable rows only; the spine appends the `runtime_turns` anchor. */
   readonly onFailure: (error: unknown) => {
     readonly queries: TurnSqlQuery[];
     readonly rethrow: boolean;

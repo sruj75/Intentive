@@ -1,6 +1,6 @@
 import type { CompanionMessage } from "@intentive/protocol";
 import type { Logger } from "@intentive/providers/telemetry";
-import { createNoopLogger } from "@intentive/providers/telemetry";
+import { createNoopLogger, errorMessage } from "@intentive/providers/telemetry";
 
 import { isChatCapable } from "../config/reachability.js";
 import type {
@@ -129,8 +129,4 @@ function recordFailure(
     error,
     attemptedAt,
   };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

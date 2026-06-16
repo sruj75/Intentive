@@ -121,6 +121,7 @@ Local index: [`services/agent-runtime/docs/adr/README.md`](../../services/agent-
 | 0028 | Post-Message-Back delivery — shared port, foreground fork, ledger           | accepted                                                         |
 | 0029 | Cron rejoins Per-User Channel — main-thread committed trigger class         | accepted (retires 0017 ephemeral exception)                      |
 | 0030 | v1 production readiness — off-the-shelf observability, not a custom program | accepted (scopes #42)                                            |
+| 0031 | Turn Execution spine owns the Runtime Turn anchor and floor resolution      | accepted (deepens turn.ts; cron now emits runtime_turns)         |
 
 ## Migration map (old unified number → new per-context number)
 

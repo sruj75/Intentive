@@ -123,6 +123,16 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Turn Execution spine owns floor resolution and the Runtime Turn anchor** ([ADR-0031](docs/adr/0031-agent-runtime-turn-execution-spine-owns-runtime-turn-anchor-and-floor-resolution.md)) —
+  `createTurn` now resolves `TurnExecution.floor()` inside its `try`, appends exactly
+  one `runtime_turns` row (ok or failed) after each caller's trigger-specific rows in
+  the same transaction, and requires `runtimeTurns` + `fallbackModel`. Trigger modules
+  (`turn-runner`, `monitoring-turn`, `cron-turn`) return only their own durable rows;
+  floor-resolution failures no longer double-record via outer `try/catch` paths. Cron
+  fires now also emit `runtime_turns`, so they participate in Heartbeat due-computation
+  (ADR-0027). Shared `errorMessage(error)` moved to `@intentive/providers/telemetry`.
+  Tests: extended `test/turn.test.mjs`, `test/monitoring-turn.test.mjs`, and
+  `test/cron-turn.test.mjs`.
 - **Per-User Channel arbitration** — `sessions/runtime/user-queue.ts` now has two
   lanes: committed FIFO work (`user_message`, Cron) and one collapsible
   best-effort slot (Heartbeat / perception-triggered Monitoring Turns). The

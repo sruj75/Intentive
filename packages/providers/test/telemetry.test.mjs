@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createLogger, redactAttrs } from "../dist/telemetry.js";
+import { createLogger, errorMessage, redactAttrs } from "../dist/telemetry.js";
+
+test("errorMessage stringifies Errors by message and non-Errors via String()", () => {
+  assert.equal(errorMessage(new Error("model unavailable")), "model unavailable");
+  assert.equal(errorMessage(new TypeError("bad input")), "bad input");
+  assert.equal(errorMessage("plain string"), "plain string");
+  assert.equal(errorMessage(42), "42");
+  assert.equal(errorMessage(null), "null");
+  assert.equal(errorMessage(undefined), "undefined");
+});
 
 test("redactAttrs keeps only allowlisted scalar metadata", () => {
   assert.deepEqual(

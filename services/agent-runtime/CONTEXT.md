@@ -55,7 +55,7 @@ A `user_message`-triggered agent turn whose returned final message **is** the re
 _Avoid_: chat turn, reply turn, normal turn
 
 **Turn Execution**:
-The shared shell mechanism every trigger uses to gather the model-visible context (Procedure Floor + `USER.md` + recent perception), invoke DeepAgents, and record durable outcome rows in one transaction. Trigger-specific modules supply only the thread, floor, durable records, error policy, and egress default. This is the turn _mechanism_, distinct from the **Runtime Turn** row that observes it.
+The shared shell mechanism (`runtime/service/turn.ts`) every trigger uses to **resolve the pinned floor**, gather the model-visible context (Procedure Floor + `USER.md` + recent perception), invoke DeepAgents, and record durable outcome rows in one transaction. The spine owns what is universal to every turn: it resolves the floor (so a resolution failure becomes a normal failed turn rather than a separate outer path), stringifies errors, and writes the single **Runtime Turn** anchor — appended to the caller's rows on both the ok and failed path. Trigger-specific modules supply only the thread, floor source, _trigger-specific_ durable records, error policy, and egress default. This is the turn _mechanism_, distinct from the **Runtime Turn** row that observes it. See ADR-0031.
 _Avoid_: trigger pipeline, turn pipeline, one pipeline per trigger
 
 **Persistence Adapter**:
@@ -67,7 +67,7 @@ The thread state LangGraph saves to Postgres after each DeepAgents step (tool ca
 _Avoid_: state snapshot, agent state (ambiguous with Agent Instance status)
 
 **Runtime Turn**:
-The durable per-turn record (the `runtime_turns` row: `trace_id`, `thread_id`, `model`, `status`, `bundle_version`, timestamps) — the observability/eval anchor that joins our relational record to the **Langfuse** trace answering "what did the model see on turn N?" (ADR-0012). Written by the shell in one transaction with the companion `conversation_messages` append, so the product record and the turn record stay mutually consistent. Distinct from the opaque **Checkpoint** (the model's working memory) and from the turn _execution_ itself.
+The durable per-turn record (the `runtime_turns` row: `trace_id`, `thread_id`, `model`, `status`, `bundle_version`, timestamps) — the observability/eval anchor that joins our relational record to the **Langfuse** trace answering "what did the model see on turn N?" (ADR-0012). **Every turn produces exactly one `runtime_turns` row** (ok or failed): the **Turn Execution** spine writes it for _every_ trigger — `user_message`, Monitoring Turn, **and Cron** — in the same transaction as that trigger's own rows (the companion `conversation_messages` append, or `cron_runs` + lifecycle), so the product record and the turn record stay mutually consistent. Because a Cron fire now also emits a Runtime Turn, it participates in Heartbeat due-computation (a cron fire suppresses/delays the next heartbeat — intended, since the user just had activity). See ADR-0031. Distinct from the opaque **Checkpoint** (the model's working memory) and from the turn _execution_ itself.
 _Avoid_: turn log, run row (too generic), runtime event (that is the ingress ledger)
 
 **Bundle Path Set**:

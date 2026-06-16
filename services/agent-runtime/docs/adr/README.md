@@ -34,5 +34,6 @@ Architectural decisions for `services/agent-runtime/`. Numbering is independent 
 | 0028 | Post-Message-Back delivery — shared port, foreground fork, ledger           | [0028-agent-runtime-post-message-back-delivery-shared-port-foreground-fork-unified-ledger.md](0028-agent-runtime-post-message-back-delivery-shared-port-foreground-fork-unified-ledger.md) |
 | 0029 | Cron rejoins Per-User Channel — main-thread committed trigger class         | [0029-agent-runtime-cron-rejoins-per-user-channel-main-thread-committed-trigger-class.md](0029-agent-runtime-cron-rejoins-per-user-channel-main-thread-committed-trigger-class.md)         |
 | 0030 | v1 production readiness — off-the-shelf observability, not a custom program | [0030-agent-runtime-v1-production-readiness-off-the-shelf-not-custom-program.md](0030-agent-runtime-v1-production-readiness-off-the-shelf-not-custom-program.md)                           |
+| 0031 | Turn Execution spine owns the Runtime Turn anchor and floor resolution      | [0031-agent-runtime-turn-execution-spine-owns-runtime-turn-anchor-and-floor-resolution.md](0031-agent-runtime-turn-execution-spine-owns-runtime-turn-anchor-and-floor-resolution.md)       |
 
 New ADRs: use the next sequential number, filename `NNNN-<slug>.md`, and update this table plus the monorepo index.
