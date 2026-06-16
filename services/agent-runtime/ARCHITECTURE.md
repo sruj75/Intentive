@@ -59,13 +59,16 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Read-only OpenClaw/Hermes pattern library. Topic cards explain what to borrow and what to leave to DeepAgents.
 
 `src/config/env.ts`
-: Boot-time configuration seam (`loadConfig`, `AgentRuntimeConfig`). Validates shape only; domains receive typed slices and must not re-parse `process.env`.
+: Boot-time configuration seam (`loadConfig`, `AgentRuntimeConfig`). Validates shape only; optional Langfuse and Sentry settings (`LANGFUSE_MODE`, `SENTRY_MODE`); domains receive typed slices and must not re-parse `process.env`.
 
 `src/index.ts`
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, **Sensory Buffer** reader, delivery port, Control Plane push client, connection registry, Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter, one working-context assembler, and one **Turn Execution** spine shared by the **Interactive Turn** runner, Cron fire handler, and **Monitoring Turn** runner. It constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + perception-triggered best-effort Monitoring Turn enqueue + queue-serialized snapshot reads), the Cron poll scheduler, the Heartbeat computed scheduler, the private Internal API, and the public WebSocket gateway.
+: Composition root — loads config, bootstraps observability (`bootstrapObservability` from `@intentive/providers/observability`), constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, **Sensory Buffer** reader, delivery port, Control Plane push client, connection registry, Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter, one working-context assembler, and one **Turn Execution** spine shared by the **Interactive Turn** runner, Cron fire handler, and **Monitoring Turn** runner. It constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + perception-triggered best-effort Monitoring Turn enqueue + queue-serialized snapshot reads), the Cron poll scheduler, the Heartbeat computed scheduler, the private Internal API, and the public WebSocket gateway.
+
+`Dockerfile`
+: Production container image for GCE deploy — `pnpm deploy` of `@intentive/agent-runtime` and `node dist/main.js` entrypoint.
 
 `src/domains/delivery/service/delivery-port.ts`
 : Service-owned shared delivery port. Hides live stream vs Control Plane push branching and records every attempt in `deliveries`.
@@ -245,11 +248,13 @@ Providers:
 - Auth, telemetry, feature flags, Neon clients, model provider clients, and Control Plane clients enter through explicit provider interfaces.
 - Domain code should depend on provider interfaces, not concrete SDK setup.
 
-Observability:
+Observability (ADR-0030):
 
+- Three layers, not a custom metrics program: **Langfuse** (behavior/eval — model I/O, procedure floor), **Sentry** (errors/crashes — optional via `SENTRY_DSN`), **structured logs at domain seams** (connection, queue, turn, VFS, Cron, Heartbeat, push handoff).
+- `main.ts` calls `bootstrapObservability` once; domain code uses `observability.createLogger` and must not import `@sentry/node` or instantiate Langfuse tracing directly.
 - Log connection lifecycle, handshake failures, event enqueue/dequeue, Runtime turns, DeepAgents invocations, VFS access, Cron fires, Heartbeat ticks, and Post-Message-Back handoffs.
 - Record trace/run IDs at Runtime turn boundaries.
-- Redact auth tokens, conversation bodies, memory contents, and Context Snapshot content by default.
+- Redact auth tokens, conversation bodies, memory contents, and Context Snapshot content by default (allowlisted log attrs only).
 
 Reliability:
 
@@ -270,5 +275,5 @@ Testing:
 - **Config tier:** `test/config-env.test.mjs` pins `loadConfig` grouping, defaults, and safe error keys.
 - **Service tier:** unit-test domain logic with repo/provider fakes as each vertical slice ships; #25 covers Session Start idempotency and gateway auth/protocol errors; #28 covers per-user queue ordering/isolation and ingest idempotency.
 - **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
-- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`); #37 covers Procedure Floor pinning at connect, `USER.md` injection, memory backend wiring, and `bundle_version` on successful turns; #38 covers **Sensory Buffer** read projection (`test/sensory-buffer.integration.test.mjs`), `RECENT_PERCEPTION` prompt injection, and `onPerceptionArrived` on newly inserted perception events; #39 covers cron card parsing/validation, poll-loop due selection, main-thread cron-turn lifecycle, and `client_tz` persistence (`test/cron-*.test.mjs`); ADR-0027/0028/0029 coverage adds delivery, Post-Message-Back, connection registry, heartbeat scheduler, heartbeat schedule projection, Monitoring Turn, and two-lane queue arbitration tests.
+- **Integration tier:** use transport adapters where they prove real boundaries; #25 covers Hono Internal API request handling and a real WebSocket `hello_ok` smoke path; #28 extends the WebSocket path with bound-session post-handshake delegation; #29 covers reconnect Session Snapshot, `history_backfill_request`/`history_backfill_response`, and transactional ingress projection (`test/runtime-ingress-projection.integration.test.mjs`); #36 covers **Interactive Turn** end-to-end (companion reply + `runtime_turns`, turn-failure containment, checkpoint rehydration in `test/runtime-adapter.integration.test.mjs`); #37 covers Procedure Floor pinning at connect, `USER.md` injection, memory backend wiring, and `bundle_version` on successful turns; #38 covers **Sensory Buffer** read projection (`test/sensory-buffer.integration.test.mjs`), `RECENT_PERCEPTION` prompt injection, and `onPerceptionArrived` on newly inserted perception events; #39 covers cron card parsing/validation, poll-loop due selection, main-thread cron-turn lifecycle, and `client_tz` persistence (`test/cron-*.test.mjs`); ADR-0027/0028/0029 coverage adds delivery, Post-Message-Back, connection registry, heartbeat scheduler, heartbeat schedule projection, Monitoring Turn, and two-lane queue arbitration tests; `#42` adds multi-user isolation, reconnect recovery, restart smoke, and observability config/bootstrap coverage.
 - Keep DeepAgents faked in shell tests unless the test is explicitly an integration test of DeepAgents wiring.

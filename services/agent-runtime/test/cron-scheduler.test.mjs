@@ -54,6 +54,36 @@ test("cron scheduler start contains tick failures inside the poll loop", async (
   assert.equal(errors[0].event, "cron.tick");
 });
 
+test("cron scheduler measures scheduler_lag_ms against the expected poll cadence", async () => {
+  const infos = [];
+  // clock() is read once at tick entry and once when the next poll is scheduled.
+  // First immediate poll -> no prior cadence -> lag 0. Second poll fires at
+  // t=1020 against an expected time of 1000+pollInterval(5)=1005 -> lag 15.
+  const times = [1000, 1000, 1020];
+  const clock = () => new Date(times.length > 1 ? times.shift() : times[0]);
+  const scheduler = createCronScheduler({
+    cronJobsRepo: { selectDue: async () => [] },
+    enqueueCron: async () => {},
+    pollIntervalMs: 5,
+    clock,
+    logger: recordingLogger({ infos }),
+  });
+
+  try {
+    scheduler.start();
+    const deadline = Date.now() + 1_000;
+    while (infos.length < 2 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+  } finally {
+    scheduler.stop();
+  }
+
+  assert.ok(infos.length >= 2, `expected at least two ticks, got ${infos.length}`);
+  assert.equal(infos[0].attrs.scheduler_lag_ms, 0);
+  assert.equal(infos[1].attrs.scheduler_lag_ms, 15);
+});
+
 function job(id) {
   return {
     id,
@@ -70,11 +100,11 @@ function job(id) {
   };
 }
 
-function recordingLogger({ errors }) {
+function recordingLogger({ errors, infos } = {}) {
   return {
-    info: () => {},
+    info: (event, attrs) => infos?.push({ event, attrs }),
     warn: () => {},
-    error: (event, error, attrs) => errors.push({ event, error, attrs }),
-    child: () => recordingLogger({ errors }),
+    error: (event, error, attrs) => errors?.push({ event, error, attrs }),
+    child: () => recordingLogger({ errors, infos }),
   };
 }

@@ -24,17 +24,22 @@ export function createCronScheduler(params: {
   const logger = params.logger ?? createNoopLogger();
   let timer: NodeJS.Timeout | null = null;
   let stopped = true;
+  // The wall-clock time the next poll was scheduled to fire, used to measure
+  // scheduler lag (event-loop drift). null before the first, immediate poll.
+  let expectedTickAt: number | null = null;
 
   async function tick(): Promise<void> {
     const now = clock();
     const startedAt = Date.now();
+    const schedulerLagMs =
+      expectedTickAt === null ? 0 : Math.max(0, now.getTime() - expectedTickAt);
     const due = await params.cronJobsRepo.selectDue({ now, limit: batchLimit });
     for (const job of due) {
       await params.enqueueCron(job, { firedAt: now });
     }
     logger.info("cron.tick", {
       status: "ok",
-      scheduler_lag_ms: 0,
+      scheduler_lag_ms: schedulerLagMs,
       duration_ms: Date.now() - startedAt,
     });
   }
@@ -46,6 +51,7 @@ export function createCronScheduler(params: {
       logger.error("cron.tick", error, { status: "failed" });
     } finally {
       if (!stopped) {
+        expectedTickAt = clock().getTime() + pollIntervalMs;
         timer = setTimeout(() => void loop(), pollIntervalMs);
       }
     }
@@ -58,6 +64,7 @@ export function createCronScheduler(params: {
         return;
       }
       stopped = false;
+      expectedTickAt = null;
       timer = setTimeout(() => void loop(), 0);
     },
     stop() {

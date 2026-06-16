@@ -6,6 +6,17 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **v1 production readiness — observability, isolation, deploy** ([Issue #42], [ADR-0030](docs/adr/0030-agent-runtime-v1-production-readiness-off-the-shelf-not-custom-program.md)) —
+  `bootstrapObservability` from `@intentive/providers/observability` wires optional Sentry +
+  Langfuse at `main.ts` boot; structured logs at domain seams (connection registry, delivery,
+  Post-Message-Back, DeepAgents adapter, Per-User Channel, Cron/Heartbeat schedulers).
+  `loadConfig` adds optional `SENTRY_*` and `LANGFUSE_MODE`; [`.env.example`](.env.example)
+  documents both. Production container image via [`Dockerfile`](Dockerfile)
+  (`pnpm deploy` → `node dist/main.js`). Tests:
+  `test/multi-user-isolation.integration.test.mjs`,
+  `test/reconnect-recovery.integration.test.mjs`,
+  `test/restart-smoke.integration.test.mjs`, extended `test/config-env.test.mjs` and
+  scheduler coverage; provider tests under `packages/providers/test/`.
 - **Heartbeat + Post-Message-Back delivery + Cron main-session flip** (ADR-0027/0028/0029) —
   `delivery/` domain with shared `DeliveryPort`, `deliveries` ledger
   (`migrations/0009_deliveries.sql`), Control Plane push handoff client,

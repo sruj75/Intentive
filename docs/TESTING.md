@@ -110,7 +110,7 @@ pnpm --dir packages/protocol test
 pnpm --dir packages/api-contract test
 ```
 
-`packages/providers` owns cross-cutting behavior (auth, telemetry, flags). Its tests run a fake JWKS HTTP server to exercise the real fetch path — no mocking of internal collaborators:
+`packages/providers` owns cross-cutting behavior (auth, telemetry, observability bootstrap, flags). Auth tests run a fake JWKS HTTP server to exercise the real fetch path; observability/telemetry tests cover Sentry/Langfuse bootstrap and redacted structured logging — no mocking of internal collaborators:
 
 ```bash
 pnpm --dir packages/providers test

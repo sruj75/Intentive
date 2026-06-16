@@ -32,7 +32,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 ## Stack & deploy
 
 - Node / TypeScript + LangChain DeepAgents
-- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; requires `OPENROUTER_API_KEY`, Control Plane outbound push settings, and internal Runtime ingress settings; optional Langfuse and Sentry keys; see [`.env.example`](.env.example) and `test/config-env.test.mjs`
+- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; requires `OPENROUTER_API_KEY`, Control Plane outbound push settings, and internal Runtime ingress settings; optional Langfuse and Sentry keys (`LANGFUSE_MODE`, `SENTRY_MODE`); observability bootstrap via `@intentive/providers/observability` at `main.ts` only (ADR-0030); see [`.env.example`](.env.example) and `test/config-env.test.mjs`
 - Domain folders are **lazy** (ADR-0002): add `src/domains/<name>/…` only when implementing that slice, not empty layer trees upfront
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane); SQL migrations live in `migrations/`
