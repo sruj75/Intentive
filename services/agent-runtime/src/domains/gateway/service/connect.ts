@@ -5,6 +5,8 @@ import {
   type RuntimeToClientEvent,
 } from "@intentive/protocol";
 import { asJwtVerificationFailure, type JwtVerifier } from "@intentive/providers/auth";
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
 
 import type { SessionSnapshotReader } from "../../conversation/types/conversation.js";
 import type { BoundSession } from "../../sessions/types/event.js";
@@ -41,11 +43,14 @@ export function createConnectHandler(deps: {
   sessions: GatewaySessionRegistry;
   conversation: SessionSnapshotReader;
   floorResolver: ProcedureFloorResolver;
+  logger?: Logger;
 }): ConnectHandler {
+  const logger = deps.logger ?? createNoopLogger();
   return {
     async handle(raw: unknown): Promise<ConnectHandlerResult> {
       const parsed = safeParseClientToRuntimeEvent(raw);
       if (!parsed.success || parsed.data.type !== "connect") {
+        logger.warn("gateway.connect", { status: "reject" });
         return { response: invalidConnect, closeSocket: true };
       }
 
@@ -58,6 +63,11 @@ export function createConnectHandler(deps: {
           clientTz: parsed.data.client_tz,
         });
       } catch (error) {
+        logger.warn("gateway.connect", {
+          status: "reject",
+          client_kind: parsed.data.client_kind,
+          error_type: error instanceof Error ? error.name : typeof error,
+        });
         return {
           response: mapJwtVerificationErrorToRuntimeError(asJwtVerificationFailure(error)),
           closeSocket: true,
@@ -65,6 +75,10 @@ export function createConnectHandler(deps: {
       }
 
       if (!session) {
+        logger.warn("gateway.connect", {
+          status: "reject",
+          client_kind: parsed.data.client_kind,
+        });
         return {
           response: {
             type: "runtime_error",
@@ -78,6 +92,12 @@ export function createConnectHandler(deps: {
       try {
         const pinnedFloor = await deps.floorResolver.resolve("production");
         const boundSession: BoundSession = { ...session, pinnedFloor };
+        logger.info("gateway.connect", {
+          status: "accept",
+          user_id: boundSession.userId,
+          client_kind: boundSession.clientKind,
+          bundle_version: boundSession.pinnedFloor.version,
+        });
         return {
           response: {
             type: "hello_ok",
@@ -86,7 +106,12 @@ export function createConnectHandler(deps: {
           closeSocket: false,
           session: boundSession,
         };
-      } catch {
+      } catch (error) {
+        logger.error("gateway.connect", error, {
+          status: "reject",
+          user_id: session.userId,
+          client_kind: session.clientKind,
+        });
         return {
           response: conversationHistoryUnavailableError(),
           closeSocket: true,

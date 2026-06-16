@@ -1,3 +1,6 @@
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
+
 export interface UserQueue {
   /**
    * Run `task` after all earlier committed tasks for `userId` have settled.
@@ -12,21 +15,42 @@ export interface UserQueue {
   tryBestEffort(userId: string, task: () => Promise<void> | void): boolean;
 }
 
-export function createUserQueue(): UserQueue {
+export function createUserQueue(
+  params: {
+    readonly logger?: Logger;
+    readonly clock?: () => number;
+  } = {},
+): UserQueue {
   const states = new Map<string, UserQueueState>();
+  const logger = params.logger ?? createNoopLogger();
+  const clock = params.clock ?? Date.now;
 
   return {
     submit(userId, task) {
       const state = stateFor(states, userId);
+      const enqueuedAt = clock();
       return new Promise((resolve, reject) => {
         state.committed.push(async () => {
+          const startedAt = clock();
           try {
             resolve(await task());
+            logger.info("queue.task_done", {
+              user_id: userId,
+              status: "ok",
+              queue_latency_ms: startedAt - enqueuedAt,
+              duration_ms: clock() - startedAt,
+            });
           } catch (error) {
+            logger.error("queue.task_done", error, {
+              user_id: userId,
+              status: "failed",
+              queue_latency_ms: startedAt - enqueuedAt,
+              duration_ms: clock() - startedAt,
+            });
             reject(error);
           }
         });
-        drain(states, userId, state);
+        drain(states, userId, state, logger);
       });
     },
 
@@ -35,8 +59,18 @@ export function createUserQueue(): UserQueue {
       if (state.bestEffort || state.bestEffortRunning) {
         return false;
       }
-      state.bestEffort = task;
-      drain(states, userId, state);
+      const enqueuedAt = clock();
+      state.bestEffort = async () => {
+        const startedAt = clock();
+        await task();
+        logger.info("queue.task_done", {
+          user_id: userId,
+          status: "ok",
+          queue_latency_ms: startedAt - enqueuedAt,
+          duration_ms: clock() - startedAt,
+        });
+      };
+      drain(states, userId, state, logger);
       return true;
     },
   };
@@ -64,18 +98,24 @@ function stateFor(states: Map<string, UserQueueState>, userId: string): UserQueu
   return created;
 }
 
-function drain(states: Map<string, UserQueueState>, userId: string, state: UserQueueState): void {
+function drain(
+  states: Map<string, UserQueueState>,
+  userId: string,
+  state: UserQueueState,
+  logger: Logger,
+): void {
   if (state.running) {
     return;
   }
   state.running = true;
-  void runLoop(states, userId, state);
+  void runLoop(states, userId, state, logger);
 }
 
 async function runLoop(
   states: Map<string, UserQueueState>,
   userId: string,
   state: UserQueueState,
+  logger: Logger,
 ): Promise<void> {
   while (state.committed.length > 0 || state.bestEffort) {
     const committed = state.committed.shift();
@@ -90,7 +130,7 @@ async function runLoop(
     try {
       await bestEffort?.();
     } catch (error) {
-      console.error("Best-effort user task failed", { userId, error });
+      logger.error("queue.task_done", error, { user_id: userId, status: "failed" });
     } finally {
       state.bestEffortRunning = false;
     }
@@ -98,7 +138,7 @@ async function runLoop(
 
   state.running = false;
   if (state.committed.length > 0 || state.bestEffort) {
-    drain(states, userId, state);
+    drain(states, userId, state, logger);
     return;
   }
   states.delete(userId);

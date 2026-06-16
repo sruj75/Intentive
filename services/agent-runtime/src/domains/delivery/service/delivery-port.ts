@@ -1,4 +1,6 @@
 import type { CompanionMessage } from "@intentive/protocol";
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
 
 import { isChatCapable } from "../config/reachability.js";
 import type {
@@ -17,8 +19,10 @@ export function createDeliveryPort(params: {
   readonly deliveries: DeliveriesRepo;
   readonly cpPush: CpPushClient;
   readonly clock?: () => Date;
+  readonly logger?: Logger;
 }): DeliveryPort {
   const clock = params.clock ?? (() => new Date());
+  const logger = params.logger ?? createNoopLogger();
 
   return {
     async deliver(message: DeliveryMessage, mode: DeliveryMode): Promise<void> {
@@ -52,6 +56,12 @@ export function createDeliveryPort(params: {
             }),
           ),
         );
+        logger.info("delivery.attempt", {
+          user_id: message.userId,
+          message_id: message.messageId,
+          delivery_path: "stream",
+          status: "ok",
+        });
         return;
       }
 
@@ -59,6 +69,12 @@ export function createDeliveryPort(params: {
         await params.deliveries.recordQuery(
           recordFailure(message, "stream", attemptedAt, "no connected chat-capable client"),
         );
+        logger.warn("delivery.attempt", {
+          user_id: message.userId,
+          message_id: message.messageId,
+          delivery_path: "stream",
+          status: "failed",
+        });
         return;
       }
 
@@ -77,10 +93,22 @@ export function createDeliveryPort(params: {
           error: null,
           attemptedAt,
         });
+        logger.info("delivery.attempt", {
+          user_id: message.userId,
+          message_id: message.messageId,
+          delivery_path: "push",
+          status: "ok",
+        });
       } catch (error) {
         await params.deliveries.recordQuery(
           recordFailure(message, "push", attemptedAt, errorMessage(error)),
         );
+        logger.error("delivery.push_failed", error, {
+          user_id: message.userId,
+          message_id: message.messageId,
+          delivery_path: "push",
+          status: "failed",
+        });
       }
     },
   };

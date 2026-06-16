@@ -1,4 +1,6 @@
 import type { ClientKind, RuntimeToClientEvent } from "@intentive/protocol";
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
 import type { WebSocket } from "ws";
 
 import type {
@@ -12,10 +14,13 @@ interface StoredConnection extends RegisteredConnection {
   readonly socket: Pick<WebSocket, "send">;
 }
 
-export function createConnectionRegistry(): ConnectionRegistry & {
+export function createConnectionRegistry(
+  params: { readonly logger?: Logger } = {},
+): ConnectionRegistry & {
   register(session: BoundSession, socket: Pick<WebSocket, "send">): ConnectionHandle;
 } {
   const byUser = new Map<string, Set<StoredConnection>>();
+  const logger = params.logger ?? createNoopLogger();
 
   return {
     register(session, socket) {
@@ -27,6 +32,11 @@ export function createConnectionRegistry(): ConnectionRegistry & {
       const connections = byUser.get(session.userId) ?? new Set<StoredConnection>();
       connections.add(connection);
       byUser.set(session.userId, connections);
+      logger.info("gateway.clients", {
+        user_id: session.userId,
+        client_kind: connection.clientKind,
+        connected_clients: countConnections(byUser),
+      });
 
       return {
         setForeground(foreground) {
@@ -37,6 +47,11 @@ export function createConnectionRegistry(): ConnectionRegistry & {
           if (connections.size === 0) {
             byUser.delete(session.userId);
           }
+          logger.info("gateway.clients", {
+            user_id: session.userId,
+            client_kind: connection.clientKind,
+            connected_clients: countConnections(byUser),
+          });
         },
       };
     },
@@ -65,4 +80,12 @@ export function createConnectionRegistry(): ConnectionRegistry & {
       return delivered;
     },
   };
+}
+
+function countConnections(byUser: Map<string, Set<StoredConnection>>): number {
+  let count = 0;
+  for (const connections of byUser.values()) {
+    count += connections.size;
+  }
+  return count;
 }

@@ -7,6 +7,9 @@
  */
 import { z } from "zod";
 
+const SentryModeSchema = z.enum(["errors-only", "errors-and-performance"]);
+const LangfuseModeSchema = z.enum(["callback", "otel"]);
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   INTERNAL_PORT: z.coerce.number().int().positive().default(8081),
@@ -25,6 +28,11 @@ const EnvSchema = z.object({
   LANGFUSE_PUBLIC_KEY: z.string().min(1).optional(),
   LANGFUSE_SECRET_KEY: z.string().min(1).optional(),
   LANGFUSE_BASE_URL: z.string().url().optional(),
+  LANGFUSE_MODE: LangfuseModeSchema.default("callback"),
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().min(1).optional(),
+  SENTRY_RELEASE: z.string().min(1).optional(),
+  SENTRY_MODE: SentryModeSchema.default("errors-only"),
 });
 
 export interface AgentRuntimeConfig {
@@ -48,6 +56,13 @@ export interface AgentRuntimeConfig {
     readonly publicKey: string;
     readonly secretKey: string;
     readonly baseUrl?: string;
+    readonly mode: "callback" | "otel";
+  } | null;
+  readonly sentry: {
+    readonly dsn: string;
+    readonly environment?: string;
+    readonly release?: string;
+    readonly mode: "errors-only" | "errors-and-performance";
   } | null;
 }
 
@@ -102,7 +117,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
             publicKey: e.LANGFUSE_PUBLIC_KEY,
             secretKey: e.LANGFUSE_SECRET_KEY,
             baseUrl: e.LANGFUSE_BASE_URL,
+            mode: e.LANGFUSE_MODE,
           })
         : null,
+    sentry: e.SENTRY_DSN
+      ? Object.freeze({
+          dsn: e.SENTRY_DSN,
+          environment: e.SENTRY_ENVIRONMENT,
+          release: e.SENTRY_RELEASE,
+          mode: e.SENTRY_MODE,
+        })
+      : null,
   });
 }

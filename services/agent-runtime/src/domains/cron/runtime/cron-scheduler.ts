@@ -1,3 +1,6 @@
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
+
 import type { CronJob } from "../types/cron.js";
 import type { CronJobsRepo } from "../repo/cron-jobs.js";
 
@@ -13,26 +16,34 @@ export function createCronScheduler(params: {
   readonly clock?: () => Date;
   readonly pollIntervalMs?: number;
   readonly batchLimit?: number;
+  readonly logger?: Logger;
 }): CronScheduler {
   const clock = params.clock ?? (() => new Date());
   const pollIntervalMs = params.pollIntervalMs ?? 60_000;
   const batchLimit = params.batchLimit ?? 50;
+  const logger = params.logger ?? createNoopLogger();
   let timer: NodeJS.Timeout | null = null;
   let stopped = true;
 
   async function tick(): Promise<void> {
     const now = clock();
+    const startedAt = Date.now();
     const due = await params.cronJobsRepo.selectDue({ now, limit: batchLimit });
     for (const job of due) {
       await params.enqueueCron(job, { firedAt: now });
     }
+    logger.info("cron.tick", {
+      status: "ok",
+      scheduler_lag_ms: 0,
+      duration_ms: Date.now() - startedAt,
+    });
   }
 
   async function loop(): Promise<void> {
     try {
       await tick();
     } catch (error) {
-      console.error("Cron scheduler tick failed", { error });
+      logger.error("cron.tick", error, { status: "failed" });
     } finally {
       if (!stopped) {
         timer = setTimeout(() => void loop(), pollIntervalMs);

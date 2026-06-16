@@ -35,6 +35,8 @@ We deliberately **do not build** in v1: a metrics pipeline (Prometheus/Grafana),
 
 The cheap **multi-user isolation test** stays — it guards a correctness/privacy property (no cross-user leakage), not capacity.
 
+The implementation owns the OpenTelemetry composition point from day one. `packages/providers/src/observability/` initializes Sentry first with `skipOpenTelemetrySetup: true`; v1 supports `SENTRY_MODE=errors-only` and `LANGFUSE_MODE=callback`. `errors-and-performance` and Langfuse `otel` are accepted by config as reserved modes but bootstrap rejects them with "not wired in v1" until the shared OTel composition is built in this one module. Domain code must not import `@sentry/node` or instantiate Langfuse tracing directly.
+
 ## Considered Options
 
 - **Build the custom program now (rejected).** Dashboards/SLOs/metrics-infra measure traffic we don't have; runtime guardrails fight the non-deterministic-agent bet and reverse ADR-0027. Cost without v1 payoff.
@@ -42,6 +44,7 @@ The cheap **multi-user isolation test** stays — it guards a correctness/privac
 
 ## Consequences
 
-- **OTel wiring landmine:** Sentry's JS SDK (v8+) claims the global OpenTelemetry `TracerProvider`. Langfuse must run on its **own isolated `NodeTracerProvider`** (its own span processor) or its spans are silently dropped. Initialize Sentry for its own OTel setup; give Langfuse a separate provider.
+- **OTel wiring landmine:** Sentry's JS SDK (v8+) can claim the global OpenTelemetry `TracerProvider`. We initialize Sentry with `skipOpenTelemetrySetup: true` so the Runtime owns OTel ordering. Future Sentry performance and Langfuse OTel wiring must be composed only in `packages/providers/src/observability/`.
+- **Never enable in domain code:** Sentry gen_ai / AI-agent auto-instrumentation, Sentry LangChain/DeepAgents integration, Langfuse export-all filters, a second `Sentry.init()`, or a second Langfuse tracing init.
 - A future reader who expects rate-limiting / circuit-breakers / a metrics program on an autonomous push agent should read this ADR first — their absence is deliberate, not an oversight.
 - Re-introducing runtime guardrails or a metrics program is a future, evidence-driven decision (Langfuse surfaces behavioral abuse; load surfaces capacity limits), recorded as its own ADR when taken.

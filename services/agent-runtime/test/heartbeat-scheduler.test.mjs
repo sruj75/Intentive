@@ -31,9 +31,7 @@ test("heartbeat scheduler tick enqueues due users with floor and batch limit", a
 });
 
 test("heartbeat scheduler start contains tick failures inside the poll loop", async () => {
-  const logged = [];
-  const originalError = console.error;
-  console.error = (...args) => logged.push(args);
+  const errors = [];
   const scheduler = createHeartbeatScheduler({
     pollIntervalMs: 1_000,
     scheduleRepo: {
@@ -42,6 +40,7 @@ test("heartbeat scheduler start contains tick failures inside the poll loop", as
       },
     },
     enqueueHeartbeat: () => true,
+    logger: recordingLogger({ errors }),
   });
 
   try {
@@ -49,8 +48,18 @@ test("heartbeat scheduler start contains tick failures inside the poll loop", as
     await new Promise((resolve) => setTimeout(resolve, 20));
     scheduler.stop();
   } finally {
-    console.error = originalError;
+    scheduler.stop();
   }
 
-  assert.equal(logged.length, 1);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].event, "heartbeat.tick");
 });
+
+function recordingLogger({ errors }) {
+  return {
+    info: () => {},
+    warn: () => {},
+    error: (event, error, attrs) => errors.push({ event, error, attrs }),
+    child: () => recordingLogger({ errors }),
+  };
+}

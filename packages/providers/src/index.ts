@@ -8,3 +8,4 @@
 export * as auth from "./auth.js";
 export * as telemetry from "./telemetry.js";
 export * as flags from "./flags.js";
+export * as observability from "./observability/index.js";

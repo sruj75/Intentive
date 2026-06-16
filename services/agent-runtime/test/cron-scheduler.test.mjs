@@ -24,15 +24,11 @@ test("cron scheduler tick fires due rows once and respects batch limit", async (
 
 test("cron scheduler start contains tick failures inside the poll loop", async () => {
   const unhandled = [];
-  const logged = [];
+  const errors = [];
   const onUnhandled = (error) => {
     unhandled.push(error);
   };
   process.on("unhandledRejection", onUnhandled);
-  const originalError = console.error;
-  console.error = (...args) => {
-    logged.push(args);
-  };
 
   const scheduler = createCronScheduler({
     cronJobsRepo: {
@@ -42,6 +38,7 @@ test("cron scheduler start contains tick failures inside the poll loop", async (
     },
     enqueueCron: async () => {},
     pollIntervalMs: 1_000,
+    logger: recordingLogger({ errors }),
   });
 
   try {
@@ -50,11 +47,11 @@ test("cron scheduler start contains tick failures inside the poll loop", async (
     scheduler.stop();
   } finally {
     process.off("unhandledRejection", onUnhandled);
-    console.error = originalError;
   }
 
   assert.deepEqual(unhandled, []);
-  assert.equal(logged.length, 1);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].event, "cron.tick");
 });
 
 function job(id) {
@@ -70,5 +67,14 @@ function job(id) {
     nextFireAt: new Date("2026-06-16T00:00:00.000Z"),
     prompt: "wake",
     attemptCount: 0,
+  };
+}
+
+function recordingLogger({ errors }) {
+  return {
+    info: () => {},
+    warn: () => {},
+    error: (event, error, attrs) => errors.push({ event, error, attrs }),
+    child: () => recordingLogger({ errors }),
   };
 }

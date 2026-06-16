@@ -3,6 +3,8 @@ import {
   type ClientToRuntimeEvent,
   type RuntimeToClientEvent,
 } from "@intentive/protocol";
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
 import type { RawData, WebSocket } from "ws";
 
 import type { ConnectionHandle } from "../../delivery/types/delivery.js";
@@ -32,6 +34,7 @@ export function attachGatewayWebSocketHandler(
   handler: ConnectHandler,
   onEvent: GatewayEventHandler = () => undefined,
   registerConnection?: GatewayConnectionRegistrar,
+  logger: Logger = createNoopLogger(),
 ): void {
   let connected = false;
   let session: BoundSession | undefined;
@@ -39,6 +42,13 @@ export function attachGatewayWebSocketHandler(
 
   socket.on("close", () => {
     connection?.unregister();
+    if (session) {
+      logger.info("gateway.disconnect", {
+        user_id: session.userId,
+        client_kind: session.clientKind,
+        status: "ok",
+      });
+    }
     connection = null;
   });
 
