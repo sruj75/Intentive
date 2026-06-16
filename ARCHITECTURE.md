@@ -90,9 +90,10 @@ A business domain is a vertical slice of product capability inside one deployabl
 - `sessions` — per-user session queue, ordering, idempotency
 - `conversation` — durable Conversation History transcript, Session Snapshot projection, history backfill reads
 - `protocol` — inbound/outbound event handling (`user_message`, `context_snapshot`, `session_end_marker`, `history_backfill_request`, `companion_message`, `presence_update`, `delivery_ack`)
-- `runtime` — DeepAgents loop integration, Agent Instance lifecycle
-- `cron` — `/crons/` filesystem cards, poll scheduler, ephemeral fire turns (#39)
-- `heartbeat` — interval-trigger primitive
+- `runtime` — DeepAgents loop integration, Turn Execution spine, Agent Instance lifecycle
+- `delivery` — shared delivery port, connection registry consumer, Control Plane push handoff, Post-Message-Back, `deliveries` ledger
+- `cron` — `/crons/` filesystem cards, poll scheduler, committed Per-User Channel enqueue, main-thread cron turns
+- `heartbeat` — computed zero-state poll loop, best-effort Monitoring Turn enqueue
 - `memory` — DeepAgents Per-User Memory: `StoreBackend` namespace wiring, injected `USER.md`, `/memories/` VFS route
 - `bundles` — Procedure Floor resolution (Langfuse Prompt Management + deploy-bundled fallback), per-connection pinning, trigger-aware prompt assembly
 - `internal` — server-to-server API surface (Session Start, etc.)
@@ -237,6 +238,7 @@ intentive/
 │           ├── sessions/{...}/
 │           ├── protocol/{...}/
 │           ├── runtime/{...}/
+│           ├── delivery/{...}/
 │           ├── cron/{...}/
 │           ├── heartbeat/{...}/
 │           ├── memory/{...}/

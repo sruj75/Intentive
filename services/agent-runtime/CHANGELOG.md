@@ -180,11 +180,11 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 - **Cron ephemeral-thread stopgap** — Cron no longer fires on `cron:...`
   ephemeral threads and no longer bypasses the Per-User Channel; ADR-0029
   retires that exception now that Post-Message-Back delivery exists.
-- **Cron through Per-User Channel ingress** — removed the unreachable `cron`
-  arm from `RuntimeIngressEvent`, `RuntimeEventKind`, `isRuntimeIngressEvent`,
-  Per-User Channel turn dispatch/deduping, and the exported `CronFireEvent`.
-  Production Cron continues to fire through `cronScheduler → createCronTurnHandler`
-  on silent ephemeral threads (ADR-0017 amendment).
+- **Cron WebSocket ingress path** — removed the unreachable `cron` arm from
+  `RuntimeIngressEvent`, `RuntimeEventKind`, `isRuntimeIngressEvent`, Per-User
+  Channel turn dispatch/deduping, and the exported `CronFireEvent`. Production
+  Cron still fires through `cronScheduler → createCronTurnHandler`, now on the
+  Per-User Channel committed lane and main thread (ADR-0029).
 - **Upfront domain type scaffolds** — deleted placeholder `types/scaffold.ts` files and
   contract sample types under `src/domains/*` (lazy domain layout per ADR-0002; real
   folders arrive with each vertical slice). Removed `test/scaffold.test.mjs`.
