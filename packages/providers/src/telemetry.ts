@@ -127,3 +127,8 @@ function isScalar(value: unknown): value is LogAttrValue {
 function errorType(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
+
+/** The canonical error→string used for log attrs and durable error columns. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

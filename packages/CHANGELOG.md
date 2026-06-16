@@ -32,6 +32,9 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 
 ### Changed
 
+- **`@intentive/providers/telemetry`** — exported `errorMessage(error)` as the canonical
+  error→string helper for structured log attrs and durable error columns; tests extended
+  in `providers/test/telemetry.test.mjs`.
 - **`@intentive/api-contract`** — `parseBoundary` / `BoundaryParseError` re-exported from
   `@intentive/boundary` (HTTP call sites keep importing from `@intentive/api-contract` unchanged);
   `ClientKind` Zod enum now derived from `CLIENT_KINDS`.

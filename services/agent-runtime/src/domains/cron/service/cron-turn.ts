@@ -1,28 +1,23 @@
 import type { Logger } from "@intentive/providers/telemetry";
-import { createNoopLogger } from "@intentive/providers/telemetry";
+import { createNoopLogger, errorMessage } from "@intentive/providers/telemetry";
 
-import type { PinnedProcedureFloor, ProcedureFloorResolver } from "../../bundles/types/floor.js";
-import type { DeepAgentsAdapter, Turn } from "../../runtime/types/turn.js";
+import type { ProcedureFloorResolver } from "../../bundles/types/floor.js";
+import type { Turn } from "../../runtime/types/turn.js";
 import { computeNextFireAt, resolveTz } from "../config/schedule.js";
 import type { CronJobsRepo } from "../repo/cron-jobs.js";
 import type { CronRunsRepo } from "../repo/cron-runs.js";
 import type { SqlQuery } from "../repo/sql.js";
-import type { TransactionalSql } from "../repo/sql.js";
 import type { CronJob } from "../types/cron.js";
 
 const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [60_000, 120_000, 300_000] as const;
 
 export function createCronTurnHandler(params: {
-  readonly sql: Pick<TransactionalSql, "transaction">;
-  readonly adapter: Pick<DeepAgentsAdapter, "invoke">;
   readonly cronJobs: Pick<CronJobsRepo, "deleteQuery" | "rescheduleQuery">;
   readonly cronRuns: CronRunsRepo;
   readonly floorResolver: ProcedureFloorResolver;
   readonly loadUserTz?: (userId: string) => Promise<string | null>;
   readonly turn: Turn;
-  readonly readUserProfile?: (userId: string) => Promise<string>;
-  readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newThreadId?: (job: CronJob, firedAt: Date) => string;
   readonly logger?: Logger;
 }): (job: CronJob, context: { firedAt: Date }) => Promise<void> {
@@ -36,32 +31,25 @@ export function createCronTurnHandler(params: {
 
     const startedAt = Date.now();
     const threadId = newThreadId(job, firedAt);
-    let pinnedFloor: PinnedProcedureFloor;
+    // Set by the floor thunk before onSuccess/onFailure run; left undefined when
+    // resolution itself fails, which `resolveTz` tolerates.
     let userTz: string | null | undefined;
-    try {
-      [pinnedFloor, userTz] = await Promise.all([
-        params.floorResolver.resolve("production"),
-        params.loadUserTz?.(job.userId),
-      ]);
-    } catch (error) {
-      await params.sql.transaction(failureQueries(params, job, threadId, firedAt, userTz, error));
-      logger.error("cron.turn", error, {
-        user_id: job.userId,
-        cron_job_id: job.id,
-        thread_id: threadId,
-        status: "failed",
-        duration_ms: Date.now() - startedAt,
-      });
-      return;
-    }
-
     let turnError: unknown = null;
     await params.turn({
       userId: job.userId,
       threadId,
       body: job.prompt,
       trigger: "cron",
-      floor: pinnedFloor,
+      // Resolve floor and userTz inside the spine's try so resolution failures
+      // flow through onFailure (cron_runs + lifecycle + the spine's runtime_turns).
+      floor: async () => {
+        const [pinnedFloor, tz] = await Promise.all([
+          params.floorResolver.resolve("production"),
+          params.loadUserTz?.(job.userId),
+        ]);
+        userTz = tz;
+        return pinnedFloor;
+      },
       onSuccess: () => [
         params.cronRuns.recordQuery({
           userId: job.userId,
@@ -186,8 +174,4 @@ export function isTransient(error: unknown): boolean {
 
 function backoffMs(attemptCount: number): number {
   return BACKOFF_MS[Math.min(attemptCount, BACKOFF_MS.length - 1)] ?? BACKOFF_MS[0];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -21,7 +21,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - `sessions` — the Per-User Channel: per-user serialization point for ordering, message idempotency, transactional ingress, queue-serialized Conversation History reads, optional **Interactive Turn** dispatch (`runTurn` after ingress commit; turn failures contained per ADR-0020), **Sensory Buffer** read projection (`repo/sensory-buffer.ts` over `runtime_events`), and optional `onPerceptionArrived` for newly inserted perception events (#38, ADR-0023)
 - `conversation` — durable Conversation History transcript (`conversation_messages`), Session Snapshot projection (`readSnapshot`), history backfill reads (ADR-0008)
 - `protocol` — inbound/outbound event handling (every event type in `packages/protocol/`)
-- `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), shared **Turn Execution** spine (`service/turn.ts` + `service/working-context.ts`), **Interactive Turn** runner (`service/turn-runner.ts`), durable **Runtime Turn** records (`repo/runtime-turns.ts`, migration `0003_runtime_turns.sql`)
+- `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), shared **Turn Execution** spine (`service/turn.ts` + `service/working-context.ts`; ADR-0031 resolves `floor()` and appends exactly one `runtime_turns` anchor per turn), **Interactive Turn** runner (`service/turn-runner.ts`), **Monitoring Turn** builder (`service/monitoring-turn.ts`), durable **Runtime Turn** insert queries (`repo/runtime-turns.ts`, migration `0003_runtime_turns.sql`)
 - `delivery` — shared delivery port, process-local connection registry consumer, Control Plane push handoff, Post-Message-Back service/tool, and `deliveries` ledger (ADR-0028)
 - `cron` — scheduled-trigger primitive: `/crons/` filesystem cards backed by `cron_jobs`, poll scheduler, Per-User Channel committed enqueue, and `cron_runs`
 - `heartbeat` — interval proactivity trigger: computed zero-state poll loop that enqueues best-effort **Monitoring Turns** (ADR-0027)
@@ -57,7 +57,7 @@ Agent-authored scheduling only — no shell cron CRUD tools ([ADR-0026](docs/adr
 
 **Timezone:** wall-clock schedules resolve against per-job `tz`, else the user's persisted `client_tz` from the latest `connect`, else UTC ([ADR-0025](docs/adr/0025-agent-runtime-device-reported-user-timezone.md)). Clients must report `client_tz` on every connect — see mobile/desktop `AGENTS.md`.
 
-**Fire path:** `createCronScheduler` polls Neon every **60s** (`selectDue` on `cron_jobs.next_fire_at`), then enqueues the fire onto the **Per-User Channel** committed lane. `createCronTurnHandler` runs on the user's main thread (`threadId = userId`), records `cron_runs`, applies lifecycle changes, and can speak only by calling `post_message_back`.
+**Fire path:** `createCronScheduler` polls Neon every **60s** (`selectDue` on `cron_jobs.next_fire_at`), then enqueues the fire onto the **Per-User Channel** committed lane. `createCronTurnHandler` runs on the user's main thread (`threadId = userId`), records `cron_runs` plus the spine's `runtime_turns` anchor (ADR-0031), applies lifecycle changes, and can speak only by calling `post_message_back`.
 
 **Debug due fires:** inspect `agent_runtime.cron_jobs` (`status`, `next_fire_at`, `attempt_count`) and `cron_runs`; confirm `agent_instances.client_tz`; run `pnpm --filter ./services/agent-runtime test -- test/cron-*.test.mjs`. Vocabulary and tradeoffs: [`CONTEXT.md`](CONTEXT.md) → **Cron**; scheduler shape: [ADR-0024](docs/adr/0024-agent-runtime-cron-scheduler-poll-loop-not-timer-wheel.md).
 
@@ -65,7 +65,7 @@ Agent-authored scheduling only — no shell cron CRUD tools ([ADR-0026](docs/adr
 
 `createHeartbeatScheduler` polls every **60s** by default and computes due users from `agent_instances` plus latest `runtime_turns`, with no heartbeat table or `next_fire_at` state. Due users enqueue a best-effort **Monitoring Turn** on the Per-User Channel; duplicate/busy best-effort wakes collapse to one pending turn.
 
-Monitoring Turns are silent by default. They record `runtime_turns`; user-visible proactive output happens only if DeepAgents calls `post_message_back`, which persists a `conversation_messages(via_post_message_back = true)` row before delivery.
+Monitoring Turns are silent by default. The **Turn Execution** spine records the `runtime_turns` anchor (ADR-0031); user-visible proactive output happens only if DeepAgents calls `post_message_back`, which persists a `conversation_messages(via_post_message_back = true)` row before delivery.
 
 ## Guardrails specific to this deployable
 

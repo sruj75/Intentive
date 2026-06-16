@@ -24,8 +24,8 @@ Mobile Client                 Desktop Client
   txn ingress + queue reads     poll loops (Neon due scans)
   Sensory Buffer (latest)              |
          |                      committed / best-effort enqueue
-  runtime (all turns)           cron_runs + runtime_turns
-  DeepAgents + runtime_turns           |
+  runtime (Turn Execution spine)   cron_runs (+ spine runtime_turns)
+  floor + DeepAgents + one anchor         |
          +-------------+-------------+
                        |
        delivery + conversation + checkpoints
@@ -104,13 +104,13 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Service-owned context assembler for what the model sees: Procedure Floor supplied by the caller plus `USER.md` and latest Sensory Buffer perception.
 
 `src/domains/runtime/service/turn.ts`
-: Service-owned **Turn Execution** spine: assemble working context, invoke DeepAgents, then record trigger-specific success or failure rows in one transaction.
+: Service-owned **Turn Execution** spine (ADR-0031): resolve `floor()`, assemble working context, invoke DeepAgents, then in one transaction append the caller's trigger-specific rows plus exactly one `runtime_turns` anchor (ok or failed).
 
 `src/domains/runtime/service/turn-runner.ts`
-: Thin **Interactive Turn** execution builder over `turn.ts` — stable main thread, companion-message append, **Runtime Turn** record, persisted-then-delivered reply, and rethrow-on-failure policy.
+: Thin **Interactive Turn** execution builder over `turn.ts` — stable main thread, companion-message append, persisted-then-delivered reply, and rethrow-on-failure policy; the spine writes the **Runtime Turn** anchor.
 
 `src/domains/runtime/service/monitoring-turn.ts`
-: Thin **Monitoring Turn** execution builder over `turn.ts` — stable main thread, `heartbeat` / `context_snapshot` triggers, **Runtime Turn** record only, and silent-by-default egress via `post_message_back`.
+: Thin **Monitoring Turn** execution builder over `turn.ts` — stable main thread, `heartbeat` / `context_snapshot` triggers, silent-by-default egress via `post_message_back`; the spine writes the **Runtime Turn** anchor.
 
 `src/domains/runtime/repo/runtime-turns.ts`
 : Durable `runtime_turns` insert queries for observability/eval anchoring.
@@ -146,7 +146,7 @@ Domain responsibilities:
 - `sessions`: Agent Instance lookup, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, queue-serialized Conversation History reads, **Interactive Turn** dispatch via injected `runTurn`, and optional `onPerceptionArrived` for newly inserted perception events), **Sensory Buffer** read projection over `runtime_events`, connected-client presence. Exposes the `BoundSession`, `PerUserChannel`, and `PerceptionArrivedSink` types as its public `types/` contract.
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
-- `runtime`: DeepAgents adapter, **Turn Execution** spine (`turn` + `working-context`), **Interactive Turn** lifecycle (`turn-runner`), durable **Runtime Turn** records (`runtime_turns`), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
+- `runtime`: DeepAgents adapter, **Turn Execution** spine (`turn` + `working-context`; ADR-0031 owns floor resolution and the single `runtime_turns` anchor per turn), **Interactive Turn** lifecycle (`turn-runner`), **Monitoring Turn** builder (`monitoring-turn`), durable **Runtime Turn** insert queries (`runtime-turns` repo), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
 - `memory`: DeepAgents memory configuration, `StoreBackend` namespace wiring, injected `USER.md` profile reads, and the `/memories/` durable VFS route.
 - `bundles`: Procedure Floor source resolution, Langfuse prompt handles, deploy-bundled fallback, per-connection pinning, and trigger-aware prompt assembly.
 - `delivery`: shared delivery port, live connection registry read interface, Control Plane push handoff, Post-Message-Back service/tool, and `deliveries` attempt ledger.
