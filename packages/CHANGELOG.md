@@ -6,6 +6,12 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 
 ### Added
 
+- **`@intentive/providers` — observability bootstrap + structured telemetry** ([Issue #42]) —
+  `@intentive/providers/observability` owns Sentry init (`skipOpenTelemetrySetup: true`),
+  Langfuse callback handler factory, and redacted structured logging via `createLogger`.
+  v1 supports `SENTRY_MODE=errors-only` and `LANGFUSE_MODE=callback`; reserved OTel modes
+  reject at bootstrap. Tests: `providers/test/observability.test.mjs`,
+  `providers/test/telemetry.test.mjs`.
 - **`@intentive/protocol` — optional `client_tz` on `connect`** ([Issue #39]) —
   clients may report an IANA timezone on every WebSocket handshake so the Agent
   Runtime can resolve wall-clock Cron schedules while the user is offline.

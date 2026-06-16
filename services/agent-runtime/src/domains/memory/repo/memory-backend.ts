@@ -1,4 +1,6 @@
 import { CompositeBackend, StateBackend, StoreBackend, type AnyBackendProtocol } from "deepagents";
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
 
 import type { UserMemoryStore } from "../types/store.js";
 
@@ -29,17 +31,36 @@ export function createAgentBackend(params: {
   };
 }
 
-export async function readUserProfile(store: UserMemoryStore, userId: string): Promise<string> {
-  const item = await store.get(userMemoryNamespace(userId), "/USER.md");
-  const content = item?.value.content;
+export async function readUserProfile(
+  store: UserMemoryStore,
+  userId: string,
+  logger: Logger = createNoopLogger(),
+): Promise<string> {
+  const startedAt = Date.now();
+  try {
+    const item = await store.get(userMemoryNamespace(userId), "/USER.md");
+    const content = item?.value.content;
 
-  if (typeof content === "string") {
-    return content;
+    logger.info("memory.read", {
+      user_id: userId,
+      status: "ok",
+      duration_ms: Date.now() - startedAt,
+    });
+    if (typeof content === "string") {
+      return content;
+    }
+    if (Array.isArray(content)) {
+      return content.join("\n");
+    }
+    return "";
+  } catch (error) {
+    logger.error("memory.read", error, {
+      user_id: userId,
+      status: "failed",
+      duration_ms: Date.now() - startedAt,
+    });
+    throw error;
   }
-  if (Array.isArray(content)) {
-    return content.join("\n");
-  }
-  return "";
 }
 
 export function userMemoryNamespace(userId: string): string[] {

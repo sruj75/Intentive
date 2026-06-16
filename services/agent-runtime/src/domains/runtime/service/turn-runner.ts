@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Logger } from "@intentive/providers/telemetry";
 
 import type { ConversationRepo } from "../../conversation/types/conversation.js";
 import type { DeliveryPort } from "../../delivery/types/delivery.js";
@@ -22,6 +23,7 @@ interface TurnRunnerParams {
   readonly readUserProfile?: (userId: string) => Promise<string>;
   readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newMessageId?: () => string;
+  readonly logger?: Logger;
 }
 
 export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
@@ -31,6 +33,7 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
     createTurn({
       sql: params.sql,
       adapter: params.adapter,
+      logger: params.logger,
       workingContext:
         params.workingContext ??
         createWorkingContext({

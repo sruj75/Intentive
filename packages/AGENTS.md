@@ -13,7 +13,7 @@ package deltas, root [`../AGENTS.md`](../AGENTS.md), and
 | [`protocol/`](protocol/)         | WebSocket event schemas (Zod). The single source of truth for the client↔runtime wire format.                                                                 |
 | [`api-contract/`](api-contract/) | Control Plane HTTP request/response schemas (public + internal).                                                                                              |
 | [`domain-types/`](domain-types/) | Shared domain shapes not tied to a wire format. Owns the canonical `CLIENT_KINDS` tuple.                                                                      |
-| [`providers/`](providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, feature flags).                                                                                           |
+| [`providers/`](providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, observability bootstrap, feature flags). See [`providers/ARCHITECTURE.md`](providers/ARCHITECTURE.md).    |
 | [`boundary/`](boundary/)         | The one parse-at-boundary decode (`parseBoundary`/`BoundaryParseError`) for WS + HTTP (ADR-0004). See [`boundary/ARCHITECTURE.md`](boundary/ARCHITECTURE.md). |
 
 ## Contract-change rules

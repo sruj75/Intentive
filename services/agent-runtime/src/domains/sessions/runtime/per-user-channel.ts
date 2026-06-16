@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { LogAttrs, Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
 
 import type { SessionSnapshotReader } from "../../conversation/types/conversation.js";
 import type { TurnRunner } from "../../runtime/types/turn.js";
@@ -36,9 +38,11 @@ export function createPerUserChannel(deps: {
   onPerceptionArrived?: PerceptionArrivedSink;
   onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
   newDedupKey?: () => string;
+  logger?: Logger;
 }): PerUserChannel {
   const newDedupKey = deps.newDedupKey ?? randomUUID;
-  const queue = createUserQueue();
+  const logger = deps.logger ?? createNoopLogger();
+  const queue = createUserQueue({ logger });
 
   return {
     accept(session, event) {
@@ -49,6 +53,7 @@ export function createPerUserChannel(deps: {
           ...deps.project(session, event),
         ]);
         const inserted = insertedLedgerRow(results);
+        logger.info("session.ingress_committed", ingressAttrs(session, event, inserted));
         if (inserted && isPerceptionEvent(event)) {
           deps.onPerceptionArrived?.(session, event);
         }
@@ -63,7 +68,11 @@ export function createPerUserChannel(deps: {
             if (deps.onTurnError) {
               deps.onTurnError(error, context);
             } else {
-              console.error("Interactive Turn failed after ingress commit", { ...context, error });
+              logger.error("session.turn_failed", error, {
+                user_id: context.userId,
+                message_id: context.messageId,
+                status: "failed",
+              });
             }
           }
         }
@@ -82,6 +91,28 @@ export function createPerUserChannel(deps: {
       return queue.tryBestEffort(userId, run);
     },
   };
+}
+
+function ingressAttrs(
+  session: BoundSession,
+  event: RuntimeIngressEvent,
+  inserted: boolean,
+): LogAttrs {
+  const attrs: LogAttrs = {
+    user_id: session.userId,
+    status: inserted ? "ok" : "duplicate",
+    client_kind: session.clientKind,
+  };
+  if (event.type === "user_message") {
+    attrs.message_id = event.message_id;
+  }
+  if (event.type === "context_snapshot") {
+    attrs.snapshot_id = event.snapshot_id;
+  }
+  if (event.type === "session_end_marker") {
+    attrs.reason = event.reason;
+  }
+  return attrs;
 }
 
 function isPerceptionEvent(

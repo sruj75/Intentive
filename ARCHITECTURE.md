@@ -110,7 +110,7 @@ These live in `packages/` and are consumed by multiple deployables. **This is wh
 - **`packages/api-contract/`** — Control Plane HTTP contract (`GET /me` → `AccountState`, `POST /consent`, `POST /sibling-invitation/skip`, `GET /agent`, `POST /devices/register`). Zod schemas for request/response bodies. Imported by clients and the Control Plane.
 - **`packages/domain-types/`** — shared in-process domain shapes that aren't sent over the network as-is: branded ids (`UserId`, `DeviceId`, `AgentInstanceId`, `MessageId`), the canonical `CLIENT_KINDS` tuple, `Device`, `AgentInstance`, `ConversationMessage`. (Wire shapes like the `context_snapshot` event and `AccountState` live in `protocol`/`api-contract`, not here.)
 - **`packages/boundary/`** — the one leak-free parse-at-boundary decode (`parseBoundary` / `BoundaryParseError`) for every inbound boundary (WebSocket + HTTP). See monorepo ADR-0004.
-- **`packages/providers/`** — shared cross-cutting clients: Neon Auth JWKS verifier, telemetry shim, feature-flag client. Used by both services.
+- **`packages/providers/`** — shared cross-cutting clients: Neon Auth JWKS verifier, redacted structured telemetry, observability bootstrap (Sentry + Langfuse composition), feature-flag client. Used by both services.
 
 Rule: **if a piece of knowledge is shared between two deployables, it lives in `packages/`, not duplicated.** Lint rules enforce that domain code never imports from another deployable's source.
 

@@ -1,3 +1,6 @@
+import type { Logger } from "@intentive/providers/telemetry";
+import { createNoopLogger } from "@intentive/providers/telemetry";
+
 import type { PinnedProcedureFloor, ProcedureFloorResolver } from "../../bundles/types/floor.js";
 import type { DeepAgentsAdapter, Turn } from "../../runtime/types/turn.js";
 import { computeNextFireAt, resolveTz } from "../config/schedule.js";
@@ -21,14 +24,17 @@ export function createCronTurnHandler(params: {
   readonly readUserProfile?: (userId: string) => Promise<string>;
   readonly readRecentPerception?: (userId: string) => Promise<string | null>;
   readonly newThreadId?: (job: CronJob, firedAt: Date) => string;
+  readonly logger?: Logger;
 }): (job: CronJob, context: { firedAt: Date }) => Promise<void> {
   const newThreadId = params.newThreadId ?? ((job) => job.userId);
+  const logger = params.logger ?? createNoopLogger();
 
   return async (job, { firedAt }) => {
     if (job.status !== "active") {
       return;
     }
 
+    const startedAt = Date.now();
     const threadId = newThreadId(job, firedAt);
     let pinnedFloor: PinnedProcedureFloor;
     let userTz: string | null | undefined;
@@ -39,9 +45,17 @@ export function createCronTurnHandler(params: {
       ]);
     } catch (error) {
       await params.sql.transaction(failureQueries(params, job, threadId, firedAt, userTz, error));
+      logger.error("cron.turn", error, {
+        user_id: job.userId,
+        cron_job_id: job.id,
+        thread_id: threadId,
+        status: "failed",
+        duration_ms: Date.now() - startedAt,
+      });
       return;
     }
 
+    let turnError: unknown = null;
     await params.turn({
       userId: job.userId,
       threadId,
@@ -62,10 +76,22 @@ export function createCronTurnHandler(params: {
         successLifecycleQuery(params, job, firedAt, userTz),
       ],
       onFailure: (error) => ({
-        queries: failureQueries(params, job, threadId, firedAt, userTz, error),
+        queries: failureQueries(params, job, threadId, firedAt, userTz, (turnError = error)),
         rethrow: false,
       }),
     });
+    const attrs = {
+      user_id: job.userId,
+      cron_job_id: job.id,
+      thread_id: threadId,
+      status: turnError ? "failed" : "ok",
+      duration_ms: Date.now() - startedAt,
+    } as const;
+    if (turnError) {
+      logger.error("cron.turn", turnError, attrs);
+    } else {
+      logger.info("cron.turn", attrs);
+    }
   };
 }
 

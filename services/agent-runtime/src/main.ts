@@ -8,8 +8,9 @@
 import { serve } from "@hono/node-server";
 import { neon } from "@neondatabase/serverless";
 import { createJwtVerifier } from "@intentive/providers/auth";
+import { bootstrapObservability } from "@intentive/providers/observability";
 import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
-import { CallbackHandler, Langfuse } from "langfuse-langchain";
+import { Langfuse } from "langfuse-langchain";
 import { WebSocketServer } from "ws";
 
 import { loadConfig } from "./config/env.js";
@@ -52,6 +53,11 @@ import { createStartSession } from "./domains/sessions/service/start-session.js"
 import type { PerUserChannel } from "./domains/sessions/types/event.js";
 
 const config = loadConfig();
+const observability = bootstrapObservability({
+  sentry: config.sentry,
+  langfuse: config.langfuse,
+});
+const log = observability.createLogger("agent-runtime");
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
 
 const verifier = createJwtVerifier({
@@ -67,7 +73,7 @@ const sensoryBuffer = createSensoryBufferReader(sql);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
 const cronJobs = createCronJobsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
-const connectionRegistry = createConnectionRegistry();
+const connectionRegistry = createConnectionRegistry({ logger: log });
 const deliveries = createDeliveriesRepo(sql);
 const cpPush = createCpPushClient({
   baseUrl: config.controlPlane.baseUrl,
@@ -77,10 +83,12 @@ const deliveryPort = createDeliveryPort({
   registry: connectionRegistry,
   deliveries,
   cpPush,
+  logger: log,
 });
 const postMessageBack = createPostMessageBack({
   conversation,
   deliveryPort,
+  logger: log,
 });
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
 await memoryStore.setup();
@@ -110,29 +118,24 @@ const runtimeAdapter = createDeepAgentsAdapter({
   backend: agentBackend.backend,
   // A fresh handler per turn (not one shared instance) keeps each turn's trace
   // isolated; langfuse's handler holds the active trace on mutable state.
-  createCallbackHandler: langfuseConfig
-    ? () =>
-        new CallbackHandler({
-          publicKey: langfuseConfig.publicKey,
-          secretKey: langfuseConfig.secretKey,
-          baseUrl: langfuseConfig.baseUrl,
-        })
-    : null,
+  createCallbackHandler: langfuseConfig ? observability.createCallbackHandler : null,
   createTools: (input) => [createPostMessageBackTool({ postMessageBack, userId: input.userId })],
   openRouter: {
     apiKey: config.model.apiKey,
     baseUrl: config.model.baseUrl,
   },
+  logger: log,
 });
 await runtimeAdapter.setup();
 const workingContext = createWorkingContext({
-  readUserProfile: (userId) => readUserProfile(memoryStore, userId),
+  readUserProfile: (userId) => readUserProfile(memoryStore, userId, log),
   readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
 });
 const turn = createTurn({
   sql,
   adapter: runtimeAdapter,
   workingContext,
+  logger: log,
 });
 const runTurn = createTurnRunner({
   sql,
@@ -142,6 +145,7 @@ const runTurn = createTurnRunner({
   fallbackModel: config.model.model,
   deliveryPort,
   turn,
+  logger: log,
 });
 const fireCron = createCronTurnHandler({
   sql,
@@ -151,6 +155,7 @@ const fireCron = createCronTurnHandler({
   floorResolver,
   loadUserTz: (userId) => registry.loadUserTz(userId),
   turn,
+  logger: log,
 });
 const monitoringTurn = createMonitoringTurn({
   sql,
@@ -179,15 +184,18 @@ channel = createPerUserChannel({
       monitoringTurn(session.userId, "context_snapshot"),
     );
   },
+  logger: log,
 });
 const cronScheduler = createCronScheduler({
   cronJobsRepo: cronJobs,
   enqueueCron: (job, context) => channel.enqueueCommitted(job.userId, () => fireCron(job, context)),
+  logger: log,
 });
 const heartbeatScheduler = createHeartbeatScheduler({
   scheduleRepo: createHeartbeatScheduleRepo(sql),
   enqueueHeartbeat: (userId) =>
     channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
+  logger: log,
 });
 const startSession = createStartSession({
   registry,
@@ -201,6 +209,7 @@ const connectHandler = createConnectHandler({
   verifier,
   conversation: channel,
   floorResolver,
+  logger: log,
   sessions: {
     async loadSessionByAuthSubject({ authSubject, clientKind, clientTz }) {
       await registry.recordClientTzByAuthSubject(authSubject, clientTz);
@@ -229,10 +238,11 @@ wss.on("connection", (socket) => {
     connectHandler,
     routePostConnectEvent,
     (session, connectedSocket) => connectionRegistry.register(session, connectedSocket),
+    log,
   );
 });
 
-console.info(`Agent Runtime public WebSocket listening on :${config.port}`);
-console.info(`Agent Runtime Internal API listening on :${config.internalInbound.port}`);
+log.info("runtime.public_ws_listening", { status: "ok" });
+log.info("runtime.internal_api_listening", { status: "ok" });
 cronScheduler.start();
 heartbeatScheduler.start();
