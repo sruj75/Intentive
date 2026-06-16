@@ -53,7 +53,6 @@ export { createCronTurnHandler, isTransient } from "./domains/cron/service/cron-
 export { parseCard, renderCard } from "./domains/cron/config/cron-card.js";
 export type {
   CronCardFields,
-  CronFireEvent,
   CronJob,
   CronJobStatus,
   CronRunRecord,
@@ -65,14 +64,23 @@ export type { UserMemoryStore, UserMemoryStoreItem } from "./domains/memory/type
 export { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 export { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 export type { RuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+export { createTurn } from "./domains/runtime/service/turn.js";
 export { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
+export { createWorkingContext } from "./domains/runtime/service/working-context.js";
+export type {
+  WorkingContext,
+  WorkingContextInput,
+} from "./domains/runtime/service/working-context.js";
 export type {
   DeepAgentsAdapter,
   RuntimeTurnInput,
   RuntimeTurnOutput,
   RuntimeTurnRecord,
   RuntimeTurnStatus,
+  Turn,
+  TurnExecution,
   TurnRunner,
+  TurnSqlQuery,
 } from "./domains/runtime/types/turn.js";
 export { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 export type { EventLedger } from "./domains/sessions/repo/event-ledger.js";

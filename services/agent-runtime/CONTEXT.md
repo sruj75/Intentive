@@ -50,6 +50,10 @@ _Avoid_: monitoring loop / monitoring system (implies a separate brain), salienc
 A `user_message`-triggered agent turn whose returned final message **is** the reply — delivered and persisted as a `companion_message`, with no shell-side output classification (ADR-0013). The interactive counterpart to the **Monitoring Turn**; both run one-at-a-time on the **Per-User Channel**. Distinct from a _proactive_ turn (cron fire / heartbeat tick / context snapshot), which is silent by default and speaks only via **Post-Message-Back**.
 _Avoid_: chat turn, reply turn, normal turn
 
+**Turn Execution**:
+The shared shell mechanism every trigger uses to gather the model-visible context (Procedure Floor + `USER.md` + recent perception), invoke DeepAgents, and record durable outcome rows in one transaction. Trigger-specific modules supply only the thread, floor, durable records, error policy, and egress default. This is the turn _mechanism_, distinct from the **Runtime Turn** row that observes it.
+_Avoid_: trigger pipeline, turn pipeline, one pipeline per trigger
+
 **Persistence Adapter**:
 The thin repo-owned wrapper that the `runtime/` and `memory/` domains use to save and load DeepAgents checkpoints. Wraps LangGraph's Postgres checkpoint store internally so that shell code never imports LangGraph checkpoint types directly.
 _Avoid_: LangGraph store (as a direct domain dependency), checkpoint store (too generic), DIY checkpoint tables
@@ -94,7 +98,7 @@ The authenticated per-connection session handle (`userId`, `clientKind`, `agentI
 _Avoid_: GatewaySession, connection context
 
 **Per-User Channel**:
-The single per-`user_id` serialization point in the always-alive Runtime process — and the **single run-loop**: every trigger that would start an agent turn (a `user_message`, a Context Snapshot, a Heartbeat tick, a Cron fire) is arbitrated here, and **exactly one agent turn runs at a time** against that user's one checkpoint (the concurrency consequence of one brain + one eternal thread; ADR-0011/0014). It is the analog of OpenClaw's `SessionKey`, which is "the bucket key used to store context _and control concurrency_." All stateful ingress (the `runtime_events` ledger marker + Conversation History projection in one transaction) and all Conversation History reads also pass through it, so reads observe earlier accepted writes. Trigger arbitration (FIFO user turns; collapsing Monitoring Turns; prioritized cron) is defined by ADR-0016. Wraps the in-memory ordering queue (ADR-0007); owns the transactional ingress commit (ADR-0009). Consumes a **Bound Session** on `accept`.
+The single per-`user_id` serialization point in the always-alive Runtime process — and the **single run-loop** for main-checkpoint turns: every trigger that would start a main-thread agent turn (a `user_message`, a Context Snapshot, a Heartbeat tick) is arbitrated here, and **exactly one agent turn runs at a time** against that user's one checkpoint (the concurrency consequence of one brain + one eternal thread; ADR-0011/0014). It is the analog of OpenClaw's `SessionKey`, which is "the bucket key used to store context _and control concurrency_." All stateful ingress (the `runtime_events` ledger marker + Conversation History projection in one transaction) and all Conversation History reads also pass through it, so reads observe earlier accepted writes. Trigger arbitration is defined by ADR-0016. Issue #39 v1 Cron deliberately does **not** route through the channel: the scheduler fires it through a silent ephemeral thread per the ADR-0017 amendment. Wraps the in-memory ordering queue (ADR-0007); owns the transactional ingress commit (ADR-0009). Consumes a **Bound Session** on `accept`.
 _Avoid_: job queue, session writer, durable queue
 
 **Context Snapshot**:
@@ -210,12 +214,14 @@ See ADR-0015.
 **The Per-User Channel is the single run-loop; trigger arbitration is FIFO user turns + collapsing Monitoring Turns + prioritized cron.**
 Decided 2026-06-13. One brain + one eternal thread (ADR-0011/0014) means exactly **one checkpoint per user**, so two agent turns can never run against it concurrently. Rather than invent a lock, we promote the **Per-User Channel** (already the per-`user_id` ordering/ingress point) into the **single run-loop**: every trigger is arbitrated there and exactly one turn runs at a time. This mirrors OpenClaw, whose `SessionKey` is "the bucket key used to store context _and control concurrency_," with per-session FIFO and skip-when-busy heartbeats — we adapt, not reinvent.
 
+_Amended 2026-06-16:_ Issue #39 v1 Cron is the exception: due fires run through the cron scheduler on silent ephemeral threads, not through the Per-User Channel. Cron returns to this run-loop only with an ADR-gated main-thread delivery change.
+
 - **`user_message` (inbound push):** enqueue, strict **FIFO, never dropped**; a rapid burst is **debounced** into one turn (OpenClaw's "debounced batch").
 - **Context Snapshot (inbound push):** append to the **sensory buffer** and ensure **at most one pending Monitoring Turn**; a burst collapses into the buffer (ADR-0015), never one turn per snapshot.
 - **Heartbeat tick (timer):** **skip-when-busy** — if the lane is busy or a Monitoring Turn is already pending, the tick is **dropped** (not queued); the next tick re-evaluates fresh state. This is OpenClaw's actual mechanism and is simpler than coalescing stale ticks.
-- **Cron fire (timer):** enqueue (a committed scheduled action), with **priority over Monitoring Turns** (heartbeat defers to cron, per OpenClaw); never silently dropped.
+- **Cron fire (timer):** designed as enqueue-with-priority in ADR-0016, but v1 issue #39 fires through the scheduler's ephemeral cron path until Post-Message-Back/main-thread delivery lands.
 
-Net invariant: **Monitoring Turns collapse to at most one pending per user and always reason over the latest buffer + state; user turns never collapse (FIFO); cron outranks monitoring; in-flight turns are never preempted.** See ADR-0016.
+Net invariant: **Monitoring Turns collapse to at most one pending per user and always reason over the latest buffer + state; user turns never collapse (FIFO); in-flight turns are never preempted.** See ADR-0016 and the ADR-0017 amendment for the v1 Cron exception.
 
 **Issue #39 Cron fires silently on an ephemeral thread; main-session delivery waits for Post-Message-Back.**
 Amended 2026-06-16. The earlier ADR-0017 main-session leaning is superseded for the first Cron slice: a due Cron hydrates the Procedure Floor, `USER.md`, and recent perception, invokes DeepAgents with `trigger: "cron"` on an ephemeral thread, records `cron_runs`, and applies lifecycle/retry updates. It does not append Conversation History and does not mutate the user's main checkpoint. This prevents undelivered reminder attempts from polluting the eternal thread before #41 provides explicit user-facing egress.

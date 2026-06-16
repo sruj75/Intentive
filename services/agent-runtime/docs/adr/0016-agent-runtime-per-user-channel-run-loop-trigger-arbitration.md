@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; amended 2026-06-16 for issue #39 Cron.
 
 ## Date
 
@@ -47,6 +47,11 @@ Per ADR-0001 we do not reinvent the wheel. OpenClaw already solves this:
 **Promote the Per-User Channel from "ingress/read serializer" to the single
 per-user run-loop, and arbitrate the four triggers as follows.**
 
+**Amendment 2026-06-16:** issue #39 Cron is a temporary v1 exception. Due Cron
+fires are handled by the cron scheduler on silent ephemeral threads, not accepted
+through the Per-User Channel and not written to `runtime_events`. Reintroducing
+Cron onto the channel is the ADR-gated moment when main-thread delivery returns.
+
 1. **One run-loop, one turn at a time.** Every trigger is enqueued/arbitrated on
    the same per-`user_id` channel; the channel runs **exactly one agent turn at a
    time** against that user's checkpoint. No new locking primitive — we extend the
@@ -73,6 +78,8 @@ per-user run-loop, and arbitrate the four triggers as follows.**
    committed scheduled action, so it is never silently dropped, and it **outranks**
    Monitoring Turns (heartbeat/monitoring defer to cron, per OpenClaw). Cron does
    not preempt an in-flight turn; it jumps ahead of a _pending_ Monitoring Turn.
+   The issue #39 implementation deliberately defers this branch and fires Cron
+   through the scheduler's ephemeral path instead.
 
 **Net invariant:** Monitoring Turns collapse to **at most one pending per user**
 and always reason over the latest buffer + state; **user turns never collapse**
@@ -106,8 +113,9 @@ and always reason over the latest buffer + state; **user turns never collapse**
   context-snapshot slices.
 - Agent-controlled cadence (ADR-0014) will tune how often heartbeat ticks fire;
   this ADR governs _arbitration_, not cadence.
-- Offline users still get timer-driven Monitoring Turns and cron fires (always-
-  alive); delivery then routes through Post-Message-Back push (ADR-0013).
+- Offline users still get timer-driven Monitoring Turns. Cron fires are handled
+  by the always-alive cron scheduler's ephemeral path until main-thread delivery
+  returns (ADR-0017 amendment).
 - User-priority **preemption** of an in-flight Monitoring Turn (cancel-and-rerun
   when the user speaks) is deferred; it would need turn cancellation semantics
   that v1 does not yet have.
