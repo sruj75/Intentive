@@ -42,3 +42,6 @@ coverage/
 
 # Local Claude config
 .claude/settings.local.json
+
+# Conductor local overrides (shared settings live in .conductor/settings.toml)
+.conductor/settings.local.toml
