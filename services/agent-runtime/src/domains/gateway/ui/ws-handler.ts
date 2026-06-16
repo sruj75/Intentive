@@ -5,6 +5,7 @@ import {
 } from "@intentive/protocol";
 import type { RawData, WebSocket } from "ws";
 
+import type { ConnectionHandle } from "../../delivery/types/delivery.js";
 import type { BoundSession } from "../../sessions/types/event.js";
 import type { ConnectHandler } from "../service/connect.js";
 
@@ -18,15 +19,28 @@ export type PostConnectEvent = Exclude<ClientToRuntimeEvent, { type: "connect" }
 export type GatewayEventHandler = (
   session: BoundSession,
   event: PostConnectEvent,
+  connection: ConnectionHandle | null,
 ) => Promise<RuntimeToClientEvent | void> | RuntimeToClientEvent | void;
+
+export type GatewayConnectionRegistrar = (
+  session: BoundSession,
+  socket: WebSocket,
+) => ConnectionHandle;
 
 export function attachGatewayWebSocketHandler(
   socket: WebSocket,
   handler: ConnectHandler,
   onEvent: GatewayEventHandler = () => undefined,
+  registerConnection?: GatewayConnectionRegistrar,
 ): void {
   let connected = false;
   let session: BoundSession | undefined;
+  let connection: ConnectionHandle | null = null;
+
+  socket.on("close", () => {
+    connection?.unregister();
+    connection = null;
+  });
 
   socket.on("message", (data) => {
     void handleMessage(socket, handler, onEvent, data, {
@@ -37,7 +51,9 @@ export function attachGatewayWebSocketHandler(
       },
       bindSession: (next) => {
         session = next;
+        connection = registerConnection?.(next, socket) ?? null;
       },
+      getConnection: () => connection,
     }).catch(() => {
       sendRuntimeError(socket, {
         code: "service_unavailable",
@@ -58,6 +74,7 @@ async function handleMessage(
     getSession(): BoundSession | undefined;
     markConnected(): void;
     bindSession(session: BoundSession): void;
+    getConnection(): ConnectionHandle | null;
   },
 ): Promise<void> {
   const raw = parseFrame(data);
@@ -67,7 +84,7 @@ async function handleMessage(
       socket.close();
       return;
     }
-    await handlePostConnectMessage(socket, session, onEvent, raw);
+    await handlePostConnectMessage(socket, session, onEvent, raw, state.getConnection());
     return;
   }
 
@@ -87,6 +104,7 @@ async function handlePostConnectMessage(
   session: BoundSession,
   onEvent: GatewayEventHandler,
   raw: unknown,
+  connection: ConnectionHandle | null,
 ): Promise<void> {
   const parsed = safeParseClientToRuntimeEvent(raw);
   if (!parsed.success || parsed.data.type === "connect") {
@@ -100,7 +118,7 @@ async function handlePostConnectMessage(
     return;
   }
 
-  const response = await onEvent(session, parsed.data);
+  const response = await onEvent(session, parsed.data, connection);
   if (response) {
     socket.send(JSON.stringify(response));
   }

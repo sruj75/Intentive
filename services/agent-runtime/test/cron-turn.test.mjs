@@ -8,7 +8,7 @@ import {
   isTransient,
 } from "../dist/index.js";
 
-test("cron turn invokes the adapter on an ephemeral thread and records a silent successful run", async () => {
+test("cron turn invokes the adapter on the user's main thread and records a silent successful run", async () => {
   const invocations = [];
   const transactions = [];
   const adapter = {
@@ -37,13 +37,12 @@ test("cron turn invokes the adapter on an ephemeral thread and records a silent 
     }),
     readUserProfile: async () => "profile",
     readRecentPerception: async () => null,
-    newThreadId: () => "cron-thread",
   });
 
   await handler(job({ scheduleKind: "at" }), { firedAt: new Date("2026-06-16T00:00:00.000Z") });
 
   assert.equal(invocations.length, 1);
-  assert.equal(invocations[0].threadId, "cron-thread");
+  assert.equal(invocations[0].threadId, "user_1");
   assert.equal(invocations[0].trigger, "cron");
   assert.equal(invocations[0].body, "wake");
   assert.equal(transactions.length, 1);

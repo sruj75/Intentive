@@ -1,30 +1,30 @@
-import type { CronJob } from "../types/cron.js";
-import type { CronJobsRepo } from "../repo/cron-jobs.js";
+import type { HeartbeatScheduleRepo } from "../repo/heartbeat-schedule.js";
 
-export interface CronScheduler {
+export interface HeartbeatScheduler {
   tick(): Promise<void>;
   start(): void;
   stop(): void;
 }
 
-export function createCronScheduler(params: {
-  readonly cronJobsRepo: Pick<CronJobsRepo, "selectDue">;
-  readonly enqueueCron: (job: CronJob, context: { firedAt: Date }) => Promise<void>;
+export function createHeartbeatScheduler(params: {
+  readonly scheduleRepo: HeartbeatScheduleRepo;
+  readonly enqueueHeartbeat: (userId: string) => boolean;
   readonly clock?: () => Date;
   readonly pollIntervalMs?: number;
+  readonly floorMs?: number;
   readonly batchLimit?: number;
-}): CronScheduler {
+}): HeartbeatScheduler {
   const clock = params.clock ?? (() => new Date());
   const pollIntervalMs = params.pollIntervalMs ?? 60_000;
+  const floorMs = params.floorMs ?? 60 * 60_000;
   const batchLimit = params.batchLimit ?? 50;
   let timer: NodeJS.Timeout | null = null;
   let stopped = true;
 
   async function tick(): Promise<void> {
-    const now = clock();
-    const due = await params.cronJobsRepo.selectDue({ now, limit: batchLimit });
-    for (const job of due) {
-      await params.enqueueCron(job, { firedAt: now });
+    const due = await params.scheduleRepo.selectDue({ now: clock(), floorMs, limit: batchLimit });
+    for (const user of due) {
+      params.enqueueHeartbeat(user.userId);
     }
   }
 
@@ -32,7 +32,7 @@ export function createCronScheduler(params: {
     try {
       await tick();
     } catch (error) {
-      console.error("Cron scheduler tick failed", { error });
+      console.error("Heartbeat scheduler tick failed", { error });
     } finally {
       if (!stopped) {
         timer = setTimeout(() => void loop(), pollIntervalMs);

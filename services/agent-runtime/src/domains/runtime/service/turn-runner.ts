@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConversationRepo } from "../../conversation/types/conversation.js";
+import type { DeliveryPort } from "../../delivery/types/delivery.js";
 import type { RuntimeIngressEvent } from "../../sessions/types/event.js";
 import type { RuntimeTurnsRepo } from "../repo/runtime-turns.js";
 import type { TransactionalSql } from "../repo/sql.js";
@@ -15,6 +16,7 @@ interface TurnRunnerParams {
   readonly conversation: Pick<ConversationRepo, "appendQuery">;
   readonly runtimeTurns: RuntimeTurnsRepo;
   readonly fallbackModel: string;
+  readonly deliveryPort?: DeliveryPort;
   readonly turn?: Turn;
   readonly workingContext?: WorkingContext;
   readonly readUserProfile?: (userId: string) => Promise<string>;
@@ -43,30 +45,35 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
     }
 
     const threadId = session.userId;
+    const messageId = newMessageId();
+    let replyToDeliver: string | null = null;
     await runExecution({
       userId: session.userId,
       threadId,
       body: event.body,
       trigger: "user_message",
       floor: session.pinnedFloor,
-      onSuccess: (output) => [
-        params.conversation.appendQuery({
-          userId: session.userId,
-          messageId: newMessageId(),
-          author: "companion",
-          body: output.reply,
-          viaPostMessageBack: false,
-        }),
-        params.runtimeTurns.recordQuery({
-          userId: session.userId,
-          threadId,
-          traceId: output.traceId,
-          model: output.model,
-          bundleVersion: output.bundleVersion,
-          status: "ok",
-          error: null,
-        }),
-      ],
+      onSuccess: (output) => {
+        replyToDeliver = output.reply;
+        return [
+          params.conversation.appendQuery({
+            userId: session.userId,
+            messageId,
+            author: "companion",
+            body: output.reply,
+            viaPostMessageBack: false,
+          }),
+          params.runtimeTurns.recordQuery({
+            userId: session.userId,
+            threadId,
+            traceId: output.traceId,
+            model: output.model,
+            bundleVersion: output.bundleVersion,
+            status: "ok",
+            error: null,
+          }),
+        ];
+      },
       onFailure: (error) => ({
         queries: [
           params.runtimeTurns.recordQuery(
@@ -76,6 +83,12 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
         rethrow: true,
       }),
     });
+    if (replyToDeliver !== null && params.deliveryPort) {
+      await params.deliveryPort.deliver(
+        { userId: session.userId, messageId, body: replyToDeliver },
+        "reply",
+      );
+    }
   };
 }
 

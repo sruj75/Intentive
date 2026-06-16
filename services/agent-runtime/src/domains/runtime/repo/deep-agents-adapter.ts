@@ -1,6 +1,7 @@
 import { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import type { StructuredTool } from "@langchain/core/tools";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { ChatOpenAI } from "@langchain/openai";
 import { createDeepAgent, type AnyBackendProtocol } from "deepagents";
@@ -32,6 +33,7 @@ interface DeepAgentsAdapterParams {
   readonly backend?: AnyBackendProtocol;
   readonly createCallbackHandler?: (() => CallbackHandlerLike | null) | null;
   readonly assemblePrompt?: PromptAssembler;
+  readonly createTools?: (input: RuntimeTurnInput) => StructuredTool[];
   readonly openRouter?: {
     readonly apiKey: string;
     readonly baseUrl: string;
@@ -79,6 +81,7 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
         checkpointer,
         store: params.store as never,
         backend: params.backend,
+        tools: params.createTools?.(input),
         systemPrompt,
       });
       // A langfuse CallbackHandler carries the active trace on mutable instance

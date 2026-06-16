@@ -13,8 +13,12 @@ export type {
   GatewaySessionRegistry,
 } from "./domains/gateway/service/connect.js";
 export { createPostConnectRouter } from "./domains/gateway/ui/post-connect-router.js";
+export { createConnectionRegistry } from "./domains/gateway/runtime/connection-registry.js";
 export { attachGatewayWebSocketHandler } from "./domains/gateway/ui/ws-handler.js";
-export type { GatewayEventHandler } from "./domains/gateway/ui/ws-handler.js";
+export type {
+  GatewayConnectionRegistrar,
+  GatewayEventHandler,
+} from "./domains/gateway/ui/ws-handler.js";
 export { createInternalApp } from "./domains/internal/ui/app.js";
 export { createConversationRepo } from "./domains/conversation/repo/conversation.js";
 export { toConversationEntry } from "./domains/conversation/service/project-ingress.js";
@@ -36,6 +40,26 @@ export type {
   ProcedureFloorResolver,
   TurnTrigger,
 } from "./domains/bundles/types/floor.js";
+export { createDeliveryPort } from "./domains/delivery/service/delivery-port.js";
+export { createPostMessageBack } from "./domains/delivery/service/post-message-back.js";
+export { createPostMessageBackTool } from "./domains/delivery/service/post-message-back-tool.js";
+export { createDeliveriesRepo } from "./domains/delivery/repo/deliveries.js";
+export { createCpPushClient } from "./domains/delivery/repo/cp-push-client.js";
+export { CHAT_CAPABLE_KINDS, isChatCapable } from "./domains/delivery/config/reachability.js";
+export type {
+  ConnectionHandle,
+  ConnectionRegistry,
+  CpPushClient,
+  DeliveriesRepo,
+  DeliveryMessage,
+  DeliveryMode,
+  DeliveryPath,
+  DeliveryPort,
+  DeliveryRecord,
+  DeliveryStatus,
+  PostMessageBack,
+  RegisteredConnection,
+} from "./domains/delivery/types/delivery.js";
 export {
   createAgentBackend,
   createMemoryBackend,
@@ -64,6 +88,8 @@ export type { UserMemoryStore, UserMemoryStoreItem } from "./domains/memory/type
 export { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 export { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 export type { RuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
+export { createMonitoringTurn } from "./domains/runtime/service/monitoring-turn.js";
+export type { MonitoringTurnTrigger } from "./domains/runtime/service/monitoring-turn.js";
 export { createTurn } from "./domains/runtime/service/turn.js";
 export { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
 export { createWorkingContext } from "./domains/runtime/service/working-context.js";
@@ -107,5 +133,12 @@ export type {
   RuntimeEventKind,
   RuntimeIngressEvent,
 } from "./domains/sessions/types/event.js";
+export { createHeartbeatScheduleRepo } from "./domains/heartbeat/repo/heartbeat-schedule.js";
+export type {
+  HeartbeatDueUser,
+  HeartbeatScheduleRepo,
+} from "./domains/heartbeat/repo/heartbeat-schedule.js";
+export { createHeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
+export type { HeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
 export { AgentRuntimeConfigError, loadConfig } from "./config/env.js";
 export type { AgentRuntimeConfig } from "./config/env.js";

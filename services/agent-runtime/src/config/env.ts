@@ -12,6 +12,8 @@ const EnvSchema = z.object({
   INTERNAL_PORT: z.coerce.number().int().positive().default(8081),
   PUBLIC_WS_URL: z.string().url(),
   INTERNAL_SECRET_FROM_CONTROL_PLANE: z.string().min(1),
+  CONTROL_PLANE_INTERNAL_BASE_URL: z.string().url(),
+  INTERNAL_SECRET_TO_CONTROL_PLANE: z.string().min(1),
   NEON_DATABASE_URL: z.string().url(),
   NEON_DATABASE_ROLE: z.string().min(1).default("agent_runtime_app"),
   NEON_AUTH_JWKS_URL: z.string().url(),
@@ -30,6 +32,7 @@ export interface AgentRuntimeConfig {
   readonly port: number;
   readonly publicWsUrl: string;
   readonly internalInbound: { readonly port: number; readonly secret: string };
+  readonly controlPlane: { readonly baseUrl: string; readonly internalSecret: string };
   readonly neon: { readonly url: string; readonly role: string };
   readonly neonAuth: {
     readonly jwksUrl: string;
@@ -77,6 +80,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
     internalInbound: Object.freeze({
       port: e.INTERNAL_PORT,
       secret: e.INTERNAL_SECRET_FROM_CONTROL_PLANE,
+    }),
+    controlPlane: Object.freeze({
+      baseUrl: e.CONTROL_PLANE_INTERNAL_BASE_URL,
+      internalSecret: e.INTERNAL_SECRET_TO_CONTROL_PLANE,
     }),
     neon: Object.freeze({ url: e.NEON_DATABASE_URL, role: e.NEON_DATABASE_ROLE }),
     neonAuth: Object.freeze({

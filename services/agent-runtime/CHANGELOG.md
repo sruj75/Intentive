@@ -6,6 +6,23 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Heartbeat + Post-Message-Back delivery + Cron main-session flip** (ADR-0027/0028/0029) —
+  `delivery/` domain with shared `DeliveryPort`, `deliveries` ledger
+  (`migrations/0009_deliveries.sql`), Control Plane push handoff client,
+  `post_message_back({ body })` tool, and process-local gateway connection
+  registry. **Interactive Turn** replies are now persisted and then streamed
+  through the shared delivery port; proactive output persists first via
+  Post-Message-Back and streams to foreground chat clients or pushes through the
+  Control Plane. **Cron** now enqueues onto the **Per-User Channel** committed
+  lane and runs on the user's main thread (`threadId = userId`). **Heartbeat**
+  adds a zero-state computed scheduler over `agent_instances` + `runtime_turns`
+  that enqueues best-effort **Monitoring Turns**. Tests:
+  `test/delivery-port.test.mjs`, `test/deliveries.integration.test.mjs`,
+  `test/connection-registry.test.mjs`, `test/cp-push-client.test.mjs`,
+  `test/post-message-back.test.mjs`, `test/monitoring-turn.test.mjs`,
+  `test/heartbeat-scheduler.test.mjs`,
+  `test/heartbeat-schedule.integration.test.mjs`, plus extended queue, router,
+  cron, and turn-runner coverage.
 - **Cron scheduler, filesystem cards, and ephemeral fire turns** ([Issue #39]) —
   `cron/` domain slice: `/crons/` DeepAgents backend over `cron_jobs`, `croner`
   schedule validation (5-minute minimum interval), poll-loop scheduler
@@ -95,6 +112,14 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Per-User Channel arbitration** — `sessions/runtime/user-queue.ts` now has two
+  lanes: committed FIFO work (`user_message`, Cron) and one collapsible
+  best-effort slot (Heartbeat / perception-triggered Monitoring Turns). The
+  Channel exposes `enqueueCommitted` and `enqueueBestEffort` while preserving
+  transactional ingress and serialized reads.
+- **Post-connect routing** — `presence_update` updates the registered connection
+  foreground state and `delivery_ack` is accepted as a no-op placeholder instead
+  of returning `runtime_error`.
 - **Turn Execution spine refactor** — `runtime/service/working-context.ts`
   now owns model-visible context gathering (`USER.md` + latest perception, with
   caller-supplied Procedure Floor), and `runtime/service/turn.ts` owns the shared
@@ -152,6 +177,9 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Removed
 
+- **Cron ephemeral-thread stopgap** — Cron no longer fires on `cron:...`
+  ephemeral threads and no longer bypasses the Per-User Channel; ADR-0029
+  retires that exception now that Post-Message-Back delivery exists.
 - **Cron through Per-User Channel ingress** — removed the unreachable `cron`
   arm from `RuntimeIngressEvent`, `RuntimeEventKind`, `isRuntimeIngressEvent`,
   Per-User Channel turn dispatch/deduping, and the exported `CronFireEvent`.
