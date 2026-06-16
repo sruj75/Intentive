@@ -15,7 +15,9 @@ compute, scoped by `user_id`). Several prior decisions assumed a runtime form
 without pinning it down:
 
 - ADR-0014/0015 run a Monitoring Turn in the main session; ADR-0016 makes the
-  Per-User Channel the single run-loop; ADR-0017 runs cron in the main session.
+  Per-User Channel the main-checkpoint run-loop; ADR-0017 originally leaned
+  Cron main-session, but issue #39 amended Cron to fire on silent ephemeral
+  threads until Post-Message-Back/main-thread delivery lands.
 - ADR-0011/0012 keep one eternal thread per user with state durable in Neon (the
   LangGraph checkpoint), and the Agent Instance is already defined as _"a row —
   not a process, not a VM, not a container."_
@@ -53,10 +55,11 @@ not a brain-per-user.**
 1. **Logical instance (lives as data).** Durable truth is Neon — checkpoint +
    bundles + memory + Conversation History. No resident per-user brain.
 
-2. **Lazy hydration (wakes on demand).** When a trigger fires for a user — a
-   `user_message`, a Context Snapshot, or a scheduler **wake** (heartbeat/cron) —
-   the runtime builds that user's brain in memory _then_, by hydrating the
-   checkpoint, and runs the turn on the Per-User Channel (ADR-0016).
+2. **Lazy hydration (wakes on demand).** When a main-thread trigger fires for a
+   user — a `user_message`, a Context Snapshot, or a Heartbeat **wake** — the
+   runtime builds that user's brain in memory _then_, by hydrating the
+   checkpoint, and runs the turn on the Per-User Channel (ADR-0016). Issue #39
+   Cron hydrates a silent ephemeral thread instead.
 
 3. **Idle eviction (sleeps when quiet).** After the user goes quiet, the
    in-memory brain is dropped to free resources; nothing is lost because state is
@@ -64,10 +67,10 @@ not a brain-per-user.**
 
 4. **One process-wide scheduler drives offline triggers.** A single shell-owned
    scheduler holds every user's cron due-times (from Neon) and heartbeat cadence.
-   When a timer is due for user X, it **enqueues a trigger onto X's Per-User
-   Channel**, hydrating the lane. This is what fires heartbeat/cron for a user
-   with **no live connection** — the gym/driving case: proactivity reaches the
-   user via Post-Message-Back push even with no laptop session open.
+   Heartbeat enqueues onto the Per-User Channel, hydrating the lane. Issue #39
+   Cron fires through the scheduler's silent ephemeral path. This keeps offline
+   proactivity available with **no live connection**; user-facing delivery
+   returns with Post-Message-Back.
 
 5. **Heartbeat is the connection-independent proactivity engine.** It fires on
    cadence regardless of capture session or connection state. Context Snapshots
@@ -79,10 +82,10 @@ not a brain-per-user.**
 
 6. **Restart-resumable.** Neon-persisted checkpoints survive a VM restart; an
    in-flight turn resumes from its last checkpointed step (Persistence Adapter).
-   On boot the scheduler rebuilds its timer wheel from Neon and fires overdue
-   timers in a **controlled, non-stampeding** way (ADR-0016 skip-when-busy +
-   snapshot debounce bound the monitoring stampede; cron overdue handling is a
-   cron-slice detail).
+   On boot the scheduler queries Neon for due work and fires overdue timers in a
+   **controlled, non-stampeding** way (ADR-0016 skip-when-busy + snapshot
+   debounce bound the monitoring stampede; Cron overdue handling is a cron-slice
+   detail).
 
 ## Consequences
 
@@ -90,7 +93,7 @@ not a brain-per-user.**
 
 - Scales: one VM serves many users; only _active_ users occupy memory.
 - Proactivity reaches the user anywhere (gym, driving, phone-only), because the
-  always-running scheduler wakes the lane independent of any device session.
+  always-running scheduler can fire without any device session.
 - Consistent with the Agent-Instance-as-a-row definition, ADR-0016 run-loop, and
   the durable-checkpoint memory model (ADR-0012).
 - Faithful to OpenClaw's on-demand-drain + timer-wake model; LangGraph-native

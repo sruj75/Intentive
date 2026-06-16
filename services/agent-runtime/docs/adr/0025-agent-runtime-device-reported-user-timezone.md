@@ -23,7 +23,7 @@ Bedrock facts:
   the server's zone.
 - **The LLM cannot be the source.** An agent-remembered timezone is guessed, stale, and
   unverifiable — exactly the kind of fact the shell should supply, not the brain.
-- **Cron fires for offline users.** The scheduler wakes a user's lane even with no live
+- **Cron fires for offline users.** The scheduler can fire a user's Cron even with no live
   connection (the gym/driving case, ADR-0018). So the timezone must be **durable**, not
   read off a live socket at fire time — it has to be known when the user is absent.
 - **The device already knows.** Every client (Mobile, Desktop) runs in the user's OS

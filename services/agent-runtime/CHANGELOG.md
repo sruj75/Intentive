@@ -95,6 +95,17 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Turn Execution spine refactor** — `runtime/service/working-context.ts`
+  now owns model-visible context gathering (`USER.md` + latest perception, with
+  caller-supplied Procedure Floor), and `runtime/service/turn.ts` owns the shared
+  assemble → invoke → transactional-record mechanism. `turn-runner.ts` and
+  `cron-turn.ts` now build trigger-specific executions over that spine while
+  preserving their public factories. `src/main.ts` wires one working-context
+  assembler and one `Turn` executor into both interactive and Cron paths. Tests:
+  new `test/working-context.test.mjs` and `test/turn.test.mjs`, plus adjusted
+  turn-runner/cron/channel coverage.
+- **`src/index.ts`** — exports `createTurn`, `createWorkingContext`, and the
+  public `Turn` / `TurnExecution` types for composition and tests.
 - **`src/config/env.ts` and `loadConfig`** ([Issue #36]) — required
   `OPENROUTER_API_KEY`; defaults for `OPENROUTER_BASE_URL` and `RUNTIME_MODEL`;
   optional paired `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (with optional
@@ -141,6 +152,11 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Removed
 
+- **Cron through Per-User Channel ingress** — removed the unreachable `cron`
+  arm from `RuntimeIngressEvent`, `RuntimeEventKind`, `isRuntimeIngressEvent`,
+  Per-User Channel turn dispatch/deduping, and the exported `CronFireEvent`.
+  Production Cron continues to fire through `cronScheduler → createCronTurnHandler`
+  on silent ephemeral threads (ADR-0017 amendment).
 - **Upfront domain type scaffolds** — deleted placeholder `types/scaffold.ts` files and
   contract sample types under `src/domains/*` (lazy domain layout per ADR-0002; real
   folders arrive with each vertical slice). Removed `test/scaffold.test.mjs`.
