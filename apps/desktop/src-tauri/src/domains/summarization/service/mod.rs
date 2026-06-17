@@ -161,3 +161,8 @@ impl LlmProvider {
 
 #[cfg(test)]
 mod tests;
+
+/// Privacy efficacy eval (guarantee C) — `#[ignore]`d, model-required,
+/// out-of-band. See `eval.rs` and `apps/desktop/docs/EVAL.md`.
+#[cfg(test)]
+mod eval;

@@ -269,6 +269,106 @@ impl AgentSink for FailingSink {
     async fn emit_session_end_marker(&self, _marker: &SessionEndMarker) {}
 }
 
+/// Fails the first `emit_context_snapshot` with `PushError::Network`, then
+/// succeeds on every later call. Records the `snapshot_id` of *every* emit it
+/// receives (failed or succeeded) so a test can assert no row is ever
+/// re-emitted on a later tick — the no-retry invariant (ADR-0005).
+struct FailFirstThenRecordingSink {
+    emitted_ids: Mutex<Vec<uuid::Uuid>>,
+}
+
+impl FailFirstThenRecordingSink {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            emitted_ids: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn emitted_ids(&self) -> Vec<uuid::Uuid> {
+        self.emitted_ids.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl AgentSink for FailFirstThenRecordingSink {
+    async fn emit_context_snapshot(
+        &self,
+        snapshot: &ContextSnapshot,
+    ) -> Result<(), crate::domains::snapshots::runtime::agent_interface::PushError> {
+        let mut ids = self.emitted_ids.lock().unwrap();
+        let is_first = ids.is_empty();
+        ids.push(snapshot.snapshot_id);
+        if is_first {
+            Err(crate::domains::snapshots::runtime::agent_interface::PushError::Network(
+                "first emit fails".to_string(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn emit_session_end_marker(&self, _marker: &SessionEndMarker) {}
+}
+
+/// The no-retry guarantee (ADR-0005, correcting stale PRD story-28): a snapshot
+/// whose first emit fails is **never** re-sent on a later tick. Each tick emits
+/// only its own freshly-produced snapshot; the failed row stays `pushed_at =
+/// null` forever and the sink never sees its id a second time.
+///
+/// Unlike `failed_push_leaves_snapshot_unmarked` (an always-failing sink, which
+/// cannot tell "no retry" apart from "a retry that also failed"), this sink lets
+/// later emits succeed — so a retry of the first snapshot would show up as a
+/// second emit of that id, or as the first row flipping to pushed.
+#[tokio::test]
+async fn failed_snapshot_is_never_re_emitted_on_a_later_tick() {
+    let store = in_memory_store().await;
+    let sink = FailFirstThenRecordingSink::new();
+    let heartbeat = heartbeat_with(
+        FakeSummarizer::ok("summary"),
+        FakeActivityClient::new("activity"),
+        store.clone(),
+        sink.clone(),
+    );
+
+    heartbeat
+        .clone()
+        .start()
+        .await
+        .expect("start should succeed");
+    // Drive at least three ticks so a retry path would have ample opportunity
+    // to re-emit the first (failed) snapshot.
+    sleep(TEST_INTERVAL * 3).await;
+    heartbeat.stop(SessionEndReason::UserToggle).await;
+
+    let emitted = sink.emitted_ids();
+    assert!(
+        emitted.len() >= 2,
+        "expected multiple ticks to have emitted, saw {}",
+        emitted.len()
+    );
+    let first_failed_id = emitted[0];
+    assert_eq!(
+        emitted.iter().filter(|id| **id == first_failed_id).count(),
+        1,
+        "the failed snapshot must be emitted exactly once — never retried"
+    );
+
+    let rows = store.list_recent(10).await.expect("list should succeed");
+    let first_row = rows
+        .iter()
+        .find(|row| row.snapshot_id == first_failed_id)
+        .expect("the failed snapshot's row must still be in the store");
+    assert!(
+        first_row.pushed_at.is_none(),
+        "the failed snapshot row must stay unconfirmed (never retried)"
+    );
+    assert!(
+        rows.iter()
+            .any(|row| row.snapshot_id != first_failed_id && row.pushed_at.is_some()),
+        "a later tick's snapshot must succeed and be stamped pushed"
+    );
+}
+
 /// Stopping the heartbeat emits exactly one Session End Marker via the sink
 /// before `stop` returns.
 #[tokio::test]
