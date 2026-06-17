@@ -11,6 +11,15 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Failed user message retry** ([Issue #44]) — `RuntimeAdapter.retryUserMessage(messageId)`
+  re-queues a failed outbound `user_message` with the same `message_id`, body, and
+  `sent_at` (idempotency key preserved; reconciles to one confirmed row). The
+  conversation reducer adds `retry_failed_user_message` to flip local **Delivery
+  Status** back to `pending`; `mark_pending_failed` is now a no-op when nothing is
+  pending. Tests also cover empty `hello_ok` cold connect, malformed snapshot
+  rejection at the Protocol boundary, and retry/reconcile paths in
+  `runtime-adapter.test.mjs` and `conversation-reducer.test.mjs`.
+
 - **Device timezone on connect** ([Issue #83]) — the Runtime Adapter now reports
   the device IANA zone as optional `client_tz` on every `connect` frame so the
   Runtime can resolve wall-clock Cron schedules while the user is offline (Runtime
@@ -188,8 +197,9 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **#23 (remainder)** — cold-launch session restore against a real Neon session,
   https OAuth redirect / enabled providers (`NEON_ENABLED_PROVIDERS` still empty; dev
   provider remains the working path until #61).
-- **#44** — Reconnect hydration polish and scroll-back UX on top of the #33 Runtime
-  Adapter.
+- **#44** — Scroll-back UX and companion-chat wiring for per-message retry UI (#45
+  styles **Delivery Status**); runtime-layer `retryUserMessage` landed on branch
+  `issue-44`.
 - **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard;
   styles **Delivery Status** surfaced by #33.
 - **#46** — Account Surface and sign-out UX.
@@ -205,6 +215,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 [Issue #22]: https://github.com/sruj75/Intentive/issues/22
 [Issue #23]: https://github.com/sruj75/Intentive/issues/23
 [Issue #33]: https://github.com/sruj75/Intentive/issues/33
+[Issue #44]: https://github.com/sruj75/Intentive/issues/44
 [Issue #45]: https://github.com/sruj75/Intentive/issues/45
 [Issue #46]: https://github.com/sruj75/Intentive/issues/46
 [Issue #83]: https://github.com/sruj75/Intentive/issues/83
