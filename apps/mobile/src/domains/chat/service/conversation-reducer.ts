@@ -24,6 +24,10 @@ export type ConversationEvent =
       readonly body: string;
       readonly sentAt: string;
     }
+  | {
+      readonly type: "retry_failed_user_message";
+      readonly messageId: string;
+    }
   | { readonly type: "mark_pending_failed" };
 
 export interface RuntimeSnapshotMessage {
@@ -90,13 +94,31 @@ export function reduceConversationState(
       });
       return { ...state, messages, agentState: "thinking" };
     }
+    case "retry_failed_user_message": {
+      let retried = false;
+      const messages = state.messages.map((message) => {
+        if (
+          message.id !== event.messageId ||
+          message.author !== "user" ||
+          message.delivery !== "failed"
+        ) {
+          return message;
+        }
+        retried = true;
+        // Retry reuses the original idempotency key; only the local delivery
+        // projection returns to pending until server truth confirms it.
+        return { ...message, delivery: "pending" as const };
+      });
+      return retried ? { ...state, messages, agentState: "thinking" } : state;
+    }
     case "mark_pending_failed": {
+      let failedAny = false;
       const messages = state.messages.map((message) =>
         message.author === "user" && message.delivery === "pending"
-          ? { ...message, delivery: "failed" as const }
+          ? ((failedAny = true), { ...message, delivery: "failed" as const })
           : message,
       );
-      return { ...state, messages, agentState: "available" };
+      return failedAny ? { ...state, messages, agentState: "available" } : state;
     }
   }
 }

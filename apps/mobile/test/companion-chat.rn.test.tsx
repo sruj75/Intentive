@@ -36,7 +36,7 @@ test("renders the Intentive-owned composer, not vendor example chrome", () => {
 });
 
 test("seeded messages render in Intentive-owned rows through the external-store runtime", async () => {
-  const { adapter } = createTestRuntimeAdapter([
+  const { adapter, connectCount } = createTestRuntimeAdapter([
     companionMessage("c1", "Welcome from server truth."),
     userMessage("u1", "hello companion", "confirmed"),
   ]);
@@ -47,6 +47,7 @@ test("seeded messages render in Intentive-owned rows through the external-store 
     "Welcome from server truth.",
   );
   expect(await screen.findByTestId("intentive-user-row")).toHaveTextContent("hello companion");
+  expect(connectCount()).toBe(1);
 });
 
 test("typing and Send routes through the injected Runtime Adapter", async () => {
@@ -63,6 +64,7 @@ test("typing and Send routes through the injected Runtime Adapter", async () => 
 function createTestRuntimeAdapter(initialMessages: readonly ConversationMessage[] = []): {
   adapter: RuntimeAdapter;
   sent: string[];
+  connectCount(): number;
 } {
   let state: RuntimeAdapterState = {
     messages: initialMessages,
@@ -73,6 +75,7 @@ function createTestRuntimeAdapter(initialMessages: readonly ConversationMessage[
   };
   const listeners = new Set<() => void>();
   const sent: string[] = [];
+  let connects = 0;
 
   const notify = () => {
     for (const listener of listeners) listener();
@@ -86,7 +89,9 @@ function createTestRuntimeAdapter(initialMessages: readonly ConversationMessage[
         return () => listeners.delete(listener);
       },
       getState: () => state,
-      connect: async () => {},
+      connect: async () => {
+        connects += 1;
+      },
       sendUserMessage: async (body) => {
         sent.push(body);
         state = {
@@ -96,8 +101,10 @@ function createTestRuntimeAdapter(initialMessages: readonly ConversationMessage[
         };
         notify();
       },
+      retryUserMessage: async () => {},
       close: () => {},
     },
+    connectCount: () => connects,
   };
 }
 
