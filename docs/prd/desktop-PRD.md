@@ -51,7 +51,7 @@ The product stays quiet: start/stop capture from the menu bar; account in Settin
 25. As a developer, I want each snapshot emitted as a `context_snapshot` Protocol event with snapshot_id, captured_at, period_start, period_end, summary.
 26. As a developer, I want JWT at WebSocket connect only — not per-event Authorization headers.
 27. As a developer, I want `pushed_at` set only on delivery ack; failures leave it null.
-28. As a developer, I want at-most-once emit in v1 (no client retry queue); next heartbeat may retry undelivered rows.
+28. As a developer, I want at-most-once emit in v1 (no client retry queue); undelivered rows are not retried (each tick emits only its own fresh snapshot, ADR-0005).
 29. As a developer, I want `session_end_marker` on capture end with Protocol shape from `packages/protocol/`.
 30. As a developer, I want write-to-**Snapshot Store**-before-emit ordering.
 31. As a developer, I want ScreenPipe as an internal boundary — bundled CLI, HTTP API, process lifecycle.

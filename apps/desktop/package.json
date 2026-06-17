@@ -12,7 +12,8 @@
     "test": "vitest run && (cd ../.. && cargo +stable test --manifest-path apps/desktop/src-tauri/Cargo.toml)",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "smoke": "pnpm --filter @intentive/desktop-smoke smoke"
+    "smoke": "pnpm --filter @intentive/desktop-smoke smoke",
+    "eval:privacy": "cargo +stable test --manifest-path src-tauri/Cargo.toml privacy_eval -- --ignored --nocapture"
   },
   "dependencies": {
     "@neondatabase/neon-js": "^0.6.1-beta",

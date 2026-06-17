@@ -91,7 +91,7 @@ For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the
 
 See also [`apps/desktop/README.md`](../apps/desktop/README.md) (environment variables) and [`apps/desktop/CONTEXT.md`](../apps/desktop/CONTEXT.md) (**Routing State** vs **Session State**).
 
-### Signed-in Capture Session smoke (#35)
+### Signed-in Capture Session smoke
 
 The routing smoke above stubs out capture. The **signed-in Capture Session smoke** proves the full assembled chain on a real, signed-in Mac: Routing from the Control Plane stub (real JWT verification) → capture auto-starts → real ScreenPipe captures → Context Heartbeat produces a sanitized Context Snapshot → written to the Snapshot Store before delivery → emitted as a `context_snapshot` Protocol event → Stop emits a `session_end_marker` **before** ScreenPipe shutdown (ADR-0022).
 
@@ -100,6 +100,30 @@ pnpm --filter ./apps/desktop smoke   # or: node apps/desktop/smoke/run-smoke.mjs
 ```
 
 It requires a Mac that is already signed in with all three macOS grants (Screen Recording, Microphone, Accessibility) — capture is readiness-gated and that gate cannot be automated. After ≥2 heartbeat cycles land as gateway receipts, toggle capture **off** in the menu bar (Capturing → Stopped) to emit the marker; the harness then prints a PASS/FAIL table mapping each AC to its evidence. Full runbook, two modes, and the dev-only env vars: [`apps/desktop/docs/SMOKE.md`](../apps/desktop/docs/SMOKE.md).
+
+### Reliability & privacy verification map
+
+#43's eight original `Verify X` acceptance criteria collapse into **three deep
+guarantees** ([ADR-0023](../apps/desktop/docs/adr/0023-desktop-three-guarantee-reliability-verification.md)):
+**A** local invariants (Rust unit, every commit), **B** cross-language contract
+(every commit), **C** privacy efficacy (out-of-band eval). Each row below maps an
+original criterion to its guarantee and the exact test that proves it.
+
+| #   | Original criterion                             | Guarantee | Proven by                                                                                                                                                                                                                                                                                                                    |
+| --- | ---------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Secrets never leak into a snapshot             | C         | prompt-wiring `summarize_prompt_includes_privacy_constraints` (`summarization/service/tests.rs`) + structural Snapshot Privacy Boundary; **efficacy → privacy eval** `privacy_eval_planted_secrets_do_not_leak_into_summaries` (`summarization/service/eval.rs`, `#[ignore]`d — see [EVAL.md](../apps/desktop/docs/EVAL.md)) |
+| 2   | No raw ScreenPipe data stored or sent          | A         | structural — the `ContextSnapshot` struct (`snapshots/types/mod.rs`) has no raw field                                                                                                                                                                                                                                        |
+| 3   | Snapshot written before emit                   | A         | `snapshot_is_in_store_before_push` (`snapshots/runtime/heartbeat/tests.rs`)                                                                                                                                                                                                                                                  |
+| 4   | Delivery-failure modes                         | A + B     | **narrowed**: only socket-down is client-observable → `failed_push_leaves_snapshot_unmarked`. Timeout / gateway-reject are silent by design (no ack, ADR-0005); **B is the compensating control**. See ADR-0023                                                                                                              |
+| 5   | `pushed_at` null on a failed emit              | A         | `failed_push_leaves_snapshot_unmarked` (`heartbeat/tests.rs`)                                                                                                                                                                                                                                                                |
+| 6   | 7-day retention purge                          | A         | `launch_purges_rows_older_than_seven_days` (`snapshots/repo/tests.rs`)                                                                                                                                                                                                                                                       |
+| 7   | Heartbeat survives a failed emit               | A         | `failed_push_leaves_snapshot_unmarked` + later ticks keep producing rows (`heartbeat/tests.rs`)                                                                                                                                                                                                                              |
+| —   | No retry of an undelivered snapshot (ADR-0005) | A         | `failed_snapshot_is_never_re_emitted_on_a_later_tick` (`heartbeat/tests.rs`)                                                                                                                                                                                                                                                 |
+| 8   | CI stays model-free                            | A         | summarization unit tests use fakes; the privacy eval is `#[ignore]`d and excluded from `pnpm test` / `pnpm harness`                                                                                                                                                                                                          |
+| B   | Cross-language frame contract                  | B         | `protocol-contract.test.ts` (`apps/desktop/src/`) + Rust golden `context_snapshot_frame_matches_the_committed_golden_fixture` (`src-tauri/src/lib.rs`)                                                                                                                                                                       |
+
+Guarantee C runbook (how to run, pass threshold, the LLM-judge next layer):
+[`apps/desktop/docs/EVAL.md`](../apps/desktop/docs/EVAL.md).
 
 ## Shared Contracts
 
@@ -120,7 +144,7 @@ pnpm --dir packages/providers test
 
 ```bash
 pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch resolver/source/route, control-plane source, account-state mapper, route-for-destination, runtime adapter, conversation reducer, routing client, dev transport)
-pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat external-store runtime #33)
+pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat external-store runtime)
 pnpm --dir apps/mobile typecheck
 ```
 
