@@ -180,6 +180,24 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     });
   };
 
+  const retryUserMessage = async (messageId: string): Promise<void> => {
+    const message = state.messages.find(
+      (candidate) =>
+        candidate.id === messageId &&
+        candidate.author === "user" &&
+        candidate.delivery === "failed",
+    );
+    if (!message) return;
+
+    dispatch({ type: "retry_failed_user_message", messageId });
+    enqueueOutbound({
+      type: "user_message",
+      message_id: message.id,
+      body: message.body,
+      sent_at: message.at,
+    });
+  };
+
   const close = () => {
     connectionGeneration += 1;
     closed = true;
@@ -322,6 +340,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     getState: () => state,
     connect,
     sendUserMessage,
+    retryUserMessage,
     close,
   };
 }

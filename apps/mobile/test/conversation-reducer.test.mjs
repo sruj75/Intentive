@@ -247,6 +247,47 @@ test("mark_pending_failed only affects pending user messages", () => {
   assert.equal(failed.agentState, "available");
 });
 
+test("retry_failed_user_message only returns failed local user messages to pending", () => {
+  const withMessages = {
+    ...EMPTY_MESSAGE_STORE,
+    messages: [
+      {
+        id: "failed-user",
+        author: "user",
+        body: "retry me",
+        at,
+        viaPostMessageBack: false,
+        delivery: "failed",
+      },
+      {
+        id: "confirmed-user",
+        author: "user",
+        body: "leave me",
+        at,
+        viaPostMessageBack: false,
+        delivery: "confirmed",
+      },
+    ],
+  };
+
+  const retried = reduceConversationState(withMessages, {
+    type: "retry_failed_user_message",
+    messageId: "failed-user",
+  });
+  const unchanged = reduceConversationState(retried, {
+    type: "retry_failed_user_message",
+    messageId: "missing-user",
+  });
+
+  assert.equal(retried.messages[0].delivery, "pending");
+  assert.equal(retried.messages[0].id, "failed-user");
+  assert.equal(retried.messages[0].body, "retry me");
+  assert.equal(retried.messages[0].at, at);
+  assert.equal(retried.messages[1].delivery, "confirmed");
+  assert.equal(retried.agentState, "thinking");
+  assert.equal(unchanged, retried);
+});
+
 function snapshotMessage(message_id, author, body) {
   return {
     message_id,

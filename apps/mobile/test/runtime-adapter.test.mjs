@@ -41,6 +41,19 @@ test("connect sends the Protocol connect frame and hello_ok seeds the store", as
   assert.equal(harness.adapter.getState().messages[0].body, "hello");
 });
 
+test("empty hello_ok snapshot connects with no client-authored opening message", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+
+  harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
+
+  assert.equal(harness.adapter.getState().connectionState, "connected");
+  assert.equal(harness.adapter.getState().messages.length, 0);
+  assert.equal(harness.adapter.getState().beforeCursor, null);
+  assert.equal(harness.adapter.getState().agentState, "available");
+});
+
 test("connect omits client_tz when the platform cannot resolve a zone", async () => {
   const harness = createHarness({ resolveTimeZone: () => undefined });
   await harness.adapter.connect();
@@ -48,6 +61,40 @@ test("connect omits client_tz when the platform cannot resolve a zone", async ()
   harness.sockets[0].open();
   const connectFrame = JSON.parse(harness.sockets[0].sent[0]);
   assert.equal("client_tz" in connectFrame, false);
+});
+
+test("malformed hello_ok rejects at the Protocol boundary without replacing the store", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+  harness.sockets[0].open();
+  harness.sockets[0].message(snapshot("opening"));
+
+  const before = harness.adapter.getState().messages;
+  harness.sockets[0].messageRaw(
+    JSON.stringify({
+      type: "hello_ok",
+      session_snapshot: {
+        messages: [
+          {
+            message_id: "invalid",
+            author: "companion",
+            body: "invalid snapshot",
+            at: "not-a-date",
+            via_post_message_back: false,
+          },
+        ],
+        before_cursor: null,
+      },
+    }),
+  );
+
+  assert.equal(harness.adapter.getState().connectionState, "error");
+  assert.equal(harness.adapter.getState().error.kind, "protocol");
+  assert.equal(harness.adapter.getState().messages, before);
+  assert.deepEqual(
+    harness.adapter.getState().messages.map((message) => message.id),
+    ["opening"],
+  );
 });
 
 test("inbound companion_message appends and sends delivery_ack", async () => {
@@ -254,6 +301,97 @@ test("queued outbound keeps message_id and reconciles when snapshot confirms it"
     ["opening", "id-1"],
   );
   assert.equal(harness.adapter.getState().messages[1].delivery, "confirmed");
+});
+
+test("retryUserMessage reuses the failed message id, body, and original sent_at", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+  harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
+  await harness.adapter.sendUserMessage(" hello ");
+
+  harness.sockets[0].closeFromServer();
+  assert.equal(harness.adapter.getState().messages[0].delivery, "failed");
+
+  await harness.adapter.retryUserMessage("id-1");
+  assert.equal(harness.adapter.getState().messages[0].delivery, "pending");
+  assert.equal(harness.adapter.getState().messages[0].body, "hello");
+  assert.equal(harness.adapter.getState().messages[0].at, at);
+
+  harness.runNextTimer();
+  await harness.flush();
+  harness.sockets[1].open();
+  harness.sockets[1].message(emptySnapshot());
+
+  assert.deepEqual(JSON.parse(harness.sockets[1].sent.at(-1)), {
+    type: "user_message",
+    message_id: "id-1",
+    body: "hello",
+    sent_at: at,
+  });
+});
+
+test("retry-confirmed message reconciles to one confirmed user row", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+  harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
+  await harness.adapter.sendUserMessage("hello");
+
+  harness.sockets[0].closeFromServer();
+  await harness.adapter.retryUserMessage("id-1");
+  harness.runNextTimer();
+  await harness.flush();
+  harness.sockets[1].open();
+  harness.sockets[1].message({
+    type: "hello_ok",
+    session_snapshot: {
+      messages: [
+        {
+          message_id: "id-1",
+          author: "user",
+          body: "hello",
+          at,
+          via_post_message_back: false,
+        },
+      ],
+      before_cursor: null,
+    },
+  });
+
+  assert.equal(harness.adapter.getState().messages.length, 1);
+  assert.equal(harness.adapter.getState().messages[0].id, "id-1");
+  assert.equal(harness.adapter.getState().messages[0].delivery, "confirmed");
+});
+
+test("retryUserMessage leaves confirmed and unknown message ids unchanged", async () => {
+  const harness = createHarness();
+  await harness.adapter.connect();
+  harness.sockets[0].open();
+  harness.sockets[0].message({
+    type: "hello_ok",
+    session_snapshot: {
+      messages: [
+        {
+          message_id: "id-1",
+          author: "user",
+          body: "hello",
+          at,
+          via_post_message_back: false,
+        },
+      ],
+      before_cursor: null,
+    },
+  });
+
+  await harness.adapter.retryUserMessage("id-1");
+  await harness.adapter.retryUserMessage("missing");
+
+  assert.equal(harness.adapter.getState().messages[0].delivery, "confirmed");
+  assert.deepEqual(
+    harness.sockets[0].sent.map((frame) => JSON.parse(frame).type),
+    ["connect"],
+  );
 });
 
 test("terminal socket and Protocol errors mark pending outbound failed", async () => {

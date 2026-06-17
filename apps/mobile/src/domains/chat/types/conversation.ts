@@ -44,6 +44,7 @@ export interface RuntimeAdapter {
   getState(): RuntimeAdapterState;
   connect(): Promise<void>;
   sendUserMessage(body: string): Promise<void>;
+  retryUserMessage(messageId: string): Promise<void>;
   close(): void;
 }
 
