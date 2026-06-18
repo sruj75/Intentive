@@ -85,6 +85,8 @@ test("completing (not skipping) the sibling invitation also reaches chat", async
   await expectDestination("SIGNED_OUT");
 
   fireEvent.press(screen.getByText("Continue with Google"));
+  await expectDestination("MISSING_CONSENT");
+
   fireEvent.press(screen.getByText("Continue"));
   await expectDestination("SIBLING_INVITATION_PENDING");
 

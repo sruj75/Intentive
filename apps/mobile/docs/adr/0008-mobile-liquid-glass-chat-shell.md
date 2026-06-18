@@ -4,16 +4,16 @@ Intentive will use a full-screen Liquid Glass-style chat shell for the main iOS 
 
 **Considered Options**
 
-- Conventional header with account/settings button.
-- Bottom-tab app shell with chat and settings as peers.
+- Conventional header with account utility button.
+- Bottom-tab app shell with chat and account as peers.
 - Full-screen chat shell with a visible but quiet Account Surface affordance.
 
 **Consequences**
 
-- Settings and logout must remain discoverable without becoming primary navigation.
+- Account and logout must remain discoverable without becoming primary navigation.
 - The Account Surface should open as a sheet or similar utility surface, not as a tab.
 - The Account affordance should remain visible but quiet.
-- The final control position remains TBD until composer, keyboard, and safe-area behavior are designed: prefer a top corner while it is pure account/settings utility, and consider bottom-adjacent only if it becomes part of active chat control.
+- The Account affordance lives in the top trailing corner. After the Floating Composer work, account remains pure utility rather than an active chat control, so bottom-adjacent placement would compete with the composer, keyboard movement, and safe-area padding.
 - The bottom composer must be designed with keyboard movement, bottom safe area, reachability, and chat-scroll insets as first-order layout constraints.
 - The initial runtime-generated onboarding message may appear as a composing bubble while the user drafts in the composer, but send is deferred until that protected opening arrives. Day-to-day concurrent-send behavior remains TBD.
 - If the protected onboarding opening fails, recovery remains inline in chat with preserved draft text and one retry action rather than a separate error screen.

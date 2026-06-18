@@ -11,6 +11,23 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Account Surface** ([Issue #46]) —
+  - `src/domains/account/ui/account-surface.tsx` — sheet-like utility over **Companion
+    Chat** (Modal, not a peer route): signed-in identity via Control Plane account
+    state, coarse **Connection Status**, manual **Desktop Client** setup recovery,
+    support/debug rows, and sign-out.
+  - `src/domains/account/service/account-status.ts` — pure `deriveConnectionStatus`
+    mapping from runtime connection state + Control Plane base URL
+    (`connected` / `reconnecting` / `connection_issue` / `not_configured`).
+  - `src/providers/account-state/` — `AccountStateSource` seam +
+    `createControlPlaneAccountStateSource` (`GET /me` via injected JWT + fetch);
+    shared by Launch State hydration and the Account Surface.
+  - `app/(chat)/index.tsx` — wires Account Affordance → Account Surface; logout
+    calls `AuthAdapter.signOut()` then `markSignedOut()` on Launch State.
+  - Tests: `account-status.test.mjs`, `control-plane-account-state-source.test.mjs`,
+    `account-surface.rn.test.tsx`; `companion-chat.rn.test.tsx` covers affordance
+    open callback.
+
 - **Failed user message retry** ([Issue #44]) — `RuntimeAdapter.retryUserMessage(messageId)`
   re-queues a failed outbound `user_message` with the same `message_id`, body, and
   `sent_at` (idempotency key preserved; reconciles to one confirmed row). The
@@ -136,6 +153,11 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Changed
 
+- **Launch State hydration** ([Issue #46]) — `createControlPlaneLaunchStateSource` now
+  reads `GET /me` through the shared `AccountStateSource`
+  (`createControlPlaneAccountStateSource`) instead of inlining the fetch/parse path.
+  `LaunchStateProvider` adds `markSignedOut()` for Account Surface logout.
+
 - **Companion Chat runtime** ([Issue #33]) — `CompanionChat` now renders from the
   Runtime Adapter's push-side **Message Store** (`useExternalStoreRuntime`) instead
   of the #22 turn-based `ChatModelAdapter`; `app/(chat)/index.tsx` wires
@@ -204,10 +226,6 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **#23 (remainder)** — cold-launch session restore against a real Neon session,
   https OAuth redirect / enabled providers (`NEON_ENABLED_PROVIDERS` still empty; dev
   provider remains the working path until #61).
-- **#44** — Scroll-back UX and companion-chat wiring for per-message retry UI (#45
-  styles **Delivery Status**); runtime-layer `retryUserMessage` landed on branch
-  `issue-44`.
-- **#46** — Account Surface and sign-out UX.
 - **CI** — `test:rn` remains opt-in locally; root `pnpm test` runs Node mobile tests
   only (see `docs/TESTING.md`).
 - The **Message Store** remains in-memory and server-truth only — no durable local

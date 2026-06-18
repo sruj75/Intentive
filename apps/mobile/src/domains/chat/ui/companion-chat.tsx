@@ -45,22 +45,25 @@ export interface CompanionChatProps {
    * no backend so simulator smoke tests still work offline.
    */
   readonly adapter?: RuntimeAdapter;
+  readonly onOpenAccount?: () => void;
 }
 
-export function CompanionChat({ adapter }: CompanionChatProps): React.JSX.Element {
+export function CompanionChat({ adapter, onOpenAccount }: CompanionChatProps): React.JSX.Element {
   const resolvedAdapter = useMemo(() => adapter ?? createDevRuntimeAdapter(), [adapter]);
 
   return (
     <SafeAreaProvider initialMetrics={CHAT_SAFE_AREA_INITIAL_METRICS}>
-      <CompanionChatSurface adapter={resolvedAdapter} />
+      <CompanionChatSurface adapter={resolvedAdapter} onOpenAccount={onOpenAccount} />
     </SafeAreaProvider>
   );
 }
 
 function CompanionChatSurface({
   adapter,
+  onOpenAccount,
 }: {
   readonly adapter: RuntimeAdapter;
+  readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
   const state = useSyncExternalStore(adapter.subscribe, adapter.getState, adapter.getState);
   const presentation = deriveChatPresentation(state);
@@ -77,7 +80,7 @@ function CompanionChatSurface({
         style={styles.screen}
       >
         <ThreadPrimitive.Root style={styles.thread}>
-          <AccountAffordance topInset={insets.top} />
+          <AccountAffordance topInset={insets.top} onOpenAccount={onOpenAccount} />
           <ThreadPrimitive.Messages
             components={{ UserMessage, AssistantMessage }}
             contentInsetAdjustmentBehavior="automatic"
@@ -144,7 +147,13 @@ function AssistantMessage(): React.JSX.Element {
   );
 }
 
-function AccountAffordance({ topInset }: { readonly topInset: number }): React.JSX.Element {
+function AccountAffordance({
+  topInset,
+  onOpenAccount,
+}: {
+  readonly topInset: number;
+  readonly onOpenAccount?: () => void;
+}): React.JSX.Element {
   return (
     <AdaptiveGlassSurface
       isInteractive
@@ -154,7 +163,7 @@ function AccountAffordance({ topInset }: { readonly topInset: number }): React.J
         accessibilityLabel="Open account"
         accessibilityRole="button"
         hitSlop={10}
-        onPress={() => {}}
+        onPress={onOpenAccount}
         style={styles.accountButton}
         testID="intentive-account-affordance"
       >

@@ -1,18 +1,16 @@
 /**
  * The real LaunchStateSource — hydrates Launch State from Control Plane `GET /me`.
  *
- * Replaces the dev stub (#23). Thin by design: get the User JWT, call `/me` with
- * it, validate the response at the boundary, and hand off to the pure mapper.
- * All collaborators (`getUserJwt`, `fetch`) are injected, so this stays RN-free
- * and unit-testable with fakes — no real network, no auth SDK.
+ * Replaces the dev stub (#23). Thin by design: read Control Plane account
+ * state, then hand off to the pure mapper. All collaborators are injected, so
+ * this stays RN-free and unit-testable with fakes — no real network, no auth SDK.
  *
  * Failure policy: a missing session returns the signed-out projection; a failed
  * request *throws*, so the store's hydration `.catch` applies its signed-out
  * fallback. We don't duplicate that fallback here.
  */
-import { AccountState, parseBoundary } from "@intentive/api-contract";
-
 import { mapAccountStateToLaunchState } from "../../domains/onboarding/service/account-state-to-launch-state.js";
+import { createControlPlaneAccountStateSource } from "../account-state/control-plane-account-state-source.js";
 import type { LaunchStateSource } from "./source.js";
 import type { LaunchState } from "./types.js";
 
@@ -47,19 +45,12 @@ const SIGNED_OUT: LaunchState = {
 export function createControlPlaneLaunchStateSource(
   deps: ControlPlaneLaunchStateSourceDeps,
 ): LaunchStateSource {
+  const accountStateSource = createControlPlaneAccountStateSource(deps);
+
   return {
     async read(): Promise<LaunchState> {
-      const jwt = await deps.getUserJwt();
-      if (jwt === null) return SIGNED_OUT;
-
-      const res = await deps.fetch(`${deps.baseUrl}/me`, {
-        headers: { authorization: `Bearer ${jwt}` },
-      });
-      if (!res.ok) {
-        throw new Error(`GET /me failed with status ${res.status}`);
-      }
-
-      const account = parseBoundary(AccountState, await res.json());
+      const account = await accountStateSource.read();
+      if (account === null) return SIGNED_OUT;
       return mapAccountStateToLaunchState(account);
     },
   };
