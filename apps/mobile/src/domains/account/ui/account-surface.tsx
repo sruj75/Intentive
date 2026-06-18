@@ -3,14 +3,13 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 
 import type { AccountStateSource } from "../../../providers/account-state";
 import { useLaunchState } from "../../../providers/launch-state";
-import type { AuthAdapter } from "../../auth/types/auth";
 import type { ConnectionState } from "../../chat/types/conversation";
 import { connectionStatusLabel, deriveConnectionStatus } from "../service/account-status";
 
 export interface AccountSurfaceProps {
   readonly visible: boolean;
   readonly onClose: () => void;
-  readonly authAdapter: AuthAdapter;
+  readonly onSignOut: () => Promise<void>;
   readonly runtimeConnectionState: ConnectionState;
   readonly controlPlaneBaseUrl: string;
   readonly accountStateSource?: AccountStateSource;
@@ -20,7 +19,7 @@ export interface AccountSurfaceProps {
 export function AccountSurface({
   visible,
   onClose,
-  authAdapter,
+  onSignOut,
   runtimeConnectionState,
   controlPlaneBaseUrl,
   accountStateSource,
@@ -64,11 +63,11 @@ export function AccountSurface({
     runtimeConnectionState,
   });
 
-  const onSignOut = async () => {
+  const handleSignOut = async () => {
     setIsSigningOut(true);
     setLogoutError(null);
     try {
-      await authAdapter.signOut();
+      await onSignOut();
       markSignedOut();
       onClose();
     } catch {
@@ -134,7 +133,7 @@ export function AccountSurface({
             <Pressable
               accessibilityRole="button"
               disabled={isSigningOut}
-              onPress={onSignOut}
+              onPress={handleSignOut}
               style={[styles.signOutButton, isSigningOut && styles.disabledButton]}
               testID="intentive-account-sign-out"
             >

@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import { Text } from "react-native";
 
 import { AccountSurface } from "../src/domains/account/ui/account-surface";
-import type { AuthAdapter } from "../src/domains/auth/types/auth";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
 import type { AccountStateSource } from "../src/providers/account-state";
 import {
@@ -26,13 +25,13 @@ function Destination() {
 }
 
 function renderAccountSurface({
-  authAdapter = createAuthAdapter(),
+  onSignOut = () => Promise.resolve(),
   launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
   controlPlaneBaseUrl = "https://cp.test",
   runtimeConnectionState = "connected",
   accountStateSource,
 }: {
-  authAdapter?: AuthAdapter;
+  onSignOut?: () => Promise<void>;
   launchState?: LaunchState;
   controlPlaneBaseUrl?: string;
   runtimeConnectionState?: RuntimeConnectionState;
@@ -45,8 +44,8 @@ function renderAccountSurface({
       <Destination />
       <AccountSurface
         accountStateSource={accountStateSource}
-        authAdapter={authAdapter}
         controlPlaneBaseUrl={controlPlaneBaseUrl}
+        onSignOut={onSignOut}
         runtimeConnectionState={runtimeConnectionState}
         visible
         onClose={() => {}}
@@ -67,15 +66,13 @@ test("Account Surface shows safe identity, support, and debug information", asyn
   expect(screen.getByText("App debug")).toBeTruthy();
 });
 
-test("logout calls the Auth Adapter and returns Launch State to signed out", async () => {
+test("logout calls the injected sign-out command and returns Launch State to signed out", async () => {
   let signedOut = false;
-  const authAdapter = createAuthAdapter({
-    signOut: async () => {
-      signedOut = true;
-    },
-  });
+  const onSignOut = async () => {
+    signedOut = true;
+  };
 
-  renderAccountSurface({ authAdapter });
+  renderAccountSurface({ onSignOut });
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
 
   fireEvent.press(screen.getByText("Sign out"));
@@ -112,13 +109,3 @@ test("blank Control Plane base URL shows not configured", async () => {
 
   expect(screen.getByText("Not configured")).toBeTruthy();
 });
-
-function createAuthAdapter(overrides: Partial<AuthAdapter> = {}): AuthAdapter {
-  return {
-    signIn: () => Promise.resolve({ status: "signed-in" }),
-    signOut: () => Promise.resolve(),
-    restoreSession: () => Promise.resolve(true),
-    getUserJwt: () => Promise.resolve("jwt-123"),
-    ...overrides,
-  };
-}

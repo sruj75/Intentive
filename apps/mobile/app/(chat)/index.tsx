@@ -51,8 +51,8 @@ export default function ChatRoute(): React.JSX.Element {
       <CompanionChat adapter={adapter} onOpenAccount={() => setAccountVisible(true)} />
       <AccountSurface
         accountStateSource={accountStateSource}
-        authAdapter={authAdapter}
         controlPlaneBaseUrl={baseUrl}
+        onSignOut={() => authAdapter.signOut()}
         runtimeConnectionState={runtimeState.connectionState}
         visible={accountVisible}
         onClose={() => setAccountVisible(false)}
