@@ -9,6 +9,8 @@
   "include": [
     "src/index.ts",
     "src/domains/account/types/workspace.ts",
+    "src/domains/account/service/**/*.ts",
+    "src/providers/account-state/**/*.ts",
     "src/providers/launch-state/types.ts",
     "src/providers/launch-state/source.ts",
     "src/providers/launch-state/control-plane-source.ts",

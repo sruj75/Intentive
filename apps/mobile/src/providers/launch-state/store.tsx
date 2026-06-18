@@ -51,6 +51,8 @@ export interface LaunchStateStore {
   state: LaunchState;
   /** Identity Gate completed (optimistic). */
   markSignedIn: () => void;
+  /** Account Surface logout completed. */
+  markSignedOut: () => void;
   /** Consent Primer answered (optimistic). */
   setConsent: (status: GateStatus) => void;
   /** Sibling Client Invitation answered — `completed` or `skipped` (optimistic). */
@@ -89,6 +91,7 @@ export function LaunchStateProvider({
     () => ({
       state,
       markSignedIn: () => setState(withSignedIn),
+      markSignedOut: () => setState(HYDRATION_FAILURE_FALLBACK),
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
     }),

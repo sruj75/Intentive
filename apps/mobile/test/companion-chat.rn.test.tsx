@@ -104,6 +104,17 @@ test("Account Affordance is quiet, icon-only, and accessible", () => {
   expect(affordance).toHaveProp("accessibilityRole", "button");
 });
 
+test("Account Affordance opens the injected Account Surface", () => {
+  const openAccount = jest.fn();
+  render(
+    <CompanionChat adapter={createTestRuntimeAdapter().adapter} onOpenAccount={openAccount} />,
+  );
+
+  fireEvent.press(screen.getByTestId("intentive-account-affordance"));
+
+  expect(openAccount).toHaveBeenCalledTimes(1);
+});
+
 test("Composer floats above the bottom and the message list keeps space for it", () => {
   render(
     <CompanionChat
