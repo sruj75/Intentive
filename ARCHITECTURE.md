@@ -182,7 +182,7 @@ intentive/
 │   │   ├── app/                         ← NAVIGATION axis: Expo Router, thin route shells
 │   │   │   ├── _layout.tsx              ← root: resolver + Launch Route → redirect effect
 │   │   │   ├── (gates)/                 ← shared gate chrome; identity, consent, invite
-│   │   │   └── (chat)/                  ← chat route shell; `(account)/` when Account Surface lands
+│   │   │   └── (chat)/                  ← chat route shell; Account Surface opens as sheet from here
 │   │   └── src/domains/                 ← CAPABILITY axis: deep modules, layer rule (see mobile ADR 0010)
 │   │       ├── auth/
 │   │       │   ├── types/
