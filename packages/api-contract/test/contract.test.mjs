@@ -34,6 +34,23 @@ test("GetMeDeviceSignal rejects an unknown client_kind", () => {
   assert.equal(contract.GetMeDeviceSignal.safeParse({ client_kind: "watch" }).success, false);
 });
 
+test("AccountState reports whether a Desktop Client is registered", () => {
+  assert.deepEqual(
+    contract.AccountState.parse({
+      user_id: "u_1",
+      next_gate: null,
+      has_agent_instance: true,
+      has_desktop_client: false,
+    }),
+    {
+      user_id: "u_1",
+      next_gate: null,
+      has_agent_instance: true,
+      has_desktop_client: false,
+    },
+  );
+});
+
 test("public request schemas reject unknown keys", () => {
   const result = contract.PostDeviceRegisterRequest.safeParse({
     device_fingerprint: "abc",

@@ -10,7 +10,12 @@ import test from "node:test";
 import { resolveLaunchState } from "../dist/domains/onboarding/service/resolve-launch-state.js";
 import { mapAccountStateToLaunchState } from "../dist/domains/onboarding/service/account-state-to-launch-state.js";
 
-const account = (nextGate) => ({ user_id: "u_1", next_gate: nextGate, has_agent_instance: false });
+const account = (nextGate) => ({
+  user_id: "u_1",
+  next_gate: nextGate,
+  has_agent_instance: false,
+  has_desktop_client: false,
+});
 
 // Exhaustive over PreChatGateKind + null.
 const CASES = [

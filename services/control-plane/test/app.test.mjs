@@ -35,7 +35,12 @@ test("GET /me returns the handler's status and body", async () => {
     getMe: {
       handle: async () => ({
         status: 200,
-        body: { user_id: "u_1", next_gate: null, has_agent_instance: false },
+        body: {
+          user_id: "u_1",
+          next_gate: null,
+          has_agent_instance: false,
+          has_desktop_client: false,
+        },
       }),
     },
   });
@@ -46,6 +51,7 @@ test("GET /me returns the handler's status and body", async () => {
     user_id: "u_1",
     next_gate: null,
     has_agent_instance: false,
+    has_desktop_client: false,
   });
 });
 

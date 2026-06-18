@@ -58,7 +58,7 @@ export function reduceConversationState(
       return {
         messages,
         beforeCursor: event.beforeCursor,
-        agentState: deriveAgentState(messages, state.agentState),
+        agentState: deriveAgentState(messages),
       };
     }
     case "history_backfill": {
@@ -70,7 +70,7 @@ export function reduceConversationState(
       return {
         messages,
         beforeCursor: event.beforeCursor,
-        agentState: deriveAgentState(messages, state.agentState),
+        agentState: deriveAgentState(messages),
       };
     }
     case "companion_message": {
@@ -81,7 +81,11 @@ export function reduceConversationState(
         at: event.emittedAt,
         viaPostMessageBack: event.viaPostMessageBack,
       });
-      return { ...state, messages, agentState: "available" };
+      return {
+        ...state,
+        messages,
+        agentState: event.viaPostMessageBack ? "following_up" : "available",
+      };
     }
     case "send_user_message": {
       const messages = upsertMessage(state.messages, {
@@ -213,13 +217,15 @@ function reconcileMessage(
   return incoming;
 }
 
-function deriveAgentState(
-  messages: readonly ConversationMessage[],
-  previousAgentState: AgentState,
-): AgentState {
-  if (previousAgentState !== "thinking") return "available";
+function deriveAgentState(messages: readonly ConversationMessage[]): AgentState {
   const hasPendingOutbound = messages.some(
     (message) => message.author === "user" && message.delivery === "pending",
   );
-  return hasPendingOutbound ? "thinking" : "available";
+  if (hasPendingOutbound) return "thinking";
+  return latestServerFollowUp(messages) ? "following_up" : "available";
+}
+
+function latestServerFollowUp(messages: readonly ConversationMessage[]): boolean {
+  const latest = messages[messages.length - 1];
+  return latest?.author === "companion" && latest.viaPostMessageBack;
 }

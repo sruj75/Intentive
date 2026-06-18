@@ -58,6 +58,7 @@ test("resolveAccount composes the gate the gates domain reports", async () => {
     user_id: "u_1",
     next_gate: "consent_primer",
     has_agent_instance: false,
+    has_desktop_client: false,
   });
 });
 
@@ -78,6 +79,30 @@ test("resolveAccount reflects has_agent_instance from the injected agents reader
 
   assert.equal(account.has_agent_instance, true, "the reader's answer drives the field");
   assert.deepEqual(seen, ["u_1"], "asked for the resolved internal user id");
+});
+
+test("resolveAccount reports a registered Desktop Client from the Device Registry", async () => {
+  const account = await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates: fakeGates(null),
+    devices: fakeDevices([{ client_kind: "desktop" }]),
+    agents: fakeAgents(),
+  }).resolveAccount("tok", { client_kind: "mobile" });
+
+  assert.equal(account.has_desktop_client, true);
+});
+
+test("resolveAccount does not treat Mobile-only devices as a registered Desktop Client", async () => {
+  const account = await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates: fakeGates(null),
+    devices: fakeDevices([{ client_kind: "mobile" }]),
+    agents: fakeAgents(),
+  }).resolveAccount("tok", { client_kind: "mobile" });
+
+  assert.equal(account.has_desktop_client, false);
 });
 
 test("resolveRoutingContext returns userId, authSubject, and nextGate from one verification", async () => {

@@ -48,7 +48,11 @@ export default function ChatRoute(): React.JSX.Element {
 
   return (
     <>
-      <CompanionChat adapter={adapter} onOpenAccount={() => setAccountVisible(true)} />
+      <CompanionChat
+        adapter={adapter}
+        accountStateSource={accountStateSource}
+        onOpenAccount={() => setAccountVisible(true)}
+      />
       <AccountSurface
         accountStateSource={accountStateSource}
         controlPlaneBaseUrl={baseUrl}

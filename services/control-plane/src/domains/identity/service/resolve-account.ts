@@ -77,6 +77,10 @@ export interface RoutingContext {
   nextGate: PreChatGateKind | null;
 }
 
+interface PrincipalAndGate extends RoutingContext {
+  hasDesktopClient: boolean;
+}
+
 export interface IdentityService {
   /**
    * Verify `token` and resolve the caller to a stable internal user. Rejects
@@ -130,7 +134,7 @@ export function createIdentityService(deps: {
   async function resolvePrincipalAndGate(
     token: string,
     signal: GetMeDeviceSignal,
-  ): Promise<RoutingContext> {
+  ): Promise<PrincipalAndGate> {
     const { user_id: authSubject } = await deps.verifier.verify(token);
     const { userId } = await deps.users.resolveUser({ sub: authSubject });
 
@@ -140,6 +144,7 @@ export function createIdentityService(deps: {
     // gates sequencer never reaches into devices itself (ADR-0005). Without a
     // reported client_kind there is no "different kind" to find, so it is false.
     const devices = await deps.devices.listDevicesForUser(userId);
+    const hasDesktopClient = devices.some((d) => d.client_kind === "desktop");
     const hasSiblingDevice =
       signal.client_kind != null &&
       devices.some((d) => d.client_kind !== signal.client_kind && d.client_kind !== "android");
@@ -150,23 +155,32 @@ export function createIdentityService(deps: {
       hasSiblingDevice,
     });
 
-    return { userId, authSubject, nextGate };
+    return { userId, authSubject, nextGate, hasDesktopClient };
   }
 
   return {
     authenticate,
 
     async resolveAccount(token, signal = {}) {
-      const { userId, nextGate } = await resolvePrincipalAndGate(token, signal);
+      const { userId, nextGate, hasDesktopClient } = await resolvePrincipalAndGate(token, signal);
       // `has_agent_instance` now comes from the injected agents read port: it is
       // "has ever provisioned," not "live session." `authSubject` is deliberately
       // dropped — Account State never carries the IdP subject.
       const has_agent_instance = await deps.agents.hasAgentInstance(userId);
-      return { user_id: userId, next_gate: nextGate, has_agent_instance };
+      return {
+        user_id: userId,
+        next_gate: nextGate,
+        has_agent_instance,
+        has_desktop_client: hasDesktopClient,
+      };
     },
 
     resolveRoutingContext(token, signal = {}) {
-      return resolvePrincipalAndGate(token, signal);
+      return resolvePrincipalAndGate(token, signal).then(({ userId, authSubject, nextGate }) => ({
+        userId,
+        authSubject,
+        nextGate,
+      }));
     },
   };
 }

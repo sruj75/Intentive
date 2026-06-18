@@ -10,6 +10,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { StyleSheet } from "react-native";
 
 import { CompanionChat } from "../src/domains/chat/ui/companion-chat";
+import type { AccountStateSource } from "../src/providers/account-state";
 import type {
   ConversationMessage,
   RuntimeAdapter,
@@ -94,6 +95,91 @@ test("typing and Send routes through the injected Runtime Adapter", async () => 
   await waitFor(() => expect(harness.sent).toEqual(["hello companion"]));
   expect(await screen.findByTestId("intentive-user-row")).toHaveTextContent("hello companion");
   expect(await screen.findByTestId("intentive-thinking")).toBeTruthy();
+});
+
+test("Agent State chip renders the current honest state", async () => {
+  render(
+    <CompanionChat
+      adapter={
+        createTestRuntimeAdapter([companionMessage("opening", "I am here.")], {
+          agentState: "following_up",
+        }).adapter
+      }
+    />,
+  );
+
+  expect(await screen.findByTestId("intentive-agent-state")).toHaveTextContent("Following up");
+});
+
+test("Paused Agent State renders only from explicit override", async () => {
+  render(
+    <CompanionChat
+      adapter={createTestRuntimeAdapter([companionMessage("opening", "I am here.")]).adapter}
+      agentStateOverride="paused"
+    />,
+  );
+
+  expect(await screen.findByTestId("intentive-agent-state")).toHaveTextContent("Paused");
+});
+
+test("Post-Message-Back messages render a lightweight continuity cue", async () => {
+  render(
+    <CompanionChat
+      adapter={
+        createTestRuntimeAdapter([
+          companionMessage("opening", "I am here."),
+          companionMessage("follow-up", "Checking in.", true),
+        ]).adapter
+      }
+    />,
+  );
+
+  expect(await screen.findByText("Follow-up from your Companion")).toBeTruthy();
+});
+
+test("Mac setup banner appears from AccountState without blocking composer send", async () => {
+  const harness = createTestRuntimeAdapter([companionMessage("opening", "I am here.")]);
+  const accountStateSource = accountSource(false);
+  const openAccount = jest.fn();
+  render(
+    <CompanionChat
+      adapter={harness.adapter}
+      accountStateSource={accountStateSource}
+      onOpenAccount={openAccount}
+    />,
+  );
+
+  expect(await screen.findByText("Add Intentive on Mac for richer context")).toBeTruthy();
+
+  await typeAndSend("still works");
+
+  await waitFor(() => expect(harness.sent).toEqual(["still works"]));
+  fireEvent.press(screen.getByTestId("intentive-mac-setup-banner"));
+  expect(openAccount).toHaveBeenCalledTimes(1);
+});
+
+test("Mac setup banner suppresses for registered Desktop Client and current-session dismiss", async () => {
+  const visible = render(
+    <CompanionChat
+      adapter={createTestRuntimeAdapter([companionMessage("opening", "I am here.")]).adapter}
+      accountStateSource={accountSource(false)}
+    />,
+  );
+
+  expect(await screen.findByText("Add Intentive on Mac for richer context")).toBeTruthy();
+  fireEvent.press(screen.getByLabelText("Dismiss Mac setup"));
+  expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull();
+
+  visible.unmount();
+  render(
+    <CompanionChat
+      adapter={createTestRuntimeAdapter([companionMessage("opening", "I am here.")]).adapter}
+      accountStateSource={accountSource(true)}
+    />,
+  );
+
+  await flushStore();
+  expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull();
 });
 
 test("Account Affordance is quiet, icon-only, and accessible", () => {
@@ -198,13 +284,17 @@ function createTestRuntimeAdapter(
   };
 }
 
-function companionMessage(id: string, body: string): ConversationMessage {
+function companionMessage(
+  id: string,
+  body: string,
+  viaPostMessageBack = false,
+): ConversationMessage {
   return {
     id,
     author: "companion",
     body,
     at,
-    viaPostMessageBack: false,
+    viaPostMessageBack,
   };
 }
 
@@ -220,5 +310,16 @@ function userMessage(
     at,
     viaPostMessageBack: false,
     delivery,
+  };
+}
+
+function accountSource(hasDesktopClient: boolean): AccountStateSource {
+  return {
+    read: async () => ({
+      user_id: "u_1",
+      next_gate: null,
+      has_agent_instance: true,
+      has_desktop_client: hasDesktopClient,
+    }),
   };
 }

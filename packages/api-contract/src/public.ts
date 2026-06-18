@@ -34,6 +34,9 @@ export const AccountState = z
     user_id: z.string(),
     next_gate: PreChatGateKind.nullable(),
     has_agent_instance: z.boolean(),
+    // Registered/present in the Control Plane Device Registry, not live session
+    // state. Mobile uses this only for capability-honest setup promotion.
+    has_desktop_client: z.boolean(),
   })
   .strict();
 export type AccountState = z.infer<typeof AccountState>;

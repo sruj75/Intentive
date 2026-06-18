@@ -195,7 +195,7 @@ test("history_backfill deduplicates by server ID without moving local-only outbo
   assert.equal(backfilled.agentState, "thinking");
 });
 
-test("Agent State returns available when a proactive companion message arrives", () => {
+test("Agent State returns following_up when a Post-Message-Back companion message arrives", () => {
   const proactive = reduceConversationState(EMPTY_MESSAGE_STORE, {
     type: "companion_message",
     messageId: "proactive",
@@ -204,7 +204,7 @@ test("Agent State returns available when a proactive companion message arrives",
     viaPostMessageBack: true,
   });
 
-  assert.equal(proactive.agentState, "available");
+  assert.equal(proactive.agentState, "following_up");
   assert.equal(proactive.messages[0].viaPostMessageBack, true);
 });
 

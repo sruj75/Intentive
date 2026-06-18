@@ -53,6 +53,7 @@ export const accountStateSample: GetMeResponse = {
   user_id: "user_stub",
   next_gate: nextGateSample,
   has_agent_instance: false,
+  has_desktop_client: false,
 };
 
 export const consentRequestSample: PostConsentRequest = {};
