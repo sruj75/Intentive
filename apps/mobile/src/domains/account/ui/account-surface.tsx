@@ -34,11 +34,11 @@ export function AccountSurface({
   useEffect(() => {
     if (!visible) return undefined;
     let active = true;
+    setAccountUserId(null);
     setSetupGuidanceVisible(false);
     setLogoutError(null);
 
     if (!accountStateSource) {
-      setAccountUserId(null);
       return undefined;
     }
 

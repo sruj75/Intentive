@@ -21,10 +21,10 @@ import type { LaunchStateSource } from "./source";
 
 const UNKNOWN: LaunchState = { signedIn: null, consent: null, siblingInvitation: null };
 
-// Signed-out with gates still unknown. `null` gates are safe here: the user can
-// only leave this state by signing in, and `markSignedIn` heals any unknown gate
-// to `pending` so the resolver always has concrete values to walk forward (see
-// markSignedIn). The signed-out short-circuit hides the gates until then.
+// Hydration-failure signed-out fallback. `null` gates are safe here: the user
+// can only leave this state by signing in, and `markSignedIn` heals any unknown
+// gate to `pending` so the resolver always has concrete values to walk forward
+// (see markSignedIn). The signed-out short-circuit hides the gates until then.
 const HYDRATION_FAILURE_FALLBACK: LaunchState = {
   signedIn: false,
   consent: null,
@@ -51,7 +51,7 @@ export interface LaunchStateStore {
   state: LaunchState;
   /** Identity Gate completed (optimistic). */
   markSignedIn: () => void;
-  /** Account Surface logout completed. */
+  /** Account Surface logout completed; keep known gate progress for same-session re-login. */
   markSignedOut: () => void;
   /** Consent Primer answered (optimistic). */
   setConsent: (status: GateStatus) => void;
@@ -91,7 +91,7 @@ export function LaunchStateProvider({
     () => ({
       state,
       markSignedIn: () => setState(withSignedIn),
-      markSignedOut: () => setState(HYDRATION_FAILURE_FALLBACK),
+      markSignedOut: () => setState((s) => ({ ...s, signedIn: false })),
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
     }),

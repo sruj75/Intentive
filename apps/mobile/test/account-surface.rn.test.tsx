@@ -24,6 +24,44 @@ function Destination() {
   return <Text testID="dest">{resolveLaunchState(state)}</Text>;
 }
 
+function SignInAgain() {
+  const { markSignedIn } = useLaunchState();
+  return <Text onPress={markSignedIn}>Sign in again</Text>;
+}
+
+function accountSurfaceTree({
+  onSignOut = () => Promise.resolve(),
+  launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
+  controlPlaneBaseUrl = "https://cp.test",
+  runtimeConnectionState = "connected",
+  accountStateSource,
+  visible = true,
+}: {
+  onSignOut?: () => Promise<void>;
+  launchState?: LaunchState;
+  controlPlaneBaseUrl?: string;
+  runtimeConnectionState?: RuntimeConnectionState;
+  accountStateSource?: AccountStateSource;
+  visible?: boolean;
+}) {
+  const source: LaunchStateSource = { read: () => Promise.resolve(launchState) };
+
+  return (
+    <LaunchStateProvider source={source}>
+      <Destination />
+      <SignInAgain />
+      <AccountSurface
+        accountStateSource={accountStateSource}
+        controlPlaneBaseUrl={controlPlaneBaseUrl}
+        onSignOut={onSignOut}
+        runtimeConnectionState={runtimeConnectionState}
+        visible={visible}
+        onClose={() => {}}
+      />
+    </LaunchStateProvider>
+  );
+}
+
 function renderAccountSurface({
   onSignOut = () => Promise.resolve(),
   launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
@@ -37,20 +75,14 @@ function renderAccountSurface({
   runtimeConnectionState?: RuntimeConnectionState;
   accountStateSource?: AccountStateSource;
 } = {}) {
-  const source: LaunchStateSource = { read: () => Promise.resolve(launchState) };
-
   return render(
-    <LaunchStateProvider source={source}>
-      <Destination />
-      <AccountSurface
-        accountStateSource={accountStateSource}
-        controlPlaneBaseUrl={controlPlaneBaseUrl}
-        onSignOut={onSignOut}
-        runtimeConnectionState={runtimeConnectionState}
-        visible
-        onClose={() => {}}
-      />
-    </LaunchStateProvider>,
+    accountSurfaceTree({
+      accountStateSource,
+      controlPlaneBaseUrl,
+      launchState,
+      onSignOut,
+      runtimeConnectionState,
+    }),
   );
 }
 
@@ -79,6 +111,48 @@ test("logout calls the injected sign-out command and returns Launch State to sig
 
   await waitFor(() => expect(signedOut).toBe(true));
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("SIGNED_OUT"));
+});
+
+test("logout keeps completed gate progress available for same-session re-login", async () => {
+  renderAccountSurface({
+    launchState: { signedIn: true, consent: "completed", siblingInvitation: "skipped" },
+  });
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
+
+  fireEvent.press(screen.getByText("Sign out"));
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("SIGNED_OUT"));
+
+  fireEvent.press(screen.getByText("Sign in again"));
+
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
+});
+
+test("reopening Account Surface clears stale identity before the next account read resolves", async () => {
+  let resolveSecondRead:
+    | ((account: { user_id: string; next_gate: null; has_agent_instance: boolean }) => void)
+    | null = null;
+  const accountStateSource: AccountStateSource = {
+    read: jest
+      .fn()
+      .mockResolvedValueOnce({ user_id: "u_123", next_gate: null, has_agent_instance: true })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecondRead = resolve;
+          }),
+      ),
+  };
+
+  const view = render(accountSurfaceTree({ accountStateSource, visible: true }));
+  expect(await screen.findByText("u_123")).toBeTruthy();
+
+  view.rerender(accountSurfaceTree({ accountStateSource, visible: false }));
+  view.rerender(accountSurfaceTree({ accountStateSource, visible: true }));
+
+  expect(screen.queryByText("u_123")).toBeNull();
+
+  resolveSecondRead?.({ user_id: "u_456", next_gate: null, has_agent_instance: true });
+  expect(await screen.findByText("u_456")).toBeTruthy();
 });
 
 test("manual Mac setup guidance does not revive a skipped launch gate", async () => {
