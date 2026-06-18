@@ -57,7 +57,7 @@ The Mobile Client's single chat surface and the only chat UI in **Intentive** v1
 _Avoid_: chat screen, conversation view, messenger, thread UI
 
 **Account Affordance**:
-The quiet control that opens account and setup utility from **Companion Chat** without turning account into primary navigation. It is visible enough to recover settings and setup, but it is not a header, tab, or active chat tool.
+The quiet control reserved for account and setup utility from **Companion Chat** without turning account into primary navigation. It is visible enough to recover settings and setup, but it is not a header, tab, or active chat tool.
 _Avoid_: settings tab, account tab, header button, chat tool
 
 **Composer**:
@@ -98,6 +98,6 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - The **Runtime Adapter** obtains **Routing** (`{ ws_url, runtime_jwt, agent_instance_id }`) from the Control Plane `GET /agent`, then connects the WebSocket directly to the **Agent Runtime**; the Control Plane is off the message path after that. It maps routing failures: `503` → retry `GET /agent` with capped backoff, `401` → re-authenticate, `403` → re-check `GET /me` for the next **Pre-Chat Gate** before retrying.
 - The first opening is authored by the **Agent Runtime** (Conversation Start Trigger), never by the client. "No duplicate openings" is a **free consequence** of server-side session-start idempotency plus **Message Store** dedupe by `message_id` — there is deliberately **no** bespoke first-opening tracking on the client.
 - The **Protected Opening** renders inside ordinary **Companion Chat**. The Composer accepts draft text while it is arriving, but early send attempts do not auto-send later; retrying an opening failure retries the Companion-authored opening only and leaves the user's draft untouched.
-- The **Account Affordance** is utility access from **Companion Chat**, not a peer destination; the **Account Surface** owns the actual account and setup UI.
+- The **Account Affordance** is the quiet utility entry point from **Companion Chat**, not a peer destination; the **Account Surface** owns the actual account and setup UI.
 - Visible **Companion Chat** UI uses **Companion** language, not assistant, bot, or agent labels.
 - The **Runtime Adapter** reconciles each outbound `user_message` to its server-truth copy by `message_id` to drive **Delivery Status**; the same dedupe collapses any duplicated inbound message (including a re-triggered opening).

@@ -143,6 +143,13 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
   `hello_ok`, retries routing failures, marks pending sends `failed` on terminal
   errors, splits reconnect snapshots from history backfill to preserve order, and
   ignores stale socket/routing callbacks across reconnect generations.
+
+- **Liquid Glass chat shell + Floating Composer** ([Issue #45]) — Companion Chat
+  now uses Liquid Glass surfaces where available, a floating bottom composer with
+  keyboard/safe-area padding, a quiet account affordance, and a protected opening
+  flow. While the opening is arriving, drafts stay editable but do not auto-send
+  later; opening failures retry the Companion-authored opening only and leave the
+  draft untouched.
 - **Launch Route** — `route-for-destination.ts` owns `LaunchDestination →` splash or
   redirect href; `app/_layout.tsx` runs the redirect effect only. Node contract:
   `route-for-destination.test.mjs`. Dev/test harnesses use `createStubLaunchStateSource`
@@ -200,8 +207,6 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **#44** — Scroll-back UX and companion-chat wiring for per-message retry UI (#45
   styles **Delivery Status**); runtime-layer `retryUserMessage` landed on branch
   `issue-44`.
-- **#45** — Liquid Glass chat shell visuals, floating composer, safe-area / keyboard;
-  styles **Delivery Status** surfaced by #33.
 - **#46** — Account Surface and sign-out UX.
 - **CI** — `test:rn` remains opt-in locally; root `pnpm test` runs Node mobile tests
   only (see `docs/TESTING.md`).
