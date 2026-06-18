@@ -32,6 +32,7 @@ function SignInAgain() {
 function accountSurfaceTree({
   onSignOut = () => Promise.resolve(),
   launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
+  launchStateSource,
   controlPlaneBaseUrl = "https://cp.test",
   runtimeConnectionState = "connected",
   accountStateSource,
@@ -39,12 +40,15 @@ function accountSurfaceTree({
 }: {
   onSignOut?: () => Promise<void>;
   launchState?: LaunchState;
+  launchStateSource?: LaunchStateSource;
   controlPlaneBaseUrl?: string;
   runtimeConnectionState?: RuntimeConnectionState;
   accountStateSource?: AccountStateSource;
   visible?: boolean;
 }) {
-  const source: LaunchStateSource = { read: () => Promise.resolve(launchState) };
+  const source: LaunchStateSource = launchStateSource ?? {
+    read: () => Promise.resolve(launchState),
+  };
 
   return (
     <LaunchStateProvider source={source}>
@@ -113,10 +117,23 @@ test("logout calls the injected sign-out command and returns Launch State to sig
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("SIGNED_OUT"));
 });
 
-test("logout keeps completed gate progress available for same-session re-login", async () => {
-  renderAccountSurface({
-    launchState: { signedIn: true, consent: "completed", siblingInvitation: "skipped" },
-  });
+test("logout keeps completed gate progress as a fallback when re-login has no server state", async () => {
+  const source: LaunchStateSource = {
+    read: jest
+      .fn()
+      .mockResolvedValueOnce({
+        signedIn: true,
+        consent: "completed",
+        siblingInvitation: "skipped",
+      })
+      .mockResolvedValueOnce({
+        signedIn: false,
+        consent: null,
+        siblingInvitation: null,
+      }),
+  };
+
+  render(accountSurfaceTree({ launchStateSource: source }));
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
 
   fireEvent.press(screen.getByText("Sign out"));
@@ -125,6 +142,33 @@ test("logout keeps completed gate progress available for same-session re-login",
   fireEvent.press(screen.getByText("Sign in again"));
 
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
+});
+
+test("signing in as a different account reconciles gates instead of inheriting prior progress", async () => {
+  const source: LaunchStateSource = {
+    read: jest
+      .fn()
+      .mockResolvedValueOnce({
+        signedIn: true,
+        consent: "completed",
+        siblingInvitation: "skipped",
+      })
+      .mockResolvedValueOnce({
+        signedIn: true,
+        consent: "pending",
+        siblingInvitation: "pending",
+      }),
+  };
+
+  render(accountSurfaceTree({ launchStateSource: source }));
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
+
+  fireEvent.press(screen.getByText("Sign out"));
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("SIGNED_OUT"));
+
+  fireEvent.press(screen.getByText("Sign in again"));
+
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("MISSING_CONSENT"));
 });
 
 test("reopening Account Surface clears stale identity before the next account read resolves", async () => {

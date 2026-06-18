@@ -6,7 +6,8 @@
  * cross-domain import.
  *
  * Roles, kept separate (see apps/mobile/docs/adr/0011-*):
- *   - read path:  `LaunchStateSource` hydrates the store on mount.
+ *   - read path:  `LaunchStateSource` hydrates the store on mount and reconciles
+ *                 it after a successful sign-in.
  *   - write path: gate completion calls a mutator, which updates the store
  *                 OPTIMISTICALLY (instant Launch Route transition). The durable POST to the
  *                 Control Plane is a later concern (#23/#26).
@@ -14,7 +15,15 @@
  * Nothing is persisted to disk. Cold launch starts UNKNOWN (→ RESOLVING).
  * The resolver reads only this store; it never reads the source directly.
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import type { GateStatus, LaunchState } from "./types";
 import type { LaunchStateSource } from "./source";
@@ -32,12 +41,9 @@ const HYDRATION_FAILURE_FALLBACK: LaunchState = {
 };
 
 /**
- * Apply an optimistic sign-in. Beyond flipping `signedIn`, this defaults any gate
- * still `null` to `"pending"`: a signed-in state with a `null` gate the resolver
- * needs maps to `RESOLVING` (splash) with no re-read to recover — stranding the
- * user. Pre-seeding `pending` guarantees the resolver can advance to the next
- * gate. This is the one place that owns the walk-safety invariant, so no producer
- * of `LaunchState` (the hydration fallback, the #23 `GET /me` mapper) has to.
+ * Build the local fallback for sign-in when the source cannot prove a signed-in
+ * server state. A signed-in state with a `null` gate strands the resolver on
+ * `RESOLVING`, so the fallback pre-seeds unknown gates to `pending`.
  */
 function withSignedIn(state: LaunchState): LaunchState {
   return {
@@ -47,9 +53,17 @@ function withSignedIn(state: LaunchState): LaunchState {
   };
 }
 
+function withSignedInFallback(current: LaunchState, fallback: LaunchState): LaunchState {
+  return {
+    signedIn: true,
+    consent: current.consent ?? fallback.consent,
+    siblingInvitation: current.siblingInvitation ?? fallback.siblingInvitation,
+  };
+}
+
 export interface LaunchStateStore {
   state: LaunchState;
-  /** Identity Gate completed (optimistic). */
+  /** Identity Gate completed; reconcile with Launch State Source before trusting local gates. */
   markSignedIn: () => void;
   /** Account Surface logout completed; keep known gate progress for same-session re-login. */
   markSignedOut: () => void;
@@ -69,18 +83,23 @@ export function LaunchStateProvider({
   children: ReactNode;
 }): React.JSX.Element {
   const [state, setState] = useState<LaunchState>(UNKNOWN);
+  const readGenerationRef = useRef(0);
 
   // Read path: hydrate from the source of truth once on mount.
   useEffect(() => {
     let active = true;
+    const generation = readGenerationRef.current + 1;
+    readGenerationRef.current = generation;
     void source
       .read()
       .then((hydrated) => {
-        if (active) setState(hydrated);
+        if (active && readGenerationRef.current === generation) setState(hydrated);
       })
       .catch((err: unknown) => {
         console.warn("Launch State hydration failed; using signed-out fallback.", err);
-        if (active) setState(HYDRATION_FAILURE_FALLBACK);
+        if (active && readGenerationRef.current === generation) {
+          setState(HYDRATION_FAILURE_FALLBACK);
+        }
       });
     return () => {
       active = false;
@@ -90,12 +109,36 @@ export function LaunchStateProvider({
   const store = useMemo<LaunchStateStore>(
     () => ({
       state,
-      markSignedIn: () => setState(withSignedIn),
-      markSignedOut: () => setState((s) => ({ ...s, signedIn: false })),
+      markSignedIn: () => {
+        const fallback = withSignedIn(state);
+        const generation = readGenerationRef.current + 1;
+        readGenerationRef.current = generation;
+        setState({ signedIn: true, consent: null, siblingInvitation: null });
+
+        void source
+          .read()
+          .then((hydrated) => {
+            if (readGenerationRef.current !== generation) return;
+            if (hydrated.signedIn === true) {
+              setState(hydrated);
+              return;
+            }
+            setState((current) => withSignedInFallback(current, fallback));
+          })
+          .catch(() => {
+            if (readGenerationRef.current === generation) {
+              setState((current) => withSignedInFallback(current, fallback));
+            }
+          });
+      },
+      markSignedOut: () => {
+        readGenerationRef.current += 1;
+        setState((s) => ({ ...s, signedIn: false }));
+      },
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
     }),
-    [state],
+    [source, state],
   );
 
   return <LaunchStateContext.Provider value={store}>{children}</LaunchStateContext.Provider>;
