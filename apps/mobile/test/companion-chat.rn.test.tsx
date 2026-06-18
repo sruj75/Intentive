@@ -137,6 +137,27 @@ test("Post-Message-Back messages render a lightweight continuity cue", async () 
   expect(await screen.findByText("Follow-up from your Companion")).toBeTruthy();
 });
 
+test("continuity cue clears notched-device top chrome", async () => {
+  render(
+    <CompanionChat
+      adapter={
+        createTestRuntimeAdapter([
+          companionMessage("opening", "I am here."),
+          companionMessage("follow-up", "Checking in.", true),
+        ]).adapter
+      }
+      initialSafeAreaMetrics={safeAreaMetrics({ top: 59 })}
+    />,
+  );
+
+  const chromeStyle = StyleSheet.flatten(screen.getByTestId("intentive-top-chrome").props.style);
+  const continuityStyle = StyleSheet.flatten(
+    screen.getByTestId("intentive-continuity-dock").props.style,
+  );
+
+  expect(continuityStyle.top).toBeGreaterThan(chromeStyle.top + 42);
+});
+
 test("continuity cue clears after newer conversation activity", async () => {
   render(
     <CompanionChat
@@ -197,6 +218,34 @@ test("Mac setup banner suppresses for registered Desktop Client and current-sess
 
   await flushStore();
   expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull();
+});
+
+test("Mac setup banner refreshes when Account State is re-read after account surface closes", async () => {
+  const account = mutableAccountSource(false);
+  const harness = createTestRuntimeAdapter([companionMessage("opening", "I am here.")]);
+  const first = render(
+    <CompanionChat
+      adapter={harness.adapter}
+      accountStateSource={account.source}
+      accountStateRefreshKey={0}
+    />,
+  );
+
+  expect(await screen.findByText("Add Intentive on Mac for richer context")).toBeTruthy();
+  account.setHasDesktopClient(true);
+
+  first.rerender(
+    <CompanionChat
+      adapter={harness.adapter}
+      accountStateSource={account.source}
+      accountStateRefreshKey={1}
+    />,
+  );
+
+  await waitFor(() => expect(account.source.read).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull(),
+  );
 });
 
 test("Account Affordance is quiet, icon-only, and accessible", () => {
@@ -338,5 +387,37 @@ function accountSource(hasDesktopClient: boolean): AccountStateSource {
       has_agent_instance: true,
       has_desktop_client: hasDesktopClient,
     }),
+  };
+}
+
+function mutableAccountSource(hasDesktopClient: boolean): {
+  source: AccountStateSource & { read: jest.Mock };
+  setHasDesktopClient(next: boolean): void;
+} {
+  let current = hasDesktopClient;
+  return {
+    source: {
+      read: jest.fn(async () => ({
+        user_id: "u_1",
+        next_gate: null,
+        has_agent_instance: true,
+        has_desktop_client: current,
+      })),
+    },
+    setHasDesktopClient(next) {
+      current = next;
+    },
+  };
+}
+
+function safeAreaMetrics(insets: { top?: number; right?: number; bottom?: number; left?: number }) {
+  return {
+    frame: { x: 0, y: 0, width: 390, height: 844 },
+    insets: {
+      top: insets.top ?? 0,
+      right: insets.right ?? 0,
+      bottom: insets.bottom ?? 0,
+      left: insets.left ?? 0,
+    },
   };
 }

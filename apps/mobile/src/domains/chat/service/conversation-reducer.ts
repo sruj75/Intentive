@@ -122,7 +122,7 @@ export function reduceConversationState(
           ? ((failedAny = true), { ...message, delivery: "failed" as const })
           : message,
       );
-      return failedAny ? { ...state, messages, agentState: "available" } : state;
+      return failedAny ? { ...state, messages, agentState: deriveAgentState(messages) } : state;
     }
   }
 }

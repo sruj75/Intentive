@@ -48,23 +48,28 @@ export interface CompanionChatProps {
    */
   readonly adapter?: RuntimeAdapter;
   readonly accountStateSource?: AccountStateSource;
+  readonly accountStateRefreshKey?: unknown;
   readonly agentStateOverride?: AgentStateOverride;
+  readonly initialSafeAreaMetrics?: Metrics;
   readonly onOpenAccount?: () => void;
 }
 
 export function CompanionChat({
   adapter,
   accountStateSource,
+  accountStateRefreshKey,
   agentStateOverride,
+  initialSafeAreaMetrics,
   onOpenAccount,
 }: CompanionChatProps): React.JSX.Element {
   const resolvedAdapter = useMemo(() => adapter ?? createDevRuntimeAdapter(), [adapter]);
 
   return (
-    <SafeAreaProvider initialMetrics={CHAT_SAFE_AREA_INITIAL_METRICS}>
+    <SafeAreaProvider initialMetrics={initialSafeAreaMetrics ?? CHAT_SAFE_AREA_INITIAL_METRICS}>
       <CompanionChatSurface
         adapter={resolvedAdapter}
         accountStateSource={accountStateSource}
+        accountStateRefreshKey={accountStateRefreshKey}
         agentStateOverride={agentStateOverride}
         onOpenAccount={onOpenAccount}
       />
@@ -75,11 +80,13 @@ export function CompanionChat({
 function CompanionChatSurface({
   adapter,
   accountStateSource,
+  accountStateRefreshKey,
   agentStateOverride,
   onOpenAccount,
 }: {
   readonly adapter: RuntimeAdapter;
   readonly accountStateSource?: AccountStateSource;
+  readonly accountStateRefreshKey?: unknown;
   readonly agentStateOverride?: AgentStateOverride;
   readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
@@ -96,6 +103,9 @@ function CompanionChatSurface({
   const insets = useSafeAreaInsets();
   const [composerHeight, setComposerHeight] = useState(112);
   const bottomInset = composerHeight + insets.bottom + 28;
+  const topChromeTop = deriveTopChromeTop(insets.top);
+  const continuityTop = deriveContinuityTop(insets.top);
+  const messagesTop = deriveMessagesTop(insets.top);
 
   useEffect(() => {
     if (!accountStateSource) {
@@ -115,7 +125,7 @@ function CompanionChatSurface({
     return () => {
       active = false;
     };
-  }, [accountStateSource]);
+  }, [accountStateRefreshKey, accountStateSource]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -125,17 +135,20 @@ function CompanionChatSurface({
       >
         <ThreadPrimitive.Root style={styles.thread}>
           <TopChrome
-            topInset={insets.top}
+            top={topChromeTop}
             presentation={presentation}
             onDismissMacSetup={() => setMacSetupBannerDismissed(true)}
             onOpenAccount={onOpenAccount}
           />
-          <ContinuityEvents presentation={presentation} />
+          <ContinuityEvents presentation={presentation} top={continuityTop} />
           <ThreadPrimitive.Messages
             components={{ UserMessage, AssistantMessage }}
             contentInsetAdjustmentBehavior="automatic"
             style={styles.messages}
-            contentContainerStyle={[styles.messagesContent, { paddingBottom: bottomInset }]}
+            contentContainerStyle={[
+              styles.messagesContent,
+              { paddingBottom: bottomInset, paddingTop: messagesTop },
+            ]}
             testID="intentive-message-list"
           />
           {presentation.protectedOpening.status === "pending" ? (
@@ -198,18 +211,18 @@ function AssistantMessage(): React.JSX.Element {
 }
 
 function TopChrome({
-  topInset,
+  top,
   presentation,
   onDismissMacSetup,
   onOpenAccount,
 }: {
-  readonly topInset: number;
+  readonly top: number;
   readonly presentation: ChatPresentation;
   readonly onDismissMacSetup: () => void;
   readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
   return (
-    <View style={[styles.topChrome, { top: Math.max(topInset + 8, 18) }]}>
+    <View testID="intentive-top-chrome" style={[styles.topChrome, { top }]}>
       <AgentStateChip presentation={presentation} />
       <View style={styles.topChromeSpacer} />
       {presentation.macSetupBanner.visible ? (
@@ -240,14 +253,20 @@ function AgentStateChip({
 
 function ContinuityEvents({
   presentation,
+  top,
 }: {
   readonly presentation: ChatPresentation;
+  readonly top: number;
 }): React.JSX.Element | null {
   const event = presentation.continuityEvents[presentation.continuityEvents.length - 1];
   if (!event) return null;
 
   return (
-    <View style={styles.continuityDock} pointerEvents="none">
+    <View
+      testID="intentive-continuity-dock"
+      style={[styles.continuityDock, { top }]}
+      pointerEvents="none"
+    >
       <Text testID="intentive-continuity-event" style={styles.continuityText}>
         {event.copy}
       </Text>
@@ -441,6 +460,25 @@ const CHAT_SAFE_AREA_INITIAL_METRICS: Metrics = {
   insets: { top: 0, right: 0, bottom: 0, left: 0 },
 };
 
+const TOP_CHROME_MIN_TOP = 18;
+const TOP_CHROME_SAFE_AREA_GAP = 8;
+const TOP_CHROME_ESTIMATED_HEIGHT = 42;
+const CONTINUITY_DOCK_GAP = 8;
+const CONTINUITY_DOCK_ESTIMATED_HEIGHT = 30;
+const MESSAGE_TOP_GAP = 20;
+
+function deriveTopChromeTop(topInset: number): number {
+  return Math.max(topInset + TOP_CHROME_SAFE_AREA_GAP, TOP_CHROME_MIN_TOP);
+}
+
+function deriveContinuityTop(topInset: number): number {
+  return deriveTopChromeTop(topInset) + TOP_CHROME_ESTIMATED_HEIGHT + CONTINUITY_DOCK_GAP;
+}
+
+function deriveMessagesTop(topInset: number): number {
+  return deriveContinuityTop(topInset) + CONTINUITY_DOCK_ESTIMATED_HEIGHT + MESSAGE_TOP_GAP;
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   thread: { flex: 1, backgroundColor: colors.canvas },
@@ -448,7 +486,6 @@ const styles = StyleSheet.create({
   messagesContent: {
     gap: 10,
     paddingHorizontal: 18,
-    paddingTop: 118,
   },
   row: {
     maxWidth: "84%",
@@ -536,7 +573,6 @@ const styles = StyleSheet.create({
     left: 18,
     position: "absolute",
     right: 18,
-    top: 70,
     zIndex: 2,
   },
   continuityText: {

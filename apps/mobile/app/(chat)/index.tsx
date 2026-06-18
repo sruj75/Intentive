@@ -15,6 +15,7 @@ import { CompanionChat } from "../../src/domains/chat/ui/companion-chat";
 export default function ChatRoute(): React.JSX.Element {
   const authAdapter = useAuthAdapter();
   const [accountVisible, setAccountVisible] = useState(false);
+  const [accountStateRefreshKey, setAccountStateRefreshKey] = useState(0);
   const baseUrl = process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "";
   const adapter = useMemo(() => {
     if (baseUrl.trim().length === 0) return createDevRuntimeAdapter();
@@ -51,6 +52,7 @@ export default function ChatRoute(): React.JSX.Element {
       <CompanionChat
         adapter={adapter}
         accountStateSource={accountStateSource}
+        accountStateRefreshKey={accountStateRefreshKey}
         onOpenAccount={() => setAccountVisible(true)}
       />
       <AccountSurface
@@ -59,7 +61,10 @@ export default function ChatRoute(): React.JSX.Element {
         onSignOut={() => authAdapter.signOut()}
         runtimeConnectionState={runtimeState.connectionState}
         visible={accountVisible}
-        onClose={() => setAccountVisible(false)}
+        onClose={() => {
+          setAccountVisible(false);
+          setAccountStateRefreshKey((current) => current + 1);
+        }}
       />
     </>
   );

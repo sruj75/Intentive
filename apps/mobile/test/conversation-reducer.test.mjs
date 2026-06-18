@@ -268,6 +268,28 @@ test("mark_pending_failed only affects pending user messages", () => {
   assert.equal(failed.agentState, "available");
 });
 
+test("mark_pending_failed preserves Following up when the latest message is a Post-Message-Back follow-up", () => {
+  const pending = reduceConversationState(EMPTY_MESSAGE_STORE, {
+    type: "send_user_message",
+    messageId: "user-1",
+    body: "one more thing",
+    sentAt: at,
+  });
+  const raced = reduceConversationState(pending, {
+    type: "companion_message",
+    messageId: "proactive",
+    body: "checking in",
+    emittedAt: at,
+    viaPostMessageBack: true,
+  });
+
+  const failed = reduceConversationState(raced, { type: "mark_pending_failed" });
+
+  assert.equal(failed.messages[0].delivery, "failed");
+  assert.equal(failed.messages[1].viaPostMessageBack, true);
+  assert.equal(failed.agentState, "following_up");
+});
+
 test("retry_failed_user_message only returns failed local user messages to pending", () => {
   const withMessages = {
     ...EMPTY_MESSAGE_STORE,
