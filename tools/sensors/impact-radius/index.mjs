@@ -16,6 +16,7 @@ const ignoredDirectories = new Set([
   "coverage",
   "dist",
   "node_modules",
+  "Pods",
   "target",
 ]);
 const ignoredPathFragments = ["/reference/"];

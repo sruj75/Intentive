@@ -56,6 +56,14 @@ _Avoid_: macOS onboarding, desktop pairing wizard, relationship onboarding, devi
 The Mobile Client's single chat surface and the only chat UI in **Intentive** v1 — the **Companion** conversation rendered over **Conversation History** server-truth. Composed by `ui/companion-chat.tsx` (Intentive Chat Components over `@assistant-ui/react-native`, ADR 0009) and fed by the **Runtime Adapter**; it persists nothing locally.
 _Avoid_: chat screen, conversation view, messenger, thread UI
 
+**Account Affordance**:
+The quiet control that opens account and setup utility from **Companion Chat** without turning account into primary navigation. It is visible enough to recover settings and setup, but it is not a header, tab, or active chat tool.
+_Avoid_: settings tab, account tab, header button, chat tool
+
+**Composer**:
+The bottom floating message control in **Companion Chat** where the user drafts and sends messages. It is a persistent chat control, not a footer or onboarding prompt, and it stays usable with keyboard, safe-area, and larger text settings.
+_Avoid_: input bar, footer, text box, onboarding prompt
+
 **Runtime Adapter**:
 The Mobile-internal deep module that owns the Protocol WebSocket transport and the in-memory **Message Store** it pushes into — handshake, idempotency, ordering, reconnect-snapshot recovery, live `companion_message` delivery, and `presence_update`/`delivery_ack` semantics — behind one chat-domain-friendly interface. Driven push-first via `useExternalStoreRuntime`, not the vendor turn-based `useLocalRuntime` ([adr/0015](docs/adr/0015-mobile-push-external-store-runtime-for-proactive-companion.md)). Imports `packages/protocol/`; the only place that speaks WebSocket.
 _Avoid_: chat client, socket manager, ws client, transport layer
@@ -63,6 +71,10 @@ _Avoid_: chat client, socket manager, ws client, transport layer
 **Message Store**:
 The Runtime Adapter's single **in-memory**, server-truth list of conversation messages — seeded from the `hello_ok` reconnect snapshot, appended by live events, deduped by `message_id`, ordered by the runtime. **Companion Chat** renders it via the external-store binding (#44); never written to disk (no SQLite/AsyncStorage). The push-side analogue of **Launch State**: a transient projection of Agent Runtime truth, owned here only to drive the UI.
 _Avoid_: message database, local transcript, chat cache, message log
+
+**Protected Opening**:
+The Companion's first runtime-authored message when a relationship first enters **Companion Chat**. It is ordinary chat content, not a separate onboarding mode; while it is arriving, the user may draft, but no user message is committed or sent until the opening lands.
+_Avoid_: onboarding mode, welcome screen, client welcome, first-run chat mode
 
 **Agent State**:
 The Companion-status the chat surfaces — v1 has **Thinking** (an un-answered outbound `user_message` is in flight) and **Available** (otherwise). In v1 it is a **local inference** the **Runtime Adapter** derives from in-flight Protocol activity, **not** a runtime-reported signal: the Protocol has no `agent_state`/typing event, so a true server-emitted state is deferred to a later Protocol issue (Agent Runtime owns the emit side). Consequence of the local derivation: a proactive `companion_message` (Heartbeat/Cron/Post-Message-Back) arrives without a preceding **Thinking**, since nothing was sent to infer from. Honoring **capability-honesty**, the UI must not present this guess as authoritative runtime truth.
@@ -85,4 +97,7 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - Two tokens, two hops: the **Runtime Adapter** uses `AuthAdapter.getUserJwt()` (the **User JWT**) to authorize the `GET /agent` HTTP call, then puts the **`runtime_jwt`** that call returns on the WebSocket `connect.auth_token`, treating it as an opaque ticket. `runtime_jwt` is the same Neon Auth token passed through (monorepo ADR-0002); the Runtime Adapter does not assume that and never reuses `getUserJwt()` for the socket.
 - The **Runtime Adapter** obtains **Routing** (`{ ws_url, runtime_jwt, agent_instance_id }`) from the Control Plane `GET /agent`, then connects the WebSocket directly to the **Agent Runtime**; the Control Plane is off the message path after that. It maps routing failures: `503` → retry `GET /agent` with capped backoff, `401` → re-authenticate, `403` → re-check `GET /me` for the next **Pre-Chat Gate** before retrying.
 - The first opening is authored by the **Agent Runtime** (Conversation Start Trigger), never by the client. "No duplicate openings" is a **free consequence** of server-side session-start idempotency plus **Message Store** dedupe by `message_id` — there is deliberately **no** bespoke first-opening tracking on the client.
+- The **Protected Opening** renders inside ordinary **Companion Chat**. The Composer accepts draft text while it is arriving, but early send attempts do not auto-send later; retrying an opening failure retries the Companion-authored opening only and leaves the user's draft untouched.
+- The **Account Affordance** is utility access from **Companion Chat**, not a peer destination; the **Account Surface** owns the actual account and setup UI.
+- Visible **Companion Chat** UI uses **Companion** language, not assistant, bot, or agent labels.
 - The **Runtime Adapter** reconciles each outbound `user_message` to its server-truth copy by `message_id` to drive **Delivery Status**; the same dedupe collapses any duplicated inbound message (including a re-triggered opening).
