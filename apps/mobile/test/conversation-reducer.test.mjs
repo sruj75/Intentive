@@ -208,6 +208,27 @@ test("Agent State returns following_up when a Post-Message-Back companion messag
   assert.equal(proactive.messages[0].viaPostMessageBack, true);
 });
 
+test("pending outbound delivery keeps Thinking when a Post-Message-Back companion message races it", () => {
+  const pending = reduceConversationState(EMPTY_MESSAGE_STORE, {
+    type: "send_user_message",
+    messageId: "user-1",
+    body: "one more thing",
+    sentAt: at,
+  });
+
+  const raced = reduceConversationState(pending, {
+    type: "companion_message",
+    messageId: "proactive",
+    body: "checking in",
+    emittedAt: at,
+    viaPostMessageBack: true,
+  });
+
+  assert.equal(raced.messages[0].delivery, "pending");
+  assert.equal(raced.messages[1].viaPostMessageBack, true);
+  assert.equal(raced.agentState, "thinking");
+});
+
 test("mark_pending_failed only affects pending user messages", () => {
   const withMessages = {
     ...EMPTY_MESSAGE_STORE,

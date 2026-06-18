@@ -11,6 +11,21 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Continuity, Agent State, and Mac setup banner** ([Issue #47]) —
+  - `src/domains/chat/service/chat-presentation.ts` — pure presentation for Agent State
+    (`Available`, `Thinking`, `Following up`, explicit-only `Paused`), Post-Message-Back
+    continuity cues, and a nonblocking Mac setup banner driven by Control Plane
+    `AccountState.has_desktop_client`.
+  - `src/domains/chat/service/conversation-reducer.ts` — `following_up` Agent State from
+    server-truth `via_post_message_back`; `Thinking` from pending outbound delivery only.
+  - `src/domains/chat/ui/companion-chat.tsx` — top chrome Agent State chip, continuity dock,
+    dismissible Mac setup banner near the **Account Affordance**; accepts optional
+    `accountStateSource` and `agentStateOverride`.
+  - `app/(chat)/index.tsx` — passes `accountStateSource` into **Companion Chat**.
+  - `apps/mobile/CONTEXT.md` — Agent State vocabulary and Mac setup banner relationship.
+  - Tests: extended `chat-presentation.test.mjs`, `companion-chat.rn.test.tsx`,
+    `conversation-reducer.test.mjs`; AccountState fixtures include `has_desktop_client`.
+
 - **Account Surface** ([Issue #46]) —
   - `src/domains/account/ui/account-surface.tsx` — sheet-like utility over **Companion
     Chat** (Modal, not a peer route): signed-in identity via Control Plane account
@@ -241,4 +256,5 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 [Issue #44]: https://github.com/sruj75/Intentive/issues/44
 [Issue #45]: https://github.com/sruj75/Intentive/issues/45
 [Issue #46]: https://github.com/sruj75/Intentive/issues/46
+[Issue #47]: https://github.com/sruj75/Intentive/issues/47
 [Issue #83]: https://github.com/sruj75/Intentive/issues/83

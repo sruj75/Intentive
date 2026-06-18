@@ -137,6 +137,23 @@ test("Post-Message-Back messages render a lightweight continuity cue", async () 
   expect(await screen.findByText("Follow-up from your Companion")).toBeTruthy();
 });
 
+test("continuity cue clears after newer conversation activity", async () => {
+  render(
+    <CompanionChat
+      adapter={
+        createTestRuntimeAdapter([
+          companionMessage("opening", "I am here."),
+          companionMessage("follow-up", "Checking in.", true),
+          userMessage("reply", "Thanks.", "confirmed"),
+        ]).adapter
+      }
+    />,
+  );
+
+  await flushStore();
+  expect(screen.queryByText("Follow-up from your Companion")).toBeNull();
+});
+
 test("Mac setup banner appears from AccountState without blocking composer send", async () => {
   const harness = createTestRuntimeAdapter([companionMessage("opening", "I am here.")]);
   const accountStateSource = accountSource(false);

@@ -32,6 +32,11 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 
 ### Changed
 
+- **`@intentive/api-contract` — `AccountState.has_desktop_client`** ([Issue #47]) —
+  `GET /me` now reports whether any registered device in the Control Plane Device Registry
+  has `client_kind === "desktop"`. Registered/present only — not live session state. Mobile
+  uses it for capability-honest Mac setup promotion in **Companion Chat**. Tests extended in
+  `api-contract/test/contract.test.mjs`; `ARCHITECTURE.md` field list synced.
 - **`@intentive/providers/telemetry`** — exported `errorMessage(error)` as the canonical
   error→string helper for structured log attrs and durable error columns; tests extended
   in `providers/test/telemetry.test.mjs`.
@@ -43,3 +48,7 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
   (replacing raw `ZodError` leakage). `safeParse*` wrappers unchanged.
 - **`packages/AGENTS.md`** — documents `boundary/` in the package table and the consolidated
   decode-at-boundary rule.
+
+[Issue #39]: https://github.com/sruj75/Intentive/issues/39
+[Issue #42]: https://github.com/sruj75/Intentive/issues/42
+[Issue #47]: https://github.com/sruj75/Intentive/issues/47

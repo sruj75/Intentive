@@ -60,7 +60,7 @@ A business domain is a vertical slice of product capability inside one deployabl
 
 - `auth` — Auth Adapter, Identity Gate, Neon/Dev providers (see mobile ADR 0012)
 - `onboarding` — Pre-Chat Gate sequence rendering (Consent Primer, Sibling Invitation) + the Launch State Resolver (gate-ordering state machine)
-- `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, mobile ADR 0009/0015); Protocol **Runtime Adapter** with in-memory Message Store (mobile ADR 0015/0016); `dev-transport` for local fixtures
+- `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, mobile ADR 0009/0015); Protocol **Runtime Adapter** with in-memory Message Store (mobile ADR 0015/0016); `chat-presentation.ts` for capability-honest Agent State and continuity chrome (#47); `dev-transport` for local fixtures
 - `notifications` — APNs token registration, permission flow
 - `account` — Account Surface, logout, app info
 

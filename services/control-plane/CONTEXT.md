@@ -46,6 +46,10 @@ _Avoid_: agent table, session table, live-session tracker
 The `Account State` field meaning **"this User has ever provisioned an Agent Instance"** (i.e. has entered chat at least once), read from the **Agent Instance Registry**. It is _not_ a liveness signal: `true` does not promise a running session right now — connection liveness is confirmed only at the Agent Runtime's WebSocket handshake. Once `true`, it stays `true` (v1 has no de-provisioning).
 _Avoid_: has live session, is connected, session active
 
+**has_desktop_client**:
+The `Account State` field meaning **"this User has at least one Desktop Client registered in the Device Registry"** (`client_kind === "desktop"`). Registered/present only — not live-connected or session-active. Mobile uses it for capability-honest Mac setup promotion in **Companion Chat** (#47); it does not revive the **Sibling Client Invitation** gate or imply the Companion has Mac context.
+_Avoid_: Mac connected, desktop online, live Mac session
+
 **Push Notification**:
 An APNs (or later FCM) push delivered to a User's device(s). Always originates from **Post-Message-Back**. The Agent Runtime does not call APNs directly — it asks the Control Plane, which owns device tokens and Apple credentials.
 _Avoid_: in-app banner, toast, transport ping

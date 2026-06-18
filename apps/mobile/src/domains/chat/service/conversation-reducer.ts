@@ -84,7 +84,7 @@ export function reduceConversationState(
       return {
         ...state,
         messages,
-        agentState: event.viaPostMessageBack ? "following_up" : "available",
+        agentState: deriveAgentState(messages),
       };
     }
     case "send_user_message": {

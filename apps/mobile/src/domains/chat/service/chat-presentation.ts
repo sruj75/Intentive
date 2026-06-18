@@ -77,12 +77,15 @@ function presentAgentState(kind: PresentedAgentStateKind): PresentedAgentState {
 }
 
 function deriveContinuityEvents(state: RuntimeAdapterState): readonly ContinuityEvent[] {
-  return state.messages
-    .filter((message) => message.author === "companion" && message.viaPostMessageBack)
-    .map((message) => ({
-      id: `post-message-back-${message.id}`,
+  const latest = state.messages[state.messages.length - 1];
+  if (latest?.author !== "companion" || !latest.viaPostMessageBack) return [];
+
+  return [
+    {
+      id: `post-message-back-${latest.id}`,
       copy: "Follow-up from your Companion",
-    }));
+    },
+  ];
 }
 
 function deriveMacSetupBanner(

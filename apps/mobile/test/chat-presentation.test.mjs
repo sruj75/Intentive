@@ -93,6 +93,32 @@ test("post-message-back server truth renders Following up and a continuity cue",
   ]);
 });
 
+test("continuity cue clears once newer conversation activity moves past the follow-up", () => {
+  const presentation = deriveChatPresentation({
+    ...baseState,
+    agentState: "available",
+    messages: [
+      {
+        id: "c1",
+        author: "companion",
+        body: "A follow-up arrived.",
+        at: "2026-06-12T00:00:00.000Z",
+        viaPostMessageBack: true,
+      },
+      {
+        id: "u1",
+        author: "user",
+        body: "Got it.",
+        at: "2026-06-12T00:01:00.000Z",
+        viaPostMessageBack: false,
+        delivery: "confirmed",
+      },
+    ],
+  });
+
+  assert.deepEqual(presentation.continuityEvents, []);
+});
+
 test("Paused is explicit-only and never inferred from connection errors", () => {
   const errorPresentation = deriveChatPresentation({
     ...baseState,
