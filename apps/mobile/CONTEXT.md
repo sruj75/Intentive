@@ -60,6 +60,14 @@ _Avoid_: chat screen, conversation view, messenger, thread UI
 The quiet control reserved for account and setup utility from **Companion Chat** without turning account into primary navigation. It is visible enough to recover settings and setup, but it is not a header, tab, or active chat tool.
 _Avoid_: settings tab, account tab, header button, chat tool
 
+**Account Surface**:
+The sheet-like utility surface opened from the **Account Affordance**. It owns identity visibility, logout, app/support information, connection status, and manual **Desktop Client** setup recovery. It may offer setup or reconnection guidance, but it must not claim the Mac is connected unless server-owned account/device state proves it.
+_Avoid_: settings, settings screen, settings page, account page, Mac connected screen
+
+**Connection Status**:
+The simple usability state the **Account Surface** shows for whether Intentive can currently reach what it needs for chat. It is user-facing and coarse: connected, reconnecting, connection issue, or not configured. It is not a diagnostics panel for separating Control Plane failures from Agent Runtime failures.
+_Avoid_: server diagnostics, socket status, backend health, runtime health
+
 **Composer**:
 The bottom floating message control in **Companion Chat** where the user drafts and sends messages. It is a persistent chat control, not a footer or onboarding prompt, and it stays usable with keyboard, safe-area, and larger text settings.
 _Avoid_: input bar, footer, text box, onboarding prompt
@@ -91,6 +99,7 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - A gate screen completing writes its **Gate Status** into **Launch State**; the root layout reactively redirects via the resolver. Gate screens never navigate forward themselves.
 - **Pre-Chat Gate** ordering (Identity → Consent → Sibling Invitation → Chat) lives only inside the resolver.
 - The **Identity Gate** calls the **Auth Adapter**; on success it writes `signedIn` into **Launch State** (the seam #18 left) and never navigates forward itself.
+- The **Account Surface** shows signed-in identity only through the **Auth Adapter** or Control-Plane-owned account state. It never imports a concrete **Auth Provider** or auth SDK to read profile details.
 - The **Consent Primer** writes `consent: "completed"` into **Launch State** on accept (no service layer between screen and store); the resolver advances it to the next gate. Notification permission is never requested here and is never modeled as relationship consent.
 - The **Sibling Client Invitation** writes `siblingInvitation: "skipped"` on "Not now"; a real `completed` is server-observed (the Mac registers via #27, surfaced by `GET /me` #26), never claimed by the phone. The resolver treats `skipped` and `completed` alike — both advance to **Companion Chat**.
 - The **Auth Adapter** selects an **Auth Provider**; only the **Neon Auth** provider yields a **User JWT**. Verifying that **User JWT** is the Control Plane's job (#23), not the Mobile Client's.
@@ -99,5 +108,8 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - The first opening is authored by the **Agent Runtime** (Conversation Start Trigger), never by the client. "No duplicate openings" is a **free consequence** of server-side session-start idempotency plus **Message Store** dedupe by `message_id` — there is deliberately **no** bespoke first-opening tracking on the client.
 - The **Protected Opening** renders inside ordinary **Companion Chat**. The Composer accepts draft text while it is arriving, but early send attempts do not auto-send later; retrying an opening failure retries the Companion-authored opening only and leaves the user's draft untouched.
 - The **Account Affordance** is the quiet utility entry point from **Companion Chat**, not a peer destination; the **Account Surface** owns the actual account and setup UI.
+- The **Account Surface** can help a user manually set up the **Desktop Client** after a skipped **Sibling Client Invitation**, but it does not revive that skipped gate or claim a Mac is connected from Mobile-only state.
+- The **Account Surface** is opened as a temporary utility sheet over **Companion Chat**, not as a peer route. Add a route only if native sheet presentation requires it, not because account is becoming a destination.
+- Logout starts in the **Account Surface**, calls the **Auth Adapter**'s `signOut()`, then marks **Launch State** signed out so the **Launch State Resolver** returns the signed-out path. The Account Surface never navigates to the Identity Gate directly.
 - Visible **Companion Chat** UI uses **Companion** language, not assistant, bot, or agent labels.
 - The **Runtime Adapter** reconciles each outbound `user_message` to its server-truth copy by `message_id` to drive **Delivery Status**; the same dedupe collapses any duplicated inbound message (including a re-triggered opening).
