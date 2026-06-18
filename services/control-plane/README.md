@@ -35,8 +35,9 @@ pnpm test         # build + node --test; repo integration tests need NEON_* (see
 Pull requests that touch this deployable run `.github/workflows/control-plane-ci.yml`.
 `GET /me` resolves a verified JWT to `AccountState` via `control_plane.users` (#23),
 device-aware `next_gate` from cross-client state, the caller's device/client signal, and
-observed devices (#27, ADR-0005), and `has_agent_instance` from the Agent Instance
-Registry (#30). `GET /agent` issues Routing (Runtime URL + pass-through Neon Auth JWT)
+observed devices (#27, ADR-0005), `has_agent_instance` from the Agent Instance
+Registry (#30), and `has_desktop_client` when any registered device has
+`client_kind === "desktop"` (#47). `GET /agent` issues Routing (Runtime URL + pass-through Neon Auth JWT)
 after gate enforcement and Session Start (#30).
 
 ## Deployment

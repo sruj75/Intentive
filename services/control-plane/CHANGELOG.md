@@ -47,6 +47,11 @@ device_fingerprint)`, non-destructive APNs/FCM token rotation) and the token-fre
 
 ### Changed
 
+- **`AccountState.has_desktop_client`** ([Issue #47]) — `identity.resolveAccount` now
+  derives `has_desktop_client` from the Device Registry (`listDevicesForUser`: any
+  `client_kind === "desktop"`). No migration; the devices read was already in the composer
+  path for sibling-gate computation. Tests: `identity-service.test.mjs`; fixtures and handler
+  tests updated for the new field.
 - **HTTP auth boundary consolidation** — the authenticated-request decision for every
   public endpoint (`GET /me`, `GET /agent`, `POST /consent`, `POST /sibling-invitation/skip`,
   `POST /devices/register`) now lives once in `src/http/auth.ts` (`requireUser`,
@@ -81,3 +86,4 @@ device)`. `gates` gains no dependency on `devices` (the composer does the
 [Issue #26]: https://github.com/sruj75/Intentive/issues/26
 [Issue #27]: https://github.com/sruj75/Intentive/issues/27
 [Issue #30]: https://github.com/sruj75/Intentive/issues/30
+[Issue #47]: https://github.com/sruj75/Intentive/issues/47

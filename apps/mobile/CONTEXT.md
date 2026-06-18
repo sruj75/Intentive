@@ -85,7 +85,7 @@ The Companion's first runtime-authored message when a relationship first enters 
 _Avoid_: onboarding mode, welcome screen, client welcome, first-run chat mode
 
 **Agent State**:
-The Companion-status the chat surfaces — v1 has **Thinking** (an un-answered outbound `user_message` is in flight) and **Available** (otherwise). In v1 it is a **local inference** the **Runtime Adapter** derives from in-flight Protocol activity, **not** a runtime-reported signal: the Protocol has no `agent_state`/typing event, so a true server-emitted state is deferred to a later Protocol issue (Agent Runtime owns the emit side). Consequence of the local derivation: a proactive `companion_message` (Heartbeat/Cron/Post-Message-Back) arrives without a preceding **Thinking**, since nothing was sent to infer from. Honoring **capability-honesty**, the UI must not present this guess as authoritative runtime truth.
+The Companion-status the chat surfaces: **Available**, **Thinking**, **Following up**, and explicit-only **Paused**. **Thinking** is a local inference from pending outbound `user_message` delivery. **Following up** is shown only from server truth (`companion_message.via_post_message_back` or the same flag in a reconnect snapshot). **Paused** is never inferred from errors or idle connection state; it renders only when an explicit product boundary supplies it. The Protocol has no general `agent_state`/typing event, so the UI must not present local guesses as authoritative runtime truth.
 _Avoid_: typing indicator, presence, online status, runtime-reported state
 
 **Delivery Status**:
@@ -109,6 +109,7 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - The **Protected Opening** renders inside ordinary **Companion Chat**. The Composer accepts draft text while it is arriving, but early send attempts do not auto-send later; retrying an opening failure retries the Companion-authored opening only and leaves the user's draft untouched.
 - The **Account Affordance** is the quiet utility entry point from **Companion Chat**, not a peer destination; the **Account Surface** owns the actual account and setup UI.
 - The **Account Surface** can help a user manually set up the **Desktop Client** after a skipped **Sibling Client Invitation**, but it does not revive that skipped gate or claim a Mac is connected from Mobile-only state.
+- Companion Chat may show a small, nonblocking Mac setup banner when Control Plane **Account State** reports no registered Desktop Client (`has_desktop_client: false`). This is product adoption chrome near the **Account Affordance**, not a **Pre-Chat Gate**, warning, or claim that the Companion has Mac context.
 - The **Account Surface** is opened as a temporary utility sheet over **Companion Chat**, not as a peer route. Add a route only if native sheet presentation requires it, not because account is becoming a destination.
 - Logout starts in the **Account Surface**, calls the **Auth Adapter**'s `signOut()`, then marks **Launch State** signed out so the **Launch State Resolver** returns the signed-out path. The Account Surface never navigates to the Identity Gate directly.
 - Visible **Companion Chat** UI uses **Companion** language, not assistant, bot, or agent labels.

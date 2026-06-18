@@ -9,4 +9,5 @@ export const controlPlaneContractSample: GetMeResponse = {
   user_id: "user_stub",
   next_gate: null,
   has_agent_instance: false,
+  has_desktop_client: false,
 };

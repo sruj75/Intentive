@@ -36,7 +36,12 @@ test("a valid /me response is parsed and mapped to LaunchState", async () => {
     baseUrl: "https://cp.test",
     getUserJwt: async () => "jwt-123",
     fetch: async () =>
-      jsonResponse({ user_id: "u_1", next_gate: "consent_primer", has_agent_instance: false }),
+      jsonResponse({
+        user_id: "u_1",
+        next_gate: "consent_primer",
+        has_agent_instance: false,
+        has_desktop_client: false,
+      }),
   });
 
   const state = await source.read();
@@ -50,7 +55,12 @@ test("the bearer token is presented to ${base}/me", async () => {
     getUserJwt: async () => "jwt-abc",
     fetch: async (url, init) => {
       seen = { url, authorization: init?.headers?.authorization };
-      return jsonResponse({ user_id: "u_1", next_gate: null, has_agent_instance: false });
+      return jsonResponse({
+        user_id: "u_1",
+        next_gate: null,
+        has_agent_instance: false,
+        has_desktop_client: false,
+      });
     },
   });
 

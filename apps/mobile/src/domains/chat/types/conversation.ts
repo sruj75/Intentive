@@ -2,7 +2,8 @@ export type ConversationAuthor = "user" | "companion";
 
 export type DeliveryStatus = "pending" | "confirmed" | "failed";
 
-export type AgentState = "available" | "thinking";
+export type AgentState = "available" | "thinking" | "following_up";
+export type AgentStateOverride = "paused";
 
 export type ConnectionState =
   | "idle"

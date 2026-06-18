@@ -93,7 +93,13 @@ function renderAccountSurface({
 test("Account Surface shows safe identity, support, and debug information", async () => {
   renderAccountSurface({
     accountStateSource: {
-      read: () => Promise.resolve({ user_id: "u_123", next_gate: null, has_agent_instance: true }),
+      read: () =>
+        Promise.resolve({
+          user_id: "u_123",
+          next_gate: null,
+          has_agent_instance: true,
+          has_desktop_client: false,
+        }),
     },
   });
 
@@ -173,12 +179,22 @@ test("signing in as a different account reconciles gates instead of inheriting p
 
 test("reopening Account Surface clears stale identity before the next account read resolves", async () => {
   let resolveSecondRead:
-    | ((account: { user_id: string; next_gate: null; has_agent_instance: boolean }) => void)
+    | ((account: {
+        user_id: string;
+        next_gate: null;
+        has_agent_instance: boolean;
+        has_desktop_client: boolean;
+      }) => void)
     | null = null;
   const accountStateSource: AccountStateSource = {
     read: jest
       .fn()
-      .mockResolvedValueOnce({ user_id: "u_123", next_gate: null, has_agent_instance: true })
+      .mockResolvedValueOnce({
+        user_id: "u_123",
+        next_gate: null,
+        has_agent_instance: true,
+        has_desktop_client: false,
+      })
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -195,7 +211,12 @@ test("reopening Account Surface clears stale identity before the next account re
 
   expect(screen.queryByText("u_123")).toBeNull();
 
-  resolveSecondRead?.({ user_id: "u_456", next_gate: null, has_agent_instance: true });
+  resolveSecondRead?.({
+    user_id: "u_456",
+    next_gate: null,
+    has_agent_instance: true,
+    has_desktop_client: false,
+  });
   expect(await screen.findByText("u_456")).toBeTruthy();
 });
 

@@ -18,7 +18,7 @@ Defined as three internal modules re-exported by `src/index.ts`:
 Two API surfaces:
 
 - **Public API (Client → Control Plane), JWT-authenticated:**
-  - `GET /me` → `AccountState` (`user_id`, `next_gate`, `has_agent_instance`); request carries optional `GetMeDeviceSignal` headers (`X-Client-Kind`, `X-Capture-Permission-Granted`) for device-local gate computation (ADR-0005).
+  - `GET /me` → `AccountState` (`user_id`, `next_gate`, `has_agent_instance`, `has_desktop_client`); request carries optional `GetMeDeviceSignal` headers (`X-Client-Kind`, `X-Capture-Permission-Granted`) for device-local gate computation (ADR-0005).
   - `GET /agent` → `GetAgentResponse` (`agent_instance_id`, `ws_url`, `runtime_jwt`).
   - `POST /consent`, `POST /sibling-invitation/skip` → one-time lifecycle acknowledgements.
   - `POST /devices/register` → device fingerprint + `client_kind` + APNs/FCM token, returns `device_id`.

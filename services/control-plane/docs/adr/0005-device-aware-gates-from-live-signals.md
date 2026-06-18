@@ -25,7 +25,7 @@ This extends [ADR-0004](0004-account-state-assembled-by-identity-composer.md): `
 
 **Consequences**
 
-- `GET /me` gains a device/client signal in `packages/api-contract` (`client_kind`, `capture_permission_granted` headers). The `AccountState` _response_ shape is unchanged — `next_gate` already includes `capture_permission_setup`.
+- `GET /me` gains a device/client signal in `packages/api-contract` (`client_kind`, `capture_permission_granted` headers). The `AccountState` _response_ shape is unchanged at acceptance time — `next_gate` already includes `capture_permission_setup`. #47 later added `has_desktop_client` (derived from the same device enumeration; not a gate field).
 - `gates.nextGate` grows from `(userId)` to take the composer-supplied device context; the only caller is `resolveAccount`.
 - Every `GET /me` now reads `user_gates` **and** enumerates the user's devices (both indexed by `user_id`). Acceptable on the stateless hot path.
 - `#32` (Desktop Capture Permission Setup) is a pure client integration against this contract: detect the macOS grant live, send `client_kind` + `capture_permission_granted`, drive the user to System Settings. No Control Plane gate code lives in `#32`.

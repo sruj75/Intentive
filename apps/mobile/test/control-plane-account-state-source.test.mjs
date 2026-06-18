@@ -28,14 +28,37 @@ test("valid /me response is parsed as AccountState", async () => {
   const source = createControlPlaneAccountStateSource({
     baseUrl: "https://cp.test",
     getUserJwt: async () => "jwt-123",
-    fetch: async () => jsonResponse({ user_id: "u_1", next_gate: null, has_agent_instance: false }),
+    fetch: async () =>
+      jsonResponse({
+        user_id: "u_1",
+        next_gate: null,
+        has_agent_instance: false,
+        has_desktop_client: false,
+      }),
   });
 
   assert.deepEqual(await source.read(), {
     user_id: "u_1",
     next_gate: null,
     has_agent_instance: false,
+    has_desktop_client: false,
   });
+});
+
+test("valid /me response preserves registered Desktop Client state", async () => {
+  const source = createControlPlaneAccountStateSource({
+    baseUrl: "https://cp.test",
+    getUserJwt: async () => "jwt-123",
+    fetch: async () =>
+      jsonResponse({
+        user_id: "u_1",
+        next_gate: null,
+        has_agent_instance: false,
+        has_desktop_client: true,
+      }),
+  });
+
+  assert.equal((await source.read())?.has_desktop_client, true);
 });
 
 test("the bearer token is presented to ${base}/me", async () => {
@@ -45,7 +68,12 @@ test("the bearer token is presented to ${base}/me", async () => {
     getUserJwt: async () => "jwt-abc",
     fetch: async (url, init) => {
       seen = { url, authorization: init?.headers?.authorization };
-      return jsonResponse({ user_id: "u_1", next_gate: null, has_agent_instance: false });
+      return jsonResponse({
+        user_id: "u_1",
+        next_gate: null,
+        has_agent_instance: false,
+        has_desktop_client: false,
+      });
     },
   });
 

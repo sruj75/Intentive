@@ -56,7 +56,12 @@ test("error responses never leak the token or claims", async () => {
 });
 
 test("a valid token → 200 with a body that round-trips as AccountState", async () => {
-  const skeleton = { user_id: "u_1", next_gate: null, has_agent_instance: false };
+  const skeleton = {
+    user_id: "u_1",
+    next_gate: null,
+    has_agent_instance: false,
+    has_desktop_client: false,
+  };
   const res = await createGetMeHandler({
     identity: { resolveAccount: async () => skeleton },
   }).handle({ authorization: "Bearer good.jwt.token" });
@@ -71,7 +76,12 @@ test("the device-signal headers are parsed and forwarded to resolveAccount", asy
     identity: {
       resolveAccount: async (_token, signal) => {
         seen.push(signal);
-        return { user_id: "u_1", next_gate: "capture_permission_setup", has_agent_instance: false };
+        return {
+          user_id: "u_1",
+          next_gate: "capture_permission_setup",
+          has_agent_instance: false,
+          has_desktop_client: false,
+        };
       },
     },
   }).handle({
@@ -90,7 +100,12 @@ test("a malformed device header degrades to no signal, not a 400", async () => {
     identity: {
       resolveAccount: async (_token, signal) => {
         seen.push(signal);
-        return { user_id: "u_1", next_gate: null, has_agent_instance: false };
+        return {
+          user_id: "u_1",
+          next_gate: null,
+          has_agent_instance: false,
+          has_desktop_client: false,
+        };
       },
     },
   }).handle({

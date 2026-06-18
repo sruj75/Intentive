@@ -16,3 +16,4 @@ This contradicts the original `ARCHITECTURE.md` codemap wording, which listed `G
 - `AccountState`'s wire shape is known in exactly one place (`resolveAccount`). Adding or changing a field is a one-module change plus the owning domain's decision method.
 - `ARCHITECTURE.md` and `AGENTS.md` were corrected: `gates` owns gate _computation_ (`computeNextGate` / `nextGate`), not `/me` shaping.
 - The end-state composer depends on three domains (identity + gates + agents). #30 wired the `agents` read collaborator so `has_agent_instance` reflects the Agent Instance Registry.
+- #47 added `has_desktop_client` to the wire shape, derived from the Device Registry in the same `listDevicesForUser` read the composer already performs for sibling-gate inputs — no new domain collaborator.
