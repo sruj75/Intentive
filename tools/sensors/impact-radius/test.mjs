@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -57,6 +57,17 @@ try {
     "services/agent-runtime/src/cross.ts",
     'import { mobileConnect } from "../../../apps/mobile/src/index.js";\nexport const crossed = mobileConnect;\n',
   );
+  write("apps/mobile/ios/.gitignore", "/Pods/\n");
+  mkdirSync(path.join(repo, "apps/mobile/ios/Pods/Headers/Private/EXConstants"), {
+    recursive: true,
+  });
+  symlinkSync(
+    "/missing/generated/EXConstantsInstallationIdProvider.ts",
+    path.join(
+      repo,
+      "apps/mobile/ios/Pods/Headers/Private/EXConstants/EXConstantsInstallationIdProvider.ts",
+    ),
+  );
 
   git(["init"]);
   git(["config", "user.email", "sensor@example.test"]);
@@ -74,6 +85,7 @@ try {
   assert.match(output, /Impact Radius Sensor/);
   assert.match(output, /- apps\/mobile\/src\/untracked\.ts/);
   assert.match(output, /- packages\/protocol\/src\/events\.ts/);
+  assert.doesNotMatch(output, /Pods/);
   assert.match(output, /packages\/protocol\/src\/events\.ts: fan-in 1, fan-out 0/);
   assert.match(
     output,

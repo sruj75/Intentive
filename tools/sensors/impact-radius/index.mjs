@@ -10,15 +10,6 @@ const require = createRequire(import.meta.url);
 const parser = require("@typescript-eslint/parser");
 
 const sourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-const ignoredDirectories = new Set([
-  ".git",
-  ".turbo",
-  "coverage",
-  "dist",
-  "node_modules",
-  "Pods",
-  "target",
-]);
 const ignoredPathFragments = ["/reference/"];
 
 const workspaceRoots = ["apps", "services", "packages"];
@@ -197,34 +188,21 @@ function discoverWorkspaces(repoRoot) {
 }
 
 function listSourceFiles(repoRoot) {
-  const files = [];
+  const output = runGit(repoRoot, [
+    "ls-files",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+    "--",
+    ...workspaceRoots,
+  ]);
 
-  for (const root of workspaceRoots) {
-    const absRoot = path.join(repoRoot, root);
-    if (exists(absRoot)) {
-      walk(absRoot, repoRoot, files);
-    }
-  }
-
-  return files.sort();
-}
-
-function walk(absDir, repoRoot, files) {
-  for (const entry of readdirSync(absDir).sort()) {
-    const absPath = path.join(absDir, entry);
-    const relPath = toRepoPath(repoRoot, absPath);
-    const stat = statSync(absPath);
-
-    if (stat.isDirectory()) {
-      if (ignoredDirectories.has(entry) || isIgnoredPath(relPath)) continue;
-      walk(absPath, repoRoot, files);
-      continue;
-    }
-
-    if (stat.isFile() && isSourceFile(relPath) && !isIgnoredPath(relPath)) {
-      files.push(relPath);
-    }
-  }
+  return splitLines(output)
+    .filter((file) => isSourceFile(file))
+    .filter((file) => workspaceRoots.some((root) => file.startsWith(`${root}/`)))
+    .filter((file) => !isIgnoredPath(file))
+    .filter((file) => exists(path.join(repoRoot, file)))
+    .sort();
 }
 
 function isSourceFile(relPath) {
@@ -779,10 +757,6 @@ function splitLines(text) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-function toRepoPath(repoRoot, absPath) {
-  return path.relative(repoRoot, absPath).replace(/\\/g, "/");
 }
 
 function exists(absPath) {
