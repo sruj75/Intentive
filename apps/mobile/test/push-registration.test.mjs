@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { NotificationsConfigurationError } from "../dist/domains/notifications/types/notifications-port.js";
 import { registerForPush } from "../dist/domains/notifications/service/push-registration.js";
 
 function baseDeps(overrides = {}) {
@@ -32,18 +33,32 @@ test("registerForPush does nothing when notification permission is denied", asyn
     },
   });
 
-  const registered = await registerForPush(deps);
+  const result = await registerForPush(deps);
 
-  assert.equal(registered, false);
+  assert.deepEqual(result, { status: "terminal", reason: "permission_denied" });
+  assert.deepEqual(calls, []);
+});
+
+test("registerForPush treats a missing Expo token as terminal", async () => {
+  const { deps, calls } = baseDeps({
+    notifications: {
+      requestPermission: async () => "granted",
+      getExpoPushToken: async () => null,
+    },
+  });
+
+  const result = await registerForPush(deps);
+
+  assert.deepEqual(result, { status: "terminal", reason: "expo_token_unavailable" });
   assert.deepEqual(calls, []);
 });
 
 test("registerForPush registers the token and stable fingerprint when permission is granted", async () => {
   const { deps, calls } = baseDeps();
 
-  const registered = await registerForPush(deps);
+  const result = await registerForPush(deps);
 
-  assert.equal(registered, true);
+  assert.deepEqual(result, { status: "registered" });
   assert.equal(calls.length, 1);
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     device_fingerprint: "fingerprint-1",
@@ -52,7 +67,7 @@ test("registerForPush registers the token and stable fingerprint when permission
   });
 });
 
-test("registerForPush swallows failures and reports them to the optional hook", async () => {
+test("registerForPush treats registration failures as retryable", async () => {
   const errors = [];
   const { deps } = baseDeps({
     fetch: async () => {
@@ -61,19 +76,37 @@ test("registerForPush swallows failures and reports them to the optional hook", 
     onError: (error) => errors.push(error),
   });
 
-  const registered = await registerForPush(deps);
+  const result = await registerForPush(deps);
 
-  assert.equal(registered, false);
+  assert.deepEqual(result, { status: "retryable", reason: "registration_failed" });
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /network down/);
 });
 
-test("registerForPush reports no registration when no User JWT is available", async () => {
+test("registerForPush treats no User JWT as retryable", async () => {
   const { deps } = baseDeps({
     getUserJwt: async () => null,
   });
 
-  const registered = await registerForPush(deps);
+  const result = await registerForPush(deps);
 
-  assert.equal(registered, false);
+  assert.deepEqual(result, { status: "retryable", reason: "registration_unavailable" });
+});
+
+test("registerForPush treats missing push configuration as terminal", async () => {
+  const errors = [];
+  const { deps } = baseDeps({
+    notifications: {
+      requestPermission: async () => "granted",
+      getExpoPushToken: async () => {
+        throw new NotificationsConfigurationError("Project ID not found");
+      },
+    },
+    onError: (error) => errors.push(error),
+  });
+
+  const result = await registerForPush(deps);
+
+  assert.deepEqual(result, { status: "terminal", reason: "configuration_error" });
+  assert.equal(errors.length, 1);
 });

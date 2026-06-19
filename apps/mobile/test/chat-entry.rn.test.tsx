@@ -117,7 +117,7 @@ test("Mac setup banner clears after the Account Surface closes once Desktop Clie
 });
 
 test("ChatEntry starts injected push registration on first chat entry mount", async () => {
-  const pushRegistration = jest.fn(async () => true);
+  const pushRegistration = jest.fn(async () => ({ status: "registered" as const }));
 
   render(
     <LaunchStateProvider source={launchStateSource}>
@@ -135,7 +135,10 @@ test("ChatEntry starts injected push registration on first chat entry mount", as
 
 test("ChatEntry retries injected push registration after a recoverable miss", async () => {
   jest.useFakeTimers();
-  const pushRegistration = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  const pushRegistration = jest
+    .fn()
+    .mockResolvedValueOnce({ status: "retryable", reason: "registration_unavailable" })
+    .mockResolvedValueOnce({ status: "registered" });
 
   try {
     render(
@@ -156,6 +159,37 @@ test("ChatEntry retries injected push registration after a recoverable miss", as
     });
 
     await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(2));
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("ChatEntry does not retry injected push registration after a terminal miss", async () => {
+  jest.useFakeTimers();
+  const pushRegistration = jest.fn().mockResolvedValue({
+    status: "terminal",
+    reason: "permission_denied",
+  });
+
+  try {
+    render(
+      <LaunchStateProvider source={launchStateSource}>
+        <ChatEntry
+          adapter={staticAdapter()}
+          accountStateSource={accountStateSource}
+          controlPlaneBaseUrl="https://cp.test"
+          pushRegistration={pushRegistration}
+        />
+      </LaunchStateProvider>,
+    );
+
+    await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(pushRegistration).toHaveBeenCalledTimes(1);
   } finally {
     jest.useRealTimers();
   }

@@ -32,11 +32,14 @@ import { CompanionChat } from "../domains/chat/ui/companion-chat";
 import type { RuntimeAdapter } from "../domains/chat/types/conversation";
 import { getOrCreateDeviceFingerprint } from "../domains/notifications/repo/device-fingerprint";
 import { createExpoNotificationsPort } from "../domains/notifications/repo/expo-notifications-port";
-import { registerForPush } from "../domains/notifications/service/push-registration";
+import {
+  registerForPush,
+  type PushRegistrationResult,
+} from "../domains/notifications/service/push-registration";
 
 const PUSH_REGISTRATION_RETRY_DELAY_MS = 60_000;
 
-type PushRegistration = () => Promise<boolean>;
+type PushRegistration = () => Promise<PushRegistrationResult>;
 
 export interface ChatEntryProps {
   readonly adapter?: RuntimeAdapter;
@@ -116,12 +119,14 @@ export function ChatEntry({
     pushRegistrationInFlight.current = true;
 
     void pushRegistration()
-      .then((registered) => {
+      .then((result) => {
         if (cancelled) return;
-        if (registered) {
+        if (result.status === "registered") {
           didRegisterForPush.current = true;
           return;
         }
+
+        if (result.status === "terminal") return;
 
         retryTimer = setTimeout(() => {
           setPushRegistrationAttempt((attempt) => attempt + 1);
