@@ -168,6 +168,22 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Changed
 
+- **Chat composition layer** — `src/entrypoints/chat-entry.tsx` (`ChatEntry`) is the
+  lint-safe cross-domain composition root: Runtime Adapter wiring, Account State
+  projection, `CompanionChat`, and the `AccountSurface` sheet. The `(chat)/` route is
+  navigation-only (`<ChatEntry/>`); `chat/ui` no longer imports `account/ui`.
+  `useOptionalAuthAdapter()` supports test/production injection at the entrypoint.
+- **Message Store interface** — `service/message-store.ts` is the Runtime Adapter's
+  intent-named stateful seam over the pure `conversation-reducer` engine
+  (`replaceServerWindow`, `prependServerPage`, `appendCompanionMessage`, …). Internal
+  reducer events use `append_companion_message` (domain shape) distinct from Protocol
+  wire `companion_message`. Tests: `message-store.test.mjs`.
+- **Account State projection** — `useAccountStateProjection` in
+  `providers/account-state/projection.tsx` holds the shared read-through view;
+  `CompanionChat` and `AccountSurface` render projected `accountState` instead of
+  reading `AccountStateSource` themselves. Tests: `account-state-projection.rn.test.tsx`,
+  `chat-entry.rn.test.tsx` (cross-domain composition tracer).
+
 - **Shared theme + dark mode** ([Issue #48]) —
   - `src/design/theme.ts` — centralized `lightTheme` / `darkTheme`,
     `useMobileTheme()`, and `resolveMobileTheme()` from system appearance.

@@ -48,7 +48,6 @@ import {
   type MobileTheme,
   type MobileThemeColors,
 } from "../../../design/theme";
-import type { AccountStateSource } from "../../../providers/account-state";
 import type { AgentStateOverride, RuntimeAdapter } from "../types/conversation";
 import { deriveChatPresentation, type ChatPresentation } from "../service/chat-presentation";
 import { AdaptiveGlassSurface } from "./adaptive-glass-surface";
@@ -60,8 +59,7 @@ export interface CompanionChatProps {
    * no backend so simulator smoke tests still work offline.
    */
   readonly adapter?: RuntimeAdapter;
-  readonly accountStateSource?: AccountStateSource;
-  readonly accountStateRefreshKey?: unknown;
+  readonly accountState?: AccountState | null;
   readonly agentStateOverride?: AgentStateOverride;
   readonly initialSafeAreaMetrics?: Metrics;
   readonly onOpenAccount?: () => void;
@@ -69,8 +67,7 @@ export interface CompanionChatProps {
 
 export function CompanionChat({
   adapter,
-  accountStateSource,
-  accountStateRefreshKey,
+  accountState,
   agentStateOverride,
   initialSafeAreaMetrics,
   onOpenAccount,
@@ -81,8 +78,7 @@ export function CompanionChat({
     <SafeAreaProvider initialMetrics={initialSafeAreaMetrics ?? CHAT_SAFE_AREA_INITIAL_METRICS}>
       <CompanionChatSurface
         adapter={resolvedAdapter}
-        accountStateSource={accountStateSource}
-        accountStateRefreshKey={accountStateRefreshKey}
+        accountState={accountState}
         agentStateOverride={agentStateOverride}
         onOpenAccount={onOpenAccount}
       />
@@ -92,19 +88,16 @@ export function CompanionChat({
 
 function CompanionChatSurface({
   adapter,
-  accountStateSource,
-  accountStateRefreshKey,
+  accountState,
   agentStateOverride,
   onOpenAccount,
 }: {
   readonly adapter: RuntimeAdapter;
-  readonly accountStateSource?: AccountStateSource;
-  readonly accountStateRefreshKey?: unknown;
+  readonly accountState?: AccountState | null;
   readonly agentStateOverride?: AgentStateOverride;
   readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
   const state = useSyncExternalStore(adapter.subscribe, adapter.getState, adapter.getState);
-  const [accountState, setAccountState] = useState<AccountState | null>(null);
   const [macSetupBannerDismissed, setMacSetupBannerDismissed] = useState(false);
   const presentation = deriveChatPresentation(state, {
     accountState,
@@ -122,26 +115,6 @@ function CompanionChatSurface({
   const topChromeTop = deriveTopChromeTop(insets.top);
   const continuityTop = deriveContinuityTop(insets.top);
   const messagesTop = deriveMessagesTop(insets.top);
-
-  useEffect(() => {
-    if (!accountStateSource) {
-      setAccountState(null);
-      return undefined;
-    }
-    let active = true;
-    void accountStateSource
-      .read()
-      .then((next) => {
-        if (active) setAccountState(next);
-      })
-      .catch(() => {
-        if (active) setAccountState(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [accountStateRefreshKey, accountStateSource]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

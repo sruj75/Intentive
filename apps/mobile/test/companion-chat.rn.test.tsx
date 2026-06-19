@@ -11,7 +11,6 @@ import * as ReactNative from "react-native";
 import { processColor, StyleSheet } from "react-native";
 
 import { CompanionChat } from "../src/domains/chat/ui/companion-chat";
-import type { AccountStateSource } from "../src/providers/account-state";
 import type {
   ConversationMessage,
   RuntimeAdapter,
@@ -226,12 +225,11 @@ test("continuity cue clears after newer conversation activity", async () => {
 
 test("Mac setup banner appears from AccountState without blocking composer send", async () => {
   const harness = createTestRuntimeAdapter([companionMessage("opening", "I am here.")]);
-  const accountStateSource = accountSource(false);
   const openAccount = jest.fn();
   render(
     <CompanionChat
       adapter={harness.adapter}
-      accountStateSource={accountStateSource}
+      accountState={account(false)}
       onOpenAccount={openAccount}
     />,
   );
@@ -249,7 +247,7 @@ test("Mac setup banner suppresses for registered Desktop Client and current-sess
   const visible = render(
     <CompanionChat
       adapter={createTestRuntimeAdapter([companionMessage("opening", "I am here.")]).adapter}
-      accountStateSource={accountSource(false)}
+      accountState={account(false)}
     />,
   );
 
@@ -261,40 +259,12 @@ test("Mac setup banner suppresses for registered Desktop Client and current-sess
   render(
     <CompanionChat
       adapter={createTestRuntimeAdapter([companionMessage("opening", "I am here.")]).adapter}
-      accountStateSource={accountSource(true)}
+      accountState={account(true)}
     />,
   );
 
   await flushStore();
   expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull();
-});
-
-test("Mac setup banner refreshes when Account State is re-read after account surface closes", async () => {
-  const account = mutableAccountSource(false);
-  const harness = createTestRuntimeAdapter([companionMessage("opening", "I am here.")]);
-  const first = render(
-    <CompanionChat
-      adapter={harness.adapter}
-      accountStateSource={account.source}
-      accountStateRefreshKey={0}
-    />,
-  );
-
-  expect(await screen.findByText("Add Intentive on Mac for richer context")).toBeTruthy();
-  account.setHasDesktopClient(true);
-
-  first.rerender(
-    <CompanionChat
-      adapter={harness.adapter}
-      accountStateSource={account.source}
-      accountStateRefreshKey={1}
-    />,
-  );
-
-  await waitFor(() => expect(account.source.read).toHaveBeenCalledTimes(2));
-  await waitFor(() =>
-    expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull(),
-  );
 });
 
 test("Account Affordance is quiet, icon-only, and accessible", () => {
@@ -428,34 +398,12 @@ function userMessage(
   };
 }
 
-function accountSource(hasDesktopClient: boolean): AccountStateSource {
+function account(hasDesktopClient: boolean) {
   return {
-    read: async () => ({
-      user_id: "u_1",
-      next_gate: null,
-      has_agent_instance: true,
-      has_desktop_client: hasDesktopClient,
-    }),
-  };
-}
-
-function mutableAccountSource(hasDesktopClient: boolean): {
-  source: AccountStateSource & { read: jest.Mock };
-  setHasDesktopClient(next: boolean): void;
-} {
-  let current = hasDesktopClient;
-  return {
-    source: {
-      read: jest.fn(async () => ({
-        user_id: "u_1",
-        next_gate: null,
-        has_agent_instance: true,
-        has_desktop_client: current,
-      })),
-    },
-    setHasDesktopClient(next) {
-      current = next;
-    },
+    user_id: "u_1",
+    next_gate: null,
+    has_agent_instance: true,
+    has_desktop_client: hasDesktopClient,
   };
 }
 

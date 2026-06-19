@@ -28,3 +28,12 @@ export function useAuthAdapter(): AuthAdapter {
   }
   return adapter;
 }
+
+/**
+ * Non-throwing read for composition roots that build their own dependencies and
+ * only need the Auth Adapter when it is actually present (the production
+ * provider is wired at `app/_layout.tsx`; tests inject their deps directly).
+ */
+export function useOptionalAuthAdapter(): AuthAdapter | null {
+  return useContext(AuthAdapterContext);
+}

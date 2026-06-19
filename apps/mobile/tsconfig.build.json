@@ -5,12 +5,13 @@
     "rootDir": "src",
     "noEmit": false
   },
-  "//": "Pure-core build for the fast node:test path (split test toolchains by axis). Lists ONLY the RN-free modules: the resolver, the launch-state types/source, the workspace entry, the auth domain's pure core (types + provider/adapter logic behind an injected client port), and the chat Runtime Adapter core (types/service/runtime). The barrel (index.ts), the store (.tsx), the screens, `companion-chat.tsx` (imports the vendor package at runtime), and `auth/service/neon-client.ts` (imports expo) belong to the navigation axis — they are compiled by Metro and type-checked by the full tsconfig.json, never here, so node:test never loads React Native.",
+  "//": "Pure-core build for the fast node:test path (split test toolchains by axis). Lists ONLY the RN-free modules: the resolver, the launch-state types/source, the workspace entry, the auth domain's pure core (types + provider/adapter logic behind an injected client port), and the chat Runtime Adapter core (types/service/runtime). The barrels (index.ts), the stores/hooks (launch-state store.tsx, the account-state projection), the screens, `companion-chat.tsx` (imports the vendor package at runtime), and `auth/service/neon-client.ts` (imports expo) belong to the navigation axis — they are compiled by Metro and type-checked by the full tsconfig.json, never here, so node:test never loads React Native.",
   "include": [
     "src/index.ts",
     "src/domains/account/types/workspace.ts",
     "src/domains/account/service/**/*.ts",
-    "src/providers/account-state/**/*.ts",
+    "src/providers/account-state/source.ts",
+    "src/providers/account-state/control-plane-account-state-source.ts",
     "src/providers/launch-state/types.ts",
     "src/providers/launch-state/source.ts",
     "src/providers/launch-state/control-plane-source.ts",

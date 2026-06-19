@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import * as ReactNative from "react-native";
 import { Text } from "react-native";
+import type { AccountState } from "@intentive/api-contract";
 
 import { AccountSurface } from "../src/domains/account/ui/account-surface";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
-import type { AccountStateSource } from "../src/providers/account-state";
 import {
   LaunchStateProvider,
   useLaunchState,
@@ -40,7 +40,7 @@ function accountSurfaceTree({
   launchStateSource,
   controlPlaneBaseUrl = "https://cp.test",
   runtimeConnectionState = "connected",
-  accountStateSource,
+  accountState,
   visible = true,
 }: {
   onSignOut?: () => Promise<void>;
@@ -48,7 +48,7 @@ function accountSurfaceTree({
   launchStateSource?: LaunchStateSource;
   controlPlaneBaseUrl?: string;
   runtimeConnectionState?: RuntimeConnectionState;
-  accountStateSource?: AccountStateSource;
+  accountState?: AccountState | null;
   visible?: boolean;
 }) {
   const source: LaunchStateSource = launchStateSource ?? {
@@ -60,7 +60,7 @@ function accountSurfaceTree({
       <Destination />
       <SignInAgain />
       <AccountSurface
-        accountStateSource={accountStateSource}
+        accountState={accountState}
         controlPlaneBaseUrl={controlPlaneBaseUrl}
         onSignOut={onSignOut}
         runtimeConnectionState={runtimeConnectionState}
@@ -76,17 +76,17 @@ function renderAccountSurface({
   launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
   controlPlaneBaseUrl = "https://cp.test",
   runtimeConnectionState = "connected",
-  accountStateSource,
+  accountState,
 }: {
   onSignOut?: () => Promise<void>;
   launchState?: LaunchState;
   controlPlaneBaseUrl?: string;
   runtimeConnectionState?: RuntimeConnectionState;
-  accountStateSource?: AccountStateSource;
+  accountState?: AccountState | null;
 } = {}) {
   return render(
     accountSurfaceTree({
-      accountStateSource,
+      accountState,
       controlPlaneBaseUrl,
       launchState,
       onSignOut,
@@ -97,14 +97,11 @@ function renderAccountSurface({
 
 test("Account Surface shows safe identity, support, and debug information", async () => {
   renderAccountSurface({
-    accountStateSource: {
-      read: () =>
-        Promise.resolve({
-          user_id: "u_123",
-          next_gate: null,
-          has_agent_instance: true,
-          has_desktop_client: false,
-        }),
+    accountState: {
+      user_id: "u_123",
+      next_gate: null,
+      has_agent_instance: true,
+      has_desktop_client: false,
     },
   });
 
@@ -190,49 +187,6 @@ test("signing in as a different account reconciles gates instead of inheriting p
   fireEvent.press(screen.getByText("Sign in again"));
 
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("MISSING_CONSENT"));
-});
-
-test("reopening Account Surface clears stale identity before the next account read resolves", async () => {
-  let resolveSecondRead:
-    | ((account: {
-        user_id: string;
-        next_gate: null;
-        has_agent_instance: boolean;
-        has_desktop_client: boolean;
-      }) => void)
-    | null = null;
-  const accountStateSource: AccountStateSource = {
-    read: jest
-      .fn()
-      .mockResolvedValueOnce({
-        user_id: "u_123",
-        next_gate: null,
-        has_agent_instance: true,
-        has_desktop_client: false,
-      })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveSecondRead = resolve;
-          }),
-      ),
-  };
-
-  const view = render(accountSurfaceTree({ accountStateSource, visible: true }));
-  expect(await screen.findByText("u_123")).toBeTruthy();
-
-  view.rerender(accountSurfaceTree({ accountStateSource, visible: false }));
-  view.rerender(accountSurfaceTree({ accountStateSource, visible: true }));
-
-  expect(screen.queryByText("u_123")).toBeNull();
-
-  resolveSecondRead?.({
-    user_id: "u_456",
-    next_gate: null,
-    has_agent_instance: true,
-    has_desktop_client: false,
-  });
-  expect(await screen.findByText("u_456")).toBeTruthy();
 });
 
 test("manual Mac setup guidance does not revive a skipped launch gate", async () => {
