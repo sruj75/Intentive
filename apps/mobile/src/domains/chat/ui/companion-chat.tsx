@@ -12,7 +12,14 @@
  * assistant-ui primitive/runtime composition (niche vendor API):
  * https://www.assistant-ui.com/docs/runtimes/external-store
  */
-import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { AccountState } from "@intentive/api-contract";
 import { Image } from "expo-image";
 import { useComposerSend, useExternalStoreRuntime } from "@assistant-ui/core/react";

@@ -36,7 +36,11 @@ test("replaceServerWindow seeds oldest-first and records the cursor", () => {
 
 test("appendPendingUserMessage is optimistic and reconciles by message_id", () => {
   const store = createMessageStore();
-  const optimistic = store.appendPendingUserMessage({ messageId: "user-1", body: "hi", sentAt: at });
+  const optimistic = store.appendPendingUserMessage({
+    messageId: "user-1",
+    body: "hi",
+    sentAt: at,
+  });
   assert.equal(optimistic.messages[0].delivery, "pending");
   assert.equal(optimistic.agentState, "thinking");
 
@@ -51,7 +55,12 @@ test("appendPendingUserMessage is optimistic and reconciles by message_id", () =
 
 test("appendCompanionMessage dedupes duplicate message_id to one entry", () => {
   const store = createMessageStore();
-  store.appendCompanionMessage({ messageId: "opening", body: "hello", emittedAt: at, viaPostMessageBack: false });
+  store.appendCompanionMessage({
+    messageId: "opening",
+    body: "hello",
+    emittedAt: at,
+    viaPostMessageBack: false,
+  });
   const duplicate = store.appendCompanionMessage({
     messageId: "opening",
     body: "hello again",

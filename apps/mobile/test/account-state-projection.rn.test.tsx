@@ -8,10 +8,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { Pressable, Text } from "react-native";
 
-import {
-  useAccountStateProjection,
-  type AccountStateSource,
-} from "../src/providers/account-state";
+import { useAccountStateProjection, type AccountStateSource } from "../src/providers/account-state";
 
 function account(userId: string) {
   return {
@@ -27,7 +24,10 @@ function Harness({ source }: { source?: AccountStateSource }) {
   return (
     <>
       <Text testID="user">{accountState?.user_id ?? "none"}</Text>
-      <Pressable testID="refresh-clear" onPress={() => refreshAccountState({ clearBeforeRead: true })}>
+      <Pressable
+        testID="refresh-clear"
+        onPress={() => refreshAccountState({ clearBeforeRead: true })}
+      >
         <Text>clear</Text>
       </Pressable>
     </>

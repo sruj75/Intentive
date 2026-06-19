@@ -10,14 +10,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 
 import { ChatEntry } from "../src/entrypoints/chat-entry";
 import type { AccountStateSource } from "../src/providers/account-state";
-import {
-  LaunchStateProvider,
-  type LaunchStateSource,
-} from "../src/providers/launch-state";
-import type {
-  RuntimeAdapter,
-  RuntimeAdapterState,
-} from "../src/domains/chat/types/conversation";
+import { LaunchStateProvider, type LaunchStateSource } from "../src/providers/launch-state";
+import type { RuntimeAdapter, RuntimeAdapterState } from "../src/domains/chat/types/conversation";
 
 jest.mock("expo-glass-effect", () => {
   const { View } = require("react-native");
@@ -102,7 +96,11 @@ test("Mac setup banner clears after the Account Surface closes once Desktop Clie
 
   render(
     <LaunchStateProvider source={launchStateSource}>
-      <ChatEntry adapter={staticAdapter()} accountStateSource={source} controlPlaneBaseUrl="https://cp.test" />
+      <ChatEntry
+        adapter={staticAdapter()}
+        accountStateSource={source}
+        controlPlaneBaseUrl="https://cp.test"
+      />
     </LaunchStateProvider>,
   );
 
