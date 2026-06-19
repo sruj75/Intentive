@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
+import { resolveExpoProjectId } from "../config/expo-project-id";
 import type { NotificationsPort } from "../types/notifications-port";
 
 export function createExpoNotificationsPort(): NotificationsPort {
@@ -18,10 +19,10 @@ export function createExpoNotificationsPort(): NotificationsPort {
 
     async getExpoPushToken() {
       if (!Device.isDevice) return null;
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-      const token = await Notifications.getExpoPushTokenAsync(
-        typeof projectId === "string" ? { projectId } : undefined,
-      );
+      const projectId = resolveExpoProjectId(Constants);
+      if (!projectId) throw new Error("Expo project ID is required to fetch an Expo Push Token");
+
+      const token = await Notifications.getExpoPushTokenAsync({ projectId });
       return token.data;
     },
   };

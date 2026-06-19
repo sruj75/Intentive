@@ -77,22 +77,26 @@ export function createNotificationsService(deps: {
       if (unchecked.length === 0) return { checked: 0, cleared: 0 };
 
       const receipts = await deps.sender.getReceipts(unchecked.map((ticket) => ticket.ticketId));
+      const checkedTicketRowIds: string[] = [];
       let cleared = 0;
 
       for (const ticket of unchecked) {
         const receipt = receipts[ticket.ticketId];
+        if (!receipt) continue;
+
+        checkedTicketRowIds.push(ticket.id);
         if (receipt?.status === "error" && receipt.error === "DeviceNotRegistered") {
           await deps.devices.clearExpoPushToken(ticket.deviceId, ticket.expoPushToken);
           cleared += 1;
         }
       }
 
-      await deps.tickets.markChecked(unchecked.map((ticket) => ticket.id));
-      return { checked: unchecked.length, cleared };
+      if (checkedTicketRowIds.length > 0) await deps.tickets.markChecked(checkedTicketRowIds);
+      return { checked: checkedTicketRowIds.length, cleared };
     },
   };
 }
 
 function isImmediateDeadTokenError(error: string | undefined): boolean {
-  return error === "DeviceNotRegistered" || error === "InvalidCredentials";
+  return error === "DeviceNotRegistered";
 }

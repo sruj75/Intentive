@@ -6,7 +6,8 @@ import { createNotificationsService } from "../dist/domains/notifications/servic
 function createHarness({ targets = [], tickets = [], receipts = {} } = {}) {
   const sent = [];
   const recorded = [];
-  const checked = [];
+  const receiptChecks = [];
+  const marked = [];
   const cleared = [];
   const service = createNotificationsService({
     devices: {
@@ -21,7 +22,7 @@ function createHarness({ targets = [], tickets = [], receipts = {} } = {}) {
         return tickets;
       },
       getReceipts: async (ticketIds) => {
-        checked.push(...ticketIds);
+        receiptChecks.push(...ticketIds);
         return receipts;
       },
     },
@@ -37,11 +38,11 @@ function createHarness({ targets = [], tickets = [], receipts = {} } = {}) {
           expoPushToken: target.expoPushToken,
         })),
       markChecked: async (ids) => {
-        checked.push(...ids);
+        marked.push(...ids);
       },
     },
   });
-  return { service, sent, recorded, checked, cleared };
+  return { service, sent, recorded, receiptChecks, marked, cleared };
 }
 
 test("pushToUser with no Expo tokens returns delivered false and never sends", async () => {
@@ -135,8 +136,30 @@ test("pushToUser clears immediate dead-token errors", async () => {
   assert.deepEqual(cleared, [{ deviceId: "dev_1", expoPushToken: "ExponentPushToken[dead]" }]);
 });
 
+test("pushToUser does not clear tokens for push credential errors", async () => {
+  const { service, cleared } = createHarness({
+    targets: [{ deviceId: "dev_1", expoPushToken: "ExponentPushToken[valid]" }],
+    tickets: [
+      {
+        status: "error",
+        token: "ExponentPushToken[valid]",
+        error: "InvalidCredentials",
+      },
+    ],
+  });
+
+  const result = await service.pushToUser({
+    userId: "u_1",
+    previewText: "hello",
+    messageId: "m_1",
+  });
+
+  assert.deepEqual(result, { delivered: false, deviceCount: 1 });
+  assert.deepEqual(cleared, []);
+});
+
 test("checkPendingReceipts marks checked and clears DeviceNotRegistered tokens", async () => {
-  const { service, checked, cleared } = createHarness({
+  const { service, receiptChecks, marked, cleared } = createHarness({
     targets: [
       { deviceId: "dev_1", expoPushToken: "ExponentPushToken[one]" },
       { deviceId: "dev_2", expoPushToken: "ExponentPushToken[two]" },
@@ -150,6 +173,26 @@ test("checkPendingReceipts marks checked and clears DeviceNotRegistered tokens",
   const result = await service.checkPendingReceipts({ limit: 2 });
 
   assert.deepEqual(result, { checked: 2, cleared: 1 });
-  assert.deepEqual(checked, ["ticket-1", "ticket-2", "row-1", "row-2"]);
+  assert.deepEqual(receiptChecks, ["ticket-1", "ticket-2"]);
+  assert.deepEqual(marked, ["row-1", "row-2"]);
   assert.deepEqual(cleared, [{ deviceId: "dev_2", expoPushToken: "ExponentPushToken[two]" }]);
+});
+
+test("checkPendingReceipts keeps tickets unchecked until Expo returns receipts", async () => {
+  const { service, receiptChecks, marked, cleared } = createHarness({
+    targets: [
+      { deviceId: "dev_1", expoPushToken: "ExponentPushToken[one]" },
+      { deviceId: "dev_2", expoPushToken: "ExponentPushToken[two]" },
+    ],
+    receipts: {
+      "ticket-1": { status: "ok" },
+    },
+  });
+
+  const result = await service.checkPendingReceipts({ limit: 2 });
+
+  assert.deepEqual(result, { checked: 1, cleared: 0 });
+  assert.deepEqual(receiptChecks, ["ticket-1", "ticket-2"]);
+  assert.deepEqual(marked, ["row-1"]);
+  assert.deepEqual(cleared, []);
 });
