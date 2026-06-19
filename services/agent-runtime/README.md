@@ -39,4 +39,40 @@ re-parse `process.env`.
 
 ## Deployment
 
-GitHub Actions builds a Docker image, pushes to Artifact Registry, and re-deploys the GCE VM. See `.github/workflows/agent-runtime-deploy.yml` at the repo root.
+GitHub Actions builds a Docker image, pushes to Artifact Registry, and swaps the running container on the GCE VM (`gcloud compute instances update-container`). See `.github/workflows/agent-runtime-deploy.yml` at the repo root. Strategy and rationale: [`docs/adr/0032`](docs/adr/0032-agent-runtime-gce-deploy-single-vm-tls-load-balancer-in-place-swap.md) (single VM behind a TLS load balancer; in-place image swap with a lightweight drain) and [`docs/adr/0033`](docs/adr/0033-agent-runtime-internal-session-start-public-ingress-shared-secret.md) (internal Session Start on public ingress behind a shared secret).
+
+Unlike the stateless Control Plane on Cloud Run, this is **one always-alive VM**: TLS, the stable front door, secret delivery, health, and zero-downtime are ours to provide, not Google's.
+
+### Secret inventory (required for a green deploy)
+
+All configuration is read at the one config seam (`src/config/env.ts`). Password-bearing values come from Google Secret Manager (fetched at boot by the VM's dedicated service account); non-secret names/URLs are plain env vars.
+
+| Variable                                                      | Secret?  | Purpose                                                                    |
+| ------------------------------------------------------------- | -------- | -------------------------------------------------------------------------- |
+| `NEON_DATABASE_URL`                                           | ✅ vault | **Direct** (non-pooled) Neon connection string for `agent_runtime_app`     |
+| `NEON_DATABASE_ROLE`                                          | env      | Postgres role name (defaults to `agent_runtime_app`)                       |
+| `OPENROUTER_API_KEY`                                          | ✅ vault | OpenRouter key for the Companion model                                     |
+| `INTERNAL_SECRET_FROM_CONTROL_PLANE`                          | ✅ vault | Guards inbound `POST /internal/sessions/start` (CP → Runtime)              |
+| `INTERNAL_SECRET_TO_CONTROL_PLANE`                            | ✅ vault | Guards outbound push handoff (Runtime → CP `/internal/notifications/push`) |
+| `LANGFUSE_SECRET_KEY`                                         | ✅ vault | Langfuse secret key (optional; paired with public key)                     |
+| `SENTRY_DSN`                                                  | ✅ vault | Sentry project DSN for error/health capture                                |
+| `PUBLIC_WS_URL`                                               | env      | Public `wss://` URL clients connect to (the load-balancer hostname)        |
+| `CONTROL_PLANE_INTERNAL_BASE_URL`                             | env      | Base URL for the Runtime → Control Plane push call                         |
+| `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | env      | Neon Auth JWT verification (same project as the Control Plane)             |
+| `OPENROUTER_BASE_URL` / `RUNTIME_MODEL`                       | env      | Model endpoint + model id (defaults in `env.ts`)                           |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_BASE_URL` / `LANGFUSE_MODE` | env      | Langfuse behavior/eval layer (optional)                                    |
+| `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` / `SENTRY_MODE`       | env      | Sentry environment, deploy SHA, mode (`errors-only` default)               |
+| `PORT` / `INTERNAL_PORT`                                      | env      | Public WS port (8080) and internal API port (8081)                         |
+
+> There is **no** runtime-JWT signing key (the `runtime_jwt` is the client's pass-through Neon Auth token) and **no** push-provider credentials (APNs/FCM/Expo) — push goes through the Control Plane. Do not provision those; the service cannot read them.
+
+### Database provisioning (one-time, this service owns it)
+
+Same Neon project as the Control Plane, **separate schema and role**. Via the Neon MCP / `neon-postgres` skill: create the `agent_runtime` schema → create a least-privilege `agent_runtime_app` role (`USAGE` **and `CREATE`** on `agent_runtime`, DML on its tables, **no access to the `control_plane` schema**, no superuser) → run migrations `0001`–`0009` against production → let the boot-time `PostgresStore.setup()` and checkpointer setup create the LangGraph store + checkpoint tables (that is why the role needs `CREATE`). Build `NEON_DATABASE_URL` from the **direct (non-`-pooler`)** host — the LangGraph persistent-connection/prepared-statement usage conflicts with Neon's PgBouncer pooling, and a single always-alive process has no pool to exhaust.
+
+### Deploy procedure (careful path)
+
+1. **First deploy is manual and pre-launch.** A single VM has no no-traffic revision — the image swap _is_ the promotion — so run the first `workflow_dispatch` deploy **before real users exist**, when dropping connections costs nothing.
+2. **Smoke-check the real `wss://` end to end** (not just `/healthz`, since the live conversation is the thing that breaks): a client completes the TLS handshake → `connect` returns a snapshot → a `user_message` gets a **companion reply** (proves TLS + Neon + OpenRouter + the turn spine). Confirm a Control-Plane Session Start reaches `/internal`, the Cron/Heartbeat loops logged "started," and Sentry is receiving events.
+3. Only if green, set the `DEPLOY_ENABLED` repository variable to `true` so pushes to `main` auto-deploy.
+4. **Rollback** = re-run `update-container` pinned to the previous `github.sha` image (prior tags remain in Artifact Registry). Keep the last-good SHA noted.
