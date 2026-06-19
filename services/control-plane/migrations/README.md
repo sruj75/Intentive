@@ -23,7 +23,7 @@ SQL migrations for the control-plane-owned Neon schema.
 DATABASE_URL="<pooled Neon branch URL>" pnpm --filter ./services/control-plane migrate
 ```
 
-The command creates `control_plane` if needed, applies every `*.sql` file in order, and never prints the connection URL. The PR Neon workflow uses this against its preview branch. Production provisioning still owns role creation and grants separately from table migrations.
+The command creates `control_plane` if needed, applies every `*.sql` file in order, and never prints the connection URL. The PR Neon workflow uses the create-branch action's pooled URL for its preview branch. Repo integration tests create their own throwaway branches and fetch pooled URLs through Neon's connection URI API. Production provisioning still owns role creation and grants separately from table migrations.
 
 ## Scope note
 

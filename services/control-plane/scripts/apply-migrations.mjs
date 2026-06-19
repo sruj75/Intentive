@@ -27,7 +27,7 @@ for (const file of files) {
 }
 
 function splitStatements(sqlText) {
-  return sqlText
+  return stripSqlComments(sqlText)
     .split(";")
     .map((statement) => stripSqlComments(statement).trim())
     .filter(Boolean);
