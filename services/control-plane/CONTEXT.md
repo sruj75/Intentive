@@ -51,11 +51,15 @@ The `Account State` field meaning **"this User has at least one Desktop Client r
 _Avoid_: Mac connected, desktop online, live Mac session
 
 **Push Notification**:
-An APNs (or later FCM) push delivered to a User's device(s). Always originates from **Post-Message-Back**. The Agent Runtime does not call APNs directly — it asks the Control Plane, which owns device tokens and Apple credentials.
+An Expo-delivered mobile notification sent to a User's device(s). Always originates from **Post-Message-Back**. The Agent Runtime does not call Expo, APNs, or FCM directly — it asks the Control Plane, which owns push tokens and delivery.
 _Avoid_: in-app banner, toast, transport ping
 
+**Expo Push Token**:
+The v1 push address for a Mobile Client install, issued by Expo and stored in the Device Registry. The Control Plane sends this token to Expo Push Service; Expo delivers onward to APNs/FCM and returns tickets/receipts for cleanup.
+_Avoid_: APNs token, FCM token, device token
+
 **Device Registry**:
-The Control Plane's record of a User's devices — one row per `(User, device fingerprint)` — holding `client_kind` and the APNs/FCM push token. Idempotent on re-registration (a new token rotates in; an omitted token is kept, never cleared). Tokens never leave the Control Plane schema; the token-free `listDevicesForUser` view is the only cross-domain read.
+The Control Plane's record of a User's devices — one row per `(User, device fingerprint)` — holding `client_kind` and the optional **Expo Push Token**. Idempotent on re-registration (a new token rotates in; an omitted token is kept, never cleared). Tokens never leave the Control Plane schema; the token-free `listDevicesForUser` view is the only cross-domain read.
 _Avoid_: device table, push table, token store
 
 **Device Principal**:

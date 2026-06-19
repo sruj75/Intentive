@@ -20,7 +20,7 @@ What it unlocks:
 
 - `#31` + `#34` + `#35` + `#43` (closed) → Desktop `#55` — final packaged-app smoke (still gated on `#53`/`#54`).
 - `#48` (closed) — Mobile v1 client lane complete; no further mobile backlog items in `#7`–`#56`.
-- `#27` (closed) + `#41` (closed) → `#49` (push fan-out) — AR handoff client landed; CP owns APNs delivery.
+- `#27` (closed) + `#41` (closed) → `#49` (push fan-out) — AR handoff client landed; CP owns Expo Push Service delivery.
 - `#15` (closed) → `#51` (telemetry/flags) → `#52` (CI rule enforcement).
 
 ## Dependency Map
@@ -136,16 +136,16 @@ flowchart TD
 
 ### Open
 
-| #   | Deployable         | Issue                                                                                      | Notes                                                                                           |
-| --- | ------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| 49  | Control Plane      | [Push notification fan-out](https://github.com/sruj75/Intentive/issues/49)                 | `#41` closed (AR handoff client landed); `#27` closed (device registry) — CP owns APNs delivery |
-| 50  | Control Plane      | [Cloud Run deploy + prod readiness](https://github.com/sruj75/Intentive/issues/50)         | Blocked by #30 closed/#49/#51; re-enables skipped deploy workflow; production CP                |
-| 51  | Shared             | [Providers telemetry + feature flags](https://github.com/sruj75/Intentive/issues/51)       | `#14` closed; observability for #50                                                             |
-| 52  | Shared             | [Enforce inviolable rules in CI](https://github.com/sruj75/Intentive/issues/52)            | `#14` closed; keeps layer/boundary/vocabulary/version rules from rotting                        |
-| 53  | Desktop            | [Signed + notarized DMG](https://github.com/sruj75/Intentive/issues/53)                    | Human signing credentials; can run in parallel with runtime lane                                |
-| 54  | Desktop            | [macOS Privacy Settings identity](https://github.com/sruj75/Intentive/issues/54)           | Blocked by #53; required for #55                                                                |
-| 55  | Desktop            | [Final packaged-app release smoke](https://github.com/sruj75/Intentive/issues/55)          | Blocked by #53/#54; release bar (#43 closed)                                                    |
-| 56  | Desktop (optional) | [In-app updates (check / notify / install)](https://github.com/sruj75/Intentive/issues/56) | Not on core capture-runtime critical path; improves post-launch operability                     |
+| #   | Deployable         | Issue                                                                                      | Notes                                                                                                        |
+| --- | ------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| 49  | Control Plane      | [Push notification fan-out](https://github.com/sruj75/Intentive/issues/49)                 | `#41` closed (AR handoff client landed); `#27` closed (device registry) — CP owns Expo Push Service delivery |
+| 50  | Control Plane      | [Cloud Run deploy + prod readiness](https://github.com/sruj75/Intentive/issues/50)         | Blocked by #30 closed/#49/#51; re-enables skipped deploy workflow; production CP                             |
+| 51  | Shared             | [Providers telemetry + feature flags](https://github.com/sruj75/Intentive/issues/51)       | `#14` closed; observability for #50                                                                          |
+| 52  | Shared             | [Enforce inviolable rules in CI](https://github.com/sruj75/Intentive/issues/52)            | `#14` closed; keeps layer/boundary/vocabulary/version rules from rotting                                     |
+| 53  | Desktop            | [Signed + notarized DMG](https://github.com/sruj75/Intentive/issues/53)                    | Human signing credentials; can run in parallel with runtime lane                                             |
+| 54  | Desktop            | [macOS Privacy Settings identity](https://github.com/sruj75/Intentive/issues/54)           | Blocked by #53; required for #55                                                                             |
+| 55  | Desktop            | [Final packaged-app release smoke](https://github.com/sruj75/Intentive/issues/55)          | Blocked by #53/#54; release bar (#43 closed)                                                                 |
+| 56  | Desktop (optional) | [In-app updates (check / notify / install)](https://github.com/sruj75/Intentive/issues/56) | Not on core capture-runtime critical path; improves post-launch operability                                  |
 
 ## Blocked / Waiting
 

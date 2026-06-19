@@ -58,7 +58,7 @@ _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the produ
 - The **Snapshot Store** on the Desktop Client is unrelated to chat history. It is local-truth for snapshots the device itself produced.
 - On the **Desktop Client**, **Routing State** (do we hold valid Routing from `GET /agent`?) and **Session State** (is the Protocol WebSocket up right now?) are independent — see [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md). Settings sees only a plain connection mood; JWT and `ws_url` stay in Rust.
 - **Push Notifications** in v1 originate exclusively from **Post-Message-Back**. Replies do not auto-push.
-- **Post-Message-Back** is invoked by the Agent Runtime, which then calls Control Plane's `POST /internal/notifications/push`. The Control Plane owns APNs credentials and the device-token side of the Device Registry.
+- **Post-Message-Back** is invoked by the Agent Runtime, which then calls Control Plane's `POST /internal/notifications/push`. The Control Plane owns Expo Push Token storage and Expo Push Service delivery.
 - **Cron** and **Heartbeat** are triggers, not notifications. A trigger fires → agent code runs → agent may or may not decide to **Post-Message-Back**.
 - The Mobile Client requests notification permission **on first entry into chat**, framed around delivering Companion messages — not at app launch.
 - The **Mobile Client** is the only client with a chat surface in v1. The **Desktop Client** has no chat UI; it sends Context Snapshots and shows capture state.
@@ -82,7 +82,7 @@ _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the produ
 > **Domain expert:** "No. The Control Plane only issues **Routing**. It never sits on the data path. The Mac connects directly to the **Agent Runtime** over the WebSocket, same as the phone. Same **Protocol**, different events."
 
 > **Dev:** "The user backgrounds the app. The agent generates a reply. Does the phone buzz?"
-> **Domain expert:** "Depends. If the agent is just replying to something the user sent, no — it's not a **Post-Message-Back**, it just lands in the timeline. If the agent decides this reply is worth interrupting for and invokes **Post-Message-Back**, then yes — Runtime calls Control Plane's `POST /internal/notifications/push`, Control Plane fires the APNs push."
+> **Domain expert:** "Depends. If the agent is just replying to something the user sent, no — it's not a **Post-Message-Back**, it just lands in the timeline. If the agent decides this reply is worth interrupting for and invokes **Post-Message-Back**, then yes — Runtime calls Control Plane's `POST /internal/notifications/push`, Control Plane sends through Expo Push Service."
 
 > **Dev:** "Cron fires at 9am. Does the user always get a notification?"
 > **Domain expert:** "No. **Cron** is a trigger, not a notification. The cron fires, the agent code runs, and the agent decides whether to **Post-Message-Back**. The trigger and the notification are separate concerns."
@@ -93,8 +93,8 @@ _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the produ
 > **Dev:** "Where does `tenant_id` live in the schema?"
 > **Domain expert:** "It doesn't. Intentive is direct-to-consumer. The User is the tenant. Everything is scoped by `user_id` alone."
 
-> **Dev:** "Does the runtime call APNs directly?"
-> **Domain expert:** "No. APNs credentials and device tokens live in the **Control Plane**'s Device Registry. The runtime invokes **Post-Message-Back**, which delivers into Conversation History and — if the user is offline — calls the Control Plane to send the push."
+> **Dev:** "Does the runtime call Expo or APNs directly?"
+> **Domain expert:** "No. Expo Push Tokens live in the **Control Plane**'s Device Registry. The runtime invokes **Post-Message-Back**, which delivers into Conversation History and — if the user is offline — calls the Control Plane to send the push through Expo."
 
 ## Flagged ambiguities
 
