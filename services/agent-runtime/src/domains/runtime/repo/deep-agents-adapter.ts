@@ -133,12 +133,17 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
           duration_ms: clock() - startedAt,
         });
         throw error;
+      } finally {
+        // Per-turn handler owns a per-turn buffer; flush it so the trace is not
+        // lost to GC — and so the observability factory evicts it from its
+        // active set. Flush on the failure path too: a failed turn's partial
+        // trace is worth keeping, and without this an erroring turn would leak
+        // one retained handler for the lifetime of the always-alive process.
+        // Telemetry is best-effort and must not fail the turn.
+        void callbackHandler?.flushAsync?.().catch(() => {});
       }
 
       const traceId = callbackHandler?.getTraceId?.() ?? null;
-      // Per-turn handler owns a per-turn buffer; flush it so the trace is not
-      // lost to GC. Telemetry is best-effort and must not fail the turn.
-      void callbackHandler?.flushAsync?.().catch(() => {});
 
       const usage = extractUsage(result);
       logger.info("model.invoked", {
