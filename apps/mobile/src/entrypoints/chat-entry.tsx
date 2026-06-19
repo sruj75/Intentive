@@ -216,9 +216,9 @@ export function ChatEntry({
 
     const foregroundSubscription = pushRegistrationEvents.subscribeToForeground(() => {
       const lastResult = lastPushRegistrationResult.current;
-      if (lastResult?.status === "terminal" && lastResult.reason === "permission_denied") {
-        requestPushRegistrationAttempt();
-      }
+      if (lastResult?.status === "terminal" && lastResult.reason !== "permission_denied") return;
+
+      requestPushRegistrationAttempt(lastResult?.status === "registered");
     });
     const pushTokenSubscription = pushRegistrationEvents.subscribeToPushTokenChanges(() => {
       requestPushRegistrationAttempt(true);

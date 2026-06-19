@@ -258,6 +258,31 @@ test("ChatEntry rechecks notification permission when the app returns to foregro
   await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(2));
 });
 
+test("ChatEntry re-registers on foreground after a successful registration", async () => {
+  const pushEvents = createPushRegistrationEvents();
+  const pushRegistration = jest.fn().mockResolvedValue({ status: "registered" });
+
+  render(
+    <LaunchStateProvider source={launchStateSource}>
+      <ChatEntry
+        adapter={staticAdapter()}
+        accountStateSource={accountStateSource}
+        controlPlaneBaseUrl="https://cp.test"
+        pushRegistration={pushRegistration}
+        pushRegistrationEvents={pushEvents.events}
+      />
+    </LaunchStateProvider>,
+  );
+
+  await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(1));
+
+  act(() => {
+    pushEvents.emitForeground();
+  });
+
+  await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(2));
+});
+
 test("ChatEntry ignores foreground after terminal push registration unrelated to permission", async () => {
   const pushEvents = createPushRegistrationEvents();
   const pushRegistration = jest.fn().mockResolvedValue({
