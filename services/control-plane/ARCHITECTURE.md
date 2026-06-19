@@ -159,7 +159,7 @@ Neon boundary:
 Deployment boundary:
 
 - Deploys to Cloud Run because it is stateless request/response. Resident state, sockets, queues, and schedulers belong to the Agent Runtime, not here.
-- **One production environment, no staging.** Each deploy lands as a no-traffic Cloud Run revision, is smoke-tested at its own revision URL against `GET /readyz` (a real Neon + JWKS dependency check, distinct from the dumb `GET /healthz` liveness probe), and is promoted to live traffic only when green. Auto-deploy-on-push is enabled only after one manual deploy proves out (ADR-0007).
+- **One production environment, no staging.** Each deploy lands as a no-traffic Cloud Run revision, is smoke-tested at its own revision URL against `GET /ready` (a real Neon + JWKS dependency check, distinct from the dumb `GET /health` liveness probe), and is promoted to live traffic only when green. Auto-deploy-on-push is enabled only after one manual deploy proves out (ADR-0007). The first production bootstrap is in `us-west1` because this GCP project hit a Cloud Run project-initialization quota failure in `us-central1`.
 - PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + test, optional Neon repo integration). Deploy CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see `control-plane-deploy` workflow). Secrets are delivered from Google Secret Manager for password-bearing values; non-secret names/URLs are plain env vars.
 
 ## Cross-cutting Concerns

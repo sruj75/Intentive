@@ -13,8 +13,8 @@ For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](
 | `POST /sibling-invitation/skip` | Records sibling invitation skip                                   |
 | `GET  /agent`                   | Issues Agent Runtime URL + JWT (Routing)                          |
 | `POST /devices/register`        | Idempotent device registration (includes Expo Push Token)         |
-| `GET  /healthz`                 | Shallow liveness probe                                            |
-| `GET  /readyz`                  | Deep readiness probe for Neon + Neon Auth JWKS                    |
+| `GET  /health`                  | Shallow liveness probe                                            |
+| `GET  /ready`                   | Deep readiness probe for Neon + Neon Auth JWKS                    |
 
 Schemas live in [`packages/api-contract`](../../packages/api-contract).
 
@@ -50,7 +50,7 @@ after gate enforcement and Session Start (#30).
 
 ## Deployment
 
-GitHub Actions builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` to **Google Cloud Run**. See `.github/workflows/control-plane-deploy.yml` at the repo root. Strategy and rationale: [`docs/adr/0007`](docs/adr/0007-cloud-run-deploy-and-readiness.md) (no-traffic revision promotion gated by a readiness probe) and [`docs/adr/0008`](docs/adr/0008-internal-endpoints-public-ingress-shared-secret.md) (internal endpoints on public ingress behind a shared secret).
+GitHub Actions builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` to **Google Cloud Run** in `us-west1`. The first production bootstrap uses `us-west1` because this GCP project hit a Cloud Run project-initialization quota failure in `us-central1`. See `.github/workflows/control-plane-deploy.yml` at the repo root. Strategy and rationale: [`docs/adr/0007`](docs/adr/0007-cloud-run-deploy-and-readiness.md) (no-traffic revision promotion gated by a readiness probe) and [`docs/adr/0008`](docs/adr/0008-internal-endpoints-public-ingress-shared-secret.md) (internal endpoints on public ingress behind a shared secret).
 
 ### Secret inventory (required for a green deploy)
 
@@ -84,8 +84,10 @@ This service's schema is created here, not assumed to exist. Via the Neon MCP / 
 
 1. Manually trigger `control-plane-deploy` (`workflow_dispatch`) — it builds, pushes, and deploys as a **no-traffic** revision.
 2. Smoke-check the new revision at its own URL:
-   - `GET /healthz` → `200 {"ok":true,...}` (liveness; process is up).
-   - `GET /readyz` → `200` (readiness; Neon `SELECT 1` and Neon Auth JWKS both reachable).
+   - `GET /health` → `200 {"ok":true,...}` (liveness; process is up).
+   - `GET /ready` → `200` (readiness; Neon `SELECT 1` and Neon Auth JWKS both reachable).
    - `GET /me` without a token → a well-formed `401` (proves the auth boundary is engaged without needing a valid user JWT or writing to prod).
 3. Only if green, **promote traffic** to the new revision.
 4. Once a manual deploy has proven out, set the `DEPLOY_ENABLED` repository variable to `true` so pushes to `main` auto-deploy.
+
+`/healthz` and `/readyz` remain local compatibility aliases, but public Cloud Run smoke checks use `/health` and `/ready` because Cloud Run reserves some URL paths ending in `z`.

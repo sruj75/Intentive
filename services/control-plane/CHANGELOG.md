@@ -6,14 +6,17 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
 
 ### Added
 
-- **Cloud Run production readiness** ([Issue #50]) — added `GET /readyz` with
+- **Cloud Run production readiness** ([Issue #50]) — added `GET /ready` with
   concurrent Neon `SELECT 1` and Neon Auth JWKS probes, a Session Start request
   timeout that collapses hung Agent Runtime calls into the existing retryable
   `503` path, Control Plane observability via `bootstrapObservability` +
   Sentry (`SENTRY_*`, Langfuse intentionally absent), redacted domain-event logs
   for auth/gates/Session Start/device registration/push fan-out, a
   monorepo-aware Dockerfile, and a no-traffic → smoke → promote deploy workflow.
-  Docs now count migrations `0001`-`0005` for production provisioning.
+  The shallow liveness probe is `GET /health`; `/healthz` and `/readyz` remain
+  local compatibility aliases, but deploy smoke checks avoid Cloud Run-reserved
+  top-level `z` paths. Docs now count migrations `0001`-`0005` for production
+  provisioning.
 - **Push Notification fan-out** ([Issue #49]) — Device Registry now stores
   `expo_push_token`; `notifications` domain sends through Expo Push Service,
   records accepted ticket ids in `control_plane.notification_tickets`, and clears

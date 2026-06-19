@@ -33,7 +33,9 @@ name: control-plane-deploy
 #       SENTRY_DSN
 
 env:
-  GCP_REGION: us-central1
+  # The first production bootstrap uses us-west1 because this GCP project hit a
+  # Cloud Run project-initialization quota failure in us-central1.
+  GCP_REGION: us-west1
   SERVICE_NAME: control-plane
   IMAGE_TAG: ${{ github.sha }}
   CANDIDATE_TAG: candidate-${{ github.run_id }}-${{ github.run_attempt }}
@@ -132,7 +134,8 @@ jobs:
             exit 1
           fi
 
-          curl -fsS "$candidate_url/readyz" >/tmp/readyz.json
+          curl -fsS "$candidate_url/health" >/tmp/health.json
+          curl -fsS "$candidate_url/ready" >/tmp/ready.json
 
           me_status="$(
             curl -sS -o /tmp/me.json -w "%{http_code}" "$candidate_url/me"
