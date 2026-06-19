@@ -80,6 +80,8 @@ The service reads **all** configuration from the one config seam (`src/config/en
 
 This service's schema is created here, not assumed to exist. Via the Neon MCP / `neon-postgres` skill: create the `control_plane` schema → create a least-privilege `control_plane_app` role (no superuser, grants scoped to `control_plane` only) → run migrations `0001`–`0005` against production → build `NEON_DATABASE_URL` from that role's pooled connection string. Repo tests bootstrap their own ephemeral branches (ADR-0003); production is provisioned once, here.
 
+Pull requests that touch Control Plane run `.github/workflows/neon-preview-branches.yml`: create a Neon branch named `preview/pr-<number>-<branch>`, apply all Control Plane migrations with `pnpm --filter ./services/control-plane migrate`, run the Control Plane checks, and delete the Neon branch when the PR closes.
+
 ### Deploy procedure (careful path)
 
 1. Manually trigger `control-plane-deploy` (`workflow_dispatch`) — it builds, pushes, and deploys as a **no-traffic** revision.

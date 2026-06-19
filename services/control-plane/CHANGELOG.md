@@ -16,7 +16,9 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
   The shallow liveness probe is `GET /health`; `/healthz` and `/readyz` remain
   local compatibility aliases, but deploy smoke checks avoid Cloud Run-reserved
   top-level `z` paths. Docs now count migrations `0001`-`0005` for production
-  provisioning.
+  provisioning. Pull requests now create a Neon preview branch, apply the
+  Control Plane migrations, run Control Plane checks, and delete the branch on
+  PR close.
 - **Push Notification fan-out** ([Issue #49]) — Device Registry now stores
   `expo_push_token`; `notifications` domain sends through Expo Push Service,
   records accepted ticket ids in `control_plane.notification_tickets`, and clears

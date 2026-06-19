@@ -13,10 +13,9 @@ name: control-plane-ci
 #   ephemeral Neon branch via the REST API, applies migrations/0001_users.sql,
 #   and asserts the DB-enforced idempotency invariant. It is opt-in: with no
 #   NEON_API_KEY / NEON_PROJECT_ID it skips and the suite stays green. Set these
-#   repository secrets to switch it on (it can't be set in `env:` from `secrets`
-#   at the job level conditionally, so they're plumbed straight to the step):
-#     NEON_PROJECT_ID   the Control Plane Neon project id (e.g. divine-frog-...)
-#     NEON_API_KEY      a Neon API key with branch create/delete on that project
+#   repository Actions values to switch it on:
+#     NEON_PROJECT_ID   variable: the Control Plane Neon project id
+#     NEON_API_KEY      secret: a Neon API key with branch create/delete access
 #   Create the key at console.neon.tech → Account settings → API keys.
 
 on:
@@ -27,6 +26,7 @@ on:
       - "packages/domain-types/**"
       - "packages/providers/**"
       - ".github/workflows/control-plane-ci.yml"
+      - ".github/workflows/neon-preview-branches.yml"
   workflow_dispatch:
 
 jobs:
@@ -55,5 +55,5 @@ jobs:
         # NEON_* are forwarded for the ADR-0003 integration test; absent → it skips.
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
         run: pnpm --filter ./services/control-plane test
