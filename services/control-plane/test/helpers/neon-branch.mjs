@@ -85,7 +85,7 @@ export async function dropBranch(branchId) {
 export async function applySql(connectionUri, sqlText) {
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(connectionUri);
-  const statements = sqlText
+  const statements = stripSqlComments(sqlText)
     .split(";")
     .map((s) => stripSqlComments(s).trim())
     .filter((s) => s.length > 0);
