@@ -20,7 +20,7 @@ It sits **beside** the client↔runtime data path, never **on** it. It tells eac
                           |
             ┌─────────────┼───────────────────────────┐
             |             |                            |
-     Neon (CP schema)   Expo Push Service      private HTTP (VPC, shared secret)
+     Neon (CP schema)   Expo Push Service      shared-secret HTTP (inbound public ingress — ADR-0008)
      account truth    push delivery                    |
                                           POST /internal/sessions/start  ──► Agent Runtime
                                           POST /internal/notifications/push ◄── Agent Runtime
@@ -146,8 +146,8 @@ Client boundary:
 
 Agent Runtime boundary:
 
-- The Control Plane calls the Runtime's private `POST /internal/sessions/start` (shared-secret auth, VPC) during `GET /agent` on first chat entry.
-- The Control Plane receives the Runtime's `POST /internal/notifications/push` and fans the push out via Expo Push Service.
+- The Control Plane calls the Runtime's `POST /internal/sessions/start` (shared-secret auth; may use a VPC connector to reach the Runtime) during `GET /agent` on first chat entry. This call carries a request timeout so a hung Runtime fails fast into a retryable `503` instead of tying up request slots (ADR-0007).
+- The Control Plane receives the Runtime's `POST /internal/notifications/push` and fans the push out via Expo Push Service. This inbound internal endpoint is on **public ingress** behind a per-direction shared secret — it is not network-isolated in v1 (ADR-0008).
 - These two internal calls are the entire Control Plane ↔ Runtime surface. There is no message forwarding.
 
 Neon boundary:
@@ -159,7 +159,8 @@ Neon boundary:
 Deployment boundary:
 
 - Deploys to Cloud Run because it is stateless request/response. Resident state, sockets, queues, and schedulers belong to the Agent Runtime, not here.
-- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + test, optional Neon repo integration). Deploy CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see `control-plane-deploy` workflow).
+- **One production environment, no staging.** Each deploy lands as a no-traffic Cloud Run revision, is smoke-tested at its own revision URL against `GET /readyz` (a real Neon + JWKS dependency check, distinct from the dumb `GET /healthz` liveness probe), and is promoted to live traffic only when green. Auto-deploy-on-push is enabled only after one manual deploy proves out (ADR-0007).
+- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + test, optional Neon repo integration). Deploy CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see `control-plane-deploy` workflow). Secrets are delivered from Google Secret Manager for password-bearing values; non-secret names/URLs are plain env vars.
 
 ## Cross-cutting Concerns
 
