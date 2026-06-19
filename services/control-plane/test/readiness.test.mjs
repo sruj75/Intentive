@@ -50,3 +50,19 @@ test("readiness reports JWKS failure without hiding Neon success", async () => {
     checks: { neon: "ok", jwks: "failed" },
   });
 });
+
+test("a hung dependency times out as failed instead of stalling /readyz", async () => {
+  const hang = () => new Promise(() => {});
+  const startedAt = Date.now();
+  const readiness = createReadiness({
+    sql: async () => [{ "?column?": 1 }],
+    verifier: { probe: hang },
+    timeoutMs: 25,
+  });
+
+  assert.deepEqual(await readiness.check(), {
+    ready: false,
+    checks: { neon: "ok", jwks: "failed" },
+  });
+  assert.ok(Date.now() - startedAt < 500, "a hung probe must not block the readiness response");
+});
