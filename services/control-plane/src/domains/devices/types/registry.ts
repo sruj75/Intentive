@@ -1,8 +1,8 @@
 /**
  * devices domain — Device Registry shapes. Typed against the shared HTTP
  * contract so the idempotent registration request/response (device fingerprint,
- * client_kind, APNs/FCM token → device_id) are validated by monorepo typecheck.
- * Behavior (idempotent storage, token rotation) lands in #27.
+ * client_kind, Expo Push Token → device_id) are validated by monorepo typecheck.
+ * Behavior (idempotent storage, token rotation) landed in #27 and #49.
  */
 import type {
   PostDeviceRegisterRequest,

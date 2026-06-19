@@ -11,6 +11,14 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Expo Push Token registration** ([Issue #49]) — `notifications` domain now asks
+  permission on first **Companion Chat** entry, obtains an Expo Push Token through
+  a narrow platform port, reads a stable SecureStore-backed device fingerprint,
+  and best-effort registers the Mobile Client with `POST /devices/register`.
+  The pure register client uses injected `fetch`/`getUserJwt`, validates the
+  response with `@intentive/api-contract`, and returns early when no User JWT is
+  available. Tests: `register-device.test.mjs`, `push-registration.test.mjs`,
+  and `chat-entry.rn.test.tsx` for the mount hook.
 - **Continuity, Agent State, and Mac setup banner** ([Issue #47]) —
   - `src/domains/chat/service/chat-presentation.ts` — pure presentation for Agent State
     (`Available`, `Thinking`, `Following up`, explicit-only `Paused`), Post-Message-Back
@@ -284,4 +292,5 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 [Issue #46]: https://github.com/sruj75/Intentive/issues/46
 [Issue #47]: https://github.com/sruj75/Intentive/issues/47
 [Issue #48]: https://github.com/sruj75/Intentive/issues/48
+[Issue #49]: https://github.com/sruj75/Intentive/issues/49
 [Issue #83]: https://github.com/sruj75/Intentive/issues/83

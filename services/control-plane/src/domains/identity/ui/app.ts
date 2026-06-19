@@ -41,6 +41,18 @@ export function createApp(deps: {
       capturePermissionGranted: string | null;
     }): Promise<{ status: number; body: unknown }>;
   };
+  postInternalNotificationsPush: {
+    handle(req: {
+      authorization: string | null;
+      body: unknown;
+    }): Promise<{ status: number; body: unknown }>;
+  };
+  postInternalNotificationsCheckReceipts: {
+    handle(req: {
+      authorization: string | null;
+      body: unknown;
+    }): Promise<{ status: number; body: unknown }>;
+  };
 }): Hono {
   const app = new Hono();
 
@@ -99,6 +111,32 @@ export function createApp(deps: {
 
     return handleBoundaryErrors(async () => {
       const result = await deps.postDeviceRegister.handle({
+        authorization: c.req.header("authorization") ?? null,
+        body: body.value,
+      });
+      return json(result.body, result.status);
+    });
+  });
+
+  app.post("/internal/notifications/push", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body.ok) return json(body.body, body.status);
+
+    return handleBoundaryErrors(async () => {
+      const result = await deps.postInternalNotificationsPush.handle({
+        authorization: c.req.header("authorization") ?? null,
+        body: body.value,
+      });
+      return json(result.body, result.status);
+    });
+  });
+
+  app.post("/internal/notifications/check-receipts", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body.ok) return json(body.body, body.status);
+
+    return handleBoundaryErrors(async () => {
+      const result = await deps.postInternalNotificationsCheckReceipts.handle({
         authorization: c.req.header("authorization") ?? null,
         body: body.value,
       });

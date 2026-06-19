@@ -50,8 +50,7 @@ export function createPostDeviceRegisterHandler(deps: {
         userId: auth.userId,
         deviceFingerprint: req.device_fingerprint,
         clientKind: req.client_kind,
-        apnsToken: req.apns_token,
-        fcmToken: req.fcm_token,
+        expoPushToken: req.expo_push_token,
       });
 
       return {

@@ -27,6 +27,8 @@ const appWith = (overrides) =>
     postSiblingInvitationSkip: { handle: async () => ({ status: 200, body: {} }) },
     postDeviceRegister: { handle: async () => ({ status: 200, body: {} }) },
     getAgent: { handle: async () => ({ status: 200, body: {} }) },
+    postInternalNotificationsPush: { handle: async () => ({ status: 200, body: {} }) },
+    postInternalNotificationsCheckReceipts: { handle: async () => ({ status: 200, body: {} }) },
     ...overrides,
   });
 
@@ -301,6 +303,71 @@ test("POST /devices/register maps contract parse failures to 400", async () => {
     code: "invalid_request",
     message: "Request body is invalid.",
     invalid_keys: ["device_fingerprint"],
+  });
+});
+
+test("POST /internal/notifications/push routes to the handler with auth and body", async () => {
+  const seen = [];
+  const app = appWith({
+    postInternalNotificationsPush: recordingHandler(seen, {
+      status: 200,
+      body: { delivered: true, device_count: 1 },
+    }),
+  });
+
+  const res = await app.request("/internal/notifications/push", {
+    method: "POST",
+    headers: { authorization: "Bearer runtime-secret", "content-type": "application/json" },
+    body: JSON.stringify({ user_id: "u_1", preview_text: "hello", message_id: "m_1" }),
+  });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { delivered: true, device_count: 1 });
+  assert.equal(seen[0].authorization, "Bearer runtime-secret");
+  assert.deepEqual(seen[0].body, { user_id: "u_1", preview_text: "hello", message_id: "m_1" });
+});
+
+test("POST /internal/notifications/check-receipts routes to the handler", async () => {
+  const seen = [];
+  const app = appWith({
+    postInternalNotificationsCheckReceipts: recordingHandler(seen, {
+      status: 200,
+      body: { checked: 2, cleared: 1 },
+    }),
+  });
+
+  const res = await app.request("/internal/notifications/check-receipts", {
+    method: "POST",
+    headers: { authorization: "Bearer maintenance-secret", "content-type": "application/json" },
+    body: JSON.stringify({ limit: 2 }),
+  });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { checked: 2, cleared: 1 });
+  assert.equal(seen[0].authorization, "Bearer maintenance-secret");
+  assert.deepEqual(seen[0].body, { limit: 2 });
+});
+
+test("POST /internal/notifications/check-receipts maps contract parse failures to 400", async () => {
+  const app = appWith({
+    postInternalNotificationsCheckReceipts: {
+      handle: async () => {
+        throw new BoundaryParseError(["limit"]);
+      },
+    },
+  });
+
+  const res = await app.request("/internal/notifications/check-receipts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ limit: 0 }),
+  });
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), {
+    code: "invalid_request",
+    message: "Request body is invalid.",
+    invalid_keys: ["limit"],
   });
 });
 

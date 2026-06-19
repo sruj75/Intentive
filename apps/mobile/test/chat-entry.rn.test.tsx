@@ -115,3 +115,20 @@ test("Mac setup banner clears after the Account Surface closes once Desktop Clie
     expect(screen.queryByText("Add Intentive on Mac for richer context")).toBeNull(),
   );
 });
+
+test("ChatEntry starts injected push registration on first chat entry mount", async () => {
+  const pushRegistration = jest.fn(async () => {});
+
+  render(
+    <LaunchStateProvider source={launchStateSource}>
+      <ChatEntry
+        adapter={staticAdapter()}
+        accountStateSource={accountStateSource}
+        controlPlaneBaseUrl="https://cp.test"
+        pushRegistration={pushRegistration}
+      />
+    </LaunchStateProvider>,
+  );
+
+  await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(1));
+});

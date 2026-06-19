@@ -6,6 +6,16 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
 
 ### Added
 
+- **Push Notification fan-out** ([Issue #49]) — Device Registry now stores
+  `expo_push_token`; `notifications` domain sends through Expo Push Service,
+  records accepted ticket ids in `control_plane.notification_tickets`, and clears
+  dead tokens on immediate `DeviceNotRegistered`/`InvalidCredentials` errors or
+  deferred receipt checks. Added protected `POST /internal/notifications/push`
+  and `POST /internal/notifications/check-receipts` handlers with separate
+  Directional Secrets (`INTERNAL_SECRET_FROM_RUNTIME`,
+  `INTERNAL_SECRET_FOR_MAINTENANCE`). Tests cover service fan-out semantics,
+  internal handlers, Device Registry token reads/clearing, and notification
+  ticket repo round-trips.
 - **Routing + Agent Instance Registry + Session Start** ([Issue #30]) —
   `agents` domain with idempotent `control_plane.agent_instances` registry
   (`migrations/0004_agent_instances.sql`, one row per `user_id`), Runtime Session
@@ -23,7 +33,7 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
   extended `app.test.mjs` and `identity-service.test.mjs`.
 - **Device Registry + device-aware gates** ([Issue #27]) — `devices` domain with
   idempotent `POST /devices/register` (upsert keyed `UNIQUE(user_id,
-device_fingerprint)`, non-destructive APNs/FCM token rotation) and the token-free
+device_fingerprint)`, non-destructive push-token rotation) and the token-free
   `devices.listDevicesForUser` read port, `migrations/0003_devices.sql`, and
   service/HTTP tests plus an opt-in `devices-repo.integration` tier. `GET /me` now
   carries a device/client signal (`X-Client-Kind`, `X-Capture-Permission-Granted`)
@@ -87,3 +97,4 @@ device)`. `gates` gains no dependency on `devices` (the composer does the
 [Issue #27]: https://github.com/sruj75/Intentive/issues/27
 [Issue #30]: https://github.com/sruj75/Intentive/issues/30
 [Issue #47]: https://github.com/sruj75/Intentive/issues/47
+[Issue #49]: https://github.com/sruj75/Intentive/issues/49

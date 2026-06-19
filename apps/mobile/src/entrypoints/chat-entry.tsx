@@ -12,7 +12,7 @@
  * and the Control Plane base URL; tests inject `adapter`, `accountStateSource`,
  * `controlPlaneBaseUrl`, and safe-area metrics directly.
  */
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Metrics } from "react-native-safe-area-context";
 
 import {
@@ -30,12 +30,16 @@ import {
 } from "../domains/chat/runtime/runtime-adapter";
 import { CompanionChat } from "../domains/chat/ui/companion-chat";
 import type { RuntimeAdapter } from "../domains/chat/types/conversation";
+import { getOrCreateDeviceFingerprint } from "../domains/notifications/repo/device-fingerprint";
+import { createExpoNotificationsPort } from "../domains/notifications/repo/expo-notifications-port";
+import { registerForPush } from "../domains/notifications/service/push-registration";
 
 export interface ChatEntryProps {
   readonly adapter?: RuntimeAdapter;
   readonly accountStateSource?: AccountStateSource;
   readonly controlPlaneBaseUrl?: string;
   readonly initialSafeAreaMetrics?: Metrics;
+  readonly pushRegistration?: () => Promise<void>;
 }
 
 export function ChatEntry({
@@ -43,9 +47,11 @@ export function ChatEntry({
   accountStateSource: injectedAccountStateSource,
   controlPlaneBaseUrl,
   initialSafeAreaMetrics,
+  pushRegistration: injectedPushRegistration,
 }: ChatEntryProps = {}): React.JSX.Element {
   const authAdapter = useOptionalAuthAdapter();
   const [accountVisible, setAccountVisible] = useState(false);
+  const didRequestPushRegistration = useRef(false);
   const baseUrl = controlPlaneBaseUrl ?? process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "";
 
   const adapter = useMemo(() => {
@@ -81,6 +87,26 @@ export function ChatEntry({
 
   const { accountState, refreshAccountState } = useAccountStateProjection(accountStateSource);
   const runtimeState = useSyncExternalStore(adapter.subscribe, adapter.getState, adapter.getState);
+  const pushRegistration = useMemo(() => {
+    if (injectedPushRegistration) return injectedPushRegistration;
+    if (!authAdapter || baseUrl.trim().length === 0) return null;
+
+    return () =>
+      registerForPush({
+        baseUrl,
+        getUserJwt: () => authAdapter.getUserJwt(),
+        fetch: (url, init) => globalThis.fetch(url, init),
+        notifications: createExpoNotificationsPort(),
+        getDeviceFingerprint: getOrCreateDeviceFingerprint,
+        onError: (error) => console.warn("Push registration failed", error),
+      });
+  }, [authAdapter, baseUrl, injectedPushRegistration]);
+
+  useEffect(() => {
+    if (!pushRegistration || didRequestPushRegistration.current) return;
+    didRequestPushRegistration.current = true;
+    void pushRegistration();
+  }, [pushRegistration]);
 
   return (
     <>

@@ -23,6 +23,8 @@
     "src/domains/auth/service/auth-adapter.ts",
     "src/domains/chat/types/**/*.ts",
     "src/domains/chat/service/**/*.ts",
-    "src/domains/chat/runtime/**/*.ts"
+    "src/domains/chat/runtime/**/*.ts",
+    "src/domains/notifications/types/**/*.ts",
+    "src/domains/notifications/service/**/*.ts"
   ]
 }

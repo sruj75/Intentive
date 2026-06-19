@@ -26,6 +26,11 @@ import { createApp } from "./domains/identity/ui/app.js";
 import { createGetMeHandler } from "./domains/identity/ui/get-me.js";
 import { createPostConsentHandler } from "./domains/identity/ui/post-consent.js";
 import { createPostSiblingInvitationSkipHandler } from "./domains/identity/ui/post-sibling-invitation-skip.js";
+import { createExpoPushSender } from "./domains/notifications/repo/expo-push-sender.js";
+import { createNotificationTicketsRepo } from "./domains/notifications/repo/notification-tickets.js";
+import { createNotificationsService } from "./domains/notifications/service/notifications-service.js";
+import { createPostInternalNotificationsCheckReceiptsHandler } from "./domains/notifications/ui/post-internal-notifications-check-receipts.js";
+import { createPostInternalNotificationsPushHandler } from "./domains/notifications/ui/post-internal-notifications-push.js";
 import { createGetAgentHandler } from "./domains/routing/ui/get-agent.js";
 
 const config = loadConfig();
@@ -42,6 +47,8 @@ const sql = neon(config.neon.url) as unknown as Sql;
 const users = createUsersRepo(sql);
 const userGates = createUserGatesRepo(sql);
 const devices = createDevicesRepo(sql);
+const notificationTickets = createNotificationTicketsRepo(sql);
+const expoPushSender = createExpoPushSender({ accessToken: config.expo.accessToken });
 const agentInstances = createAgentInstancesRepo(sql);
 const runtimeSessionStarter = createRuntimeSessionStarter({
   baseUrl: config.runtimeInternal.baseUrl,
@@ -60,12 +67,27 @@ const postConsent = createPostConsentHandler({ identity, gates });
 const postSiblingInvitationSkip = createPostSiblingInvitationSkipHandler({ identity, gates });
 const postDeviceRegister = createPostDeviceRegisterHandler({ identity, devices });
 const getAgent = createGetAgentHandler({ identity, agents });
+const notifications = createNotificationsService({
+  devices,
+  sender: expoPushSender,
+  tickets: notificationTickets,
+});
+const postInternalNotificationsPush = createPostInternalNotificationsPushHandler({
+  expectedSecret: config.internalInbound.secretFromRuntime,
+  notifications,
+});
+const postInternalNotificationsCheckReceipts = createPostInternalNotificationsCheckReceiptsHandler({
+  expectedSecret: config.internalInbound.secretForMaintenance,
+  notifications,
+});
 const app = createApp({
   getMe,
   postConsent,
   postSiblingInvitationSkip,
   postDeviceRegister,
   getAgent,
+  postInternalNotificationsPush,
+  postInternalNotificationsCheckReceipts,
 });
 
 serve({ fetch: app.fetch, port: config.port });

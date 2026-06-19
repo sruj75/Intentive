@@ -9,6 +9,8 @@ import {
   deviceRegisterRequestSample,
   deviceRegisterResponseSample,
   routingSample,
+  notificationsCheckReceiptsRequestSample,
+  notificationsCheckReceiptsResponseSample,
   sessionStartRequestSample,
   notificationsPushRequestSample,
   notificationsPushResponseSample,
@@ -45,4 +47,6 @@ test("internal samples are user-scoped", () => {
   assert.equal(notificationsPushRequestSample.user_id, "user_stub");
   assert.equal(notificationsPushResponseSample.delivered, false);
   assert.equal(notificationsPushResponseSample.device_count, 0);
+  assert.equal(notificationsCheckReceiptsRequestSample.limit, 100);
+  assert.equal(notificationsCheckReceiptsResponseSample.checked, 0);
 });

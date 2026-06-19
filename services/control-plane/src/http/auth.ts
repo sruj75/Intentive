@@ -13,6 +13,8 @@
  * `packages/providers`: it is transport-specific (the Agent Runtime maps the
  * same `JwtVerificationFailure` to a protocol event, not a status).
  */
+import { timingSafeEqual } from "node:crypto";
+
 import { JwtVerificationError, type JwtVerificationFailure } from "@intentive/providers/auth";
 
 export interface ControlPlaneAuthErrorResponse {
@@ -94,6 +96,10 @@ export type RequireUserResult =
   | { ok: true; userId: string }
   | { ok: false; response: ControlPlaneAuthErrorResponse };
 
+export type RequireInternalSecretResult =
+  | { authenticated: true }
+  | { authenticated: false; response: ControlPlaneAuthErrorResponse };
+
 /**
  * Resolve an `Authorization` header to a `userId`, or a ready-made error
  * response. The whole "is this an authenticated request" decision in one place:
@@ -120,4 +126,29 @@ export async function requireUser(
     if (response) return { ok: false, response };
     throw err;
   }
+}
+
+/**
+ * Authenticate private Internal HTTP calls with a Directional Secret carried as a
+ * bearer token. The caller decides which expected secret applies, so CP<-Runtime
+ * and maintenance ingress stay separate without duplicating the status mapping.
+ */
+export function requireInternalSecret(
+  authorization: string | null,
+  expectedSecret: string,
+): RequireInternalSecretResult {
+  const token = bearerToken(authorization);
+  if (token === null) return { authenticated: false, response: authFailed() };
+  return constantTimeEqual(token, expectedSecret)
+    ? { authenticated: true }
+    : { authenticated: false, response: authFailed() };
+}
+
+function constantTimeEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(actualBuffer, expectedBuffer);
 }

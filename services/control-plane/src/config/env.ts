@@ -36,12 +36,10 @@ const EnvSchema = z.object({
   RUNTIME_INTERNAL_BASE_URL: z.string().url(),
   INTERNAL_SECRET_TO_RUNTIME: z.string().min(1), // CP -> AR: POST /internal/sessions/start
   INTERNAL_SECRET_FROM_RUNTIME: z.string().min(1), // AR -> CP: POST /internal/notifications/push
+  INTERNAL_SECRET_FOR_MAINTENANCE: z.string().min(1), // operator/scheduler -> CP maintenance
 
-  // APNs — Apple push credentials (held only here; the Agent Runtime never calls APNs)
-  APNS_KEY_ID: z.string().min(1),
-  APNS_TEAM_ID: z.string().min(1),
-  APNS_BUNDLE_ID: z.string().min(1),
-  APNS_PRIVATE_KEY: z.string().min(1),
+  // Expo Push Service — optional access token; tokens and provider detail stay in CP.
+  EXPO_ACCESS_TOKEN: z.string().min(1).optional(),
 });
 
 export interface ControlPlaneConfig {
@@ -53,13 +51,11 @@ export interface ControlPlaneConfig {
     readonly audience: string;
   };
   readonly runtimeInternal: { readonly baseUrl: string; readonly secretToRuntime: string };
-  readonly internalInbound: { readonly secretFromRuntime: string };
-  readonly apns: {
-    readonly keyId: string;
-    readonly teamId: string;
-    readonly bundleId: string;
-    readonly privateKey: string;
+  readonly internalInbound: {
+    readonly secretFromRuntime: string;
+    readonly secretForMaintenance: string;
   };
+  readonly expo: { readonly accessToken?: string };
 }
 
 /**
@@ -102,12 +98,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
       baseUrl: e.RUNTIME_INTERNAL_BASE_URL,
       secretToRuntime: e.INTERNAL_SECRET_TO_RUNTIME,
     }),
-    internalInbound: Object.freeze({ secretFromRuntime: e.INTERNAL_SECRET_FROM_RUNTIME }),
-    apns: Object.freeze({
-      keyId: e.APNS_KEY_ID,
-      teamId: e.APNS_TEAM_ID,
-      bundleId: e.APNS_BUNDLE_ID,
-      privateKey: e.APNS_PRIVATE_KEY,
+    internalInbound: Object.freeze({
+      secretFromRuntime: e.INTERNAL_SECRET_FROM_RUNTIME,
+      secretForMaintenance: e.INTERNAL_SECRET_FOR_MAINTENANCE,
     }),
+    expo: Object.freeze({ accessToken: e.EXPO_ACCESS_TOKEN }),
   });
 }
