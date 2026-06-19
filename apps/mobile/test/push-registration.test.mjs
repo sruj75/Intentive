@@ -39,6 +39,20 @@ test("registerForPush does nothing when notification permission is denied", asyn
   assert.deepEqual(calls, []);
 });
 
+test("registerForPush treats unavailable notifications as terminal", async () => {
+  const { deps, calls } = baseDeps({
+    notifications: {
+      requestPermission: async () => "unavailable",
+      getExpoPushToken: async () => assert.fail("token must not be requested"),
+    },
+  });
+
+  const result = await registerForPush(deps);
+
+  assert.deepEqual(result, { status: "terminal", reason: "notifications_unavailable" });
+  assert.deepEqual(calls, []);
+});
+
 test("registerForPush treats a missing Expo token as terminal", async () => {
   const { deps, calls } = baseDeps({
     notifications: {

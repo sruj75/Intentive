@@ -11,7 +11,7 @@ import {
 export function createExpoNotificationsPort(): NotificationsPort {
   return {
     async requestPermission() {
-      if (!Device.isDevice) return "denied";
+      if (!Device.isDevice) return "unavailable";
 
       const existing = await Notifications.getPermissionsAsync();
       if (existing.status === "granted") return "granted";
@@ -31,6 +31,10 @@ export function createExpoNotificationsPort(): NotificationsPort {
 
       const token = await Notifications.getExpoPushTokenAsync({ projectId });
       return token.data;
+    },
+
+    subscribeToPushTokenChanges(listener) {
+      return Notifications.addPushTokenListener(() => listener());
     },
   };
 }

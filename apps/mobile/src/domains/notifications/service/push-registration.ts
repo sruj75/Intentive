@@ -10,7 +10,11 @@ export type PushRegistrationResult =
   | { status: "retryable"; reason: "registration_unavailable" | "registration_failed" }
   | {
       status: "terminal";
-      reason: "permission_denied" | "expo_token_unavailable" | "configuration_error";
+      reason:
+        | "permission_denied"
+        | "notifications_unavailable"
+        | "expo_token_unavailable"
+        | "configuration_error";
     };
 
 export interface PushRegistrationDeps extends RegisterDeviceDeps {
@@ -22,6 +26,9 @@ export interface PushRegistrationDeps extends RegisterDeviceDeps {
 export async function registerForPush(deps: PushRegistrationDeps): Promise<PushRegistrationResult> {
   try {
     const permission = await deps.notifications.requestPermission();
+    if (permission === "unavailable") {
+      return { status: "terminal", reason: "notifications_unavailable" };
+    }
     if (permission !== "granted") return { status: "terminal", reason: "permission_denied" };
 
     const expoPushToken = await deps.notifications.getExpoPushToken();
