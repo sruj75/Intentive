@@ -15,16 +15,30 @@ name: control-plane-deploy
 #                                   - Artifact Registry Writer
 #                                   - Cloud Run Admin
 #                                   - Service Account User
+# Required GitHub variables:
+#   NEON_DATABASE_ROLE
+#   NEON_AUTH_JWKS_URL
+#   NEON_AUTH_ISSUER
+#   NEON_AUTH_AUDIENCE
+#   RUNTIME_INTERNAL_BASE_URL
 #
 # Required GCP setup (one-time):
 #   - Artifact Registry repository at ${GCP_REGION}-docker.pkg.dev/${PROJECT}/intentive
 #   - Cloud Run service "control-plane" in the same region
-#   - VPC connector for private internal calls to the Agent Runtime
+#   - Secret Manager secrets:
+#       NEON_DATABASE_URL
+#       INTERNAL_SECRET_TO_RUNTIME
+#       INTERNAL_SECRET_FROM_RUNTIME
+#       INTERNAL_SECRET_FOR_MAINTENANCE
+#       SENTRY_DSN
 
 env:
-  GCP_REGION: us-central1
+  # The first production bootstrap uses us-west1 because this GCP project hit a
+  # Cloud Run project-initialization quota failure in us-central1.
+  GCP_REGION: us-west1
   SERVICE_NAME: control-plane
   IMAGE_TAG: ${{ github.sha }}
+  CANDIDATE_TAG: candidate-${{ github.run_id }}-${{ github.run_attempt }}
 
 on:
   push:
@@ -93,4 +107,45 @@ jobs:
             --region ${{ env.GCP_REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --min-instances 1
+            --min-instances 1 \
+            --no-traffic \
+            --tag ${{ env.CANDIDATE_TAG }} \
+            --set-env-vars NEON_DATABASE_ROLE=${{ vars.NEON_DATABASE_ROLE }},NEON_AUTH_JWKS_URL=${{ vars.NEON_AUTH_JWKS_URL }},NEON_AUTH_ISSUER=${{ vars.NEON_AUTH_ISSUER }},NEON_AUTH_AUDIENCE=${{ vars.NEON_AUTH_AUDIENCE }},RUNTIME_INTERNAL_BASE_URL=${{ vars.RUNTIME_INTERNAL_BASE_URL }},SENTRY_ENVIRONMENT=production,SENTRY_RELEASE=${{ github.sha }},SENTRY_MODE=errors-only \
+            --set-secrets NEON_DATABASE_URL=NEON_DATABASE_URL:latest,INTERNAL_SECRET_TO_RUNTIME=INTERNAL_SECRET_TO_RUNTIME:latest,INTERNAL_SECRET_FROM_RUNTIME=INTERNAL_SECRET_FROM_RUNTIME:latest,INTERNAL_SECRET_FOR_MAINTENANCE=INTERNAL_SECRET_FOR_MAINTENANCE:latest,SENTRY_DSN=SENTRY_DSN:latest
+
+      - name: Smoke candidate revision
+        run: |
+          set -euo pipefail
+
+          candidate_url="$(
+            gcloud run services describe "${{ env.SERVICE_NAME }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --platform managed \
+              --format=json |
+              jq -r --arg tag "${{ env.CANDIDATE_TAG }}" '
+                [.status.traffic[]?, .status.trafficStatuses[]?]
+                | map(select(.tag == $tag and .url != null))
+                | .[0].url // empty
+              '
+          )"
+
+          if [ -z "$candidate_url" ]; then
+            echo "Could not find candidate URL for tag ${{ env.CANDIDATE_TAG }}" >&2
+            exit 1
+          fi
+
+          curl -fsS "$candidate_url/health" >/tmp/health.json
+          curl -fsS "$candidate_url/ready" >/tmp/ready.json
+
+          me_status="$(
+            curl -sS -o /tmp/me.json -w "%{http_code}" "$candidate_url/me"
+          )"
+          test "$me_status" = "401"
+          jq -e '.code == "auth_failed" and (.message | type == "string")' /tmp/me.json >/dev/null
+
+      - name: Promote candidate traffic
+        run: |
+          gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --to-tags ${{ env.CANDIDATE_TAG }}=100

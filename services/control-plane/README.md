@@ -13,6 +13,8 @@ For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](
 | `POST /sibling-invitation/skip` | Records sibling invitation skip                                   |
 | `GET  /agent`                   | Issues Agent Runtime URL + JWT (Routing)                          |
 | `POST /devices/register`        | Idempotent device registration (includes Expo Push Token)         |
+| `GET  /health`                  | Shallow liveness probe                                            |
+| `GET  /ready`                   | Deep readiness probe for Neon + Neon Auth JWKS                    |
 
 Schemas live in [`packages/api-contract`](../../packages/api-contract).
 
@@ -48,4 +50,46 @@ after gate enforcement and Session Start (#30).
 
 ## Deployment
 
-GitHub Actions builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy`. See `.github/workflows/control-plane-deploy.yml` at the repo root.
+GitHub Actions builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` to **Google Cloud Run** in `us-west1`. The first production bootstrap uses `us-west1` because this GCP project hit a Cloud Run project-initialization quota failure in `us-central1`. See `.github/workflows/control-plane-deploy.yml` at the repo root. Strategy and rationale: [`docs/adr/0007`](docs/adr/0007-cloud-run-deploy-and-readiness.md) (no-traffic revision promotion gated by a readiness probe) and [`docs/adr/0008`](docs/adr/0008-internal-endpoints-public-ingress-shared-secret.md) (internal endpoints on public ingress behind a shared secret).
+
+### Secret inventory (required for a green deploy)
+
+The service reads **all** configuration from the one config seam (`src/config/env.ts`). Password-bearing values come from Google Secret Manager; non-secret names/URLs are plain env vars.
+
+| Variable                          | Secret?  | Purpose                                                                  |
+| --------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `NEON_DATABASE_URL`               | ✅ vault | Pooled Neon connection string for the `control_plane_app` role           |
+| `NEON_DATABASE_ROLE`              | env      | Postgres role name (defaults to `control_plane_app`)                     |
+| `NEON_AUTH_JWKS_URL`              | env      | Neon Auth JWKS endpoint for user-JWT verification                        |
+| `NEON_AUTH_ISSUER`                | env      | Expected JWT issuer                                                      |
+| `NEON_AUTH_AUDIENCE`              | env      | Expected JWT audience                                                    |
+| `RUNTIME_INTERNAL_BASE_URL`       | env      | Base URL for the CP → Agent Runtime Session Start call                   |
+| `INTERNAL_SECRET_TO_RUNTIME`      | ✅ vault | Directional Secret guarding CP → Runtime `/internal/sessions/start`      |
+| `INTERNAL_SECRET_FROM_RUNTIME`    | ✅ vault | Directional Secret guarding Runtime → CP `/internal/notifications/push`  |
+| `INTERNAL_SECRET_FOR_MAINTENANCE` | ✅ vault | Secret guarding the maintenance `/internal/notifications/check-receipts` |
+| `EXPO_ACCESS_TOKEN`               | ✅ vault | Optional Expo Push Service access token                                  |
+| `SENTRY_DSN`                      | ✅ vault | Sentry project DSN for error capture                                     |
+| `SENTRY_ENVIRONMENT`              | env      | Sentry environment name (production in Cloud Run)                        |
+| `SENTRY_RELEASE`                  | env      | Release identifier, set to the deploy SHA                                |
+| `SENTRY_MODE`                     | env      | Sentry mode (defaults to `errors-only`)                                  |
+| `PORT`                            | env      | Injected by Cloud Run (defaults to 8080)                                 |
+
+> There is **no** runtime-JWT signing key, **no** APNs credentials, and **no** Langfuse config. The `runtime_jwt` is the client's pass-through Neon Auth token ([`docs/adr/0002`](docs/adr/0002-runtime-jwt-passthrough.md)); push delivery goes through Expo Push Service, not APNs ([`docs/adr/0006`](docs/adr/0006-expo-push-service-for-v1-notifications.md)); Control Plane has no LLM trace surface, so Langfuse is intentionally absent. Do not provision any of those values — the service cannot read them.
+
+### Database provisioning (one-time, this service owns it)
+
+This service's schema is created here, not assumed to exist. Via the Neon MCP / `neon-postgres` skill: create the `control_plane` schema → create a least-privilege `control_plane_app` role (no superuser, grants scoped to `control_plane` only) → run migrations `0001`–`0005` against production → build `NEON_DATABASE_URL` from that role's pooled connection string. Repo tests bootstrap their own ephemeral branches (ADR-0003); production is provisioned once, here.
+
+Pull requests that touch Control Plane run `.github/workflows/neon-preview-branches.yml`: create a Neon branch named `preview/pr-<number>-<branch>`, apply all Control Plane migrations with `pnpm --filter ./services/control-plane migrate`, run the Control Plane checks without spawning extra Neon branches, and delete the Neon branch when the PR closes.
+
+### Deploy procedure (careful path)
+
+1. Manually trigger `control-plane-deploy` (`workflow_dispatch`) — it builds, pushes, and deploys as a **no-traffic** revision.
+2. Smoke-check the new revision at its own URL:
+   - `GET /health` → `200 {"ok":true,...}` (liveness; process is up).
+   - `GET /ready` → `200` (readiness; Neon `SELECT 1` and Neon Auth JWKS both reachable).
+   - `GET /me` without a token → a well-formed `401` (proves the auth boundary is engaged without needing a valid user JWT or writing to prod).
+3. Only if green, **promote traffic** to the new revision.
+4. Once a manual deploy has proven out, set the `DEPLOY_ENABLED` repository variable to `true` so pushes to `main` auto-deploy.
+
+`/healthz` and `/readyz` remain local compatibility aliases, but public Cloud Run smoke checks use `/health` and `/ready` because Cloud Run reserves some URL paths ending in `z`.

@@ -78,6 +78,35 @@ test("verify resolves the user_id from a valid token's sub claim", async () => {
   }
 });
 
+test("probe resolves when the JWKS endpoint is reachable", async () => {
+  const key = await makeKey();
+  const jwks = await startJwksServer([key]);
+  try {
+    const verifier = createJwtVerifier({ jwks_url: jwks.url, issuer: ISSUER, audience: AUDIENCE });
+    await verifier.probe();
+    assert.equal(jwks.requests, 1);
+  } finally {
+    await jwks.close();
+  }
+});
+
+test("probe rejects with jwks_unavailable when the JWKS endpoint is unreachable", async () => {
+  const verifier = createJwtVerifier({
+    jwks_url: "http://127.0.0.1:65530/jwks",
+    issuer: ISSUER,
+    audience: AUDIENCE,
+  });
+
+  await assert.rejects(
+    () => verifier.probe(),
+    (err) => {
+      assert.ok(err instanceof JwtVerificationError);
+      assert.equal(err.reason, "jwks_unavailable");
+      return true;
+    },
+  );
+});
+
 // --- Error taxonomy ---------------------------------------------------------
 //
 // Each test asserts the `reason` a given failure maps to. Callers depend on

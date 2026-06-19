@@ -25,6 +25,13 @@ const fakeRepo = (initial = []) => {
   };
 };
 
+const recordingLogger = (records) => ({
+  info: (event, attrs) => records.push({ level: "info", event, attrs }),
+  warn: (event, attrs) => records.push({ level: "warn", event, attrs }),
+  error: (event, error, attrs) => records.push({ level: "error", event, error, attrs }),
+  child: () => recordingLogger(records),
+});
+
 test("ensureAgentInstance calls the starter, records the instance, returns the AR identity", async () => {
   const starts = [];
   const repo = fakeRepo();
@@ -43,6 +50,29 @@ test("ensureAgentInstance calls the starter, records the instance, returns the A
   assert.deepEqual(identity, { agentInstanceId: "agent_1", wsUrl: "wss://runtime.example.com/ws" });
   assert.deepEqual(starts, [{ userId: "u_1", authSubject: "sub-1" }]);
   assert.deepEqual(repo.recorded, [{ userId: "u_1", agentInstanceId: "agent_1" }]);
+});
+
+test("ensureAgentInstance logs Session Start success", async () => {
+  const records = [];
+  const service = createAgentsService({
+    sessionStarter: {
+      startSession: async () => ({
+        agentInstanceId: "agent_1",
+        wsUrl: "wss://runtime.example.com/ws",
+      }),
+    },
+    instances: fakeRepo(),
+    logger: recordingLogger(records),
+  });
+
+  await service.ensureAgentInstance({ userId: "u_1", authSubject: "sub-1" });
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].level, "info");
+  assert.equal(records[0].event, "session_start.call");
+  assert.equal(records[0].attrs.user_id, "u_1");
+  assert.equal(records[0].attrs.status, "ok");
+  assert.equal(typeof records[0].attrs.duration_ms, "number");
 });
 
 test("a second ensureAgentInstance is idempotent and still returns the AR identity", async () => {
@@ -82,6 +112,31 @@ test("a Runtime failure propagates and records nothing", async () => {
     (err) => err instanceof AgentRuntimeUnavailableError,
   );
   assert.deepEqual(repo.recorded, [], "nothing is recorded when the session never started");
+});
+
+test("ensureAgentInstance logs Session Start failure reason", async () => {
+  const records = [];
+  const service = createAgentsService({
+    sessionStarter: {
+      startSession: async () => {
+        throw new AgentRuntimeUnavailableError("non_2xx", "boom");
+      },
+    },
+    instances: fakeRepo(),
+    logger: recordingLogger(records),
+  });
+
+  await assert.rejects(
+    () => service.ensureAgentInstance({ userId: "u_1", authSubject: "sub-1" }),
+    AgentRuntimeUnavailableError,
+  );
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].level, "warn");
+  assert.equal(records[0].event, "session_start.call");
+  assert.equal(records[0].attrs.user_id, "u_1");
+  assert.equal(records[0].attrs.status, "failed");
+  assert.equal(records[0].attrs.reason, "non_2xx");
 });
 
 test("hasAgentInstance reflects the repo", async () => {

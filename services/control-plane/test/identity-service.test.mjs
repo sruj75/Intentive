@@ -17,6 +17,12 @@ const fakeUsers = (userId) => ({ resolveUser: async () => ({ userId }) });
 const fakeGates = (gate) => ({ nextGate: async () => gate });
 const fakeDevices = (list = []) => ({ listDevicesForUser: async () => list });
 const fakeAgents = (has = false) => ({ hasAgentInstance: async () => has });
+const recordingLogger = (records) => ({
+  info: (event, attrs) => records.push({ level: "info", event, attrs }),
+  warn: (event, attrs) => records.push({ level: "warn", event, attrs }),
+  error: (event, error, attrs) => records.push({ level: "error", event, error, attrs }),
+  child: () => recordingLogger(records),
+});
 
 test("authenticate maps a verified subject to the internal user id", async () => {
   const seen = [];
@@ -43,6 +49,21 @@ test("authenticate maps a verified subject to the internal user id", async () =>
 
   assert.deepEqual(result, { userId: "u_1" });
   assert.deepEqual(seen, ["tok"]);
+});
+
+test("authenticate logs JWT verification success", async () => {
+  const records = [];
+
+  await createIdentityService({
+    verifier: fakeVerifier("sub-1"),
+    users: fakeUsers("u_1"),
+    gates: fakeGates(null),
+    devices: fakeDevices(),
+    agents: fakeAgents(),
+    logger: recordingLogger(records),
+  }).authenticate("tok");
+
+  assert.deepEqual(records, [{ level: "info", event: "auth.jwt_verify", attrs: { status: "ok" } }]);
 });
 
 test("resolveAccount composes the gate the gates domain reports", async () => {
@@ -255,4 +276,32 @@ test("resolveAccount propagates a verification failure and never touches repo or
   assert.equal(gatesCalled, false, "a failed verification must short-circuit before gates");
   assert.equal(devicesCalled, false, "a failed verification must short-circuit before devices");
   assert.equal(agentsCalled, false, "a failed verification must short-circuit before agents");
+});
+
+test("resolveAccount logs JWT verification failure reason", async () => {
+  const records = [];
+  await assert.rejects(
+    () =>
+      createIdentityService({
+        verifier: {
+          verify: async () => {
+            throw new JwtVerificationError("expired", "redacted");
+          },
+        },
+        users: fakeUsers("u_1"),
+        gates: fakeGates(null),
+        devices: fakeDevices(),
+        agents: fakeAgents(),
+        logger: recordingLogger(records),
+      }).resolveAccount("tok"),
+    JwtVerificationError,
+  );
+
+  assert.deepEqual(records, [
+    {
+      level: "warn",
+      event: "auth.jwt_verify",
+      attrs: { status: "failed", reason: "expired" },
+    },
+  ]);
 });

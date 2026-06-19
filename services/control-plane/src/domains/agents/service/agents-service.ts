@@ -15,6 +15,8 @@
  * surfaces unchanged as the starter's `AgentRuntimeUnavailableError` — this
  * service adds no status knowledge; Routing maps it.
  */
+import { createNoopLogger, type Logger } from "@intentive/providers/telemetry";
+
 import type { AgentInstancesRepo } from "../repo/agent-instances.js";
 import type { SessionStarter } from "../repo/runtime-session-start.js";
 
@@ -38,22 +40,48 @@ export interface AgentsService {
 export function createAgentsService(deps: {
   sessionStarter: SessionStarter;
   instances: AgentInstancesRepo;
+  logger?: Logger;
 }): AgentsService {
+  const logger = deps.logger ?? createNoopLogger();
+
   return {
     async ensureAgentInstance({ userId, authSubject }) {
       // Always call Session Start (never cache `ws_url`): the Runtime owns its
       // own address, so the live call is the source of truth for where to
       // connect. If it throws, we record nothing and let the error propagate.
-      const identity = await deps.sessionStarter.startSession({ userId, authSubject });
-      await deps.instances.recordInstance({
-        userId,
-        agentInstanceId: identity.agentInstanceId,
-      });
-      return identity;
+      const startedAt = Date.now();
+      try {
+        const identity = await deps.sessionStarter.startSession({ userId, authSubject });
+        await deps.instances.recordInstance({
+          userId,
+          agentInstanceId: identity.agentInstanceId,
+        });
+        logger.info("session_start.call", {
+          user_id: userId,
+          status: "ok",
+          duration_ms: Date.now() - startedAt,
+        });
+        return identity;
+      } catch (err) {
+        logger.warn("session_start.call", {
+          user_id: userId,
+          status: "failed",
+          reason: sessionStartFailureReason(err),
+          duration_ms: Date.now() - startedAt,
+        });
+        throw err;
+      }
     },
 
     hasAgentInstance(userId) {
       return deps.instances.hasInstance(userId);
     },
   };
+}
+
+function sessionStartFailureReason(err: unknown): string {
+  if (err instanceof Error && "reason" in err && typeof err.reason === "string") {
+    return err.reason;
+  }
+  return "unknown";
 }

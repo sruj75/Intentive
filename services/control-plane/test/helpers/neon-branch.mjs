@@ -51,11 +51,23 @@ export async function createBranch() {
       endpoints: [{ type: "read_write" }],
     }),
   });
-  const connectionUri = body.connection_uris?.[0]?.connection_uri;
+  const branchId = body.branch?.id;
+  const connection = branchId
+    ? await neonApi(
+        `/projects/${projectId}/connection_uri?${new URLSearchParams({
+          branch_id: branchId,
+          database_name: "neondb",
+          role_name: "neondb_owner",
+          pooled: "true",
+        })}`,
+      )
+    : null;
+  const connectionUri =
+    connection?.uri ?? connection?.connection_uri ?? body.connection_uris?.[0]?.connection_uri;
   if (!connectionUri) {
     throw new Error("Neon branch created without a connection_uri");
   }
-  return { branchId: body.branch.id, connectionUri };
+  return { branchId, connectionUri };
 }
 
 export async function dropBranch(branchId) {
@@ -73,7 +85,7 @@ export async function dropBranch(branchId) {
 export async function applySql(connectionUri, sqlText) {
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(connectionUri);
-  const statements = sqlText
+  const statements = stripSqlComments(sqlText)
     .split(";")
     .map((s) => stripSqlComments(s).trim())
     .filter((s) => s.length > 0);

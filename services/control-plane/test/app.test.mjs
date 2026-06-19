@@ -29,6 +29,7 @@ const appWith = (overrides) =>
     getAgent: { handle: async () => ({ status: 200, body: {} }) },
     postInternalNotificationsPush: { handle: async () => ({ status: 200, body: {} }) },
     postInternalNotificationsCheckReceipts: { handle: async () => ({ status: 200, body: {} }) },
+    readiness: { check: async () => ({ ready: true, checks: { neon: "ok", jwks: "ok" } }) },
     ...overrides,
   });
 
@@ -154,11 +155,54 @@ test("GET /agent surfaces the handler's error status", async () => {
   assert.deepEqual(await res.json(), { code: "gate_required", message: "x" });
 });
 
-test("GET /healthz is a 200 liveness probe", async () => {
+test("GET /health is a 200 liveness probe", async () => {
+  const app = createApp({ getMe: { handle: async () => ({ status: 200, body: {} }) } });
+  const res = await app.request("/health");
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, service: "control-plane" });
+});
+
+test("GET /healthz remains available as a local compatibility liveness alias", async () => {
   const app = createApp({ getMe: { handle: async () => ({ status: 200, body: {} }) } });
   const res = await app.request("/healthz");
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, service: "control-plane" });
+});
+
+test("GET /ready is a 200 deep readiness probe when dependencies pass", async () => {
+  const app = appWith({
+    readiness: {
+      check: async () => ({ ready: true, checks: { neon: "ok", jwks: "ok" } }),
+    },
+  });
+
+  const res = await app.request("/ready");
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ready: true, checks: { neon: "ok", jwks: "ok" } });
+});
+
+test("GET /readyz remains available as a local compatibility readiness alias", async () => {
+  const app = appWith({
+    readiness: {
+      check: async () => ({ ready: true, checks: { neon: "ok", jwks: "ok" } }),
+    },
+  });
+
+  const res = await app.request("/readyz");
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ready: true, checks: { neon: "ok", jwks: "ok" } });
+});
+
+test("GET /ready is a 503 deep readiness probe when a dependency fails", async () => {
+  const app = appWith({
+    readiness: {
+      check: async () => ({ ready: false, checks: { neon: "ok", jwks: "failed" } }),
+    },
+  });
+
+  const res = await app.request("/ready");
+  assert.equal(res.status, 503);
+  assert.deepEqual(await res.json(), { ready: false, checks: { neon: "ok", jwks: "failed" } });
 });
 
 test("an unknown route is a 404", async () => {

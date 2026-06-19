@@ -18,6 +18,8 @@
  */
 import { z } from "zod";
 
+const SentryModeSchema = z.enum(["errors-only", "errors-and-performance"]);
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
 
@@ -40,6 +42,12 @@ const EnvSchema = z.object({
 
   // Expo Push Service — optional access token; tokens and provider detail stay in CP.
   EXPO_ACCESS_TOKEN: z.string().min(1).optional(),
+
+  // Sentry error capture. Langfuse is intentionally absent: Control Plane has no LLM trace surface.
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().min(1).optional(),
+  SENTRY_RELEASE: z.string().min(1).optional(),
+  SENTRY_MODE: SentryModeSchema.default("errors-only"),
 });
 
 export interface ControlPlaneConfig {
@@ -56,6 +64,12 @@ export interface ControlPlaneConfig {
     readonly secretForMaintenance: string;
   };
   readonly expo: { readonly accessToken?: string };
+  readonly sentry: {
+    readonly dsn: string;
+    readonly environment?: string;
+    readonly release?: string;
+    readonly mode: "errors-only" | "errors-and-performance";
+  } | null;
 }
 
 /**
@@ -103,5 +117,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
       secretForMaintenance: e.INTERNAL_SECRET_FOR_MAINTENANCE,
     }),
     expo: Object.freeze({ accessToken: e.EXPO_ACCESS_TOKEN }),
+    sentry: e.SENTRY_DSN
+      ? Object.freeze({
+          dsn: e.SENTRY_DSN,
+          environment: e.SENTRY_ENVIRONMENT,
+          release: e.SENTRY_RELEASE,
+          mode: e.SENTRY_MODE,
+        })
+      : null,
   });
 }

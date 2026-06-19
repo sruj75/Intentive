@@ -9,6 +9,7 @@
  * writes, so it tests with a plain fake repo and no database.
  */
 import type { PreChatGateKind } from "@intentive/api-contract";
+import { createNoopLogger, type Logger } from "@intentive/providers/telemetry";
 
 import type { UserGatesRepo } from "../repo/user-gates.js";
 import type { DeviceGateContext } from "../types/state.js";
@@ -28,16 +29,23 @@ export interface GatesService {
   recordSiblingSkip(userId: string): Promise<void>;
 }
 
-export function createGatesService(deps: { userGates: UserGatesRepo }): GatesService {
+export function createGatesService(deps: {
+  userGates: UserGatesRepo;
+  logger?: Logger;
+}): GatesService {
+  const logger = deps.logger ?? createNoopLogger();
+
   return {
     async nextGate(userId, device) {
       return computeNextGate({ ...(await deps.userGates.readState(userId)), ...device });
     },
-    recordConsent(userId) {
-      return deps.userGates.recordConsent(userId);
+    async recordConsent(userId) {
+      await deps.userGates.recordConsent(userId);
+      logger.info("gates.transition", { user_id: userId, status: "consent_completed" });
     },
-    recordSiblingSkip(userId) {
-      return deps.userGates.recordSiblingSkip(userId);
+    async recordSiblingSkip(userId) {
+      await deps.userGates.recordSiblingSkip(userId);
+      logger.info("gates.transition", { user_id: userId, status: "sibling_invitation_skipped" });
     },
   };
 }

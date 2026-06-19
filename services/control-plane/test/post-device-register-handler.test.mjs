@@ -11,9 +11,16 @@ import test from "node:test";
 import { createPostDeviceRegisterHandler } from "../dist/domains/devices/ui/post-device-register.js";
 
 const identityFor = (userId) => ({ authenticate: async () => ({ userId }) });
+const recordingLogger = (records) => ({
+  info: (event, attrs) => records.push({ level: "info", event, attrs }),
+  warn: (event, attrs) => records.push({ level: "warn", event, attrs }),
+  error: (event, error, attrs) => records.push({ level: "error", event, error, attrs }),
+  child: () => recordingLogger(records),
+});
 
 test("a valid registration returns a device_id and maps the request onto the repo", async () => {
   const seen = [];
+  const records = [];
   const res = await createPostDeviceRegisterHandler({
     identity: identityFor("u_1"),
     devices: {
@@ -22,6 +29,7 @@ test("a valid registration returns a device_id and maps the request onto the rep
         return { deviceId: "dev_1" };
       },
     },
+    logger: recordingLogger(records),
   }).handle({
     authorization: "Bearer good.jwt.token",
     body: { device_fingerprint: "fp-1", client_kind: "desktop", expo_push_token: "tok-a" },
@@ -35,6 +43,13 @@ test("a valid registration returns a device_id and maps the request onto the rep
       deviceFingerprint: "fp-1",
       clientKind: "desktop",
       expoPushToken: "tok-a",
+    },
+  ]);
+  assert.deepEqual(records, [
+    {
+      level: "info",
+      event: "devices.registered",
+      attrs: { user_id: "u_1", client_kind: "desktop", status: "ok" },
     },
   ]);
 });

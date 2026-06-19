@@ -20,7 +20,7 @@ It sits **beside** the client↔runtime data path, never **on** it. It tells eac
                           |
             ┌─────────────┼───────────────────────────┐
             |             |                            |
-     Neon (CP schema)   Expo Push Service      private HTTP (VPC, shared secret)
+     Neon (CP schema)   Expo Push Service      shared-secret HTTP (inbound public ingress — ADR-0008)
      account truth    push delivery                    |
                                           POST /internal/sessions/start  ──► Agent Runtime
                                           POST /internal/notifications/push ◄── Agent Runtime
@@ -61,7 +61,7 @@ The Control Plane is the single writer of account truth. Clients render this sta
 : The narrow `Sql` tagged-template port every domain `repo` imports — keeps the Neon driver out of unit-tier module graphs.
 
 `migrations/`
-: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27; `0004_agent_instances.sql` for Agent Instance Registry, #30). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
+: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27; `0004_agent_instances.sql` for Agent Instance Registry, #30; `0005_notification_tickets.sql` for notification ticket tracking, #49). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
 
 [`docs/adr/0004-account-state-assembled-by-identity-composer.md`](docs/adr/0004-account-state-assembled-by-identity-composer.md)
 : ADR — `identity.resolveAccount` is the sole assembler of `AccountState`; `gates` exposes `nextGate`, not `/me` shaping.
@@ -146,20 +146,21 @@ Client boundary:
 
 Agent Runtime boundary:
 
-- The Control Plane calls the Runtime's private `POST /internal/sessions/start` (shared-secret auth, VPC) during `GET /agent` on first chat entry.
-- The Control Plane receives the Runtime's `POST /internal/notifications/push` and fans the push out via Expo Push Service.
+- The Control Plane calls the Runtime's `POST /internal/sessions/start` (shared-secret auth; may use a VPC connector to reach the Runtime) during `GET /agent` on first chat entry. This call carries a request timeout so a hung Runtime fails fast into a retryable `503` instead of tying up request slots (ADR-0007).
+- The Control Plane receives the Runtime's `POST /internal/notifications/push` and fans the push out via Expo Push Service. This inbound internal endpoint is on **public ingress** behind a per-direction shared secret — it is not network-isolated in v1 (ADR-0008).
 - These two internal calls are the entire Control Plane ↔ Runtime surface. There is no message forwarding.
 
 Neon boundary:
 
 - The Control Plane owns identity, device, gate, and Agent Instance Registry tables in its own schema (`control_plane`) reached through its own Postgres role (`control_plane_app`). The role holds privileges **only** on the `control_plane` schema; it has no grants on the Agent Runtime's schema, and vice versa. There are no tables shared across the two services.
 - It never reads or writes the Runtime's Conversation History, runtime events, VFS overlays, or scheduler state.
-- Migrations live under `services/control-plane/migrations/` and create their tables inside the `control_plane` schema. The schema namespace and the `control_plane_app` role + grants are provisioned in #50 (which holds Neon admin access); each behavior issue adds only its own tables. Repo integration tests create ephemeral branches and bootstrap the schema themselves (ADR-0003).
+- Migrations live under `services/control-plane/migrations/` and create their tables inside the `control_plane` schema. The schema namespace and the `control_plane_app` role + grants are provisioned in #50 (which holds Neon admin access); each behavior issue adds only its own tables. Repo integration tests create ephemeral branches and bootstrap the schema themselves (ADR-0003) for local/on-demand runs. Pull-request preview branches are created by `.github/workflows/neon-preview-branches.yml` and validated with the same migration files before Control Plane checks run without spawning additional Neon branches.
 
 Deployment boundary:
 
 - Deploys to Cloud Run because it is stateless request/response. Resident state, sockets, queues, and schedulers belong to the Agent Runtime, not here.
-- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + test, optional Neon repo integration). Deploy CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see `control-plane-deploy` workflow).
+- **One production environment, no staging.** Each deploy lands as a no-traffic Cloud Run revision, is smoke-tested at its own revision URL against `GET /ready` (a real Neon + JWKS dependency check, distinct from the dumb `GET /health` liveness probe), and is promoted to live traffic only when green. Auto-deploy-on-push is enabled only after one manual deploy proves out (ADR-0007). The first production bootstrap is in `us-west1` because this GCP project hit a Cloud Run project-initialization quota failure in `us-central1`.
+- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + test with Neon branch-spawning integration tests skipped) plus `.github/workflows/neon-preview-branches.yml` (one PR preview branch + migration validation). Deploy CI builds a Docker image, pushes to Artifact Registry, and runs `gcloud run deploy` (see `control-plane-deploy` workflow). Secrets are delivered from Google Secret Manager for password-bearing values; non-secret names/URLs are plain env vars.
 
 ## Cross-cutting Concerns
 
@@ -170,7 +171,8 @@ Providers:
 
 Observability:
 
-- Log request lifecycle, JWT verification outcomes, gate-state transitions, Session Start calls, device registrations, and push fan-out results.
+- Log JWT verification outcomes, gate-state transitions, Session Start calls, device registrations, and push fan-out results through `bootstrapObservability` from `packages/providers`; Cloud Run owns request lifecycle logs at the edge.
+- Sentry is configured with `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, and `SENTRY_MODE` (`errors-only` by default). Langfuse is intentionally absent because the Control Plane has no LLM trace surface.
 - Redact JWTs, Expo Push Tokens, device fingerprints, and any secret material from log fields by default.
 
 Reliability:
@@ -182,13 +184,13 @@ Reliability:
 Security:
 
 - Public endpoints use Neon Auth JWT verification via shared Providers.
-- The internal `POST /internal/notifications/push` endpoint uses shared-secret auth on a private network path, never user JWT.
+- The internal `POST /internal/notifications/push` endpoint uses shared-secret auth on public ingress, never user JWT (ADR-0008).
 - Expo Push Tokens and push-provider configuration live only here, loaded from configuration/secrets, never committed.
 - The Control Plane is the only writer of account truth; structural single-writer ownership prevents cross-client state drift.
 
 Testing:
 
-- **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, `test/agents-service.test.mjs`, `test/runtime-session-start.test.mjs`, gate write-handler tests).
+- **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, `test/agents-service.test.mjs`, `test/runtime-session-start.test.mjs`, `test/readiness.test.mjs`, gate write-handler tests).
 - **Repo tier:** real SQL against a disposable Neon branch per ADR-0003 (`test/users-repo.integration.test.mjs`, `test/user-gates-repo.integration.test.mjs`, `test/devices-repo.integration.test.mjs`, `test/agent-instances-repo.integration.test.mjs`; skips without `NEON_API_KEY` / `NEON_PROJECT_ID`).
 - **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`, `test/get-me-handler.test.mjs`, `test/get-agent-handler.test.mjs`, `test/post-device-register-handler.test.mjs`); shared auth and device-signal boundaries (`test/http-auth.test.mjs`, `test/http-device-signal.test.mjs`).
 - Still to cover: push fan-out and the no-proxy guardrail as those domains land (#49).

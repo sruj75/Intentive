@@ -16,6 +16,7 @@ import {
   PostDeviceRegisterResponse,
   parseBoundary,
 } from "@intentive/api-contract";
+import { createNoopLogger, type Logger } from "@intentive/providers/telemetry";
 
 import { requireUser, type Authenticator } from "../../../http/auth.js";
 import type { RegisterDeviceInput } from "../repo/devices.js";
@@ -39,7 +40,10 @@ export interface PostDeviceRegisterHandler {
 export function createPostDeviceRegisterHandler(deps: {
   identity: Authenticator;
   devices: { registerDevice(input: RegisterDeviceInput): Promise<{ deviceId: string }> };
+  logger?: Logger;
 }): PostDeviceRegisterHandler {
+  const logger = deps.logger ?? createNoopLogger();
+
   return {
     async handle({ authorization, body }) {
       const auth = await requireUser(authorization, deps.identity);
@@ -51,6 +55,11 @@ export function createPostDeviceRegisterHandler(deps: {
         deviceFingerprint: req.device_fingerprint,
         clientKind: req.client_kind,
         expoPushToken: req.expo_push_token,
+      });
+      logger.info("devices.registered", {
+        user_id: auth.userId,
+        client_kind: req.client_kind,
+        status: "ok",
       });
 
       return {

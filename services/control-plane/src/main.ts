@@ -9,10 +9,12 @@
  */
 import { serve } from "@hono/node-server";
 import { createJwtVerifier } from "@intentive/providers/auth";
+import { bootstrapObservability } from "@intentive/providers/observability";
 import { neon } from "@neondatabase/serverless";
 
 import { loadConfig } from "./config/env.js";
 import type { Sql } from "./db/sql.js";
+import { createReadiness } from "./http/readiness.js";
 import { createAgentInstancesRepo } from "./domains/agents/repo/agent-instances.js";
 import { createRuntimeSessionStarter } from "./domains/agents/repo/runtime-session-start.js";
 import { createAgentsService } from "./domains/agents/service/agents-service.js";
@@ -34,6 +36,11 @@ import { createPostInternalNotificationsPushHandler } from "./domains/notificati
 import { createGetAgentHandler } from "./domains/routing/ui/get-agent.js";
 
 const config = loadConfig();
+const observability = bootstrapObservability({
+  sentry: config.sentry,
+  langfuse: null,
+});
+const log = observability.createLogger("control-plane");
 
 // Construct the verifier once: it closes over a lazily-fetched JWKS cache, so a
 // per-request verifier would defeat the cache and hammer Neon Auth.
@@ -50,6 +57,7 @@ const devices = createDevicesRepo(sql);
 const notificationTickets = createNotificationTicketsRepo(sql);
 const expoPushSender = createExpoPushSender({ accessToken: config.expo.accessToken });
 const agentInstances = createAgentInstancesRepo(sql);
+const readiness = createReadiness({ sql, verifier });
 const runtimeSessionStarter = createRuntimeSessionStarter({
   baseUrl: config.runtimeInternal.baseUrl,
   secret: config.runtimeInternal.secretToRuntime,
@@ -57,20 +65,22 @@ const runtimeSessionStarter = createRuntimeSessionStarter({
 const agents = createAgentsService({
   sessionStarter: runtimeSessionStarter,
   instances: agentInstances,
+  logger: log,
 });
-const gates = createGatesService({ userGates });
+const gates = createGatesService({ userGates, logger: log });
 // identity gets the narrow agents *read* port — never the Runtime-calling write
 // surface — so it stays a pure reader and there is no dependency cycle.
-const identity = createIdentityService({ verifier, users, gates, devices, agents });
+const identity = createIdentityService({ verifier, users, gates, devices, agents, logger: log });
 const getMe = createGetMeHandler({ identity });
 const postConsent = createPostConsentHandler({ identity, gates });
 const postSiblingInvitationSkip = createPostSiblingInvitationSkipHandler({ identity, gates });
-const postDeviceRegister = createPostDeviceRegisterHandler({ identity, devices });
+const postDeviceRegister = createPostDeviceRegisterHandler({ identity, devices, logger: log });
 const getAgent = createGetAgentHandler({ identity, agents });
 const notifications = createNotificationsService({
   devices,
   sender: expoPushSender,
   tickets: notificationTickets,
+  logger: log,
 });
 const postInternalNotificationsPush = createPostInternalNotificationsPushHandler({
   expectedSecret: config.internalInbound.secretFromRuntime,
@@ -88,7 +98,8 @@ const app = createApp({
   getAgent,
   postInternalNotificationsPush,
   postInternalNotificationsCheckReceipts,
+  readiness,
 });
 
 serve({ fetch: app.fetch, port: config.port });
-console.info(`Control Plane listening on :${config.port}`);
+log.info("service_started", { status: "ok" });

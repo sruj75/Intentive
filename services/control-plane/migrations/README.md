@@ -13,6 +13,17 @@ SQL migrations for the control-plane-owned Neon schema.
 
 - `0001_users.sql` — `control_plane.users` (identity, #23).
 - `0002_user_gates.sql` — `control_plane.user_gates` (cross-client gate completion, #26).
+- `0003_devices.sql` — `control_plane.devices` (Device Registry + Expo Push Token, #27/#49).
+- `0004_agent_instances.sql` — `control_plane.agent_instances` (Agent Instance Registry, #30).
+- `0005_notification_tickets.sql` — `control_plane.notification_tickets` (Expo Push receipt checks, #49).
+
+## Apply command
+
+```bash
+DATABASE_URL="<pooled Neon branch URL>" pnpm --filter ./services/control-plane migrate
+```
+
+The command creates `control_plane` if needed, applies every `*.sql` file in order, and never prints the connection URL. The PR Neon workflow uses the create-branch action's pooled URL for its preview branch. Repo integration tests create their own throwaway branches and fetch pooled URLs through Neon's connection URI API. Production provisioning still owns role creation and grants separately from table migrations.
 
 ## Scope note
 

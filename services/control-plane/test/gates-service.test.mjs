@@ -10,6 +10,13 @@ import test from "node:test";
 
 import { createGatesService } from "../dist/domains/gates/service/gates-service.js";
 
+const recordingLogger = (records) => ({
+  info: (event, attrs) => records.push({ level: "info", event, attrs }),
+  warn: (event, attrs) => records.push({ level: "warn", event, attrs }),
+  error: (event, error, attrs) => records.push({ level: "error", event, error, attrs }),
+  child: () => recordingLogger(records),
+});
+
 test("nextGate sequences the state the repo reports for the user", async () => {
   const seen = [];
   const gates = createGatesService({
@@ -67,6 +74,27 @@ test("recordConsent forwards the user to the repo", async () => {
 
   await gates.recordConsent("u_42");
   assert.deepEqual(seen, ["u_42"]);
+});
+
+test("recordConsent logs the accepted gate transition", async () => {
+  const records = [];
+  const gates = createGatesService({
+    userGates: {
+      readState: async () => assert.fail("write path must not read"),
+      recordConsent: async () => {},
+      recordSiblingSkip: async () => assert.fail("wrong write"),
+    },
+    logger: recordingLogger(records),
+  });
+
+  await gates.recordConsent("u_42");
+  assert.deepEqual(records, [
+    {
+      level: "info",
+      event: "gates.transition",
+      attrs: { user_id: "u_42", status: "consent_completed" },
+    },
+  ]);
 });
 
 test("recordSiblingSkip forwards the user to the repo", async () => {

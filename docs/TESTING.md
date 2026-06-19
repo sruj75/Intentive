@@ -225,7 +225,7 @@ pnpm --filter ./services/control-plane test
 pnpm --filter ./services/control-plane typecheck
 ```
 
-The Control Plane suite includes identity and gates service/handler unit tests, HTTP routing via Hono (`app.test.mjs`), and opt-in repo integration tests against a disposable Neon branch (ADR-0003; skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are unset). See `services/control-plane/test/helpers/neon-branch.mjs`.
+The Control Plane suite includes identity and gates service/handler unit tests, HTTP routing via Hono (`app.test.mjs`), and opt-in repo integration tests against a disposable Neon branch (ADR-0003; skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are unset). See `services/control-plane/test/helpers/neon-branch.mjs`. Pull requests also run `.github/workflows/neon-preview-branches.yml` when Control Plane paths change: it creates one Neon branch for the PR, applies all Control Plane migrations with `pnpm --filter ./services/control-plane migrate`, runs Control Plane checks without forwarding `NEON_*`, and deletes the branch when the PR closes.
 
 ## Agent Runtime
 
@@ -248,7 +248,8 @@ vertical slices land.
 
 - `.github/workflows/monorepo-foundation.yml` is the root PR gate. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness` and includes typecheck, lint, format check, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests.
 - `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. It uses `pnpm sensor:factory-report`, which folds impact-radius and harness-health into one PR-delta-first review handoff. Use `--audit` locally for full repo-wide maintenance output.
-- `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite (including the opt-in Neon repo integration test when repository secrets are set) on pull requests that touch `services/control-plane/` or its shared-package dependencies.
+- `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite on pull requests that touch `services/control-plane/` or its shared-package dependencies. It intentionally omits `NEON_*` so branch-spawning repo integration tests skip in PR CI.
+- `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, runs the Control Plane checks without creating extra Neon branches, and deletes the branch when the PR closes.
 - `.github/workflows/desktop-ci.yml` runs desktop frontend and Rust checks when desktop-relevant paths change.
 - `.github/workflows/desktop-audit.yml` runs dependency audits for pnpm and Cargo.
 - `.github/workflows/coverage.yml` uploads desktop JS coverage as a GitHub Actions artifact and sends LCOV to Codecov when configured.

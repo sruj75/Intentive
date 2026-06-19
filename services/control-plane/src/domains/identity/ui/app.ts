@@ -13,6 +13,7 @@ import {
   CAPTURE_PERMISSION_GRANTED_HEADER,
   CLIENT_KIND_HEADER,
 } from "../../../http/device-signal.js";
+import type { Readiness } from "../../../http/readiness.js";
 import type { GetMeHandler } from "./get-me.js";
 import type { PostConsentHandler } from "./post-consent.js";
 import type { PostSiblingInvitationSkipHandler } from "./post-sibling-invitation-skip.js";
@@ -53,11 +54,25 @@ export function createApp(deps: {
       body: unknown;
     }): Promise<{ status: number; body: unknown }>;
   };
+  readiness?: Readiness;
 }): Hono {
   const app = new Hono();
 
-  // Liveness probe for Cloud Run; no auth, no body of interest.
+  // Liveness probe; no auth, no body of interest. Cloud Run reserves some
+  // top-level paths ending in `z`, so production smoke checks use `/health`.
+  app.get("/health", () => json({ ok: true, service: "control-plane" }, 200));
   app.get("/healthz", () => json({ ok: true, service: "control-plane" }, 200));
+
+  async function handleReadiness(): Promise<Response> {
+    if (!deps.readiness) {
+      return json({ ready: false, checks: { neon: "failed", jwks: "failed" } }, 503);
+    }
+    const result = await deps.readiness.check();
+    return json(result, result.ready ? 200 : 503);
+  }
+
+  app.get("/ready", handleReadiness);
+  app.get("/readyz", handleReadiness);
 
   app.get("/me", async (c) => {
     const result = await deps.getMe.handle({

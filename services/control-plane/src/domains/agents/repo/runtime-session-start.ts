@@ -30,6 +30,7 @@ export type FetchLike = (
     method: string;
     headers: Record<string, string>;
     body: string;
+    signal?: AbortSignal;
   },
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
@@ -56,8 +57,10 @@ export function createRuntimeSessionStarter(deps: {
   baseUrl: string;
   secret: string;
   fetch?: FetchLike;
+  timeoutMs?: number;
 }): SessionStarter {
   const doFetch = deps.fetch ?? (globalThis.fetch as unknown as FetchLike);
+  const timeoutMs = deps.timeoutMs ?? 3_000;
   // Trim a trailing slash so `${baseUrl}/internal/...` never doubles up.
   const url = `${deps.baseUrl.replace(/\/$/, "")}/internal/sessions/start`;
 
@@ -69,15 +72,27 @@ export function createRuntimeSessionStarter(deps: {
       });
 
       let res;
+      const controller = new AbortController();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        res = await doFetch(url, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${deps.secret}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(body),
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new Error(`Session Start timed out after ${timeoutMs}ms`));
+          }, timeoutMs);
         });
+        res = await Promise.race([
+          doFetch(url, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${deps.secret}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          }),
+          timeoutPromise,
+        ]);
       } catch {
         // Network/DNS/connection-refused — the Runtime can't be reached. Swallow
         // the cause so the secret and target can't leak into a log line.
@@ -85,6 +100,8 @@ export function createRuntimeSessionStarter(deps: {
           "transport",
           "Agent Runtime Session Start could not be reached.",
         );
+      } finally {
+        if (timeout) clearTimeout(timeout);
       }
 
       if (!res.ok) {
