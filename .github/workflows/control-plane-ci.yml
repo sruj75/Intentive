@@ -1,22 +1,10 @@
 name: control-plane-ci
 
-# Control Plane pull-request gate: typecheck + the full test suite, including the
-# repo-layer integration test (ADR-0003) against a real, disposable Neon branch.
-#
-# Why this exists separately from control-plane-deploy.yml: that workflow runs
-# only on push to main and is gated behind DEPLOY_ENABLED, so before this file
-# the Control Plane suite ran on *no* pull request. This job restores PR-time
-# coverage and is where the Neon integration test actually executes.
-#
-# Neon integration test wiring (makes ADR-0003 real instead of aspirational):
-#   The test in test/users-repo.integration.test.mjs creates and drops an
-#   ephemeral Neon branch via the REST API, applies migrations/0001_users.sql,
-#   and asserts the DB-enforced idempotency invariant. It is opt-in: with no
-#   NEON_API_KEY / NEON_PROJECT_ID it skips and the suite stays green. Set these
-#   repository Actions values to switch it on:
-#     NEON_PROJECT_ID   variable: the Control Plane Neon project id
-#     NEON_API_KEY      secret: a Neon API key with branch create/delete access
-#   Create the key at console.neon.tech → Account settings → API keys.
+# Control Plane pull-request gate: typecheck + the full test suite. The suite's
+# Neon repo integration tests remain opt-in for local/on-demand runs when
+# NEON_API_KEY and NEON_PROJECT_ID are present. PR-time database validation lives
+# in neon-preview-branches.yml so each PR consumes one preview branch instead of
+# spawning extra disposable test branches.
 
 on:
   pull_request:
@@ -52,8 +40,6 @@ jobs:
 
       - name: Test
         # Builds first (its `test` script runs `pnpm run build` then `node --test`).
-        # NEON_* are forwarded for the ADR-0003 integration test; absent → it skips.
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        # NEON_* are intentionally absent in PR CI; Neon preview branch migration
+        # validation is handled by neon-preview-branches.yml.
         run: pnpm --filter ./services/control-plane test

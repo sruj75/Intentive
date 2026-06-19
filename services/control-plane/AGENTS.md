@@ -45,7 +45,7 @@ Request/response schemas live in `packages/api-contract/`.
 - Harness: `pnpm harness --scope services/control-plane`
 - Deploys to **Google Cloud Run** (stateless HTTP, request/response only in v1)
 - Reads Neon Postgres via control-plane-owned schema (separate role from Agent Runtime)
-- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + full test suite). Repo integration tests use ephemeral Neon branches when `NEON_API_KEY` / `NEON_PROJECT_ID` are set (ADR-0003).
+- PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + full test suite with Neon branch-spawning integration tests skipped) and `.github/workflows/neon-preview-branches.yml` (one PR preview branch + migration validation). Repo integration tests still use ephemeral Neon branches for local/on-demand runs when `NEON_API_KEY` / `NEON_PROJECT_ID` are set (ADR-0003).
 
 ## Guardrails specific to this deployable
 

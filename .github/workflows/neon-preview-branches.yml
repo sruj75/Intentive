@@ -78,9 +78,9 @@ jobs:
         run: pnpm --filter ./services/control-plane typecheck
 
       - name: Test
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        # The preview branch above validates migrations against Neon. Do not
+        # forward NEON_* here, because repo integration tests create additional
+        # disposable branches and can exhaust the project branch quota.
         run: pnpm --filter ./services/control-plane test
 
   delete_neon_branch:
