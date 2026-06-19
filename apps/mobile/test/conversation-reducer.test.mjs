@@ -39,14 +39,14 @@ test("hello_ok snapshot seeds the store oldest-first", () => {
 
 test("live companion messages append and duplicate message_id collapses to one entry", () => {
   const first = reduceConversationState(EMPTY_MESSAGE_STORE, {
-    type: "companion_message",
+    type: "append_companion_message",
     messageId: "opening",
     body: "hello",
     emittedAt: at,
     viaPostMessageBack: false,
   });
   const duplicate = reduceConversationState(first, {
-    type: "companion_message",
+    type: "append_companion_message",
     messageId: "opening",
     body: "hello again",
     emittedAt: at,
@@ -197,7 +197,7 @@ test("history_backfill deduplicates by server ID without moving local-only outbo
 
 test("Agent State returns following_up when a Post-Message-Back companion message arrives", () => {
   const proactive = reduceConversationState(EMPTY_MESSAGE_STORE, {
-    type: "companion_message",
+    type: "append_companion_message",
     messageId: "proactive",
     body: "checking in",
     emittedAt: at,
@@ -217,7 +217,7 @@ test("pending outbound delivery keeps Thinking when a Post-Message-Back companio
   });
 
   const raced = reduceConversationState(pending, {
-    type: "companion_message",
+    type: "append_companion_message",
     messageId: "proactive",
     body: "checking in",
     emittedAt: at,
@@ -276,7 +276,7 @@ test("mark_pending_failed preserves Following up when the latest message is a Po
     sentAt: at,
   });
   const raced = reduceConversationState(pending, {
-    type: "companion_message",
+    type: "append_companion_message",
     messageId: "proactive",
     body: "checking in",
     emittedAt: at,

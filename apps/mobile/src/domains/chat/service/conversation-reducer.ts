@@ -12,7 +12,10 @@ export type ConversationEvent =
       readonly beforeCursor: string | null;
     }
   | {
-      readonly type: "companion_message";
+      // Internal command vocabulary — deliberately distinct from the Protocol
+      // wire event `companion_message` (which is parsed at the Runtime Adapter
+      // boundary). This event carries the already-decoded, camelCase domain shape.
+      readonly type: "append_companion_message";
       readonly messageId: string;
       readonly body: string;
       readonly emittedAt: string;
@@ -73,7 +76,7 @@ export function reduceConversationState(
         agentState: deriveAgentState(messages),
       };
     }
-    case "companion_message": {
+    case "append_companion_message": {
       const messages = upsertMessage(state.messages, {
         id: event.messageId,
         author: "companion",

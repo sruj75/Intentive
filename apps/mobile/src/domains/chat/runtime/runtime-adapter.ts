@@ -4,10 +4,11 @@ import {
   type RuntimeToClientEvent,
 } from "@intentive/protocol";
 
-import { EMPTY_MESSAGE_STORE, reduceConversationState } from "../service/conversation-reducer.js";
+import { createMessageStore } from "../service/message-store.js";
 import { getRuntimeRouting, type FetchLike } from "../service/routing-client.js";
 import type {
   ConnectionState,
+  MessageStoreState,
   RuntimeAdapter,
   RuntimeAdapterError,
   RuntimeAdapterState,
@@ -55,8 +56,9 @@ export const defaultResolveTimeZone = (): string | undefined => {
 
 export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   const listeners = new Set<() => void>();
+  const messageStore = createMessageStore();
   let state: RuntimeAdapterState = {
-    ...EMPTY_MESSAGE_STORE,
+    ...messageStore.getState(),
     connectionState: "idle",
     error: null,
   };
@@ -72,8 +74,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     for (const listener of listeners) listener();
   };
 
-  const dispatch = (event: Parameters<typeof reduceConversationState>[1]) => {
-    const next = reduceConversationState(state, event);
+  const syncMessages = (next: MessageStoreState) => {
     setState({
       messages: next.messages,
       beforeCursor: next.beforeCursor,
@@ -171,7 +172,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     if (trimmed.length === 0) return;
     const messageId = deps.id();
     const sentAt = deps.now();
-    dispatch({ type: "send_user_message", messageId, body: trimmed, sentAt });
+    syncMessages(messageStore.appendPendingUserMessage({ messageId, body: trimmed, sentAt }));
     enqueueOutbound({
       type: "user_message",
       message_id: messageId,
@@ -181,15 +182,17 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
   };
 
   const retryUserMessage = async (messageId: string): Promise<void> => {
-    const message = state.messages.find(
-      (candidate) =>
-        candidate.id === messageId &&
-        candidate.author === "user" &&
-        candidate.delivery === "failed",
-    );
+    const message = messageStore
+      .getState()
+      .messages.find(
+        (candidate) =>
+          candidate.id === messageId &&
+          candidate.author === "user" &&
+          candidate.delivery === "failed",
+      );
     if (!message) return;
 
-    dispatch({ type: "retry_failed_user_message", messageId });
+    syncMessages(messageStore.retryFailedUserMessage(messageId));
     enqueueOutbound({
       type: "user_message",
       message_id: message.id,
@@ -220,29 +223,32 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
 
     switch (event.type) {
       case "hello_ok":
-        dispatch({
-          type: "reconnect_snapshot",
-          messages: event.session_snapshot.messages,
-          beforeCursor: event.session_snapshot.before_cursor,
-        });
+        syncMessages(
+          messageStore.replaceServerWindow({
+            messages: event.session_snapshot.messages,
+            beforeCursor: event.session_snapshot.before_cursor,
+          }),
+        );
         setConnection("connected");
         flushOutboundQueue();
         return;
       case "history_backfill_response":
-        dispatch({
-          type: "history_backfill",
-          messages: event.session_snapshot.messages,
-          beforeCursor: event.session_snapshot.before_cursor,
-        });
+        syncMessages(
+          messageStore.prependServerPage({
+            messages: event.session_snapshot.messages,
+            beforeCursor: event.session_snapshot.before_cursor,
+          }),
+        );
         return;
       case "companion_message":
-        dispatch({
-          type: "companion_message",
-          messageId: event.message_id,
-          body: event.body,
-          emittedAt: event.emitted_at,
-          viaPostMessageBack: event.via_post_message_back,
-        });
+        syncMessages(
+          messageStore.appendCompanionMessage({
+            messageId: event.message_id,
+            body: event.body,
+            emittedAt: event.emitted_at,
+            viaPostMessageBack: event.via_post_message_back,
+          }),
+        );
         enqueueOutbound({ type: "delivery_ack", message_id: event.message_id });
         return;
       case "runtime_error":
@@ -313,7 +319,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
 
   const markPendingOutboundFailed = () => {
     outboundQueue = [];
-    dispatch({ type: "mark_pending_failed" });
+    syncMessages(messageStore.markPendingFailed());
   };
 
   const cancelRetry = () => {

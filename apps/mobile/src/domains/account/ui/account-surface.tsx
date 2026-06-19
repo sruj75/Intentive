@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import type { AccountState } from "@intentive/api-contract";
 
 import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
-import type { AccountStateSource } from "../../../providers/account-state";
 import { useLaunchState } from "../../../providers/launch-state";
 import type { ConnectionState } from "../../chat/types/conversation";
 import { connectionStatusLabel, deriveConnectionStatus } from "../service/account-status";
@@ -13,7 +13,7 @@ export interface AccountSurfaceProps {
   readonly onSignOut: () => Promise<void>;
   readonly runtimeConnectionState: ConnectionState;
   readonly controlPlaneBaseUrl: string;
-  readonly accountStateSource?: AccountStateSource;
+  readonly accountState?: AccountState | null;
   readonly appVersion?: string;
 }
 
@@ -23,41 +23,24 @@ export function AccountSurface({
   onSignOut,
   runtimeConnectionState,
   controlPlaneBaseUrl,
-  accountStateSource,
+  accountState,
   appVersion = "mobile-v1",
 }: AccountSurfaceProps): React.JSX.Element | null {
   const { state: launchState, markSignedOut } = useLaunchState();
-  const [accountUserId, setAccountUserId] = useState<string | null>(null);
   const [setupGuidanceVisible, setSetupGuidanceVisible] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const theme = useMobileTheme();
   const styles = useMemo(() => createStyles(theme.colors), [theme]);
+  const accountUserId = accountState?.user_id ?? null;
 
+  // Reset transient surface state whenever the sheet opens; identity itself
+  // comes from the projected accountState, refreshed by the composition root.
   useEffect(() => {
-    if (!visible) return undefined;
-    let active = true;
-    setAccountUserId(null);
+    if (!visible) return;
     setSetupGuidanceVisible(false);
     setLogoutError(null);
-
-    if (!accountStateSource) {
-      return undefined;
-    }
-
-    void accountStateSource
-      .read()
-      .then((account) => {
-        if (active) setAccountUserId(account?.user_id ?? null);
-      })
-      .catch(() => {
-        if (active) setAccountUserId(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [accountStateSource, visible]);
+  }, [visible]);
 
   if (!visible) return null;
 
