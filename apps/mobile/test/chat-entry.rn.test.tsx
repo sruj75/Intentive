@@ -6,7 +6,7 @@
  * `(chat)/` route stays navigation-only. The test injects the Runtime Adapter and
  * the Account State Source so it proves composition without any backend.
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import { ChatEntry } from "../src/entrypoints/chat-entry";
 import type { AccountStateSource } from "../src/providers/account-state";
@@ -117,7 +117,7 @@ test("Mac setup banner clears after the Account Surface closes once Desktop Clie
 });
 
 test("ChatEntry starts injected push registration on first chat entry mount", async () => {
-  const pushRegistration = jest.fn(async () => {});
+  const pushRegistration = jest.fn(async () => true);
 
   render(
     <LaunchStateProvider source={launchStateSource}>
@@ -131,4 +131,32 @@ test("ChatEntry starts injected push registration on first chat entry mount", as
   );
 
   await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(1));
+});
+
+test("ChatEntry retries injected push registration after a recoverable miss", async () => {
+  jest.useFakeTimers();
+  const pushRegistration = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+  try {
+    render(
+      <LaunchStateProvider source={launchStateSource}>
+        <ChatEntry
+          adapter={staticAdapter()}
+          accountStateSource={accountStateSource}
+          controlPlaneBaseUrl="https://cp.test"
+          pushRegistration={pushRegistration}
+        />
+      </LaunchStateProvider>,
+    );
+
+    await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    await waitFor(() => expect(pushRegistration).toHaveBeenCalledTimes(2));
+  } finally {
+    jest.useRealTimers();
+  }
 });

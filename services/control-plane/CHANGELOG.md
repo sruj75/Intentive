@@ -9,8 +9,8 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
 - **Push Notification fan-out** ([Issue #49]) — Device Registry now stores
   `expo_push_token`; `notifications` domain sends through Expo Push Service,
   records accepted ticket ids in `control_plane.notification_tickets`, and clears
-  dead tokens on immediate `DeviceNotRegistered`/`InvalidCredentials` errors or
-  deferred receipt checks. Added protected `POST /internal/notifications/push`
+  dead tokens on immediate or deferred `DeviceNotRegistered` errors (credential
+  errors such as `InvalidCredentials` are left uncleared). Added protected `POST /internal/notifications/push`
   and `POST /internal/notifications/check-receipts` handlers with separate
   Directional Secrets (`INTERNAL_SECRET_FROM_RUNTIME`,
   `INTERNAL_SECRET_FOR_MAINTENANCE`). Tests cover service fan-out semantics,

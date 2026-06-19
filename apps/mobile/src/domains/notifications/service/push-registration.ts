@@ -8,17 +8,19 @@ export interface PushRegistrationDeps extends RegisterDeviceDeps {
   readonly onError?: (error: unknown) => void;
 }
 
-export async function registerForPush(deps: PushRegistrationDeps): Promise<void> {
+export async function registerForPush(deps: PushRegistrationDeps): Promise<boolean> {
   try {
     const permission = await deps.notifications.requestPermission();
-    if (permission !== "granted") return;
+    if (permission !== "granted") return false;
 
     const expoPushToken = await deps.notifications.getExpoPushToken();
-    if (expoPushToken === null) return;
+    if (expoPushToken === null) return false;
 
     const deviceFingerprint = await deps.getDeviceFingerprint();
-    await registerDevice(deps, { deviceFingerprint, expoPushToken });
+    const registration = await registerDevice(deps, { deviceFingerprint, expoPushToken });
+    return registration !== null;
   } catch (error) {
     deps.onError?.(error);
+    return false;
   }
 }

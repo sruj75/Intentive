@@ -32,16 +32,18 @@ test("registerForPush does nothing when notification permission is denied", asyn
     },
   });
 
-  await registerForPush(deps);
+  const registered = await registerForPush(deps);
 
+  assert.equal(registered, false);
   assert.deepEqual(calls, []);
 });
 
 test("registerForPush registers the token and stable fingerprint when permission is granted", async () => {
   const { deps, calls } = baseDeps();
 
-  await registerForPush(deps);
+  const registered = await registerForPush(deps);
 
+  assert.equal(registered, true);
   assert.equal(calls.length, 1);
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     device_fingerprint: "fingerprint-1",
@@ -59,8 +61,19 @@ test("registerForPush swallows failures and reports them to the optional hook", 
     onError: (error) => errors.push(error),
   });
 
-  await registerForPush(deps);
+  const registered = await registerForPush(deps);
 
+  assert.equal(registered, false);
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /network down/);
+});
+
+test("registerForPush reports no registration when no User JWT is available", async () => {
+  const { deps } = baseDeps({
+    getUserJwt: async () => null,
+  });
+
+  const registered = await registerForPush(deps);
+
+  assert.equal(registered, false);
 });

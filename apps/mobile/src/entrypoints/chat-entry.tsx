@@ -34,12 +34,16 @@ import { getOrCreateDeviceFingerprint } from "../domains/notifications/repo/devi
 import { createExpoNotificationsPort } from "../domains/notifications/repo/expo-notifications-port";
 import { registerForPush } from "../domains/notifications/service/push-registration";
 
+const PUSH_REGISTRATION_RETRY_DELAY_MS = 60_000;
+
+type PushRegistration = () => Promise<boolean>;
+
 export interface ChatEntryProps {
   readonly adapter?: RuntimeAdapter;
   readonly accountStateSource?: AccountStateSource;
   readonly controlPlaneBaseUrl?: string;
   readonly initialSafeAreaMetrics?: Metrics;
-  readonly pushRegistration?: () => Promise<void>;
+  readonly pushRegistration?: PushRegistration;
 }
 
 export function ChatEntry({
@@ -51,7 +55,9 @@ export function ChatEntry({
 }: ChatEntryProps = {}): React.JSX.Element {
   const authAdapter = useOptionalAuthAdapter();
   const [accountVisible, setAccountVisible] = useState(false);
-  const didRequestPushRegistration = useRef(false);
+  const didRegisterForPush = useRef(false);
+  const pushRegistrationInFlight = useRef(false);
+  const [pushRegistrationAttempt, setPushRegistrationAttempt] = useState(0);
   const baseUrl = controlPlaneBaseUrl ?? process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "";
 
   const adapter = useMemo(() => {
@@ -103,10 +109,41 @@ export function ChatEntry({
   }, [authAdapter, baseUrl, injectedPushRegistration]);
 
   useEffect(() => {
-    if (!pushRegistration || didRequestPushRegistration.current) return;
-    didRequestPushRegistration.current = true;
-    void pushRegistration();
-  }, [pushRegistration]);
+    if (!pushRegistration || didRegisterForPush.current || pushRegistrationInFlight.current) return;
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    pushRegistrationInFlight.current = true;
+
+    void pushRegistration()
+      .then((registered) => {
+        if (cancelled) return;
+        if (registered) {
+          didRegisterForPush.current = true;
+          return;
+        }
+
+        retryTimer = setTimeout(() => {
+          setPushRegistrationAttempt((attempt) => attempt + 1);
+        }, PUSH_REGISTRATION_RETRY_DELAY_MS);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Push registration failed", error);
+        retryTimer = setTimeout(() => {
+          setPushRegistrationAttempt((attempt) => attempt + 1);
+        }, PUSH_REGISTRATION_RETRY_DELAY_MS);
+      })
+      .finally(() => {
+        if (!cancelled) pushRegistrationInFlight.current = false;
+      });
+
+    return () => {
+      cancelled = true;
+      pushRegistrationInFlight.current = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [pushRegistration, pushRegistrationAttempt]);
 
   return (
     <>
