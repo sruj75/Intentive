@@ -7,7 +7,8 @@
  * Runtime Adapter seam.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { StyleSheet } from "react-native";
+import * as ReactNative from "react-native";
+import { processColor, StyleSheet } from "react-native";
 
 import { CompanionChat } from "../src/domains/chat/ui/companion-chat";
 import type { AccountStateSource } from "../src/providers/account-state";
@@ -17,7 +18,19 @@ import type {
   RuntimeAdapterState,
 } from "../src/domains/chat/types/conversation";
 
+jest.mock("expo-glass-effect", () => {
+  const { View } = require("react-native");
+  return {
+    GlassView: View,
+    isLiquidGlassAvailable: () => false,
+  };
+});
+
 const at = "2026-06-12T00:00:00.000Z";
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 async function flushStore() {
   await act(async () => {
@@ -84,6 +97,42 @@ test("seeded messages render in Intentive-owned rows through the external-store 
   );
   expect(await screen.findByTestId("intentive-user-row")).toHaveTextContent("hello companion");
   expect(connectCount()).toBe(1);
+});
+
+test("Companion Chat uses dark appearance tokens", async () => {
+  jest.spyOn(ReactNative, "useColorScheme").mockReturnValue("dark");
+
+  render(
+    <CompanionChat
+      adapter={
+        createTestRuntimeAdapter([
+          companionMessage("opening", "I am here."),
+          userMessage("u1", "hello companion", "confirmed"),
+        ]).adapter
+      }
+    />,
+  );
+
+  const assistantRowStyle = StyleSheet.flatten(
+    (await screen.findByTestId("intentive-assistant-row")).props.style,
+  );
+  const userRowStyle = StyleSheet.flatten(
+    (await screen.findByTestId("intentive-user-row")).props.style,
+  );
+  const inputStyle = StyleSheet.flatten(screen.getByTestId("intentive-composer-input").props.style);
+  const composerFallbackStyle = StyleSheet.flatten(
+    screen.getByTestId("intentive-composer-floating").props.style,
+  );
+
+  expect(assistantRowStyle.backgroundColor).toBe("#1F1E22");
+  expect(assistantRowStyle.boxShadow).toBe("0 8px 24px rgba(0, 0, 0, 0.32)");
+  expect(userRowStyle.boxShadow).toBe("0 8px 18px rgba(0, 0, 0, 0.28)");
+  expect(composerFallbackStyle.backgroundColor).toBe("#28262C");
+  expect(inputStyle.color).toBe("#EEEBE6");
+  expect(screen.getByTestId("intentive-composer-send-icon")).toHaveProp(
+    "tintColor",
+    processColor("#EEEBE6"),
+  );
 });
 
 test("typing and Send routes through the injected Runtime Adapter", async () => {

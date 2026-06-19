@@ -168,6 +168,16 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Changed
 
+- **Shared theme + dark mode** ([Issue #48]) —
+  - `src/design/theme.ts` — centralized `lightTheme` / `darkTheme`,
+    `useMobileTheme()`, and `resolveMobileTheme()` from system appearance.
+  - `identity-gate.tsx`, `companion-chat.tsx`, `account-surface.tsx` — consume
+    semantic theme tokens instead of hard-coded colors.
+  - Tests: dark appearance token coverage in `identity-gate.rn.test.tsx`,
+    `companion-chat.rn.test.tsx`, `account-surface.rn.test.tsx`.
+  - Expo SDK patch bumps (`expo@56.0.12`, router/metro/constants/network/jest-expo
+    alignments).
+
 - **Launch State hydration** ([Issue #46]) — `createControlPlaneLaunchStateSource` now
   reads `GET /me` through the shared `AccountStateSource`
   (`createControlPlaneAccountStateSource`) instead of inlining the fetch/parse path.
@@ -257,4 +267,5 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 [Issue #45]: https://github.com/sruj75/Intentive/issues/45
 [Issue #46]: https://github.com/sruj75/Intentive/issues/46
 [Issue #47]: https://github.com/sruj75/Intentive/issues/47
+[Issue #48]: https://github.com/sruj75/Intentive/issues/48
 [Issue #83]: https://github.com/sruj75/Intentive/issues/83

@@ -12,7 +12,14 @@
  * assistant-ui primitive/runtime composition (niche vendor API):
  * https://www.assistant-ui.com/docs/runtimes/external-store
  */
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { AccountState } from "@intentive/api-contract";
 import { Image } from "expo-image";
 import { useComposerSend, useExternalStoreRuntime } from "@assistant-ui/core/react";
@@ -35,6 +42,12 @@ import {
 } from "@assistant-ui/react-native";
 
 import { createDevRuntimeAdapter } from "../runtime/dev-transport";
+import {
+  lightTheme,
+  useMobileTheme,
+  type MobileTheme,
+  type MobileThemeColors,
+} from "../../../design/theme";
 import type { AccountStateSource } from "../../../providers/account-state";
 import type { AgentStateOverride, RuntimeAdapter } from "../types/conversation";
 import { deriveChatPresentation, type ChatPresentation } from "../service/chat-presentation";
@@ -102,6 +115,9 @@ function CompanionChatSurface({
   const runtime = useExternalStoreRuntime(externalStore);
   const insets = useSafeAreaInsets();
   const [composerHeight, setComposerHeight] = useState(112);
+  const theme = useMobileTheme();
+  const visuals = useMemo(() => createChatVisuals(theme), [theme]);
+  const styles = visuals.styles;
   const bottomInset = composerHeight + insets.bottom + 28;
   const topChromeTop = deriveTopChromeTop(insets.top);
   const continuityTop = deriveContinuityTop(insets.top);
@@ -129,59 +145,62 @@ function CompanionChatSurface({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <KeyboardAvoidingView
-        behavior={process.env.EXPO_OS === "ios" ? "padding" : undefined}
-        style={styles.screen}
-      >
-        <ThreadPrimitive.Root style={styles.thread}>
-          <TopChrome
-            top={topChromeTop}
-            presentation={presentation}
-            onDismissMacSetup={() => setMacSetupBannerDismissed(true)}
-            onOpenAccount={onOpenAccount}
-          />
-          <ContinuityEvents presentation={presentation} top={continuityTop} />
-          <ThreadPrimitive.Messages
-            components={{ UserMessage, AssistantMessage }}
-            contentInsetAdjustmentBehavior="automatic"
-            style={styles.messages}
-            contentContainerStyle={[
-              styles.messagesContent,
-              { paddingBottom: bottomInset, paddingTop: messagesTop },
-            ]}
-            testID="intentive-message-list"
-          />
-          {presentation.protectedOpening.status === "pending" ? (
-            <View testID="intentive-opening-pending" style={styles.openingDock}>
-              <ComposingBubble />
-            </View>
-          ) : null}
-          {state.agentState === "thinking" &&
-          presentation.protectedOpening.status === "inactive" ? (
-            <View testID="intentive-thinking" style={styles.openingDock}>
-              <ComposingBubble />
-            </View>
-          ) : null}
-          {presentation.protectedOpening.status === "failed" ? (
-            <OpeningFailure
-              copy={presentation.openingRecoveryCopy}
-              onRetry={() => {
-                void adapter.connect();
-              }}
+      <ChatVisualContext.Provider value={visuals}>
+        <KeyboardAvoidingView
+          behavior={process.env.EXPO_OS === "ios" ? "padding" : undefined}
+          style={styles.screen}
+        >
+          <ThreadPrimitive.Root style={styles.thread}>
+            <TopChrome
+              top={topChromeTop}
+              presentation={presentation}
+              onDismissMacSetup={() => setMacSetupBannerDismissed(true)}
+              onOpenAccount={onOpenAccount}
             />
-          ) : null}
-          <Composer
-            bottomInset={insets.bottom}
-            onHeightChange={setComposerHeight}
-            presentation={presentation}
-          />
-        </ThreadPrimitive.Root>
-      </KeyboardAvoidingView>
+            <ContinuityEvents presentation={presentation} top={continuityTop} />
+            <ThreadPrimitive.Messages
+              components={{ UserMessage, AssistantMessage }}
+              contentInsetAdjustmentBehavior="automatic"
+              style={styles.messages}
+              contentContainerStyle={[
+                styles.messagesContent,
+                { paddingBottom: bottomInset, paddingTop: messagesTop },
+              ]}
+              testID="intentive-message-list"
+            />
+            {presentation.protectedOpening.status === "pending" ? (
+              <View testID="intentive-opening-pending" style={styles.openingDock}>
+                <ComposingBubble />
+              </View>
+            ) : null}
+            {state.agentState === "thinking" &&
+            presentation.protectedOpening.status === "inactive" ? (
+              <View testID="intentive-thinking" style={styles.openingDock}>
+                <ComposingBubble />
+              </View>
+            ) : null}
+            {presentation.protectedOpening.status === "failed" ? (
+              <OpeningFailure
+                copy={presentation.openingRecoveryCopy}
+                onRetry={() => {
+                  void adapter.connect();
+                }}
+              />
+            ) : null}
+            <Composer
+              bottomInset={insets.bottom}
+              onHeightChange={setComposerHeight}
+              presentation={presentation}
+            />
+          </ThreadPrimitive.Root>
+        </KeyboardAvoidingView>
+      </ChatVisualContext.Provider>
     </AssistantRuntimeProvider>
   );
 }
 
 function UserMessage(): React.JSX.Element {
+  const { styles } = useChatVisuals();
   return (
     <MessagePrimitive.Root testID="intentive-user-row" style={[styles.row, styles.userRow]}>
       <MessagePrimitive.Content
@@ -192,6 +211,7 @@ function UserMessage(): React.JSX.Element {
 }
 
 function AssistantMessage(): React.JSX.Element {
+  const { styles } = useChatVisuals();
   return (
     <MessagePrimitive.Root
       testID="intentive-assistant-row"
@@ -221,6 +241,7 @@ function TopChrome({
   readonly onDismissMacSetup: () => void;
   readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
+  const { styles } = useChatVisuals();
   return (
     <View testID="intentive-top-chrome" style={[styles.topChrome, { top }]}>
       <AgentStateChip presentation={presentation} />
@@ -242,8 +263,9 @@ function AgentStateChip({
 }: {
   readonly presentation: ChatPresentation;
 }): React.JSX.Element {
+  const { styles } = useChatVisuals();
   return (
-    <AdaptiveGlassSurface style={styles.agentStateSurface}>
+    <AdaptiveGlassSurface fallbackStyle={styles.glassFallback} style={styles.agentStateSurface}>
       <Text testID="intentive-agent-state" style={styles.agentStateText}>
         {presentation.agentState.label}
       </Text>
@@ -258,6 +280,7 @@ function ContinuityEvents({
   readonly presentation: ChatPresentation;
   readonly top: number;
 }): React.JSX.Element | null {
+  const { styles } = useChatVisuals();
   const event = presentation.continuityEvents[presentation.continuityEvents.length - 1];
   if (!event) return null;
 
@@ -283,8 +306,9 @@ function MacSetupBanner({
   readonly onDismiss: () => void;
   readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
+  const { colors, styles } = useChatVisuals();
   return (
-    <AdaptiveGlassSurface style={styles.macSetupSurface}>
+    <AdaptiveGlassSurface fallbackStyle={styles.glassFallback} style={styles.macSetupSurface}>
       <Pressable
         accessibilityLabel={copy}
         accessibilityRole="button"
@@ -314,8 +338,13 @@ function AccountAffordance({
 }: {
   readonly onOpenAccount?: () => void;
 }): React.JSX.Element {
+  const { colors, styles } = useChatVisuals();
   return (
-    <AdaptiveGlassSurface isInteractive style={styles.accountSurface}>
+    <AdaptiveGlassSurface
+      fallbackStyle={styles.glassFallback}
+      isInteractive
+      style={styles.accountSurface}
+    >
       <Pressable
         accessibilityLabel="Open account"
         accessibilityRole="button"
@@ -341,6 +370,7 @@ function OpeningFailure({
   readonly copy: string;
   readonly onRetry: () => void;
 }): React.JSX.Element {
+  const { styles } = useChatVisuals();
   return (
     <View
       testID="intentive-opening-failed"
@@ -362,6 +392,7 @@ function OpeningFailure({
 }
 
 function ComposingBubble(): React.JSX.Element {
+  const { styles } = useChatVisuals();
   return (
     <View style={[styles.row, styles.assistantRow, styles.composingBubble]}>
       <View style={styles.composingDot} />
@@ -380,6 +411,7 @@ function Composer({
   readonly onHeightChange: (height: number) => void;
   readonly presentation: ChatPresentation;
 }): React.JSX.Element {
+  const { colors, styles } = useChatVisuals();
   const { disabled: sendDisabled, send } = useComposerSend();
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -413,7 +445,11 @@ function Composer({
           {notice}
         </Text>
       )}
-      <AdaptiveGlassSurface style={styles.composerGlass} testID="intentive-composer-floating">
+      <AdaptiveGlassSurface
+        fallbackStyle={styles.glassFallback}
+        style={styles.composerGlass}
+        testID="intentive-composer-floating"
+      >
         <ComposerPrimitive.Root style={styles.composer}>
           <ComposerPrimitive.Input
             multiline
@@ -434,7 +470,12 @@ function Composer({
             style={[styles.send, (!presentation.canSend || sendDisabled) && styles.sendUnavailable]}
             testID="intentive-composer-send"
           >
-            <Image source="sf:arrow.up" style={styles.sendIcon} tintColor={colors.paper} />
+            <Image
+              source="sf:arrow.up"
+              style={styles.sendIcon}
+              testID="intentive-composer-send-icon"
+              tintColor={colors.userText}
+            />
           </Pressable>
         </ComposerPrimitive.Root>
       </AdaptiveGlassSurface>
@@ -442,18 +483,27 @@ function Composer({
   );
 }
 
-const colors = {
-  canvas: "#F7F3EC",
-  paper: "#FFFCF7",
-  ink: "#251F18",
-  inkMuted: "#62584B",
-  inkSubtle: "#948879",
-  line: "rgba(51, 43, 34, 0.14)",
-  user: "#1D4E89",
-  userDeep: "#12365F",
-  companion: "#FFFCF7",
-  recovery: "#7A3A26",
-};
+interface ChatVisuals {
+  readonly colors: MobileThemeColors;
+  readonly styles: ReturnType<typeof createChatStyles>;
+}
+
+const ChatVisualContext = createContext<ChatVisuals>(createChatVisualsForTheme(lightTheme));
+
+function createChatVisuals(theme: MobileTheme): ChatVisuals {
+  return createChatVisualsForTheme(theme);
+}
+
+function createChatVisualsForTheme(theme: MobileTheme): ChatVisuals {
+  return {
+    colors: theme.colors,
+    styles: createChatStyles(theme.colors),
+  };
+}
+
+function useChatVisuals(): ChatVisuals {
+  return useContext(ChatVisualContext);
+}
 
 const CHAT_SAFE_AREA_INITIAL_METRICS: Metrics = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -479,204 +529,211 @@ function deriveMessagesTop(topInset: number): number {
   return deriveContinuityTop(topInset) + CONTINUITY_DOCK_ESTIMATED_HEIGHT + MESSAGE_TOP_GAP;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas },
-  thread: { flex: 1, backgroundColor: colors.canvas },
-  messages: { flex: 1 },
-  messagesContent: {
-    gap: 10,
-    paddingHorizontal: 18,
-  },
-  row: {
-    maxWidth: "84%",
-    borderRadius: 22,
-    borderCurve: "continuous",
-    paddingHorizontal: 15,
-    paddingVertical: 11,
-  },
-  userRow: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.user,
-    boxShadow: "0 8px 18px rgba(18, 54, 95, 0.18)",
-  },
-  assistantRow: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.companion,
-    borderColor: colors.line,
-    borderWidth: StyleSheet.hairlineWidth,
-    boxShadow: "0 8px 24px rgba(54, 44, 34, 0.10)",
-  },
-  userText: { color: colors.paper, fontSize: 16, lineHeight: 22 },
-  assistantText: { color: colors.ink, fontSize: 16, lineHeight: 22 },
-  openingDock: {
-    bottom: 116,
-    left: 18,
-    position: "absolute",
-    right: 18,
-  },
-  composingBubble: {
-    flexDirection: "row",
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  composingDot: {
-    backgroundColor: colors.inkSubtle,
-    borderRadius: 4,
-    height: 7,
-    opacity: 0.8,
-    width: 7,
-  },
-  failure: {
-    bottom: 116,
-    gap: 10,
-    left: 18,
-    position: "absolute",
-    right: 18,
-  },
-  error: { gap: 6, marginTop: 4 },
-  errorText: { color: colors.recovery, fontSize: 13 },
-  retry: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(122, 58, 38, 0.36)",
-  },
-  retryText: { color: colors.recovery, fontSize: 13, fontWeight: "600" },
-  topChrome: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    left: 16,
-    position: "absolute",
-    right: 16,
-    zIndex: 5,
-  },
-  topChromeSpacer: { flex: 1 },
-  agentStateSurface: {
-    borderRadius: 999,
-    borderCurve: "continuous",
-    overflow: "hidden",
-  },
-  agentStateText: {
-    color: colors.inkMuted,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 16,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  continuityDock: {
-    alignItems: "center",
-    left: 18,
-    position: "absolute",
-    right: 18,
-    zIndex: 2,
-  },
-  continuityText: {
-    backgroundColor: "rgba(238, 235, 230, 0.92)",
-    borderRadius: 999,
-    color: colors.inkMuted,
-    fontSize: 12,
-    fontWeight: "600",
-    overflow: "hidden",
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-  },
-  macSetupSurface: {
-    alignItems: "center",
-    borderRadius: 999,
-    borderCurve: "continuous",
-    flexDirection: "row",
-    maxWidth: 230,
-    minHeight: 42,
-    overflow: "hidden",
-  },
-  macSetupButton: {
-    flexShrink: 1,
-    justifyContent: "center",
-    minHeight: 42,
-    paddingLeft: 12,
-    paddingRight: 4,
-  },
-  macSetupText: {
-    color: colors.ink,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 16,
-  },
-  macSetupDismiss: {
-    alignItems: "center",
-    height: 42,
-    justifyContent: "center",
-    width: 34,
-  },
-  macSetupDismissIcon: { height: 12, width: 12 },
-  accountSurface: {
-    borderRadius: 999,
-    borderCurve: "continuous",
-    overflow: "hidden",
-  },
-  accountButton: {
-    alignItems: "center",
-    height: 42,
-    justifyContent: "center",
-    width: 42,
-  },
-  accountIcon: { height: 23, width: 23 },
-  composerDock: {
-    bottom: 0,
-    gap: 7,
-    left: 12,
-    paddingHorizontal: 4,
-    position: "absolute",
-    right: 12,
-    zIndex: 3,
-  },
-  composerGlass: {
-    borderRadius: 28,
-    borderCurve: "continuous",
-    overflow: "hidden",
-    boxShadow: "0 16px 32px rgba(51, 43, 34, 0.18)",
-  },
-  composer: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    gap: 10,
-    padding: 10,
-  },
-  input: {
-    flex: 1,
-    maxHeight: 122,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    color: colors.ink,
-    fontSize: 16,
-    lineHeight: 21,
-  },
-  send: {
-    alignItems: "center",
-    backgroundColor: colors.user,
-    borderRadius: 999,
-    height: 42,
-    justifyContent: "center",
-    width: 42,
-  },
-  sendUnavailable: {
-    backgroundColor: "rgba(29, 78, 137, 0.32)",
-  },
-  sendIcon: { height: 17, width: 17 },
-  notice: {
-    alignSelf: "center",
-    backgroundColor: "rgba(37, 31, 24, 0.82)",
-    borderRadius: 999,
-    color: colors.paper,
-    fontSize: 12,
-    overflow: "hidden",
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-});
+function createChatStyles(colors: MobileThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.canvas },
+    thread: { flex: 1, backgroundColor: colors.canvas },
+    messages: { flex: 1 },
+    messagesContent: {
+      gap: 10,
+      paddingHorizontal: 18,
+    },
+    row: {
+      maxWidth: "84%",
+      borderRadius: 22,
+      borderCurve: "continuous",
+      paddingHorizontal: 15,
+      paddingVertical: 11,
+    },
+    userRow: {
+      alignSelf: "flex-end",
+      backgroundColor: colors.user,
+      boxShadow: `0 8px 18px ${colors.userBubbleShadow}`,
+    },
+    assistantRow: {
+      alignSelf: "flex-start",
+      backgroundColor: colors.companion,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
+      boxShadow: `0 8px 24px ${colors.companionBubbleShadow}`,
+    },
+    userText: { color: colors.userText, fontSize: 16, lineHeight: 22 },
+    assistantText: { color: colors.ink, fontSize: 16, lineHeight: 22 },
+    openingDock: {
+      bottom: 116,
+      left: 18,
+      position: "absolute",
+      right: 18,
+    },
+    composingBubble: {
+      flexDirection: "row",
+      gap: 5,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    composingDot: {
+      backgroundColor: colors.inkSubtle,
+      borderRadius: 4,
+      height: 7,
+      opacity: 0.8,
+      width: 7,
+    },
+    failure: {
+      bottom: 116,
+      gap: 10,
+      left: 18,
+      position: "absolute",
+      right: 18,
+    },
+    error: { gap: 6, marginTop: 4 },
+    errorText: { color: colors.danger, fontSize: 13 },
+    retry: {
+      alignSelf: "flex-start",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.dangerBorder,
+    },
+    retryText: { color: colors.danger, fontSize: 13, fontWeight: "600" },
+    topChrome: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 8,
+      left: 16,
+      position: "absolute",
+      right: 16,
+      zIndex: 5,
+    },
+    topChromeSpacer: { flex: 1 },
+    agentStateSurface: {
+      borderRadius: 999,
+      borderCurve: "continuous",
+      overflow: "hidden",
+    },
+    agentStateText: {
+      color: colors.inkMuted,
+      fontSize: 12,
+      fontWeight: "700",
+      lineHeight: 16,
+      paddingHorizontal: 11,
+      paddingVertical: 8,
+    },
+    continuityDock: {
+      alignItems: "center",
+      left: 18,
+      position: "absolute",
+      right: 18,
+      zIndex: 2,
+    },
+    continuityText: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 999,
+      color: colors.inkMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      overflow: "hidden",
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+    },
+    macSetupSurface: {
+      alignItems: "center",
+      borderRadius: 999,
+      borderCurve: "continuous",
+      flexDirection: "row",
+      maxWidth: 230,
+      minHeight: 42,
+      overflow: "hidden",
+    },
+    macSetupButton: {
+      flexShrink: 1,
+      justifyContent: "center",
+      minHeight: 42,
+      paddingLeft: 12,
+      paddingRight: 4,
+    },
+    macSetupText: {
+      color: colors.ink,
+      fontSize: 12,
+      fontWeight: "700",
+      lineHeight: 16,
+    },
+    macSetupDismiss: {
+      alignItems: "center",
+      height: 42,
+      justifyContent: "center",
+      width: 34,
+    },
+    macSetupDismissIcon: { height: 12, width: 12 },
+    accountSurface: {
+      borderRadius: 999,
+      borderCurve: "continuous",
+      overflow: "hidden",
+    },
+    accountButton: {
+      alignItems: "center",
+      height: 42,
+      justifyContent: "center",
+      width: 42,
+    },
+    accountIcon: { height: 23, width: 23 },
+    glassFallback: {
+      backgroundColor: colors.elevated,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
+    },
+    composerDock: {
+      bottom: 0,
+      gap: 7,
+      left: 12,
+      paddingHorizontal: 4,
+      position: "absolute",
+      right: 12,
+      zIndex: 3,
+    },
+    composerGlass: {
+      borderRadius: 28,
+      borderCurve: "continuous",
+      overflow: "hidden",
+      boxShadow: `0 16px 32px ${colors.glassShadow}`,
+    },
+    composer: {
+      alignItems: "flex-end",
+      flexDirection: "row",
+      gap: 10,
+      padding: 10,
+    },
+    input: {
+      flex: 1,
+      maxHeight: 122,
+      minHeight: 44,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      color: colors.ink,
+      fontSize: 16,
+      lineHeight: 21,
+    },
+    send: {
+      alignItems: "center",
+      backgroundColor: colors.action,
+      borderRadius: 999,
+      height: 42,
+      justifyContent: "center",
+      width: 42,
+    },
+    sendUnavailable: {
+      backgroundColor: colors.actionDisabled,
+    },
+    sendIcon: { height: 17, width: 17 },
+    notice: {
+      alignSelf: "center",
+      backgroundColor: colors.notice,
+      borderRadius: 999,
+      color: colors.noticeText,
+      fontSize: 12,
+      overflow: "hidden",
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+    },
+  });
+}

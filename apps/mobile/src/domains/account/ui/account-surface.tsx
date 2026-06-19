@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
 import type { AccountStateSource } from "../../../providers/account-state";
 import { useLaunchState } from "../../../providers/launch-state";
 import type { ConnectionState } from "../../chat/types/conversation";
@@ -30,6 +31,8 @@ export function AccountSurface({
   const [setupGuidanceVisible, setSetupGuidanceVisible] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const theme = useMobileTheme();
+  const styles = useMemo(() => createStyles(theme.colors), [theme]);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -102,8 +105,12 @@ export function AccountSurface({
           </View>
 
           <ScrollView contentContainerStyle={styles.content}>
-            <AccountRow title="Signed in" value={accountUserId ?? "Signed in"} />
-            <AccountRow title="Connection" value={connectionStatusLabel(connectionStatus)} />
+            <AccountRow styles={styles} title="Signed in" value={accountUserId ?? "Signed in"} />
+            <AccountRow
+              styles={styles}
+              title="Connection"
+              value={connectionStatusLabel(connectionStatus)}
+            />
             <View style={styles.row}>
               <View style={styles.rowCopy}>
                 <Text style={styles.rowTitle}>Mac setup</Text>
@@ -125,8 +132,12 @@ export function AccountSurface({
               </Text>
             ) : null}
 
-            <AccountRow title="Support" value="Send feedback from Help if you need us." />
-            <AccountRow title="App debug" value={appVersion} />
+            <AccountRow
+              styles={styles}
+              title="Support"
+              value="Send feedback from Help if you need us."
+            />
+            <AccountRow styles={styles} title="App debug" value={appVersion} />
 
             {logoutError === null ? null : <Text style={styles.error}>{logoutError}</Text>}
 
@@ -149,9 +160,11 @@ export function AccountSurface({
 function AccountRow({
   title,
   value,
+  styles,
 }: {
   readonly title: string;
   readonly value: string;
+  readonly styles: ReturnType<typeof createStyles>;
 }): React.JSX.Element {
   return (
     <View style={styles.row}>
@@ -169,125 +182,116 @@ function macSetupValue(siblingInvitation: "pending" | "completed" | "skipped" | 
   return "Setup or reconnect when needed";
 }
 
-const colors = {
-  backdrop: "rgba(37, 31, 24, 0.26)",
-  paper: "#FFFCF7",
-  ink: "#251F18",
-  inkMuted: "#62584B",
-  line: "rgba(51, 43, 34, 0.14)",
-  action: "#1D4E89",
-  actionMuted: "rgba(29, 78, 137, 0.14)",
-  danger: "#7A3A26",
-};
-
-const styles = StyleSheet.create({
-  backdrop: {
-    alignItems: "center",
-    backgroundColor: colors.backdrop,
-    flex: 1,
-    justifyContent: "flex-end",
-    padding: 12,
-  },
-  sheet: {
-    backgroundColor: colors.paper,
-    borderRadius: 22,
-    borderCurve: "continuous",
-    maxHeight: "86%",
-    overflow: "hidden",
-    width: "100%",
-  },
-  header: {
-    alignItems: "center",
-    borderBottomColor: colors.line,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-  title: {
-    color: colors.ink,
-    fontSize: 20,
-    fontWeight: "700",
-  },
-  closeButton: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  closeText: {
-    color: colors.action,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  content: {
-    gap: 10,
-    padding: 16,
-  },
-  row: {
-    alignItems: "center",
-    borderColor: colors.line,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 60,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  rowCopy: {
-    flex: 1,
-    gap: 3,
-    paddingRight: 10,
-  },
-  rowTitle: {
-    color: colors.ink,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  rowValue: {
-    color: colors.inkMuted,
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  secondaryButton: {
-    backgroundColor: colors.actionMuted,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  secondaryButtonText: {
-    color: colors.action,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  guidance: {
-    backgroundColor: colors.actionMuted,
-    borderRadius: 14,
-    color: colors.ink,
-    fontSize: 14,
-    lineHeight: 20,
-    padding: 12,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  signOutButton: {
-    alignItems: "center",
-    borderColor: "rgba(122, 58, 38, 0.36)",
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginTop: 2,
-    paddingVertical: 12,
-  },
-  disabledButton: {
-    opacity: 0.55,
-  },
-  signOutText: {
-    color: colors.danger,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-});
+function createStyles(colors: MobileThemeColors) {
+  return StyleSheet.create({
+    backdrop: {
+      alignItems: "center",
+      backgroundColor: colors.backdrop,
+      flex: 1,
+      justifyContent: "flex-end",
+      padding: 12,
+    },
+    sheet: {
+      backgroundColor: colors.paper,
+      borderRadius: 22,
+      borderCurve: "continuous",
+      maxHeight: "86%",
+      overflow: "hidden",
+      width: "100%",
+    },
+    header: {
+      alignItems: "center",
+      borderBottomColor: colors.line,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+    },
+    title: {
+      color: colors.ink,
+      fontSize: 20,
+      fontWeight: "700",
+    },
+    closeButton: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    closeText: {
+      color: colors.action,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    content: {
+      gap: 10,
+      padding: 16,
+    },
+    row: {
+      alignItems: "center",
+      borderColor: colors.line,
+      borderRadius: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      minHeight: 60,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    rowCopy: {
+      flex: 1,
+      gap: 3,
+      paddingRight: 10,
+    },
+    rowTitle: {
+      color: colors.ink,
+      fontSize: 15,
+      fontWeight: "700",
+    },
+    rowValue: {
+      color: colors.inkMuted,
+      fontSize: 14,
+      lineHeight: 19,
+    },
+    secondaryButton: {
+      backgroundColor: colors.actionMuted,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    secondaryButtonText: {
+      color: colors.action,
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    guidance: {
+      backgroundColor: colors.actionMuted,
+      borderRadius: 14,
+      color: colors.ink,
+      fontSize: 14,
+      lineHeight: 20,
+      padding: 12,
+    },
+    error: {
+      color: colors.danger,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    signOutButton: {
+      alignItems: "center",
+      borderColor: colors.dangerBorder,
+      borderRadius: 999,
+      borderWidth: StyleSheet.hairlineWidth,
+      marginTop: 2,
+      paddingVertical: 12,
+    },
+    disabledButton: {
+      opacity: 0.55,
+    },
+    signOutText: {
+      color: colors.danger,
+      fontSize: 15,
+      fontWeight: "700",
+    },
+  });
+}

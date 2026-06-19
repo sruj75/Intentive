@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import * as ReactNative from "react-native";
 import { Text } from "react-native";
 
 import { AccountSurface } from "../src/domains/account/ui/account-surface";
@@ -18,6 +19,10 @@ type RuntimeConnectionState =
   | "connected"
   | "retrying"
   | "error";
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 function Destination() {
   const { state } = useLaunchState();
@@ -106,6 +111,16 @@ test("Account Surface shows safe identity, support, and debug information", asyn
   expect(await screen.findByText("u_123")).toBeTruthy();
   expect(screen.getByText("Support")).toBeTruthy();
   expect(screen.getByText("App debug")).toBeTruthy();
+});
+
+test("Account Surface uses dark appearance tokens", async () => {
+  jest.spyOn(ReactNative, "useColorScheme").mockReturnValue("dark");
+
+  renderAccountSurface();
+
+  await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
+  expect(screen.getByText("Account")).toHaveStyle({ color: "#EEEBE6" });
+  expect(screen.getByText("Connection")).toHaveStyle({ color: "#EEEBE6" });
 });
 
 test("logout calls the injected sign-out command and returns Launch State to signed out", async () => {

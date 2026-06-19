@@ -42,8 +42,8 @@ function canUseLiquidGlass(): boolean {
 
 const styles = StyleSheet.create({
   fallback: {
-    backgroundColor: "rgba(255, 255, 255, 0.94)",
-    borderColor: "rgba(45, 39, 31, 0.12)",
+    backgroundColor: "transparent",
+    borderColor: "transparent",
     borderWidth: StyleSheet.hairlineWidth,
   },
 });

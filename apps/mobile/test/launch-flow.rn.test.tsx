@@ -7,6 +7,7 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Text } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
 import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
@@ -35,6 +36,10 @@ const signInOkAdapter: AuthAdapter = {
 // pre-seeded `pending` so the whole walk works; the resolver's short-circuit
 // hides gates until sign-in. One definition, owned by the stub factory.
 const walkSource: LaunchStateSource = createStubLaunchStateSource("signed-out");
+const safeAreaMetrics = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 47, right: 0, bottom: 34, left: 0 },
+};
 
 function Destination() {
   const { state } = useLaunchState();
@@ -51,14 +56,16 @@ function renderWithSource(source: LaunchStateSource) {
 
 function renderHarness(source: LaunchStateSource = walkSource) {
   return render(
-    <LaunchStateProvider source={source}>
-      <AuthAdapterProvider adapter={signInOkAdapter}>
-        <Destination />
-        <IdentityGate />
-        <ConsentPrimer />
-        <SiblingInvitation />
-      </AuthAdapterProvider>
-    </LaunchStateProvider>,
+    <SafeAreaProvider initialMetrics={safeAreaMetrics}>
+      <LaunchStateProvider source={source}>
+        <AuthAdapterProvider adapter={signInOkAdapter}>
+          <Destination />
+          <IdentityGate />
+          <ConsentPrimer />
+          <SiblingInvitation />
+        </AuthAdapterProvider>
+      </LaunchStateProvider>
+    </SafeAreaProvider>,
   );
 }
 
