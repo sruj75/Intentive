@@ -13,6 +13,8 @@ For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](
 | `POST /sibling-invitation/skip` | Records sibling invitation skip                                   |
 | `GET  /agent`                   | Issues Agent Runtime URL + JWT (Routing)                          |
 | `POST /devices/register`        | Idempotent device registration (includes Expo Push Token)         |
+| `GET  /healthz`                 | Shallow liveness probe                                            |
+| `GET  /readyz`                  | Deep readiness probe for Neon + Neon Auth JWKS                    |
 
 Schemas live in [`packages/api-contract`](../../packages/api-contract).
 
@@ -66,13 +68,17 @@ The service reads **all** configuration from the one config seam (`src/config/en
 | `INTERNAL_SECRET_FROM_RUNTIME`    | ✅ vault | Directional Secret guarding Runtime → CP `/internal/notifications/push`  |
 | `INTERNAL_SECRET_FOR_MAINTENANCE` | ✅ vault | Secret guarding the maintenance `/internal/notifications/check-receipts` |
 | `EXPO_ACCESS_TOKEN`               | ✅ vault | Optional Expo Push Service access token                                  |
+| `SENTRY_DSN`                      | ✅ vault | Sentry project DSN for error capture                                     |
+| `SENTRY_ENVIRONMENT`              | env      | Sentry environment name (production in Cloud Run)                        |
+| `SENTRY_RELEASE`                  | env      | Release identifier, set to the deploy SHA                                |
+| `SENTRY_MODE`                     | env      | Sentry mode (defaults to `errors-only`)                                  |
 | `PORT`                            | env      | Injected by Cloud Run (defaults to 8080)                                 |
 
-> There is **no** runtime-JWT signing key and **no** APNs credentials. The `runtime_jwt` is the client's pass-through Neon Auth token ([`docs/adr/0002`](docs/adr/0002-runtime-jwt-passthrough.md)); push delivery goes through Expo Push Service, not APNs ([`docs/adr/0006`](docs/adr/0006-expo-push-service-for-v1-notifications.md)). Do not provision either — the service cannot read them.
+> There is **no** runtime-JWT signing key, **no** APNs credentials, and **no** Langfuse config. The `runtime_jwt` is the client's pass-through Neon Auth token ([`docs/adr/0002`](docs/adr/0002-runtime-jwt-passthrough.md)); push delivery goes through Expo Push Service, not APNs ([`docs/adr/0006`](docs/adr/0006-expo-push-service-for-v1-notifications.md)); Control Plane has no LLM trace surface, so Langfuse is intentionally absent. Do not provision any of those values — the service cannot read them.
 
 ### Database provisioning (one-time, this service owns it)
 
-This service's schema is created here, not assumed to exist. Via the Neon MCP / `neon-postgres` skill: create the `control_plane` schema → create a least-privilege `control_plane_app` role (no superuser, grants scoped to `control_plane` only) → run migrations `0001`–`0004` against production → build `NEON_DATABASE_URL` from that role's pooled connection string. Repo tests bootstrap their own ephemeral branches (ADR-0003); production is provisioned once, here.
+This service's schema is created here, not assumed to exist. Via the Neon MCP / `neon-postgres` skill: create the `control_plane` schema → create a least-privilege `control_plane_app` role (no superuser, grants scoped to `control_plane` only) → run migrations `0001`–`0005` against production → build `NEON_DATABASE_URL` from that role's pooled connection string. Repo tests bootstrap their own ephemeral branches (ADR-0003); production is provisioned once, here.
 
 ### Deploy procedure (careful path)
 
@@ -80,6 +86,6 @@ This service's schema is created here, not assumed to exist. Via the Neon MCP / 
 2. Smoke-check the new revision at its own URL:
    - `GET /healthz` → `200 {"ok":true,...}` (liveness; process is up).
    - `GET /readyz` → `200` (readiness; Neon `SELECT 1` and Neon Auth JWKS both reachable).
-   - `GET /me`, `GET /agent`, `POST /devices/register` without a token → a well-formed `401` (proves the auth boundary is engaged without needing a valid user JWT or writing to prod).
+   - `GET /me` without a token → a well-formed `401` (proves the auth boundary is engaged without needing a valid user JWT or writing to prod).
 3. Only if green, **promote traffic** to the new revision.
 4. Once a manual deploy has proven out, set the `DEPLOY_ENABLED` repository variable to `true` so pushes to `main` auto-deploy.

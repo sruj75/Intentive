@@ -1,4 +1,5 @@
 import type { PostInternalNotificationsCheckReceiptsResponse } from "@intentive/api-contract";
+import { createNoopLogger, type Logger } from "@intentive/providers/telemetry";
 
 import type { ExpoPushSender } from "../repo/expo-push-sender.js";
 import type {
@@ -33,11 +34,22 @@ export function createNotificationsService(deps: {
   devices: NotificationsDevicesPort;
   sender: ExpoPushSender;
   tickets: NotificationTicketsRepo;
+  logger?: Logger;
 }): NotificationsService {
+  const logger = deps.logger ?? createNoopLogger();
+
   return {
     async pushToUser({ userId, previewText, messageId }) {
       const targets = await deps.devices.listExpoPushTargetsForUser(userId);
-      if (targets.length === 0) return { delivered: false, deviceCount: 0 };
+      if (targets.length === 0) {
+        logger.info("notifications.push_fanout", {
+          user_id: userId,
+          message_id: messageId,
+          delivered: false,
+          device_count: 0,
+        });
+        return { delivered: false, deviceCount: 0 };
+      }
 
       const tickets = await deps.sender.send(
         targets.map((target) => ({
@@ -69,7 +81,14 @@ export function createNotificationsService(deps: {
       }
 
       await deps.tickets.recordTickets(accepted);
-      return { delivered: accepted.length > 0, deviceCount: targets.length };
+      const result = { delivered: accepted.length > 0, deviceCount: targets.length };
+      logger.info("notifications.push_fanout", {
+        user_id: userId,
+        message_id: messageId,
+        delivered: result.delivered,
+        device_count: result.deviceCount,
+      });
+      return result;
     },
 
     async checkPendingReceipts({ limit } = {}) {

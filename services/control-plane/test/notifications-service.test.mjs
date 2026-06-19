@@ -3,12 +3,20 @@ import test from "node:test";
 
 import { createNotificationsService } from "../dist/domains/notifications/service/notifications-service.js";
 
+const recordingLogger = (records) => ({
+  info: (event, attrs) => records.push({ level: "info", event, attrs }),
+  warn: (event, attrs) => records.push({ level: "warn", event, attrs }),
+  error: (event, error, attrs) => records.push({ level: "error", event, error, attrs }),
+  child: () => recordingLogger(records),
+});
+
 function createHarness({ targets = [], tickets = [], receipts = {} } = {}) {
   const sent = [];
   const recorded = [];
   const receiptChecks = [];
   const marked = [];
   const cleared = [];
+  const logs = [];
   const service = createNotificationsService({
     devices: {
       listExpoPushTargetsForUser: async () => targets,
@@ -41,12 +49,13 @@ function createHarness({ targets = [], tickets = [], receipts = {} } = {}) {
         marked.push(...ids);
       },
     },
+    logger: recordingLogger(logs),
   });
-  return { service, sent, recorded, receiptChecks, marked, cleared };
+  return { service, sent, recorded, receiptChecks, marked, cleared, logs };
 }
 
 test("pushToUser with no Expo tokens returns delivered false and never sends", async () => {
-  const { service, sent, recorded } = createHarness();
+  const { service, sent, recorded, logs } = createHarness();
 
   const result = await service.pushToUser({
     userId: "u_1",
@@ -57,10 +66,17 @@ test("pushToUser with no Expo tokens returns delivered false and never sends", a
   assert.deepEqual(result, { delivered: false, deviceCount: 0 });
   assert.deepEqual(sent, []);
   assert.deepEqual(recorded, []);
+  assert.deepEqual(logs, [
+    {
+      level: "info",
+      event: "notifications.push_fanout",
+      attrs: { user_id: "u_1", message_id: "m_1", delivered: false, device_count: 0 },
+    },
+  ]);
 });
 
 test("pushToUser sends one Expo message, records the ticket, and reports delivery", async () => {
-  const { service, sent, recorded } = createHarness({
+  const { service, sent, recorded, logs } = createHarness({
     targets: [{ deviceId: "dev_1", expoPushToken: "ExponentPushToken[one]" }],
     tickets: [{ status: "ok", id: "ticket_1" }],
   });
@@ -85,6 +101,13 @@ test("pushToUser sends one Expo message, records the ticket, and reports deliver
       deviceId: "dev_1",
       expoPushToken: "ExponentPushToken[one]",
       messageId: "message_1",
+    },
+  ]);
+  assert.deepEqual(logs, [
+    {
+      level: "info",
+      event: "notifications.push_fanout",
+      attrs: { user_id: "u_1", message_id: "message_1", delivered: true, device_count: 1 },
     },
   ]);
 });

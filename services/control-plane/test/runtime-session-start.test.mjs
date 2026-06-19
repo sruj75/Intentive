@@ -73,6 +73,34 @@ test("a transport failure → AgentRuntimeUnavailableError (transport), no secre
   );
 });
 
+test("a hung Runtime times out as AgentRuntimeUnavailableError (transport)", async () => {
+  const startedAt = Date.now();
+  let aborted = false;
+  const starter = createRuntimeSessionStarter({
+    baseUrl: "https://runtime.example.com",
+    secret: "super-secret",
+    timeoutMs: 25,
+    fetch: async (_url, init) => {
+      init.signal.addEventListener("abort", () => {
+        aborted = true;
+      });
+      return new Promise(() => {});
+    },
+  });
+
+  await assert.rejects(
+    () => starter.startSession({ userId: "u_1", authSubject: "sub-1" }),
+    (err) => {
+      assert.ok(err instanceof AgentRuntimeUnavailableError);
+      assert.equal(err.reason, "transport");
+      assert.equal(err.message.includes("super-secret"), false);
+      return true;
+    },
+  );
+  assert.equal(aborted, true);
+  assert.ok(Date.now() - startedAt < 500, "timeout regression should fail fast");
+});
+
 test("a 2xx with a malformed body → AgentRuntimeUnavailableError (malformed_response)", async () => {
   const starter = createRuntimeSessionStarter({
     baseUrl: "https://runtime.example.com",

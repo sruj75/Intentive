@@ -37,6 +37,7 @@ test("valid env loads into a grouped, frozen config", () => {
   assert.equal(cfg.internalInbound.secretFromRuntime, "secret-from-runtime");
   assert.equal(cfg.internalInbound.secretForMaintenance, "secret-for-maintenance");
   assert.equal(cfg.expo.accessToken, "expo-token");
+  assert.equal(cfg.sentry, null);
 
   // frozen — config is read-only once resolved
   assert.throws(() => {
@@ -76,4 +77,30 @@ test("EXPO_ACCESS_TOKEN is optional", () => {
   const { EXPO_ACCESS_TOKEN, ...withoutToken } = validEnv;
   void EXPO_ACCESS_TOKEN;
   assert.equal(loadConfig(withoutToken).expo.accessToken, undefined);
+});
+
+test("SENTRY_DSN enables Sentry config with errors-only as the default mode", () => {
+  const cfg = loadConfig({
+    ...validEnv,
+    SENTRY_DSN: "https://public@example.ingest.sentry.io/1",
+    SENTRY_ENVIRONMENT: "production",
+    SENTRY_RELEASE: "control-plane@abc123",
+  });
+
+  assert.deepEqual(cfg.sentry, {
+    dsn: "https://public@example.ingest.sentry.io/1",
+    environment: "production",
+    release: "control-plane@abc123",
+    mode: "errors-only",
+  });
+});
+
+test("SENTRY_MODE accepts the reserved performance mode at config parse time", () => {
+  const cfg = loadConfig({
+    ...validEnv,
+    SENTRY_DSN: "https://public@example.ingest.sentry.io/1",
+    SENTRY_MODE: "errors-and-performance",
+  });
+
+  assert.equal(cfg.sentry.mode, "errors-and-performance");
 });

@@ -16,6 +16,7 @@ export interface VerifiedPrincipal {
 
 export interface JwtVerifier {
   verify(token: string): Promise<VerifiedPrincipal>;
+  probe(): Promise<void>;
 }
 
 /**
@@ -88,6 +89,29 @@ export function createJwtVerifier(
   });
 
   return {
+    async probe(): Promise<void> {
+      let res;
+      try {
+        res = await fetch(config.jwks_url);
+      } catch (err) {
+        throw toVerificationError(err);
+      }
+
+      if (!res.ok) {
+        throw new JwtVerificationError("jwks_unavailable", "JWKS endpoint is unavailable");
+      }
+
+      try {
+        const payload = await res.json();
+        if (!isJwks(payload)) {
+          throw new JwtVerificationError("jwks_unavailable", "JWKS endpoint is unavailable");
+        }
+      } catch (err) {
+        if (err instanceof JwtVerificationError) throw err;
+        throw new JwtVerificationError("jwks_unavailable", "JWKS endpoint is unavailable");
+      }
+    },
+
     async verify(token: string): Promise<VerifiedPrincipal> {
       let payload;
       try {
@@ -146,4 +170,13 @@ function isJwksFetchFailure(err: unknown): boolean {
     return true;
   }
   return false;
+}
+
+function isJwks(value: unknown): value is { keys: unknown[] } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "keys" in value &&
+    Array.isArray((value as { keys?: unknown }).keys)
+  );
 }

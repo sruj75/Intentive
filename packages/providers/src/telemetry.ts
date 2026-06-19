@@ -16,6 +16,8 @@ export const allowedLogAttrKeys = [
   "connected_clients",
   "client_kind",
   "delivery_path",
+  "delivered",
+  "device_count",
   "cron_job_id",
   "snapshot_id",
   "reason",

@@ -22,7 +22,8 @@ import type {
   GetMeDeviceSignal,
   PreChatGateKind,
 } from "@intentive/api-contract";
-import type { JwtVerifier } from "@intentive/providers/auth";
+import { asJwtVerificationFailure, type JwtVerifier } from "@intentive/providers/auth";
+import { createNoopLogger, type Logger } from "@intentive/providers/telemetry";
 
 import type { UsersRepo } from "../repo/users.js";
 
@@ -115,11 +116,26 @@ export function createIdentityService(deps: {
   gates: NextGateResolver;
   devices: DeviceLister;
   agents: AgentInstanceReader;
+  logger?: Logger;
 }): IdentityService {
+  const logger = deps.logger ?? createNoopLogger();
+
+  async function verifySubject(token: string): Promise<string> {
+    try {
+      const { user_id: sub } = await deps.verifier.verify(token);
+      logger.info("auth.jwt_verify", { status: "ok" });
+      return sub;
+    } catch (err) {
+      const failure = asJwtVerificationFailure(err);
+      logger.warn("auth.jwt_verify", { status: "failed", reason: failure.reason });
+      throw err;
+    }
+  }
+
   async function authenticate(token: string): Promise<{ userId: string }> {
     // The verifier's `user_id` is the IdP *subject* (jose `payload.sub`); the
     // repo maps that to the stable internal user_id we expose to clients.
-    const { user_id: sub } = await deps.verifier.verify(token);
+    const sub = await verifySubject(token);
     const { userId } = await deps.users.resolveUser({ sub });
     return { userId };
   }
@@ -135,7 +151,7 @@ export function createIdentityService(deps: {
     token: string,
     signal: GetMeDeviceSignal,
   ): Promise<PrincipalAndGate> {
-    const { user_id: authSubject } = await deps.verifier.verify(token);
+    const authSubject = await verifySubject(token);
     const { userId } = await deps.users.resolveUser({ sub: authSubject });
 
     // The Sibling Invitation is satisfied by an *observed* sibling device — a

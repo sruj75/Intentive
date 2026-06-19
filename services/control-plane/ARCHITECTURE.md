@@ -61,7 +61,7 @@ The Control Plane is the single writer of account truth. Clients render this sta
 : The narrow `Sql` tagged-template port every domain `repo` imports — keeps the Neon driver out of unit-tier module graphs.
 
 `migrations/`
-: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27; `0004_agent_instances.sql` for Agent Instance Registry, #30). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
+: SQL owned by the behavior issue that introduces each table (`0001_users.sql` for identity, #23; `0002_user_gates.sql` for cross-client gates, #26; `0003_devices.sql` for Device Registry, #27; `0004_agent_instances.sql` for Agent Instance Registry, #30; `0005_notification_tickets.sql` for notification ticket tracking, #49). Applied to production by #50; repo tests bootstrap a disposable Neon branch per ADR-0003.
 
 [`docs/adr/0004-account-state-assembled-by-identity-composer.md`](docs/adr/0004-account-state-assembled-by-identity-composer.md)
 : ADR — `identity.resolveAccount` is the sole assembler of `AccountState`; `gates` exposes `nextGate`, not `/me` shaping.
@@ -171,7 +171,8 @@ Providers:
 
 Observability:
 
-- Log request lifecycle, JWT verification outcomes, gate-state transitions, Session Start calls, device registrations, and push fan-out results.
+- Log JWT verification outcomes, gate-state transitions, Session Start calls, device registrations, and push fan-out results through `bootstrapObservability` from `packages/providers`; Cloud Run owns request lifecycle logs at the edge.
+- Sentry is configured with `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, and `SENTRY_MODE` (`errors-only` by default). Langfuse is intentionally absent because the Control Plane has no LLM trace surface.
 - Redact JWTs, Expo Push Tokens, device fingerprints, and any secret material from log fields by default.
 
 Reliability:
@@ -183,13 +184,13 @@ Reliability:
 Security:
 
 - Public endpoints use Neon Auth JWT verification via shared Providers.
-- The internal `POST /internal/notifications/push` endpoint uses shared-secret auth on a private network path, never user JWT.
+- The internal `POST /internal/notifications/push` endpoint uses shared-secret auth on public ingress, never user JWT (ADR-0008).
 - Expo Push Tokens and push-provider configuration live only here, loaded from configuration/secrets, never committed.
 - The Control Plane is the only writer of account truth; structural single-writer ownership prevents cross-client state drift.
 
 Testing:
 
-- **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, `test/agents-service.test.mjs`, `test/runtime-session-start.test.mjs`, gate write-handler tests).
+- **Service tier:** logic with repo/provider fakes (`test/identity-service.test.mjs`, `test/gates-service.test.mjs`, `test/gates-compute-next-gate.test.mjs`, `test/agents-service.test.mjs`, `test/runtime-session-start.test.mjs`, `test/readiness.test.mjs`, gate write-handler tests).
 - **Repo tier:** real SQL against a disposable Neon branch per ADR-0003 (`test/users-repo.integration.test.mjs`, `test/user-gates-repo.integration.test.mjs`, `test/devices-repo.integration.test.mjs`, `test/agent-instances-repo.integration.test.mjs`; skips without `NEON_API_KEY` / `NEON_PROJECT_ID`).
 - **HTTP tier:** Hono routing via `app.request` with handler fakes (`app.test.mjs`, `test/get-me-handler.test.mjs`, `test/get-agent-handler.test.mjs`, `test/post-device-register-handler.test.mjs`); shared auth and device-signal boundaries (`test/http-auth.test.mjs`, `test/http-device-signal.test.mjs`).
 - Still to cover: push fan-out and the no-proxy guardrail as those domains land (#49).
