@@ -24,11 +24,17 @@ export interface ObservabilityConfig {
   readonly langfuse: LangfuseTracingConfig | null;
 }
 
-export type CallbackHandlerFactory = () => BaseCallbackHandler | null;
+export interface FlushableCallbackHandler extends BaseCallbackHandler {
+  flushAsync?: () => Promise<unknown>;
+  shutdownAsync?: () => Promise<unknown>;
+}
+
+export type CallbackHandlerFactory = () => FlushableCallbackHandler | null;
 
 export interface Observability {
   readonly createCallbackHandler: CallbackHandlerFactory;
   readonly captureException: SentrySink["captureException"];
   readonly addBreadcrumb: SentrySink["addBreadcrumb"];
   readonly createLogger: (name: string) => Logger;
+  readonly shutdown: () => Promise<void>;
 }

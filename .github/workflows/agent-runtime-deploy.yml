@@ -11,10 +11,27 @@ name: agent-runtime-deploy
 #
 # Required GitHub secrets (must be set before deploy steps can succeed):
 #   GCP_PROJECT_ID
-#   GCP_SA_KEY                  — JSON key for a Service Account with:
+#   AGENT_RUNTIME_GCP_SA_KEY    — JSON key for a Service Account with:
 #                                   - Artifact Registry Writer
 #                                   - Compute Instance Admin (v1)
 #                                   - Service Account User
+#
+# Required GitHub variables:
+#   AGENT_RUNTIME_PUBLIC_WS_URL
+#   CONTROL_PLANE_INTERNAL_BASE_URL
+#   NEON_AUTH_JWKS_URL
+#   NEON_AUTH_ISSUER
+#   NEON_AUTH_AUDIENCE
+#   AGENT_RUNTIME_SECRET_NAMES  — space-separated Secret Manager allowlist.
+#                                 Entries can be ENV_VAR=secret-name aliases,
+#                                 typically:
+#                                 NEON_DATABASE_URL
+#                                 INTERNAL_SECRET_FROM_CONTROL_PLANE=INTERNAL_SECRET_TO_RUNTIME
+#                                 INTERNAL_SECRET_TO_CONTROL_PLANE=INTERNAL_SECRET_FROM_RUNTIME
+#                                 OPENROUTER_API_KEY
+#                                 SENTRY_DSN=AGENT_RUNTIME_SENTRY_DSN
+#                                 LANGFUSE_PUBLIC_KEY
+#                                 LANGFUSE_SECRET_KEY
 #
 # Required GCP setup (one-time):
 #   - Artifact Registry repository at ${GCP_REGION}-docker.pkg.dev/${PROJECT}/intentive
@@ -28,8 +45,8 @@ name: agent-runtime-deploy
 # stays up (long-running state, cron, heartbeat — see CONTEXT-MAP.md).
 
 env:
-  GCP_REGION: us-central1
-  GCE_ZONE: us-central1-a
+  GCP_REGION: us-west1
+  GCE_ZONE: us-west1-a
   VM_NAME: agent-runtime
   IMAGE_TAG: ${{ github.sha }}
 
@@ -76,7 +93,7 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: ${{ secrets.AGENT_RUNTIME_GCP_SA_KEY }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -96,6 +113,20 @@ jobs:
 
       - name: Update VM to new image tag
         run: |
+          cat > /tmp/agent-runtime.env <<'EOF'
+          GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}
+          SECRET_NAMES=${{ vars.AGENT_RUNTIME_SECRET_NAMES }}
+          PUBLIC_WS_URL=${{ vars.AGENT_RUNTIME_PUBLIC_WS_URL }}
+          CONTROL_PLANE_INTERNAL_BASE_URL=${{ vars.CONTROL_PLANE_INTERNAL_BASE_URL }}
+          NEON_AUTH_JWKS_URL=${{ vars.NEON_AUTH_JWKS_URL }}
+          NEON_AUTH_ISSUER=${{ vars.NEON_AUTH_ISSUER }}
+          NEON_AUTH_AUDIENCE=${{ vars.NEON_AUTH_AUDIENCE }}
+          SENTRY_ENVIRONMENT=production
+          SENTRY_RELEASE=agent-runtime@${{ env.IMAGE_TAG }}
+          EOF
+          sed -i 's/^          //' /tmp/agent-runtime.env
           gcloud compute instances update-container ${{ env.VM_NAME }} \
             --zone ${{ env.GCE_ZONE }} \
-            --container-image ${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/intentive/${{ env.VM_NAME }}:${{ env.IMAGE_TAG }}
+            --container-image ${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/intentive/${{ env.VM_NAME }}:${{ env.IMAGE_TAG }} \
+            --container-restart-policy always \
+            --container-env-file /tmp/agent-runtime.env

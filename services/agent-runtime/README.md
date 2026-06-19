@@ -43,9 +43,11 @@ GitHub Actions builds a Docker image, pushes to Artifact Registry, and swaps the
 
 Unlike the stateless Control Plane on Cloud Run, this is **one always-alive VM**: TLS, the stable front door, secret delivery, health, and zero-downtime are ours to provide, not Google's.
 
+Production is provisioned as VM `agent-runtime` in `us-west1-a`, behind a global HTTPS load balancer for `runtime.heyintentive.com`. DNS must point `runtime.heyintentive.com` at the reserved global IP `8.232.97.220` before the Google-managed certificate can become active and clients can use `wss://runtime.heyintentive.com/ws`.
+
 ### Secret inventory (required for a green deploy)
 
-All configuration is read at the one config seam (`src/config/env.ts`). Password-bearing values come from Google Secret Manager (fetched at boot by the VM's dedicated service account); non-secret names/URLs are plain env vars.
+All configuration is read at the one config seam (`src/config/env.ts`). Password-bearing values come from Google Secret Manager (fetched at boot by `scripts/boot-fetch-secrets.mjs` using the VM's dedicated service account); non-secret names/URLs are plain env vars. The deploy workflow writes `SECRET_NAMES` as a space-separated allowlist of Secret Manager names to fetch; every loaded secret becomes an env var with the same name. Entries can also be aliases in `ENV_VAR=secret-name` form, for example `SENTRY_DSN=AGENT_RUNTIME_SENTRY_DSN` or `INTERNAL_SECRET_FROM_CONTROL_PLANE=INTERNAL_SECRET_TO_RUNTIME`. Local development can omit `SECRET_NAMES` and pass plain env vars directly.
 
 | Variable                                                      | Secret?  | Purpose                                                                    |
 | ------------------------------------------------------------- | -------- | -------------------------------------------------------------------------- |

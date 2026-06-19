@@ -93,6 +93,7 @@ export type { MonitoringTurnTrigger } from "./domains/runtime/service/monitoring
 export { createTurn } from "./domains/runtime/service/turn.js";
 export { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
 export { createWorkingContext } from "./domains/runtime/service/working-context.js";
+export { createShutdown } from "./runtime/shutdown.js";
 export type {
   WorkingContext,
   WorkingContextInput,

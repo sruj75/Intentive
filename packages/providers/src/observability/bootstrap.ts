@@ -1,5 +1,8 @@
 import { createLogger as createTelemetryLogger } from "../telemetry.js";
-import { createLangfuseCallbackHandlerFactory } from "./langfuse.js";
+import {
+  createLangfuseCallbackHandlerFactory,
+  type LangfuseCallbackHandlerDeps,
+} from "./langfuse.js";
 import { createSentrySink, type SentryModule } from "./sentry.js";
 import type { Observability, ObservabilityConfig } from "./types.js";
 
@@ -14,17 +17,28 @@ import type { Observability, ObservabilityConfig } from "./types.js";
  */
 export function bootstrapObservability(
   config: ObservabilityConfig,
-  deps: { readonly sentry?: SentryModule } = {},
+  deps: {
+    readonly sentry?: SentryModule;
+    readonly langfuse?: LangfuseCallbackHandlerDeps;
+    readonly shutdown?: readonly (() => Promise<unknown> | unknown)[];
+  } = {},
 ): Observability {
   const sentrySink = createSentrySink(config.sentry, deps.sentry);
-  const createCallbackHandler = createLangfuseCallbackHandlerFactory(config.langfuse);
+  const langfuse = createLangfuseCallbackHandlerFactory(config.langfuse, deps.langfuse);
 
   return {
-    createCallbackHandler,
+    createCallbackHandler: langfuse.createCallbackHandler,
     captureException: sentrySink.captureException,
     addBreadcrumb: sentrySink.addBreadcrumb,
     createLogger(name) {
       return createTelemetryLogger(name, { sentry: sentrySink });
+    },
+    async shutdown() {
+      await Promise.allSettled([
+        langfuse.shutdown(),
+        sentrySink.shutdown(),
+        ...(deps.shutdown ?? []).map(async (drain) => drain()),
+      ]);
     },
   };
 }
