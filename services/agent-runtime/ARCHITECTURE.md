@@ -189,7 +189,7 @@ Hard invariants:
 - Store Conversation History as Runtime-owned server truth in Neon.
 - Treat Cron and Heartbeat as triggers, not notifications.
 - Make Post-Message-Back the only Runtime primitive that can cause push notification handoff.
-- Keep APNs/FCM credentials and device-token routing in the Control Plane.
+- Keep push delivery and device push-token routing in the Control Plane.
 - Do not implement a standalone `channels` domain for Mobile, Desktop, or Android v1 clients.
 - Do not reimplement DeepAgents planning, tool loop, VFS semantics, skills, subagents, memory surface, or compaction in shell code.
 - Materialize host files only when a concrete backend/tool requires OS-level files.
@@ -213,7 +213,7 @@ Client boundary:
 
 Control Plane boundary:
 
-- Control Plane owns identity, gates, devices, Routing issuance, Agent Instance registry, and push credentials.
+- Control Plane owns identity, gates, devices, Routing issuance, Agent Instance registry, and push delivery.
 - Runtime exposes private internal HTTP only for server-to-server calls such as `POST /internal/sessions/start`.
 - Runtime calls Control Plane notification endpoints only from Post-Message-Back flow.
 
@@ -267,7 +267,7 @@ Security:
 
 - Public WebSocket auth uses Neon Auth JWT verification via shared Providers.
 - Internal HTTP uses shared-secret auth on a private network path.
-- Runtime never handles APNs credentials directly.
+- Runtime never handles push-provider credentials directly.
 - Cross-user data leakage is a critical bug; tests must cover user isolation for repos and queues.
 
 Testing:

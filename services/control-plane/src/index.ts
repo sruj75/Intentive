@@ -25,6 +25,8 @@ export {
 } from "./domains/gates/types/state.js";
 export { routingSample } from "./domains/routing/types/routing.js";
 export {
+  notificationsCheckReceiptsRequestSample,
+  notificationsCheckReceiptsResponseSample,
   notificationsPushRequestSample,
   notificationsPushResponseSample,
 } from "./domains/notifications/types/push.js";

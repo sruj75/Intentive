@@ -21,10 +21,12 @@ Two API surfaces:
   - `GET /me` → `AccountState` (`user_id`, `next_gate`, `has_agent_instance`, `has_desktop_client`); request carries optional `GetMeDeviceSignal` headers (`X-Client-Kind`, `X-Capture-Permission-Granted`) for device-local gate computation (ADR-0005).
   - `GET /agent` → `GetAgentResponse` (`agent_instance_id`, `ws_url`, `runtime_jwt`).
   - `POST /consent`, `POST /sibling-invitation/skip` → one-time lifecycle acknowledgements.
-  - `POST /devices/register` → device fingerprint + `client_kind` + APNs/FCM token, returns `device_id`.
+  - `POST /devices/register` → device fingerprint + `client_kind` + Expo Push Token, returns `device_id`.
 - **Internal API (Control Plane ↔ Agent Runtime), shared-secret authenticated, private network:**
   - `POST /internal/sessions/start` — Control Plane → Runtime: Session Start, returns `agent_instance_id` + `ws_url`.
   - `POST /internal/notifications/push` — Runtime → Control Plane: push handoff, returns `delivered` + `device_count`.
+- **Maintenance API (operator/scheduler → Control Plane), shared-secret authenticated:**
+  - `POST /internal/notifications/check-receipts` — bounded Expo receipt checking, returns `checked` + `cleared`.
 - **Shared primitives** — `ClientKind`, `PreChatGateKind` (`identity | consent_primer | capture_permission_setup | sibling_client_invitation`).
 
 ## Invariants

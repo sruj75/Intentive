@@ -6,7 +6,7 @@ import * as contract from "../dist/index.js";
 const validDeviceRegister = {
   device_fingerprint: "abc",
   client_kind: "desktop",
-  apns_token: "token",
+  expo_push_token: "token",
 };
 
 test("parseBoundary returns the typed value for valid input", () => {
@@ -19,7 +19,7 @@ test("parseBoundary throws BoundaryParseError surfacing only key names", () => {
     contract.parseBoundary(contract.PostDeviceRegisterRequest, {
       device_fingerprint: "abc",
       client_kind: "desktop",
-      apns_token: "token",
+      expo_push_token: "token",
       legacy_field: true,
     });
     assert.fail("expected BoundaryParseError");

@@ -10,6 +10,7 @@ test("public and internal schemas are exported from one barrel", () => {
   assert.ok(contract.PostDeviceRegisterRequest);
   assert.ok(contract.PostInternalSessionsStartRequest);
   assert.ok(contract.PostInternalNotificationsPushRequest);
+  assert.ok(contract.PostInternalNotificationsCheckReceiptsRequest);
 });
 
 test("GetMeDeviceSignal coerces header strings into a typed device signal", () => {
@@ -55,11 +56,22 @@ test("public request schemas reject unknown keys", () => {
   const result = contract.PostDeviceRegisterRequest.safeParse({
     device_fingerprint: "abc",
     client_kind: "desktop",
-    apns_token: "token",
+    expo_push_token: "token",
     legacy_field: true,
   });
 
   assert.equal(result.success, false);
+});
+
+test("receipt-check request accepts an optional positive integer limit", () => {
+  assert.deepEqual(contract.PostInternalNotificationsCheckReceiptsRequest.parse({}), {});
+  assert.deepEqual(contract.PostInternalNotificationsCheckReceiptsRequest.parse({ limit: 10 }), {
+    limit: 10,
+  });
+  assert.equal(
+    contract.PostInternalNotificationsCheckReceiptsRequest.safeParse({ limit: 0 }).success,
+    false,
+  );
 });
 
 test("internal request schemas reject unknown keys", () => {

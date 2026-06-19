@@ -39,7 +39,7 @@ The Runtime will expose public WebSocket ingress for first-party Clients and a p
 16. As a future Android Client, I want to reuse the same Protocol, so that adding Android does not require new Runtime routing code.
 17. As the Control Plane, I want a private Session Start call, so that first chat entry creates or loads the User's Agent Instance.
 18. As the Control Plane, I want to issue Routing and then step out of the data path, so that account truth and message traffic stay separate.
-19. As the Control Plane, I want the Runtime to call me only for push handoff, so that APNs credentials and device tokens remain in one authority.
+19. As the Control Plane, I want the Runtime to call me only for push handoff, so that push delivery and device tokens remain in one authority.
 20. As the Agent Runtime, I want to verify JWTs locally through shared Providers, so that message authentication does not depend on a Control Plane proxy.
 21. As the Agent Runtime, I want one ordered queue per User, so that concurrent Mobile and Desktop events cannot corrupt Companion state.
 22. As the Agent Runtime, I want durable idempotency keys for inbound events, so that reconnects and retries do not duplicate turns.
@@ -119,7 +119,7 @@ The Runtime will expose public WebSocket ingress for first-party Clients and a p
 - Mobile on-device chat persistence.
 - Desktop chat UI.
 - Per-user VM, per-user process, per-user schema, org/workspace tenancy, or `tenant_id`.
-- APNs/FCM credential ownership inside the Agent Runtime.
+- Push-provider credential ownership inside the Agent Runtime.
 - Reimplementing DeepAgents internals in shell code.
 - Full replay/ack delivery semantics beyond snapshot-first reconnect and v1 idempotency.
 

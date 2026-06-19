@@ -2,8 +2,9 @@
  * Repo-layer integration test (ADR-0003): the real `0003_devices.sql` + the real
  * upsert, against a disposable Neon branch. Proves the database-enforced
  * invariants a fake repo can't — idempotency on `(user_id, device_fingerprint)`,
- * non-destructive token rotation, the token-free enumeration, and the FK to
- * users. Applies `0001_users.sql` first so the FK target exists.
+ * non-destructive Expo Push Token rotation, token-free and token-bearing reads,
+ * match-guarded token clearing, and the FK to users. Applies `0001_users.sql`
+ * first so the FK target exists.
  *
  * Skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are absent so local runs without
  * credentials stay green; CI supplies the secret and runs it for real.
@@ -58,7 +59,7 @@ test("first registration returns a stable device id and creates one row", { skip
     userId,
     deviceFingerprint: "fp-1",
     clientKind: "mobile",
-    apnsToken: "tok-1",
+    expoPushToken: "tok-1",
   });
 
   assert.ok(deviceId, "registration returns a device id");
@@ -78,22 +79,22 @@ test(
       userId,
       deviceFingerprint: "fp-2",
       clientKind: "mobile",
-      apnsToken: "tok-old",
+      expoPushToken: "tok-old",
     });
     const second = await repo.registerDevice({
       userId,
       deviceFingerprint: "fp-2",
       clientKind: "mobile",
-      apnsToken: "tok-new",
+      expoPushToken: "tok-new",
     });
 
     assert.equal(first.deviceId, second.deviceId, "same device must keep its id");
 
     const rows = await sql`
-    SELECT apns_token FROM control_plane.devices WHERE user_id = ${userId}
+    SELECT expo_push_token FROM control_plane.devices WHERE user_id = ${userId}
   `;
     assert.equal(rows.length, 1, "a re-register must not create a second row");
-    assert.equal(rows[0].apns_token, "tok-new", "a provided token rotates in");
+    assert.equal(rows[0].expo_push_token, "tok-new", "a provided token rotates in");
   },
 );
 
@@ -106,14 +107,14 @@ test(
       userId,
       deviceFingerprint: "fp-3",
       clientKind: "desktop",
-      apnsToken: "tok-keep",
+      expoPushToken: "tok-keep",
     });
     await repo.registerDevice({ userId, deviceFingerprint: "fp-3", clientKind: "desktop" });
 
-    const [{ apns_token }] = await sql`
-    SELECT apns_token FROM control_plane.devices WHERE user_id = ${userId}
+    const [{ expo_push_token }] = await sql`
+    SELECT expo_push_token FROM control_plane.devices WHERE user_id = ${userId}
   `;
-    assert.equal(apns_token, "tok-keep", "an omitted token must not clear the stored value");
+    assert.equal(expo_push_token, "tok-keep", "an omitted token must not clear the stored value");
   },
 );
 
@@ -123,13 +124,13 @@ test("listDevicesForUser enumerates the user's devices token-free", { skip }, as
     userId,
     deviceFingerprint: "fp-a",
     clientKind: "mobile",
-    apnsToken: "t",
+    expoPushToken: "t",
   });
   await repo.registerDevice({
     userId,
     deviceFingerprint: "fp-b",
     clientKind: "desktop",
-    apnsToken: "t",
+    expoPushToken: "t",
   });
 
   const devices = await repo.listDevicesForUser(userId);
@@ -143,6 +144,67 @@ test("listDevicesForUser enumerates the user's devices token-free", { skip }, as
     );
   }
   assert.deepEqual(devices.map((d) => d.client_kind).sort(), ["desktop", "mobile"]);
+});
+
+test(
+  "listExpoPushTargetsForUser returns only devices with Expo Push Tokens",
+  { skip },
+  async () => {
+    const { userId } = await users.resolveUser({ sub: "sub-dev-5" });
+    const withToken = await repo.registerDevice({
+      userId,
+      deviceFingerprint: "fp-token",
+      clientKind: "mobile",
+      expoPushToken: "ExponentPushToken[with-token]",
+    });
+    await repo.registerDevice({
+      userId,
+      deviceFingerprint: "fp-null",
+      clientKind: "desktop",
+    });
+
+    const targets = await repo.listExpoPushTargetsForUser(userId);
+
+    assert.deepEqual(targets, [
+      {
+        deviceId: withToken.deviceId,
+        expoPushToken: "ExponentPushToken[with-token]",
+      },
+    ]);
+  },
+);
+
+test("clearExpoPushToken clears only when the stored token still matches", { skip }, async () => {
+  const { userId } = await users.resolveUser({ sub: "sub-dev-6" });
+  const { deviceId } = await repo.registerDevice({
+    userId,
+    deviceFingerprint: "fp-clear",
+    clientKind: "mobile",
+    expoPushToken: "old-token",
+  });
+  await repo.registerDevice({
+    userId,
+    deviceFingerprint: "fp-clear",
+    clientKind: "mobile",
+    expoPushToken: "new-token",
+  });
+
+  await repo.clearExpoPushToken(deviceId, "old-token");
+  let [{ expo_push_token }] = await sql`
+    SELECT expo_push_token FROM control_plane.devices WHERE id = ${deviceId}
+  `;
+  assert.equal(expo_push_token, "new-token", "a stale ticket must not clear a rotated token");
+
+  await repo.clearExpoPushToken(deviceId, "new-token");
+  [{ expo_push_token }] = await sql`
+    SELECT expo_push_token FROM control_plane.devices WHERE id = ${deviceId}
+  `;
+  assert.equal(expo_push_token, null, "the matching dead token is cleared");
+
+  const [{ count }] = await sql`
+    SELECT count(*)::int AS count FROM control_plane.devices WHERE id = ${deviceId}
+  `;
+  assert.equal(count, 1, "clearing a token keeps the device row");
 });
 
 test("registering for an unknown user is rejected by the foreign key", { skip }, async () => {

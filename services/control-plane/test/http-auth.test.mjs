@@ -14,6 +14,7 @@ import {
   authFailed,
   bearerToken,
   mapJwtVerificationErrorToHttpResponse,
+  requireInternalSecret,
   requireUser,
   serviceUnavailable,
 } from "../dist/http/auth.js";
@@ -115,4 +116,16 @@ test("requireUser: a non-auth error rethrows rather than becoming a 401/503", as
     }),
     /database is on fire/,
   );
+});
+
+test("requireInternalSecret validates bearer credentials against the expected secret", () => {
+  assert.deepEqual(requireInternalSecret("Bearer expected", "expected"), { authenticated: true });
+  assert.deepEqual(requireInternalSecret(null, "expected"), {
+    authenticated: false,
+    response: authFailed(),
+  });
+  assert.deepEqual(requireInternalSecret("Bearer wrong", "expected"), {
+    authenticated: false,
+    response: authFailed(),
+  });
 });

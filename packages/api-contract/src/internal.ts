@@ -40,3 +40,24 @@ export const PostInternalNotificationsPushResponse = z
 export type PostInternalNotificationsPushResponse = z.infer<
   typeof PostInternalNotificationsPushResponse
 >;
+
+// ---------- CP maintenance: POST /internal/notifications/check-receipts ----------
+
+export const PostInternalNotificationsCheckReceiptsRequest = z
+  .object({
+    limit: z.number().int().positive().optional(),
+  })
+  .strict();
+export type PostInternalNotificationsCheckReceiptsRequest = z.infer<
+  typeof PostInternalNotificationsCheckReceiptsRequest
+>;
+
+export const PostInternalNotificationsCheckReceiptsResponse = z
+  .object({
+    checked: z.number().int().nonnegative(),
+    cleared: z.number().int().nonnegative(),
+  })
+  .strict();
+export type PostInternalNotificationsCheckReceiptsResponse = z.infer<
+  typeof PostInternalNotificationsCheckReceiptsResponse
+>;

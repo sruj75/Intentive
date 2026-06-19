@@ -101,7 +101,7 @@ MVP 1 spikes `assistant-ui/native` as a replaceable Chat Primitive Engine behind
 - Control Plane as a WebSocket message proxy.
 - GCP provisioning from the client.
 - Full memory editor, dashboards, multi-agent views, bottom tabs, header nav.
-- Full notification system beyond APNs registration + **Post-Message-Back**-driven pushes (owned by runtime + CP).
+- Full notification system beyond Expo Push Token registration + **Post-Message-Back**-driven pushes (owned by runtime + CP).
 - Tool-backed autonomous actions on-device.
 
 ## Further Notes

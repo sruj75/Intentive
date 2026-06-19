@@ -24,7 +24,7 @@ test("a valid registration returns a device_id and maps the request onto the rep
     },
   }).handle({
     authorization: "Bearer good.jwt.token",
-    body: { device_fingerprint: "fp-1", client_kind: "desktop", apns_token: "tok-a" },
+    body: { device_fingerprint: "fp-1", client_kind: "desktop", expo_push_token: "tok-a" },
   });
 
   assert.equal(res.status, 200);
@@ -34,8 +34,7 @@ test("a valid registration returns a device_id and maps the request onto the rep
       userId: "u_1",
       deviceFingerprint: "fp-1",
       clientKind: "desktop",
-      apnsToken: "tok-a",
-      fcmToken: undefined,
+      expoPushToken: "tok-a",
     },
   ]);
 });

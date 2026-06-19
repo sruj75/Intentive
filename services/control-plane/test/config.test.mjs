@@ -13,10 +13,8 @@ const validEnv = {
   RUNTIME_INTERNAL_BASE_URL: "https://runtime.internal",
   INTERNAL_SECRET_TO_RUNTIME: "secret-to-runtime",
   INTERNAL_SECRET_FROM_RUNTIME: "secret-from-runtime",
-  APNS_KEY_ID: "KEYID",
-  APNS_TEAM_ID: "TEAMID",
-  APNS_BUNDLE_ID: "com.intentive.app",
-  APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----stub-----END PRIVATE KEY-----",
+  INTERNAL_SECRET_FOR_MAINTENANCE: "secret-for-maintenance",
+  EXPO_ACCESS_TOKEN: "expo-token",
 };
 
 function loadErr(env) {
@@ -37,7 +35,8 @@ test("valid env loads into a grouped, frozen config", () => {
   assert.equal(cfg.runtimeInternal.baseUrl, "https://runtime.internal");
   assert.equal(cfg.runtimeInternal.secretToRuntime, "secret-to-runtime");
   assert.equal(cfg.internalInbound.secretFromRuntime, "secret-from-runtime");
-  assert.equal(cfg.apns.bundleId, "com.intentive.app");
+  assert.equal(cfg.internalInbound.secretForMaintenance, "secret-for-maintenance");
+  assert.equal(cfg.expo.accessToken, "expo-token");
 
   // frozen — config is read-only once resolved
   assert.throws(() => {
@@ -68,7 +67,13 @@ test("a malformed URL throws with the offending key named", () => {
 test("config errors never echo a secret value", () => {
   const err = loadErr({ ...validEnv, RUNTIME_INTERNAL_BASE_URL: "not-a-url" });
   const serialized = `${err.message} ${JSON.stringify(err.invalidKeys)}`;
-  for (const secret of ["secret-to-runtime", "secret-from-runtime", "BEGIN PRIVATE KEY"]) {
+  for (const secret of ["secret-to-runtime", "secret-from-runtime", "secret-for-maintenance"]) {
     assert.equal(serialized.includes(secret), false);
   }
+});
+
+test("EXPO_ACCESS_TOKEN is optional", () => {
+  const { EXPO_ACCESS_TOKEN, ...withoutToken } = validEnv;
+  void EXPO_ACCESS_TOKEN;
+  assert.equal(loadConfig(withoutToken).expo.accessToken, undefined);
 });

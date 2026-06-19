@@ -12,15 +12,21 @@ For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](
 | `POST /consent`                 | Records Consent Primer completion                                 |
 | `POST /sibling-invitation/skip` | Records sibling invitation skip                                   |
 | `GET  /agent`                   | Issues Agent Runtime URL + JWT (Routing)                          |
-| `POST /devices/register`        | Idempotent device registration (includes APNs token)              |
+| `POST /devices/register`        | Idempotent device registration (includes Expo Push Token)         |
 
 Schemas live in [`packages/api-contract`](../../packages/api-contract).
 
-## Internal surface (Control Plane → Agent Runtime callbacks)
+## Internal surface (Agent Runtime → Control Plane)
 
-| Endpoint                            | Purpose                                                                  |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `POST /internal/notifications/push` | Agent Runtime asks Control Plane to fan out a Push Notification via APNs |
+| Endpoint                            | Purpose                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------- |
+| `POST /internal/notifications/push` | Agent Runtime asks Control Plane to fan out a Push Notification via Expo Push Service |
+
+## Maintenance surface (operator/scheduler → Control Plane)
+
+| Endpoint                                      | Purpose                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `POST /internal/notifications/check-receipts` | Bounded Expo receipt checking; clears dead `expo_push_token` values |
 
 ## Development
 

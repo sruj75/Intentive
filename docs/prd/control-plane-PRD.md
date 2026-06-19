@@ -17,7 +17,7 @@ The User-facing problem is that without the Control Plane there is no identity, 
 
 Build the Control Plane as a stateless Node/TypeScript HTTP service deployed to **Google Cloud Run**. It is the server-side authority for identity, the Device Registry, Pre-Chat Gate state, the Agent Instance Registry, Routing, and notification fan-out. It sits **beside** the client↔runtime data path and never **on** it: it issues Routing once (`GET /agent` → URL + JWT) and then steps out.
 
-Request/response schemas are owned by `packages/api-contract/`; the Control Plane implements them, it does not redefine them. JWT verification reuses the shared `packages/providers/` auth boundary (Neon Auth JWKS), the same boundary the Agent Runtime uses. The Control Plane reads a control-plane-owned Neon schema, separate from the Runtime-owned schema. It holds APNs credentials and the device-token side of the Device Registry; the Agent Runtime never calls APNs directly.
+Request/response schemas are owned by `packages/api-contract/`; the Control Plane implements them, it does not redefine them. JWT verification reuses the shared `packages/providers/` auth boundary (Neon Auth JWKS), the same boundary the Agent Runtime uses. The Control Plane reads a control-plane-owned Neon schema, separate from the Runtime-owned schema. It holds Expo Push Tokens and the push-delivery side of the Device Registry; the Agent Runtime never calls Expo, APNs, or FCM directly.
 
 ## User Stories
 
@@ -26,9 +26,9 @@ Request/response schemas are owned by `packages/api-contract/`; the Control Plan
 3. As a Mobile Client, I want `GET /me` to tell me the next Pre-Chat Gate or that I can enter Companion Chat, so that my Entry Resolver is server-driven.
 4. As a Desktop Client, I want `GET /me` to require Capture Permission Setup as a Device-Local Gate even though I am already onboarded, so that capture is correctly gated per device.
 5. As a Client, I want `GET /agent` to return `ws_url`, `runtime_jwt`, and `agent_instance_id`, so that I can open one direct Protocol WebSocket to the Agent Runtime.
-6. As a Client, I want device registration to be idempotent and to carry my APNs/FCM token, so that push delivery can reach me without duplicate device rows.
+6. As a Client, I want device registration to be idempotent and to carry my Expo Push Token, so that push delivery can reach me without duplicate device rows.
 7. As the Control Plane, I want to call the Agent Runtime's `POST /internal/sessions/start` exactly once per first chat entry, so that the Agent Instance is created or loaded idempotently.
-8. As the Agent Runtime, I want to call `POST /internal/notifications/push` on the Control Plane when a User is offline, so that APNs credentials stay in one authority.
+8. As the Agent Runtime, I want to call `POST /internal/notifications/push` on the Control Plane when a User is offline, so that push delivery stays in one authority.
 9. As an operator, I want the Control Plane to deploy to Cloud Run with the same shared-secret and Neon configuration as the Runtime expects, so that the Internal API trust boundary works in production.
 
 ## Implementation Decisions
@@ -40,7 +40,7 @@ Request/response schemas are owned by `packages/api-contract/`; the Control Plan
 - The Control Plane reads a control-plane-owned Neon schema with a role separate from the Agent Runtime's schema.
 - `GET /agent` mints the runtime JWT and returns Routing; the Control Plane is never on the message data path afterward.
 - Session Start is the only Control Plane → Agent Runtime call that creates state. It is synchronous and idempotent per User.
-- The Control Plane holds APNs credentials and device tokens. The Agent Runtime asks it to push; it never pushes directly.
+- The Control Plane holds Expo Push Tokens and sends through Expo Push Service. The Agent Runtime asks it to push; it never pushes directly.
 - All write endpoints that represent a one-time lifecycle transition are idempotent.
 - The GCP Provisioner is removed from v1. Agent Instance Creation is synchronous; there is no per-user provisioning lifecycle.
 
@@ -49,7 +49,7 @@ Request/response schemas are owned by `packages/api-contract/`; the Control Plan
 - Proxying or inspecting any in-session client↔runtime message.
 - Apple Sign-In (Google only in v1; Apple later).
 - Per-user VM / per-user process / per-user schema / org / workspace / `tenant_id`.
-- FCM/Android push delivery beyond storing the token shape.
+- Direct APNs/FCM delivery and Android-specific push delivery.
 - Any chat, conversation history, or agent behavior — those are Agent Runtime concerns.
 
 ## Further Notes

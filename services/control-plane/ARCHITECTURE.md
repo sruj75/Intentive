@@ -20,7 +20,7 @@ It sits **beside** the client↔runtime data path, never **on** it. It tells eac
                           |
             ┌─────────────┼───────────────────────────┐
             |             |                            |
-     Neon (CP schema)   APNs                  private HTTP (VPC, shared secret)
+     Neon (CP schema)   Expo Push Service      private HTTP (VPC, shared secret)
      account truth    push delivery                    |
                                           POST /internal/sessions/start  ──► Agent Runtime
                                           POST /internal/notifications/push ◄── Agent Runtime
@@ -84,11 +84,11 @@ src/domains/
 Domain responsibilities:
 
 - `identity` (**#23/#30/#47**): JWT verification + `control_plane.users` resolution; `GET /me` HTTP handler (`ui/get-me.ts`, `ui/app.ts`). `resolveAccount` is the `AccountState` **composer** — it assembles `user_id` (identity), `next_gate` (gates, #26/#27), `has_agent_instance` (agents, #30), and `has_desktop_client` (derived from the same `devices.listDevicesForUser` read used for sibling-gate inputs, #47) by calling those domains' services and the token-free `devices.listDevicesForUser` read, rather than each domain owning the `/me` response. `resolveRoutingContext` exposes the principal + gate slice for `GET /agent` without assembling full Account State.
-- `devices` (**#27**): Device Registry (`control_plane.devices`), APNs/FCM token storage, idempotent `POST /devices/register`, and the token-free `listDevicesForUser` read port for the identity composer.
+- `devices` (**#27/#49**): Device Registry (`control_plane.devices`), Expo Push Token storage, idempotent `POST /devices/register`, and the token-free `listDevicesForUser` read port for the identity composer.
 - `gates` (**#26/#27**): Cross-Client Gate persistence (Consent Primer, Sibling Invitation skip) and the pure `computeNextGate(inputs) → PreChatGateKind | null` sequencer (consent → sibling skip or observed sibling device → Desktop-only capture permission), exposed to the identity composer as `nextGate(userId, device)`; the idempotent writes `POST /consent` and `POST /sibling-invitation/skip`. **Identity** is satisfied by the auth boundary (a 200 from `GET /me` means signed in), so `computeNextGate` never returns `identity`. gates does not depend on `devices` — the composer gathers inputs. gates does not own `GET /me` shaping; the identity composer does (ADR-0004, ADR-0005).
 - `agents` (**#30**): Agent Instance Registry (`control_plane.agent_instances`, one row per `user_id`), Runtime Session Start client (`POST /internal/sessions/start`), `ensureAgentInstance` (idempotent get-or-create via live Session Start + local record), and `hasAgentInstance` read port for the identity composer. Registry stores `agent_instance_id` only — `ws_url` is re-derived from Session Start on every `GET /agent`.
 - `routing` (**#30**): `GET /agent` handler (`ui/get-agent.ts`); authenticates, enforces gate satisfaction server-side (`403`), calls `agents.ensureAgentInstance`, returns `GetAgentResponse` with pass-through Neon Auth `runtime_jwt` (ADR-0002 — never CP-signed). Surfaces retryable `503` when JWKS or Session Start is unavailable.
-- `notifications`: APNs client, Apple credentials, push delivery, `POST /internal/notifications/push` ingress.
+- `notifications`: Expo Push Service client, ticket/receipt cleanup, push delivery, `POST /internal/notifications/push` ingress, and protected receipt-check maintenance ingress.
 
 Shared package dependencies:
 
@@ -120,7 +120,7 @@ Hard invariants:
 - Be the single writer of account truth: one identity, one onboarding record, one Agent Instance per User regardless of how many Clients they install.
 - Verify user JWTs through the shared `packages/providers` auth boundary — the same verifier the Agent Runtime uses. Do not write a Control-Plane-local verifier.
 - Own the control-plane Neon schema with a Postgres role separate from the Agent Runtime's. No Client and no Runtime reads Control Plane tables directly.
-- Hold APNs credentials and device tokens here. The Agent Runtime never calls APNs directly.
+- Hold Expo Push Tokens and push delivery here. The Agent Runtime never calls Expo, APNs, or FCM directly.
 - Make every write endpoint that represents a one-time lifecycle transition idempotent.
 - Treat Session Start as the only Control Plane → Agent Runtime call that creates state: synchronous, idempotent per User, bundling Agent Instance creation with the Conversation Start Trigger.
 - Compute the next Pre-Chat Gate from `client_kind` plus cross-client state in one model behind `GET /me` — not per-screen flags or per-gate endpoints.
@@ -132,7 +132,7 @@ Mechanical checks should enforce:
 
 - Layer direction inside `src/domains/**`.
 - No cross-deployable imports from `apps/**` or other `services/**`.
-- Provider-only access for auth, telemetry, feature flags, Neon clients, and APNs clients.
+- Provider-only access for auth, telemetry, feature flags, Neon clients, and push-provider clients.
 - HTTP-contract consistency through `packages/api-contract`.
 - Forbidden vocabulary from `CONTEXT.md` and the root `CONTEXT-MAP.md` avoid lists (especially "backend", "proxy", "gateway" as names for this service).
 
@@ -147,7 +147,7 @@ Client boundary:
 Agent Runtime boundary:
 
 - The Control Plane calls the Runtime's private `POST /internal/sessions/start` (shared-secret auth, VPC) during `GET /agent` on first chat entry.
-- The Control Plane receives the Runtime's `POST /internal/notifications/push` and fans the push out via APNs.
+- The Control Plane receives the Runtime's `POST /internal/notifications/push` and fans the push out via Expo Push Service.
 - These two internal calls are the entire Control Plane ↔ Runtime surface. There is no message forwarding.
 
 Neon boundary:
@@ -165,13 +165,13 @@ Deployment boundary:
 
 Providers:
 
-- Auth (Neon Auth JWKS), telemetry, feature flags, Neon connection pools, and the APNs client enter domains through explicit provider interfaces.
+- Auth (Neon Auth JWKS), telemetry, feature flags, Neon connection pools, and the Expo Push Service client enter domains through explicit provider interfaces.
 - Domain code depends on provider interfaces, not concrete SDK setup.
 
 Observability:
 
 - Log request lifecycle, JWT verification outcomes, gate-state transitions, Session Start calls, device registrations, and push fan-out results.
-- Redact JWTs, APNs tokens, device fingerprints, and any secret material from log fields by default.
+- Redact JWTs, Expo Push Tokens, device fingerprints, and any secret material from log fields by default.
 
 Reliability:
 
@@ -183,7 +183,7 @@ Security:
 
 - Public endpoints use Neon Auth JWT verification via shared Providers.
 - The internal `POST /internal/notifications/push` endpoint uses shared-secret auth on a private network path, never user JWT.
-- APNs credentials live only here, loaded from configuration/secrets, never committed.
+- Expo Push Tokens and push-provider configuration live only here, loaded from configuration/secrets, never committed.
 - The Control Plane is the only writer of account truth; structural single-writer ownership prevents cross-client state drift.
 
 Testing:

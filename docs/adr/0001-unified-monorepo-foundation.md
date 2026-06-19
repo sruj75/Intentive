@@ -17,7 +17,7 @@ Key boundary decisions established by this ADR (full vocabulary in CONTEXT.md):
 - **Control Plane sits beside the data path, never on it.** It issues Routing (URL + JWT) and steps out.
 - **Single internal call CP→Runtime:** `POST /internal/sessions/start` — synchronous, idempotent per User, bundles Agent Instance creation with the Conversation Start Trigger. Shared-secret auth on a private interface.
 - **Conversation History is server-truth.** No on-device cache in the Mobile Client until measured latency requires one.
-- **Post-Message-Back is the only notification trigger.** Replies do not auto-push. The Control Plane owns APNs credentials.
+- **Post-Message-Back is the only notification trigger.** Replies do not auto-push. The Control Plane owns push delivery and device push tokens (Expo Push Service in v1; see [`services/control-plane/docs/adr/0006-expo-push-service-for-v1-notifications.md`](../../services/control-plane/docs/adr/0006-expo-push-service-for-v1-notifications.md)).
 - **Pre-Chat Gates** are Control-Plane-owned, with two kinds: Cross-Client (Identity, Consent, Sibling Invitation skip) and Device-Local (Capture Permission Setup).
 - **Desktop is capture-only in v1.** No chat UI. Chat lives on Mobile (and future Android).
 - **GCP Provisioner is removed** from v1 vocabulary. The Runtime is one always-on GCE VM deployed by CI/CD.

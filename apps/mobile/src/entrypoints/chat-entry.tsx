@@ -12,7 +12,8 @@
  * and the Control Plane base URL; tests inject `adapter`, `accountStateSource`,
  * `controlPlaneBaseUrl`, and safe-area metrics directly.
  */
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import type { Metrics } from "react-native-safe-area-context";
 
 import {
@@ -30,12 +31,33 @@ import {
 } from "../domains/chat/runtime/runtime-adapter";
 import { CompanionChat } from "../domains/chat/ui/companion-chat";
 import type { RuntimeAdapter } from "../domains/chat/types/conversation";
+import { getOrCreateDeviceFingerprint } from "../domains/notifications/repo/device-fingerprint";
+import { createExpoNotificationsPort } from "../domains/notifications/repo/expo-notifications-port";
+import {
+  registerForPush,
+  type PushRegistrationResult,
+} from "../domains/notifications/service/push-registration";
+import type {
+  NotificationsPort,
+  NotificationsSubscription,
+} from "../domains/notifications/types/notifications-port";
+
+const PUSH_REGISTRATION_RETRY_DELAY_MS = 60_000;
+
+type PushRegistration = () => Promise<PushRegistrationResult>;
+
+export interface PushRegistrationEvents {
+  subscribeToForeground(listener: () => void): NotificationsSubscription;
+  subscribeToPushTokenChanges(listener: () => void): NotificationsSubscription;
+}
 
 export interface ChatEntryProps {
   readonly adapter?: RuntimeAdapter;
   readonly accountStateSource?: AccountStateSource;
   readonly controlPlaneBaseUrl?: string;
   readonly initialSafeAreaMetrics?: Metrics;
+  readonly pushRegistration?: PushRegistration;
+  readonly pushRegistrationEvents?: PushRegistrationEvents;
 }
 
 export function ChatEntry({
@@ -43,9 +65,17 @@ export function ChatEntry({
   accountStateSource: injectedAccountStateSource,
   controlPlaneBaseUrl,
   initialSafeAreaMetrics,
+  pushRegistration: injectedPushRegistration,
+  pushRegistrationEvents: injectedPushRegistrationEvents,
 }: ChatEntryProps = {}): React.JSX.Element {
   const authAdapter = useOptionalAuthAdapter();
   const [accountVisible, setAccountVisible] = useState(false);
+  const didRegisterForPush = useRef(false);
+  const pushRegistrationInFlight = useRef(false);
+  const pendingPushRegistrationAttempt = useRef(false);
+  const pendingPushRegistrationReset = useRef(false);
+  const lastPushRegistrationResult = useRef<PushRegistrationResult | null>(null);
+  const [pushRegistrationAttempt, setPushRegistrationAttempt] = useState(0);
   const baseUrl = controlPlaneBaseUrl ?? process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "";
 
   const adapter = useMemo(() => {
@@ -81,6 +111,124 @@ export function ChatEntry({
 
   const { accountState, refreshAccountState } = useAccountStateProjection(accountStateSource);
   const runtimeState = useSyncExternalStore(adapter.subscribe, adapter.getState, adapter.getState);
+  const notifications = useMemo<NotificationsPort | null>(() => {
+    if (injectedPushRegistration) return null;
+    if (!authAdapter || baseUrl.trim().length === 0) return null;
+    return createExpoNotificationsPort();
+  }, [authAdapter, baseUrl, injectedPushRegistration]);
+  const pushRegistration = useMemo(() => {
+    if (injectedPushRegistration) return injectedPushRegistration;
+    if (!authAdapter || baseUrl.trim().length === 0 || !notifications) return null;
+
+    return () =>
+      registerForPush({
+        baseUrl,
+        getUserJwt: () => authAdapter.getUserJwt(),
+        fetch: (url, init) => globalThis.fetch(url, init),
+        notifications,
+        getDeviceFingerprint: getOrCreateDeviceFingerprint,
+        onError: (error) => console.warn("Push registration failed", error),
+      });
+  }, [authAdapter, baseUrl, injectedPushRegistration, notifications]);
+  const pushRegistrationEvents = useMemo<PushRegistrationEvents | null>(() => {
+    if (injectedPushRegistrationEvents) return injectedPushRegistrationEvents;
+    if (!notifications) return null;
+
+    return {
+      subscribeToForeground(listener) {
+        return AppState.addEventListener("change", (state: AppStateStatus) => {
+          if (state === "active") listener();
+        });
+      },
+      subscribeToPushTokenChanges(listener) {
+        return notifications.subscribeToPushTokenChanges(listener);
+      },
+    };
+  }, [injectedPushRegistrationEvents, notifications]);
+  const requestPushRegistrationAttempt = useCallback((resetSuccessfulRegistration = false) => {
+    if (resetSuccessfulRegistration) didRegisterForPush.current = false;
+    if (pushRegistrationInFlight.current) {
+      pendingPushRegistrationAttempt.current = true;
+      pendingPushRegistrationReset.current =
+        pendingPushRegistrationReset.current || resetSuccessfulRegistration;
+      return;
+    }
+
+    setPushRegistrationAttempt((attempt) => attempt + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!pushRegistration || didRegisterForPush.current || pushRegistrationInFlight.current) return;
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    pushRegistrationInFlight.current = true;
+
+    void pushRegistration()
+      .then((result) => {
+        if (cancelled) return;
+        lastPushRegistrationResult.current = result;
+        if (result.status === "registered") {
+          didRegisterForPush.current = true;
+          return;
+        }
+
+        if (result.status === "terminal") return;
+
+        retryTimer = setTimeout(() => {
+          setPushRegistrationAttempt((attempt) => attempt + 1);
+        }, PUSH_REGISTRATION_RETRY_DELAY_MS);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Push registration failed", error);
+        lastPushRegistrationResult.current = {
+          status: "retryable",
+          reason: "registration_failed",
+        };
+        retryTimer = setTimeout(() => {
+          requestPushRegistrationAttempt();
+        }, PUSH_REGISTRATION_RETRY_DELAY_MS);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          pushRegistrationInFlight.current = false;
+          if (pendingPushRegistrationAttempt.current) {
+            const resetSuccessfulRegistration = pendingPushRegistrationReset.current;
+            pendingPushRegistrationAttempt.current = false;
+            pendingPushRegistrationReset.current = false;
+            requestPushRegistrationAttempt(resetSuccessfulRegistration);
+          }
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      pushRegistrationInFlight.current = false;
+      pendingPushRegistrationAttempt.current = false;
+      pendingPushRegistrationReset.current = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [pushRegistration, pushRegistrationAttempt, requestPushRegistrationAttempt]);
+
+  useEffect(() => {
+    if (!pushRegistrationEvents) return;
+
+    const foregroundSubscription = pushRegistrationEvents.subscribeToForeground(() => {
+      const lastResult = lastPushRegistrationResult.current;
+      if (lastResult?.status === "terminal" && lastResult.reason !== "permission_denied") return;
+
+      requestPushRegistrationAttempt(lastResult?.status === "registered");
+    });
+    const pushTokenSubscription = pushRegistrationEvents.subscribeToPushTokenChanges(() => {
+      requestPushRegistrationAttempt(true);
+    });
+
+    return () => {
+      foregroundSubscription.remove();
+      pushTokenSubscription.remove();
+    };
+  }, [pushRegistrationEvents, requestPushRegistrationAttempt]);
 
   return (
     <>

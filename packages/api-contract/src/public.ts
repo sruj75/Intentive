@@ -72,8 +72,7 @@ export const PostDeviceRegisterRequest = z
   .object({
     device_fingerprint: z.string(),
     client_kind: ClientKind,
-    apns_token: z.string().optional(),
-    fcm_token: z.string().optional(),
+    expo_push_token: z.string().optional(),
   })
   .strict();
 export type PostDeviceRegisterRequest = z.infer<typeof PostDeviceRegisterRequest>;

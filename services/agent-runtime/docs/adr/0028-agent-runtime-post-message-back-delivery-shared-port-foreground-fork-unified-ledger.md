@@ -31,7 +31,7 @@ the existing code:
   no per-user socket registry and nothing pushes without an inbound trigger. #41
   introduces both: a live-connection registry and outbound-without-trigger.
 - **OpenClaw's battle-tested shape** is a live-connection registry + a
-  `broadcast`/`send` path for connected clients, with APNs `push` as a separate
+  `broadcast`/`send` path for connected clients, with push notification as a separate
   fallback method, and a **client-kind capability predicate** (`isWebchatClient`)
   deciding what counts as a chat surface — not a hardcoded client enum value.
 - **The product is bidirectional over time.** v1: chat on Mobile, Context
@@ -44,7 +44,7 @@ the existing code:
 - **#41 ACs.** PMB modeled distinctly; persists to Conversation History _before_
   push handoff; push only when the user is not reachable; push outcomes recorded in
   a **delivery ledger**; normal replies never push; every push traceable to a PMB
-  record; APNs credentials + device-token routing stay Control-Plane-owned.
+  record; push delivery + device push-token routing stay Control-Plane-owned.
 
 ## Decision
 
@@ -136,8 +136,8 @@ true` — the tool **is** the "modeled distinctly" boundary; the agent cannot po
    is mutable receipt state arriving later over the wire; folding it in would force
    row updates and break the append-only model `cron_runs` set. Ack-correlation is a
    clean future addition, not a v1 column. For `push`, "outcome" = whether the CP
-   `POST /internal/notifications/push` handoff succeeded; what APNs does downstream and
-   whether the user opens is Control-Plane-owned (AC).
+   `POST /internal/notifications/push` handoff succeeded; what Expo Push Service does
+   downstream and whether the user opens is Control-Plane-owned (AC).
 
 ## Considered Options
 
@@ -167,7 +167,7 @@ true` — the tool **is** the "modeled distinctly" boundary; the agent cannot po
   including the previously-invisible vanished-client edge.
 - ADR-0013/0014 consistent: agent says _what/whether_; shell decides _how/where_.
 - AC-complete: distinct modeling (flag), persist-before-push, push-when-unreachable,
-  ledger, normal-replies-never-push, push→PMB traceability, APNs stays in CP.
+  ledger, normal-replies-never-push, push→PMB traceability, push delivery stays in CP.
 
 ### Negative
 
@@ -194,3 +194,4 @@ true` — the tool **is** the "modeled distinctly" boundary; the agent cannot po
 - Migrations 0002 (`conversation_messages.via_post_message_back`), 0007 (`cron_runs`
   — the ledger precedent)
 - Issue #41 (Post-Message-Back + push handoff)
+- [`services/control-plane/docs/adr/0006-expo-push-service-for-v1-notifications.md`](../../../control-plane/docs/adr/0006-expo-push-service-for-v1-notifications.md) (v1 push delivery mechanism: Expo Push Service)

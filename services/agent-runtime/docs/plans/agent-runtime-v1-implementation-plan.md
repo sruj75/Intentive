@@ -235,7 +235,7 @@ _Shipped in #41 (branch `issue-40and41`, ADR-0028/0029)._
 2. Persist the message into Conversation History.
 3. If the User has no connected Mobile client, call Control Plane `POST /internal/notifications/push`.
 4. Record delivery attempts in the unified `deliveries` ledger (not a separate `post_message_back_requests` table).
-5. Keep APNs credentials and device-token routing exclusively in the Control Plane.
+5. Keep push delivery and device push-token routing exclusively in the Control Plane.
 
 Exit criteria:
 

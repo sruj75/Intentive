@@ -32,6 +32,12 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 
 ### Changed
 
+- **`@intentive/api-contract` — Expo Push Token + receipt maintenance** ([Issue #49]) —
+  `POST /devices/register` now accepts optional `expo_push_token` instead of
+  `apns_token`/`fcm_token`. Added `POST /internal/notifications/check-receipts`
+  request/response schemas for Control Plane maintenance receipt checking. Tests
+  extended in `api-contract/test/contract.test.mjs` and `api-contract/test/parse.test.mjs`;
+  `ARCHITECTURE.md` surface list synced.
 - **`@intentive/api-contract` — `AccountState.has_desktop_client`** ([Issue #47]) —
   `GET /me` now reports whether any registered device in the Control Plane Device Registry
   has `client_kind === "desktop"`. Registered/present only — not live session state. Mobile
@@ -52,3 +58,4 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 [Issue #39]: https://github.com/sruj75/Intentive/issues/39
 [Issue #42]: https://github.com/sruj75/Intentive/issues/42
 [Issue #47]: https://github.com/sruj75/Intentive/issues/47
+[Issue #49]: https://github.com/sruj75/Intentive/issues/49

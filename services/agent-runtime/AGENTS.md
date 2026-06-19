@@ -73,6 +73,6 @@ Monitoring Turns are silent by default. The **Turn Execution** spine records the
 - **JWT verified locally** via Neon Auth JWKS. Do not call the Control Plane to authenticate clients.
 - **`tenant_id` does not exist in v1** — scope state by `user_id` alone. The User is the tenant.
 - **Inbound event set is fixed** to what `packages/protocol/` defines. Unknown events rejected.
-- **Push notifications go through the Control Plane.** Do not call APNs directly. Invoke **Post-Message-Back**, which calls CP's `/internal/notifications/push`.
+- **Push notifications go through the Control Plane.** Do not call Expo, APNs, or FCM directly. Invoke **Post-Message-Back**, which calls CP's `/internal/notifications/push`.
 - **Multi-Tenant = shared compute, per-user isolation.** No per-user VM, no per-user process.
 - **Always-alive.** Never deploy this to a stateless platform (Cloud Run, Lambda, etc.). Long-running state, agent loops, cron, and heartbeat require persistence in process.

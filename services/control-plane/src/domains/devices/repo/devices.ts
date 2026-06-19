@@ -2,14 +2,13 @@
  * Devices repo — the only place that knows the `control_plane.devices` SQL.
  *
  * A deep module behind a two-method interface: callers register a device and get
- * back a stable `device_id`, or list a User's devices for fan-out / gate
- * composition. The table shape, the idempotent upsert, the token-rotation
+ * back a stable `device_id`, or list a User's devices for gate composition or
+ * push delivery. The table shape, the idempotent upsert, the token-rotation
  * semantics, the UNIQUE-constraint idempotency, and the `created_at →
- * registered_at` mapping are all hidden in here. Crucially, the push tokens
- * (`apns_token` / `fcm_token`) are knowledge that *never leaves this module*:
- * `listDevicesForUser` selects no token columns, so the only token-free read
- * port the rest of the system sees cannot leak them (CONTEXT.md "Device
- * Registry"; the token-bearing read for delivery lands with the send path #49).
+ * registered_at` mapping are all hidden in here. Crucially, the Expo Push Token
+ * column is knowledge that leaves this module only through the delivery-scoped
+ * `listExpoPushTargetsForUser` port; the token-free `listDevicesForUser` read
+ * used by account/gate composition cannot leak it.
  */
 import type { ClientKind } from "@intentive/api-contract";
 
@@ -32,8 +31,12 @@ export interface RegisterDeviceInput {
   userId: string;
   deviceFingerprint: string;
   clientKind: ClientKind;
-  apnsToken?: string;
-  fcmToken?: string;
+  expoPushToken?: string;
+}
+
+export interface ExpoPushTarget {
+  deviceId: string;
+  expoPushToken: string;
 }
 
 export interface DevicesRepo {
@@ -42,7 +45,7 @@ export interface DevicesRepo {
    * Idempotent on `(user_id, device_fingerprint)` (enforced by the UNIQUE
    * constraint, not application logic): the same device always resolves to the
    * same id. Tokens are additive/never-destructive — a provided token rotates
-   * in, an omitted token keeps the stored value (Apple/FCM token lifecycle).
+   * in, an omitted token keeps the stored value.
    */
   registerDevice(input: RegisterDeviceInput): Promise<{ deviceId: string }>;
 
@@ -52,11 +55,23 @@ export interface DevicesRepo {
    * tokens.
    */
   listDevicesForUser(userId: string): Promise<RegisteredDevice[]>;
+
+  /**
+   * Delivery-scoped token-bearing read. This is the only repo surface that
+   * exposes Expo Push Tokens, and only notifications should depend on it.
+   */
+  listExpoPushTargetsForUser(userId: string): Promise<ExpoPushTarget[]>;
+
+  /**
+   * Clear a dead Expo Push Token if the row still holds that exact token. The
+   * match guard prevents a stale receipt from clearing a token rotated in later.
+   */
+  clearExpoPushToken(deviceId: string, expoPushToken: string): Promise<void>;
 }
 
 export function createDevicesRepo(sql: Sql): DevicesRepo {
   return {
-    async registerDevice({ userId, deviceFingerprint, clientKind, apnsToken, fcmToken }) {
+    async registerDevice({ userId, deviceFingerprint, clientKind, expoPushToken }) {
       // ON CONFLICT … DO UPDATE so a re-register touches the existing row and the
       // RETURNING clause yields the id on both the insert and the conflict path
       // in one round trip. COALESCE(EXCLUDED.token, devices.token) rotates a
@@ -65,18 +80,19 @@ export function createDevicesRepo(sql: Sql): DevicesRepo {
       // is a separate explicit act, not a side effect of registration).
       const rows = await sql<{ id: string }>`
         INSERT INTO control_plane.devices
-          (user_id, device_fingerprint, client_kind, apns_token, fcm_token)
+          (user_id, device_fingerprint, client_kind, expo_push_token)
         VALUES (
           ${userId},
           ${deviceFingerprint},
           ${clientKind},
-          ${apnsToken ?? null},
-          ${fcmToken ?? null}
+          ${expoPushToken ?? null}
         )
         ON CONFLICT (user_id, device_fingerprint) DO UPDATE SET
           client_kind = EXCLUDED.client_kind,
-          apns_token  = COALESCE(EXCLUDED.apns_token, control_plane.devices.apns_token),
-          fcm_token   = COALESCE(EXCLUDED.fcm_token, control_plane.devices.fcm_token),
+          expo_push_token = COALESCE(
+            EXCLUDED.expo_push_token,
+            control_plane.devices.expo_push_token
+          ),
           updated_at  = now()
         RETURNING id
       `;
@@ -101,6 +117,28 @@ export function createDevicesRepo(sql: Sql): DevicesRepo {
         FROM control_plane.devices
         WHERE user_id = ${userId}
         ORDER BY created_at
+      `;
+    },
+
+    async listExpoPushTargetsForUser(userId) {
+      return sql<ExpoPushTarget>`
+        SELECT
+          id              AS "deviceId",
+          expo_push_token AS "expoPushToken"
+        FROM control_plane.devices
+        WHERE user_id = ${userId}
+          AND expo_push_token IS NOT NULL
+        ORDER BY created_at
+      `;
+    },
+
+    async clearExpoPushToken(deviceId, expoPushToken) {
+      await sql`
+        UPDATE control_plane.devices
+        SET expo_push_token = NULL,
+            updated_at = now()
+        WHERE id = ${deviceId}
+          AND expo_push_token = ${expoPushToken}
       `;
     },
   };
