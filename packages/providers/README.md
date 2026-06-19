@@ -1,6 +1,6 @@
 # @intentive/providers
 
-The single explicit interface for cross-cutting concerns. See [`ARCHITECTURE.md`](../../ARCHITECTURE.md) → "Cross-cutting via Providers."
+The single explicit interface for cross-cutting concerns. See [`ARCHITECTURE.md`](../../ARCHITECTURE.md) → Cross-cutting Concerns (Providers).
 
 Auth, telemetry, observability bootstrap, feature flags, and any future cross-cutting client lives here. Domain code must import these from `@intentive/providers` (or from its own deployable's `providers/` re-export) — never directly from underlying SDKs. Sentry and Langfuse init belong in `@intentive/providers/observability` only.
 

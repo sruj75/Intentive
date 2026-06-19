@@ -16,11 +16,17 @@ For vocabulary, see [`CONTEXT.md`](CONTEXT.md) (and the root [`CONTEXT-MAP.md`](
 
 Schemas live in [`packages/api-contract`](../../packages/api-contract).
 
-## Internal surface (Control Plane → Agent Runtime callbacks)
+## Internal surface (Agent Runtime → Control Plane)
 
 | Endpoint                            | Purpose                                                                               |
 | ----------------------------------- | ------------------------------------------------------------------------------------- |
 | `POST /internal/notifications/push` | Agent Runtime asks Control Plane to fan out a Push Notification via Expo Push Service |
+
+## Maintenance surface (operator/scheduler → Control Plane)
+
+| Endpoint                                      | Purpose                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `POST /internal/notifications/check-receipts` | Bounded Expo receipt checking; clears dead `expo_push_token` values |
 
 ## Development
 

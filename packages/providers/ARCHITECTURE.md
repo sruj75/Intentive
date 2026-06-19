@@ -1,6 +1,6 @@
 # @intentive/providers Architecture
 
-This is the package-local architecture contract for `packages/providers/`. It extends the monorepo-wide rules in `../../ARCHITECTURE.md` → "Cross-cutting via Providers." For vocabulary, see `../CONTEXT.md` and the root `CONTEXT-MAP.md`.
+This is the package-local architecture contract for `packages/providers/`. It extends the monorepo-wide rules in `../../ARCHITECTURE.md` → Cross-cutting Concerns (Providers). For vocabulary, see `../CONTEXT.md` and the root `CONTEXT-MAP.md`.
 
 ## Purpose
 
@@ -20,7 +20,7 @@ The single explicit interface for cross-cutting concerns. Auth, telemetry, featu
 - This package is the only sanctioned path for auth, telemetry, feature flags, and connector clients across deployables.
 - Interfaces are stable; the backing implementation is swappable. Callers depend on the interface, not the SDK.
 - The auth verifier is shared verbatim by the Control Plane (`identity` domain) and the Agent Runtime (`gateway` domain) — there is no second, deployable-local JWT verifier.
-- Connector clients that are owned by a single deployable (e.g. the Control Plane's APNs client, a Neon pool) may be exposed through that deployable's own `providers/` re-export rather than shipped here. Only genuinely cross-deployable clients live in this package.
+- Connector clients that are owned by a single deployable (e.g. the Control Plane's Expo Push Service client, a Neon pool) may be exposed through that deployable's own `providers/` re-export rather than shipped here. Only genuinely cross-deployable clients live in this package.
 - Telemetry must never emit auth tokens, conversation bodies, user memory, or Context Snapshot content; redaction is part of the contract.
 
 ## Boundaries

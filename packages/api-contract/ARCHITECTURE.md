@@ -25,6 +25,8 @@ Two API surfaces:
 - **Internal API (Control Plane ↔ Agent Runtime), shared-secret authenticated, private network:**
   - `POST /internal/sessions/start` — Control Plane → Runtime: Session Start, returns `agent_instance_id` + `ws_url`.
   - `POST /internal/notifications/push` — Runtime → Control Plane: push handoff, returns `delivered` + `device_count`.
+- **Maintenance API (operator/scheduler → Control Plane), shared-secret authenticated:**
+  - `POST /internal/notifications/check-receipts` — bounded Expo receipt checking, returns `checked` + `cleared`.
 - **Shared primitives** — `ClientKind`, `PreChatGateKind` (`identity | consent_primer | capture_permission_setup | sibling_client_invitation`).
 
 ## Invariants
