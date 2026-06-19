@@ -225,16 +225,16 @@ Intentive is a **chat-first companion surface**, not a productivity dashboard. T
 
 The palette is **warm neutral** with a single **sage accent** — organic and restful, not clinical or gamified.
 
-| Role | Token | Hex | Usage |
-|------|-------|-----|--------|
-| Ink | `primary` | #1C1B1F | Headlines, primary text, navigation titles |
-| Slate | `secondary` | #5C5A62 | Metadata, timestamps, secondary labels |
-| Sage | `tertiary` / `accent` | #3D6B5E | Primary actions, send affordance, key highlights |
-| Limestone | `neutral` | #F5F3F0 | App background, thread canvas |
-| Paper | `surface` | #FFFFFF | Assistant bubbles, composer, sheets |
-| Warm gray | `user-bubble` | #E8E6E1 | User message bubbles |
-| Muted | `surface-muted` | #EEEBE6 | Agent state chips, continuity events |
-| Ember | `error` | #B8422E | Errors and destructive confirmations only |
+| Role      | Token                 | Hex     | Usage                                            |
+| --------- | --------------------- | ------- | ------------------------------------------------ |
+| Ink       | `primary`             | #1C1B1F | Headlines, primary text, navigation titles       |
+| Slate     | `secondary`           | #5C5A62 | Metadata, timestamps, secondary labels           |
+| Sage      | `tertiary` / `accent` | #3D6B5E | Primary actions, send affordance, key highlights |
+| Limestone | `neutral`             | #F5F3F0 | App background, thread canvas                    |
+| Paper     | `surface`             | #FFFFFF | Assistant bubbles, composer, sheets              |
+| Warm gray | `user-bubble`         | #E8E6E1 | User message bubbles                             |
+| Muted     | `surface-muted`       | #EEEBE6 | Agent state chips, continuity events             |
+| Ember     | `error`               | #B8422E | Errors and destructive confirmations only        |
 
 **Semantic agent colors** (use sparingly, never as full-screen fills):
 
@@ -248,18 +248,18 @@ Prefer **tonal layers** over tinted chrome — in both appearances.
 
 Dark mode is **warm near-black**, not pure OLED black. Surfaces step up in lightness; text is warm off-white. The sage accent **lightens** (`dark-accent`) so it stays legible on dark canvas.
 
-| Role | Token | Hex | Light analogue |
-|------|-------|-----|----------------|
-| Canvas | `dark-neutral` | #141316 | `neutral` |
-| Ink | `dark-primary` | #EEEBE6 | `primary` |
-| Slate | `dark-secondary` | #9C989F | `secondary` |
-| Sage | `dark-accent` | #6B9E8A | `accent` |
-| Paper | `dark-surface` | #1F1E22 | `surface` |
-| Elevated | `dark-surface-elevated` | #28262C | `surface-elevated` |
-| User bubble | `dark-user-bubble` | #2A282E | `user-bubble` |
+| Role             | Token                   | Hex     | Light analogue     |
+| ---------------- | ----------------------- | ------- | ------------------ |
+| Canvas           | `dark-neutral`          | #141316 | `neutral`          |
+| Ink              | `dark-primary`          | #EEEBE6 | `primary`          |
+| Slate            | `dark-secondary`        | #9C989F | `secondary`        |
+| Sage             | `dark-accent`           | #6B9E8A | `accent`           |
+| Paper            | `dark-surface`          | #1F1E22 | `surface`          |
+| Elevated         | `dark-surface-elevated` | #28262C | `surface-elevated` |
+| User bubble      | `dark-user-bubble`      | #2A282E | `user-bubble`      |
 | Assistant bubble | `dark-assistant-bubble` | #1F1E22 | `assistant-bubble` |
-| Muted | `dark-surface-muted` | #1A191D | `surface-muted` |
-| Ember | `dark-error` | #E86A52 | `error` |
+| Muted            | `dark-surface-muted`    | #1A191D | `surface-muted`    |
+| Ember            | `dark-error`            | #E86A52 | `error`            |
 
 **Semantic agent colors (dark):** `dark-thinking`, `dark-follow-up`, `dark-paused` — same roles as light; never full-screen fills.
 
@@ -271,14 +271,14 @@ Dark mode is **warm near-black**, not pure OLED black. Surfaces step up in light
 
 Typography follows **Apple Human Interface Guidelines**: system fonts (SF Pro on iOS), dynamic type–friendly sizes, and comfortable line lengths for long reading in chat.
 
-| Level | Token | Role |
-|-------|-------|------|
-| Large title | `headline-lg` | Rare; settings or sheet titles only — prefer stack `title` |
-| Title | `headline-md` | Section headers inside sheets |
-| Message | `body-md` | User and assistant bubbles (default) |
-| Composer | `composer` | Text input (17px matches iOS text fields) |
-| Label | `label-md` / `label-sm` | Agent state, buttons, boundary controls |
-| Caption | `caption` | Timestamps, continuity hints, metadata |
+| Level       | Token                   | Role                                                       |
+| ----------- | ----------------------- | ---------------------------------------------------------- |
+| Large title | `headline-lg`           | Rare; settings or sheet titles only — prefer stack `title` |
+| Title       | `headline-md`           | Section headers inside sheets                              |
+| Message     | `body-md`               | User and assistant bubbles (default)                       |
+| Composer    | `composer`              | Text input (17px matches iOS text fields)                  |
+| Label       | `label-md` / `label-sm` | Agent state, buttons, boundary controls                    |
+| Caption     | `caption`               | Timestamps, continuity hints, metadata                     |
 
 **Rules:**
 
@@ -396,34 +396,31 @@ When lists appear later in v1 (e.g., the Account Surface), use native row patter
 
 These constraints apply when implementing tokens in React Native / Expo:
 
-| Topic | Rule |
-|-------|------|
-| Styling | Inline styles or reused objects; **no CSS/Tailwind** in native views |
-| Colors | `useColorScheme()` (or `Appearance`) → pick `colors.*` vs `colors.dark-*`; optional `PlatformColor` for chrome |
-| Dark mode | Ship both appearances from V1; respect system setting; no light-only screens |
-| Theme helper | Central `theme.ts` / `use-theme.ts` exposing `{ colors, components, isDark }` from DESIGN tokens |
-| Library | `expo-image`, `react-native-safe-area-context`, `expo-router/stack`, `process.env.EXPO_OS` |
-| Animation | Reanimated entering/exiting on state changes; GPU-friendly props only |
-| Files | kebab-case (`message-bubble.tsx`); path aliases in `tsconfig` |
-| Dev workflow | **Expo Go first**; custom dev client only for native modules not in Go |
+| Topic        | Rule                                                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Styling      | Inline styles or reused objects; **no CSS/Tailwind** in native views                                                 |
+| Colors       | `useColorScheme()` (or `Appearance`) → pick `colors.*` vs `colors.dark-*`; optional `PlatformColor` for chrome       |
+| Dark mode    | Ship both appearances from V1; respect system setting; no light-only screens                                         |
+| Theme helper | `src/design/theme.ts` — `useMobileTheme()` / `resolveMobileTheme()` exposing `{ colors, isDark }` from DESIGN tokens |
+| Library      | `expo-image`, `react-native-safe-area-context`, `expo-router/stack`, `process.env.EXPO_OS`                           |
+| Animation    | Reanimated entering/exiting on state changes; GPU-friendly props only                                                |
+| Files        | kebab-case (`message-bubble.tsx`); path aliases in `tsconfig`                                                        |
+| Dev workflow | **Expo Go first**; custom dev client only for native modules not in Go                                               |
 
 See [Expo building-native-ui skill](https://github.com/expo/skills/blob/main/plugins/expo/skills/building-native-ui/SKILL.md) for route structure, tabs, headers, blur, and form sheets.
 
 **Theme resolution (required pattern):**
 
 ```tsx
-import { useColorScheme } from "react-native";
+import { useMobileTheme } from "../design/theme";
 
-// tokens from DESIGN.md frontmatter → theme/colors.ts
-const light = { canvas: "#F5F3F0", onSurface: "#1C1B1F", userBubble: "#E8E6E1", /* ... */ };
-const dark = { canvas: "#141316", onSurface: "#EEEBE6", userBubble: "#2A282E", /* ... */ };
-
-export function useTheme() {
-  const scheme = useColorScheme();
-  const isDark = scheme === "dark";
-  return { colors: isDark ? dark : light, isDark };
+export function SomeScreen() {
+  const theme = useMobileTheme();
+  // theme.colors.canvas, theme.colors.ink, theme.isDark, ...
 }
 ```
+
+Source of truth: `src/design/theme.ts` (`lightTheme`, `darkTheme`, `MobileThemeColors`).
 
 Set `userInterfaceStyle: "automatic"` in `app.json` so the native shell follows the system. Stack headers can use `headerTitleStyle: { color: PlatformColor("label") }` when you want Apple-managed label colors alongside tokenized chat content.
 
@@ -459,4 +456,4 @@ Set `userInterfaceStyle: "automatic"` in `app.json` so the native shell follows 
 
 ---
 
-*Format: [DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification) · Product: [CONTEXT.md](./CONTEXT.md) · ADRs: [docs/adr/](./docs/adr/)*
+_Format: [DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification) · Product: [CONTEXT.md](./CONTEXT.md) · ADRs: [docs/adr/](./docs/adr/)_

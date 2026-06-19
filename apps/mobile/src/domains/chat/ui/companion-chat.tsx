@@ -265,7 +265,7 @@ function AgentStateChip({
 }): React.JSX.Element {
   const { styles } = useChatVisuals();
   return (
-    <AdaptiveGlassSurface style={styles.agentStateSurface}>
+    <AdaptiveGlassSurface fallbackStyle={styles.glassFallback} style={styles.agentStateSurface}>
       <Text testID="intentive-agent-state" style={styles.agentStateText}>
         {presentation.agentState.label}
       </Text>
@@ -308,7 +308,7 @@ function MacSetupBanner({
 }): React.JSX.Element {
   const { colors, styles } = useChatVisuals();
   return (
-    <AdaptiveGlassSurface style={styles.macSetupSurface}>
+    <AdaptiveGlassSurface fallbackStyle={styles.glassFallback} style={styles.macSetupSurface}>
       <Pressable
         accessibilityLabel={copy}
         accessibilityRole="button"
@@ -340,7 +340,11 @@ function AccountAffordance({
 }): React.JSX.Element {
   const { colors, styles } = useChatVisuals();
   return (
-    <AdaptiveGlassSurface isInteractive style={styles.accountSurface}>
+    <AdaptiveGlassSurface
+      fallbackStyle={styles.glassFallback}
+      isInteractive
+      style={styles.accountSurface}
+    >
       <Pressable
         accessibilityLabel="Open account"
         accessibilityRole="button"
@@ -441,7 +445,11 @@ function Composer({
           {notice}
         </Text>
       )}
-      <AdaptiveGlassSurface style={styles.composerGlass} testID="intentive-composer-floating">
+      <AdaptiveGlassSurface
+        fallbackStyle={styles.glassFallback}
+        style={styles.composerGlass}
+        testID="intentive-composer-floating"
+      >
         <ComposerPrimitive.Root style={styles.composer}>
           <ComposerPrimitive.Input
             multiline
@@ -462,7 +470,12 @@ function Composer({
             style={[styles.send, (!presentation.canSend || sendDisabled) && styles.sendUnavailable]}
             testID="intentive-composer-send"
           >
-            <Image source="sf:arrow.up" style={styles.sendIcon} tintColor={colors.paper} />
+            <Image
+              source="sf:arrow.up"
+              style={styles.sendIcon}
+              testID="intentive-composer-send-icon"
+              tintColor={colors.userText}
+            />
           </Pressable>
         </ComposerPrimitive.Root>
       </AdaptiveGlassSurface>
@@ -535,14 +548,14 @@ function createChatStyles(colors: MobileThemeColors) {
     userRow: {
       alignSelf: "flex-end",
       backgroundColor: colors.user,
-      boxShadow: "0 8px 18px rgba(18, 54, 95, 0.18)",
+      boxShadow: `0 8px 18px ${colors.userBubbleShadow}`,
     },
     assistantRow: {
       alignSelf: "flex-start",
       backgroundColor: colors.companion,
       borderColor: colors.line,
       borderWidth: StyleSheet.hairlineWidth,
-      boxShadow: "0 8px 24px rgba(54, 44, 34, 0.10)",
+      boxShadow: `0 8px 24px ${colors.companionBubbleShadow}`,
     },
     userText: { color: colors.userText, fontSize: 16, lineHeight: 22 },
     assistantText: { color: colors.ink, fontSize: 16, lineHeight: 22 },
@@ -664,6 +677,11 @@ function createChatStyles(colors: MobileThemeColors) {
       width: 42,
     },
     accountIcon: { height: 23, width: 23 },
+    glassFallback: {
+      backgroundColor: colors.elevated,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
+    },
     composerDock: {
       bottom: 0,
       gap: 7,

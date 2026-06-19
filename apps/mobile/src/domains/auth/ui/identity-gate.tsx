@@ -65,7 +65,8 @@ export function IdentityGate(): React.JSX.Element {
           styles.content,
           { paddingBottom: insets.bottom + 40, paddingTop: insets.top + 72 },
         ]}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
+        testID="intentive-identity-scroll"
       >
         <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.title}>
           Intentive

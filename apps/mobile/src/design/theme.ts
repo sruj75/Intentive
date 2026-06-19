@@ -21,8 +21,10 @@ export interface MobileThemeColors {
   readonly paper: string;
   readonly surfaceMuted: string;
   readonly user: string;
+  readonly userBubbleShadow: string;
   readonly userDeep: string;
   readonly userText: string;
+  readonly companionBubbleShadow: string;
 }
 
 export interface MobileTheme {
@@ -53,8 +55,10 @@ export const lightTheme: MobileTheme = {
     paper: "#FFFCF7",
     surfaceMuted: "rgba(238, 235, 230, 0.92)",
     user: "#1D4E89",
+    userBubbleShadow: "rgba(18, 54, 95, 0.18)",
     userDeep: "#12365F",
     userText: "#FFFCF7",
+    companionBubbleShadow: "rgba(54, 44, 34, 0.10)",
   },
 };
 
@@ -81,8 +85,10 @@ export const darkTheme: MobileTheme = {
     paper: "#1F1E22",
     surfaceMuted: "#1A191D",
     user: "#2A282E",
+    userBubbleShadow: "rgba(0, 0, 0, 0.28)",
     userDeep: "#1A191D",
     userText: "#EEEBE6",
+    companionBubbleShadow: "rgba(0, 0, 0, 0.32)",
   },
 };
 

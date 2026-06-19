@@ -8,7 +8,7 @@
  * network or the Neon SDK.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -84,6 +84,18 @@ test("uses dark appearance tokens", async () => {
 
   expect(screen.getByText("Intentive")).toHaveStyle({ color: "#EEEBE6" });
   expect(screen.getByText(/remembers you/i)).toHaveStyle({ color: "#9C989F" });
+});
+
+test("uses manual safe-area padding without automatic ScrollView insets", async () => {
+  renderGate(fakeAdapter(() => Promise.resolve({ status: "cancelled" })));
+  await expectDestination("SIGNED_OUT");
+
+  const scroll = screen.getByTestId("intentive-identity-scroll");
+  const contentStyle = StyleSheet.flatten(scroll.props.contentContainerStyle);
+
+  expect(scroll).toHaveProp("contentInsetAdjustmentBehavior", "never");
+  expect(contentStyle.paddingTop).toBe(119);
+  expect(contentStyle.paddingBottom).toBe(74);
 });
 
 test("successful sign-in advances the resolver off SIGNED_OUT", async () => {
