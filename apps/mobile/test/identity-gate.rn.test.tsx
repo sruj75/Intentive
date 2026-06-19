@@ -9,6 +9,8 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Text } from "react-native";
+import * as ReactNative from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
 import { IdentityGate } from "../src/domains/auth/ui/identity-gate";
@@ -41,14 +43,25 @@ function fakeAdapter(signIn: (provider: string) => Promise<SignInOutcome>): Auth
 
 function renderGate(adapter: AuthAdapter) {
   return render(
-    <LaunchStateProvider source={signedOutSource}>
-      <AuthAdapterProvider adapter={adapter}>
-        <Destination />
-        <IdentityGate />
-      </AuthAdapterProvider>
-    </LaunchStateProvider>,
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 47, right: 0, bottom: 34, left: 0 },
+      }}
+    >
+      <LaunchStateProvider source={signedOutSource}>
+        <AuthAdapterProvider adapter={adapter}>
+          <Destination />
+          <IdentityGate />
+        </AuthAdapterProvider>
+      </LaunchStateProvider>
+    </SafeAreaProvider>,
   );
 }
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 async function expectDestination(value: string) {
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent(value));
@@ -61,6 +74,16 @@ test("renders continuity-framed copy and the sign-in options", async () => {
   expect(screen.getByText("Continue with Apple")).toBeTruthy();
   // Copy explains continuity, not features.
   expect(screen.getByText(/remembers you/i)).toBeTruthy();
+});
+
+test("uses dark appearance tokens", async () => {
+  jest.spyOn(ReactNative, "useColorScheme").mockReturnValue("dark");
+
+  renderGate(fakeAdapter(() => Promise.resolve({ status: "cancelled" })));
+  await expectDestination("SIGNED_OUT");
+
+  expect(screen.getByText("Intentive")).toHaveStyle({ color: "#EEEBE6" });
+  expect(screen.getByText(/remembers you/i)).toHaveStyle({ color: "#9C989F" });
 });
 
 test("successful sign-in advances the resolver off SIGNED_OUT", async () => {

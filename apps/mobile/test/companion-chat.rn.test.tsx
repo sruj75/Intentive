@@ -7,6 +7,7 @@
  * Runtime Adapter seam.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import * as ReactNative from "react-native";
 import { StyleSheet } from "react-native";
 
 import { CompanionChat } from "../src/domains/chat/ui/companion-chat";
@@ -18,6 +19,10 @@ import type {
 } from "../src/domains/chat/types/conversation";
 
 const at = "2026-06-12T00:00:00.000Z";
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 async function flushStore() {
   await act(async () => {
@@ -84,6 +89,24 @@ test("seeded messages render in Intentive-owned rows through the external-store 
   );
   expect(await screen.findByTestId("intentive-user-row")).toHaveTextContent("hello companion");
   expect(connectCount()).toBe(1);
+});
+
+test("Companion Chat uses dark appearance tokens", async () => {
+  jest.spyOn(ReactNative, "useColorScheme").mockReturnValue("dark");
+
+  render(
+    <CompanionChat
+      adapter={createTestRuntimeAdapter([companionMessage("opening", "I am here.")]).adapter}
+    />,
+  );
+
+  const assistantRowStyle = StyleSheet.flatten(
+    (await screen.findByTestId("intentive-assistant-row")).props.style,
+  );
+  const inputStyle = StyleSheet.flatten(screen.getByTestId("intentive-composer-input").props.style);
+
+  expect(assistantRowStyle.backgroundColor).toBe("#1F1E22");
+  expect(inputStyle.color).toBe("#EEEBE6");
 });
 
 test("typing and Send routes through the injected Runtime Adapter", async () => {
