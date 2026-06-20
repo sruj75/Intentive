@@ -35,8 +35,8 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   checks → downloads → installs a newer build with no prompt, **on launch and on
   macOS wake-from-sleep** (ADR-0024), with concurrency dedupe and recoverable
   failures (five `tokio` coordinator slices). `tauri.conf.json` capitalizes the
-  product name to **Intentive**, narrows `bundle.targets` to `["dmg"]`, enables
-  `createUpdaterArtifacts`, adds hardened-runtime entitlements
+  product name to **Intentive**, sets `bundle.targets` to `["app", "dmg"]` so
+  updater artifacts are emitted alongside the DMG, adds hardened-runtime entitlements
   (`entitlements/Intentive.entitlements` + `IntentiveCapture.entitlements`), and
   points the updater at the desktop GitHub Release `latest.json`. The
   `desktop-release.yml` workflow deep-signs nested Mach-Os inside-out, then
