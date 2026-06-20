@@ -25,7 +25,7 @@ pub(crate) const CRASH_COPY: &str = "Something went wrong — relaunch";
 /// Resource-relative path the capture supervisor spawns (resolved against the
 /// bundle's `Resources` dir at `lib.rs`). ScreenPipe lives inside a child
 /// `Intentive Capture.app` so macOS attributes Screen Recording to a
-/// product-owned name ("Intentive Capture"), never the bare `screenpipe`
+/// product-owned name ("Intentive"), never the bare `screenpipe`
 /// binary (ADR-0015). Keep this pointing *inside* the helper bundle — the
 /// flat `resources/screenpipe` path would regress the TCC identity. The guard
 /// test below pins that invariant.
@@ -40,7 +40,7 @@ mod tests {
     fn helper_resource_path_stays_inside_the_helper_bundle() {
         // Cheap protection against an accidental revert to the flat
         // `resources/screenpipe` path, which would surface `screenpipe` (not
-        // "Intentive Capture") in macOS Privacy Settings (ADR-0015/#54).
+        // "Intentive") in macOS Privacy Settings (ADR-0015/#54).
         assert!(
             CAPTURE_HELPER_RESOURCE_PATH.contains("Intentive Capture.app/Contents/MacOS/"),
             "spawn path must resolve inside the Intentive Capture helper bundle",

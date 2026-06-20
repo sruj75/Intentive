@@ -15,7 +15,7 @@ AI agents that act on behalf of a user need to know what that user is actually d
 3. **Silent operation**: The Desktop Client runs in the background with zero user interruption during a Capture Session. Launch starts capture automatically only after Auth and live **Desktop Capture Readiness** on this Mac (all three macOS grants; ADR-0020); users interact with it only to stop, restart, sign in, or complete setup.
 4. **Privacy by default**: No user data leaves the device except the sanitized Context Snapshot summary emitted to the Agent Runtime over the WebSocket Protocol.
 5. **Compatibility**: The `context_snapshot` event payload conforms to the schema in `packages/protocol/` and is accepted by the Agent Runtime's WebSocket gateway from day one.
-6. **Finished macOS product packaging**: v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`, and macOS Privacy Settings shows **Intentive** or fallback **Intentive Capture** as the capture permission owner.
+6. **Finished macOS product packaging**: v1 ships as a Developer ID signed and notarized Apple Silicon DMG containing only `Intentive.app`, and macOS Privacy Settings shows **Intentive** as the capture permission owner.
 
 ---
 
@@ -170,11 +170,11 @@ AI agents that act on behalf of a user need to know what that user is actually d
 - v1 ships as a direct-download Apple Silicon DMG containing only `Intentive.app`
 - Release builds are Developer ID signed and Apple-notarized; unsigned builds are dev-only
 - Product name is **Intentive** and bundle identifier is `com.heyintentive.tauri`
-- macOS Privacy Settings must show **Intentive** as the permission owner, with **Intentive Capture** as the only acceptable fallback helper identity
+- macOS Privacy Settings must show **Intentive** as the permission owner
 - Acceptance:
   - [ ] Tagged release builds produce a signed and notarized DMG containing only `Intentive.app`.
   - [ ] The installed app at `/Applications/Intentive.app` launches as a menu bar app with no Dock icon.
-  - [ ] macOS Privacy Settings shows **Intentive** or fallback **Intentive Capture** for required capture grants.
+  - [ ] macOS Privacy Settings shows **Intentive** for required capture grants.
   - [ ] macOS Privacy Settings does not show ScreenPipe, lowercase `intentive`, raw helper names, or debug paths for release permission identity.
   - [ ] Login Items, when enabled, shows **Intentive**.
   - [ ] Release smoke verifies ScreenPipe health on `127.0.0.1:44380`, frame writes, microphone audio chunks, and system-audio chunks.

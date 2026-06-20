@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Intentive Capture</string>
+	<string>Intentive</string>
 	<key>CFBundleName</key>
-	<string>Intentive Capture</string>
+	<string>Intentive</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.heyintentive.capture</string>
 	<key>CFBundleExecutable</key>
@@ -18,5 +18,7 @@
 	<string>13.0</string>
 	<key>LSBackgroundOnly</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Intentive captures microphone audio together with your screen so it can build private, on-device summaries of your work.</string>
 </dict>
 </plist>

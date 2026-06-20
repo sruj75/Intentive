@@ -28,7 +28,7 @@ Whether the Protocol WebSocket to the **Agent Runtime** is connected **right now
 _Avoid_: routing state, auth state, login state
 
 **Intentive Capture Helper**:
-The signed child app bundle (`Intentive Capture.app`, `CFBundleIdentifier = com.heyintentive.capture`) that wraps the ScreenPipe binary so macOS attributes Screen Recording to a product-owned name. It is the TCC principal the user sees in Privacy Settings — **Intentive Capture**, never `screenpipe`. Preserves the ADR-0002 child-process/HTTP boundary; only the on-disk shape and the OS-visible name differ from a flat binary. See ADR-0015.
+The signed child app bundle (`Intentive Capture.app`, `CFBundleIdentifier = com.heyintentive.capture`) that wraps the ScreenPipe binary so macOS attributes Screen Recording to a product-owned name. It is the TCC principal the user sees in Privacy Settings — **Intentive**, never `screenpipe`. Preserves the ADR-0002 child-process/HTTP boundary; only the on-disk shape and the OS-visible name differ from a flat binary. See ADR-0015.
 _Avoid_: screenpipe helper, sidecar, capture daemon
 
 **In-App Update**:
@@ -36,7 +36,7 @@ The Desktop Client's silent self-update via Tauri's updater. Checks on **launch 
 _Avoid_: auto-updater popup, update prompt, update notification
 
 **Release Smoke**:
-The merge-gate verification that a _shipped artifact_ is trustworthy: notarization/Gatekeeper verdict, the **Intentive Capture** identity string, first-launch behavior, and an updater round-trip — run on a simulated clean Mac (`docs/RELEASE.md`). Distinct from the **capture-session smoke** (`docs/SMOKE.md`), which checks that capture works when signed in.
+The merge-gate verification that a _shipped artifact_ is trustworthy: notarization/Gatekeeper verdict, the **Intentive** identity string, first-launch behavior, and an updater round-trip — run on a simulated clean Mac (`docs/RELEASE.md`). Distinct from the **capture-session smoke** (`docs/SMOKE.md`), which checks that capture works when signed in.
 _Avoid_: smoke test (ambiguous — say Release Smoke or capture-session smoke)
 
 ## Relationships

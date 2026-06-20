@@ -28,7 +28,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   (#53/#54/#55/#56)** — The Desktop Client now ships as a deep-signed, notarized
   Apple-Silicon `.dmg` that self-updates silently. ScreenPipe is wrapped in a
   child **Intentive Capture.app** (`com.heyintentive.capture`) so macOS attributes
-  Screen Recording to a product-owned name, never `screenpipe` (ADR-0015); the
+  Screen Recording to **Intentive**, never `screenpipe` (ADR-0015); the
   capture supervisor spawns it via `CAPTURE_HELPER_RESOURCE_PATH`, pinned inside
   the bundle by a guard test. A new `updates` domain (`src-tauri/src/domains/updates/`)
   owns an in-app **silent auto-update** pass behind the `UpdateChannel` seam: it
@@ -214,8 +214,8 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   for bundled native artifacts.
 - **ADR-0015** documents final v1 release packaging and product-owned macOS
   permission identity: signed/notarized Apple Silicon DMG, product name
-  **Intentive**, bundle identifier `com.heyintentive.tauri`, **Intentive** or
-  fallback **Intentive Capture** in macOS Privacy Settings, and Capture Permission
+  **Intentive**, bundle identifier `com.heyintentive.tauri`, **Intentive** in
+  macOS Privacy Settings, and Capture Permission
   Setup as a release requirement.
 - **[Issue #3] smoke checklist** for manually verifying
   the menu bar shell states.

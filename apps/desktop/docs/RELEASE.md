@@ -58,7 +58,7 @@ codesign -dv --verbose=4 "/Applications/Intentive.app/Contents/Resources/resourc
 
 **Pass:** `stapler` says "The validate action worked"; `spctl` says "accepted, source=Notarized Developer ID"; `codesign --verify` exits 0; nested binaries show `flags=0x10000(runtime)` and the `24D6NXS6H7` authority.
 
-### 2. Fresh permission flow + the "Intentive Capture" name
+### 2. Fresh permission flow + the "Intentive" name
 
 ```bash
 # Wipe Intentive's saved grants so the next launch prompts like a first run
@@ -68,7 +68,7 @@ tccutil reset Accessibility com.heyintentive.tauri
 ```
 
 Launch, run Capture Permission Setup, then open **System Settings → Privacy & Security → Screen & System Audio Recording**.
-**Pass:** the entry reads **Intentive Capture** (never `screenpipe`, never lowercase `intentive`, never a path). This is the load-bearing observation for ADR-0015/#54 — confirm it on the real notarized build, not in `tauri dev`.
+**Pass:** the entry reads **Intentive** (never `screenpipe`, never lowercase `intentive`, never a path). This is the load-bearing observation for ADR-0015/#54 — confirm it on the real notarized build, not in `tauri dev`.
 
 ### 3. The "downloaded from the internet" first-launch dialog
 
@@ -94,4 +94,4 @@ Once the four smoke steps are green, flip the landing-page download link to the 
 
 ## Capture in docs after the smoke
 
-The clean-Mac observation in step 2 finalizes ADR-0015's open identity question. Record the observed Privacy-Settings string (expected: **Intentive Capture**) as a closing note on ADR-0015 once verified.
+The clean-Mac observation in step 2 finalizes ADR-0015's open identity question. Record the observed Privacy-Settings string (expected: **Intentive**) as a closing note on ADR-0015 once verified.
