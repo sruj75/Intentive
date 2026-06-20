@@ -29,7 +29,7 @@
   "plugins": {
     "updater": {
       "endpoints": ["https://github.com/sruj75/Intentive/releases/latest/download/latest.json"],
-      "pubkey": "REPLACE_WITH_TAURI_SIGNER_PUBLIC_KEY"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVBQ0RGQ0U1RjFDMkVDN0IKUldSNzdNTHg1ZnpONnBoeXdHMldYZjFlNmw2WkY0and0VFVteUVDcXVhbWdOVVpwK0RzWVFEa0IK"
     }
   },
   "bundle": {
