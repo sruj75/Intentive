@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Main app (Intentive.app) entitlements for Developer ID + hardened
+	     runtime (ADR-0015). The WebView (WKWebView) needs JIT for JS. No App
+	     Sandbox: direct Developer ID distribution does not require it, and the
+	     app spawns a child capture helper over HTTP (ADR-0002).
+	     `allow-unsigned-executable-memory` / `disable-library-validation` are
+	     deliberately omitted — add only if codesign/launch proves they are
+	     required, never pre-emptively. -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>

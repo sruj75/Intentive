@@ -12,3 +12,4 @@ pub mod menubar;
 pub mod routing;
 pub mod snapshots;
 pub mod summarization;
+pub mod updates;

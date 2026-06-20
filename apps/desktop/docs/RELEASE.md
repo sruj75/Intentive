@@ -12,7 +12,7 @@ These are credential steps only the owner can do. None are committed to the repo
 
 1. **Apple Developer ID Application cert** — already held: `Developer ID Application: Srujan Gowda (24D6NXS6H7)`, valid to 2030. Export it from Keychain Access → right-click the cert → **Export** _with its private key_ → `.p12` with a password.
 2. **App-specific password** — appleid.apple.com → Sign-In & Security → App-Specific Passwords. Used by `notarytool`.
-3. **Tauri updater key** — `pnpm tauri signer generate` (run once). Keep the private key + passphrase backed up out of band (losing it strands the installed base — ADR-0024). The **public** key goes into `tauri.conf.json`.
+3. **Tauri updater key** — `pnpm tauri signer generate` (run once). Keep the private key + passphrase backed up out of band (losing it strands the installed base — ADR-0024). Paste the **public** key into `tauri.conf.json` at `plugins.updater.pubkey`, replacing the committed `REPLACE_WITH_TAURI_SIGNER_PUBLIC_KEY` placeholder. The private key becomes the `TAURI_SIGNING_PRIVATE_KEY` secret below.
 4. **Set GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions):
 
    | Secret                               | Value                       |

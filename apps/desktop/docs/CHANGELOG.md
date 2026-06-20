@@ -24,6 +24,27 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **macOS distribution readiness — signed/notarized DMG + silent auto-update
+  (#53/#54/#55/#56)** — The Desktop Client now ships as a deep-signed, notarized
+  Apple-Silicon `.dmg` that self-updates silently. ScreenPipe is wrapped in a
+  child **Intentive Capture.app** (`com.heyintentive.capture`) so macOS attributes
+  Screen Recording to a product-owned name, never `screenpipe` (ADR-0015); the
+  capture supervisor spawns it via `CAPTURE_HELPER_RESOURCE_PATH`, pinned inside
+  the bundle by a guard test. A new `updates` domain (`src-tauri/src/domains/updates/`)
+  owns an in-app **silent auto-update** pass behind the `UpdateChannel` seam: it
+  checks → downloads → installs a newer build with no prompt, **on launch and on
+  macOS wake-from-sleep** (ADR-0024), with concurrency dedupe and recoverable
+  failures (five `tokio` coordinator slices). `tauri.conf.json` capitalizes the
+  product name to **Intentive**, narrows `bundle.targets` to `["dmg"]`, enables
+  `createUpdaterArtifacts`, adds hardened-runtime entitlements
+  (`entitlements/Intentive.entitlements` + `IntentiveCapture.entitlements`), and
+  points the updater at the desktop GitHub Release `latest.json`. The
+  `desktop-release.yml` workflow deep-signs nested Mach-Os inside-out, then
+  publishes the `.dmg`, `.app.tar.gz`, `.sig`, and generated `latest.json`. The
+  unsigned orphan `apps/desktop/.github/workflows/release.yml` is deleted. Final
+  signing identity, clean-Mac smoke, and updater round-trip are the human merge
+  gate in [`docs/RELEASE.md`](RELEASE.md).
+
 - **Host timezone on connect (#84)** — Routing now reports the Mac IANA zone as
   optional `client_tz` on every `connect` frame so the Runtime can resolve
   wall-clock Cron schedules while the user is offline (same contract as Mobile;
