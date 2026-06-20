@@ -36,6 +36,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -73,6 +75,9 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm /tmp/cert.p12
 
+      - name: Verify native release resources
+        run: apps/desktop/scripts/verify-release-artifacts.sh source
+
       # Deep-sign the nested resource Mach-Os inside-out BEFORE Tauri seals and
       # signs the outer Intentive.app. Notarization rejects any unsigned nested
       # executable, and Tauri does NOT auto-sign files under `bundle.resources`
@@ -106,6 +111,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --target aarch64-apple-darwin
 
+      - name: Notarize and staple DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG="$(ls apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg)"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
       # Build the updater manifest. `createUpdaterArtifacts` produces the signed
       # `.app.tar.gz` + detached `.sig`; the silent updater (ADR-0024) needs a
       # `latest.json` pointing at this Release's tarball with that signature.
@@ -127,6 +147,9 @@ jobs:
             }
           }
           EOF
+
+      - name: Verify release artifacts
+        run: apps/desktop/scripts/verify-release-artifacts.sh bundle
 
       - name: Upload DMG + updater artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
