@@ -92,4 +92,4 @@ Pull requests that touch Control Plane run `.github/workflows/neon-preview-branc
 3. Only if green, **promote traffic** to the new revision.
 4. Once a manual deploy has proven out, set the `DEPLOY_ENABLED` repository variable to `true` so pushes to `main` auto-deploy.
 
-`/healthz` and `/readyz` remain local compatibility aliases, but public Cloud Run smoke checks use `/health` and `/ready` because Cloud Run reserves some URL paths ending in `z`.
+Health and readiness checks use only `/health` and `/ready`.

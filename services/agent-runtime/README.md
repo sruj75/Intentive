@@ -37,6 +37,15 @@ env keys: `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`,
 Copy [`.env.example`](.env.example) to `.env` for local boot. Domains must not
 re-parse `process.env`.
 
+## Internal HTTP Surface
+
+| Endpoint                        | Purpose                                            |
+| ------------------------------- | -------------------------------------------------- |
+| `GET  /health`                  | Shallow liveness probe                             |
+| `POST /internal/sessions/start` | Control Plane starts or confirms an Agent Instance |
+
+Health checks use `/health` to match the Control Plane.
+
 ## Deployment
 
 GitHub Actions builds a Docker image, pushes to Artifact Registry, and swaps the running container on the GCE VM (`gcloud compute instances update-container`). See `.github/workflows/agent-runtime-deploy.yml` at the repo root. Strategy and rationale: [`docs/adr/0032`](docs/adr/0032-agent-runtime-gce-deploy-single-vm-tls-load-balancer-in-place-swap.md) (single VM behind a TLS load balancer; in-place image swap with a lightweight drain) and [`docs/adr/0033`](docs/adr/0033-agent-runtime-internal-session-start-public-ingress-shared-secret.md) (internal Session Start on public ingress behind a shared secret).
@@ -75,6 +84,6 @@ Same Neon project as the Control Plane, **separate schema and role**. Via the Ne
 ### Deploy procedure (careful path)
 
 1. **First deploy is manual and pre-launch.** A single VM has no no-traffic revision — the image swap _is_ the promotion — so run the first `workflow_dispatch` deploy **before real users exist**, when dropping connections costs nothing.
-2. **Smoke-check the real `wss://` end to end** (not just `/healthz`, since the live conversation is the thing that breaks): a client completes the TLS handshake → `connect` returns a snapshot → a `user_message` gets a **companion reply** (proves TLS + Neon + OpenRouter + the turn spine). Confirm a Control-Plane Session Start reaches `/internal`, the Cron/Heartbeat loops logged "started," and Sentry is receiving events.
+2. **Smoke-check the real `wss://` end to end** (not just `/health`, since the live conversation is the thing that breaks): a client completes the TLS handshake → `connect` returns a snapshot → a `user_message` gets a **companion reply** (proves TLS + Neon + OpenRouter + the turn spine). Confirm a Control-Plane Session Start reaches `/internal`, the Cron/Heartbeat loops logged "started," and Sentry is receiving events.
 3. Only if green, set the `DEPLOY_ENABLED` repository variable to `true` so pushes to `main` auto-deploy.
 4. **Rollback** = re-run `update-container` pinned to the previous `github.sha` image (prior tags remain in Artifact Registry). Keep the last-good SHA noted.

@@ -57,7 +57,8 @@ export function createInternalApp(deps: {
 }): Hono {
   const app = new Hono();
 
-  app.get("/healthz", () => json({ ok: true, service: "agent-runtime" }, 200));
+  // Liveness probe; no auth, no body of interest. `/health` is the canonical route.
+  app.get("/health", () => json({ ok: true, service: "agent-runtime" }, 200));
 
   app.post("/internal/sessions/start", async (c) => {
     if (!secretsMatch(bearerSecret(c.req.header("authorization")), deps.secret)) {
