@@ -43,14 +43,14 @@ How Intentive's four deployables and shared packages connect to the journeys use
 
 | #   | Journey                                                                           | Primary deployables                   |
 | --- | --------------------------------------------------------------------------------- | ------------------------------------- |
-| 1   | [Cold launch → first chat (Mobile)](#1-cold-launch--first-chat-mobile)            | Mobile, Control Plane, Agent Runtime  |
+| 1   | [Cold launch → first chat (Mobile)](#1-cold-launch-first-chat-mobile)             | Mobile, Control Plane, Agent Runtime  |
 | 2   | [Returning Mobile user](#2-returning-mobile-user)                                 | Mobile, Control Plane, Agent Runtime  |
-| 3   | [Cold launch → capture (Desktop)](#3-cold-launch--capture-desktop)                | Desktop, Control Plane, Agent Runtime |
+| 3   | [Cold launch → capture (Desktop)](#3-cold-launch-capture-desktop)                 | Desktop, Control Plane, Agent Runtime |
 | 4   | [Cross-client: iPhone first, Mac second](#4-cross-client-iphone-first-mac-second) | All four                              |
 | 5   | [Send a chat message](#5-send-a-chat-message)                                     | Mobile, Agent Runtime                 |
 | 6   | [Mac context reaches the Companion](#6-mac-context-reaches-the-companion)         | Desktop, Agent Runtime                |
-| 7   | [Proactive Companion + push](#7-proactive-companion--push)                        | Agent Runtime, Control Plane, Mobile  |
-| 8   | [Account recovery & sibling setup](#8-account-recovery--sibling-setup)            | Mobile, Control Plane                 |
+| 7   | [Proactive Companion + push](#7-proactive-companion-push)                         | Agent Runtime, Control Plane, Mobile  |
+| 8   | [Account recovery & sibling setup](#8-account-recovery-sibling-setup)             | Mobile, Control Plane                 |
 
 ---
 
