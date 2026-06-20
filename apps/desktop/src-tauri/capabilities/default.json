@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Capability for the Settings and onboarding window",
   "windows": ["settings"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": ["core:default", "opener:default", "updater:default"]
 }

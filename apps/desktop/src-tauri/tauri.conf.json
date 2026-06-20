@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "intentive",
+  "productName": "Intentive",
   "version": "0.1.0",
   "identifier": "com.heyintentive.tauri",
   "build": {
@@ -26,16 +26,27 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost; connect-src ipc: http://ipc.localhost https://*.neonauth.us-east-1.aws.neon.tech"
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/sruj75/Intentive/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVBQ0RGQ0U1RjFDMkVDN0IKUldSNzdNTHg1ZnpONnBoeXdHMldYZjFlNmw2WkY0and0VFVteUVDcXVhbWdOVVpwK0RzWVFEa0IK"
+    }
+  },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg"],
+    "createUpdaterArtifacts": true,
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
     "resources": [
-      "resources/screenpipe",
+      "resources/Intentive Capture.app",
       "resources/ollama",
       "icons/tray/status-item-idle.png",
       "icons/tray/status-item-capturing.png",
       "icons/tray/status-item-error.png"
-    ]
+    ],
+    "macOS": {
+      "entitlements": "entitlements/Intentive.entitlements",
+      "minimumSystemVersion": "13.0"
+    }
   }
 }

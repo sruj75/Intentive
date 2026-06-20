@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Intentive Capture helper (the ScreenPipe-backed recording process)
+	     entitlements (ADR-0015). The helper is the ScreenCaptureKit principal,
+	     so the microphone/audio-input entitlement belongs here, not on the main
+	     app. Screen Recording is a TCC grant, not an entitlement. Hardened
+	     runtime is applied by the codesign step in desktop-release.yml. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>

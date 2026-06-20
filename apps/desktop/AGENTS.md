@@ -58,5 +58,5 @@ Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke 
 - **`connect.client_tz`:** include the host IANA zone on every reconnect in `routing/runtime/mod.rs` (`iana_time_zone::get_timezone()` at the I/O edge; pure `build_connect_frame` helper) alongside `auth_token` / `client_kind` / `client_version`. Last report wins across devices; omit only when the OS cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
 - **Snapshot Privacy Boundary is structural.** The `ContextSnapshot` Rust struct has no fields for raw ScreenPipe data. Do not add any.
 - **Bundled native artifacts** match the host **Mac CPU variant**, not the signed-in user.
-- ScreenPipe is an internal implementation detail — never user-visible. macOS Privacy Settings should present "Intentive" or fallback "Intentive Capture", never "ScreenPipe".
+- ScreenPipe is an internal implementation detail — never user-visible. macOS Privacy Settings should present "Intentive", never "ScreenPipe" or a raw helper name.
 - Capture is gated by sign-in + live **Desktop Capture Readiness** on this Mac (all three macOS grants). The Mac's local check is the interlock authority; the Control Plane capture gate is policy-only (Screen Recording signal, ADR-0020).

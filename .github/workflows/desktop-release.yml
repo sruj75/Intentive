@@ -1,7 +1,7 @@
 name: desktop-release
 
-# Desktop Client → signed + notarized .dmg, attached to a GitHub Release.
-# Triggered by pushing a tag like `desktop-v0.1.0`.
+# Desktop Client → deep-signed + notarized .dmg plus silent-updater artifacts,
+# attached to a GitHub Release. Triggered by pushing a tag like `desktop-v0.1.0`.
 #
 # Required GitHub secrets:
 #   APPLE_DEVELOPER_ID_CERT             — base64 of the .p12 export of the Developer ID Application cert
@@ -13,14 +13,20 @@ name: desktop-release
 #   TAURI_SIGNING_PRIVATE_KEY           — Tauri updater signing key (run `tauri signer generate`)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — passphrase for that key
 #
-# After release: the landing page links to the .dmg; in-app updates use
-# Tauri's built-in updater pointing at a JSON manifest URL you maintain.
+# After release: flip the landing-page link to the .dmg; in-app updates use
+# Tauri's built-in updater pointing at this Release's `latest.json` (ADR-0024).
+# Full runbook + clean-Mac smoke: apps/desktop/docs/RELEASE.md.
 
 on:
   push:
     tags:
       - "desktop-v*"
   workflow_dispatch:
+
+env:
+  # Public Developer ID identity (also visible in the signed app). Used both by
+  # the explicit deep-sign step and handed to Tauri as APPLE_SIGNING_IDENTITY.
+  SIGNING_IDENTITY: "Developer ID Application: Srujan Gowda (24D6NXS6H7)"
 
 jobs:
   release:
@@ -64,18 +70,67 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm /tmp/cert.p12
 
+      # Deep-sign the nested resource Mach-Os inside-out BEFORE Tauri seals and
+      # signs the outer Intentive.app. Notarization rejects any unsigned nested
+      # executable, and Tauri does NOT auto-sign files under `bundle.resources`
+      # (only the outer app + externalBin sidecars). Order is deepest-first:
+      # the helper's inner binary, then the helper .app, then ollama. The outer
+      # app is signed by Tauri in the next step, completing the inside-out seal.
+      # (ADR-0015 — deep-sign every nested Mach-O.)
+      - name: Deep-sign nested helper + ollama (inside-out)
+        working-directory: apps/desktop/src-tauri
+        run: |
+          HELPER="resources/Intentive Capture.app"
+          codesign --force --options runtime --timestamp \
+            --sign "$SIGNING_IDENTITY" \
+            "$HELPER/Contents/MacOS/screenpipe"
+          codesign --force --options runtime --timestamp \
+            --entitlements entitlements/IntentiveCapture.entitlements \
+            --sign "$SIGNING_IDENTITY" \
+            "$HELPER"
+          codesign --force --options runtime --timestamp \
+            --sign "$SIGNING_IDENTITY" \
+            resources/ollama
+
       - name: Build, sign, and notarize
         working-directory: apps/desktop
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ env.SIGNING_IDENTITY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --target aarch64-apple-darwin
 
-      - name: Upload .dmg to GitHub Release
+      # Build the updater manifest. `createUpdaterArtifacts` produces the signed
+      # `.app.tar.gz` + detached `.sig`; the silent updater (ADR-0024) needs a
+      # `latest.json` pointing at this Release's tarball with that signature.
+      - name: Generate updater latest.json
+        working-directory: apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+        run: |
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          TARBALL="$(basename "$(ls *.app.tar.gz)")"
+          SIGNATURE="$(cat "$TARBALL.sig")"
+          cat > latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$SIGNATURE",
+                "url": "https://github.com/sruj75/Intentive/releases/download/${GITHUB_REF_NAME}/${TARBALL}"
+              }
+            }
+          }
+          EOF
+
+      - name: Upload DMG + updater artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          files: |
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/latest.json
           generate_release_notes: true

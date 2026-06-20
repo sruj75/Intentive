@@ -33,6 +33,8 @@ use domains::summarization::config::ProviderConfig;
 use domains::summarization::runtime::{
     LazyLlmProvider, LiveProviderResolver, LlmProviderSlot, SummarizeError,
 };
+use domains::updates::runtime::{TauriUpdateChannel, UpdateCoordinator};
+use domains::updates::types::UpdateChannel;
 use providers::permissions::status_emitter::PermissionEmitterSupervisor;
 use providers::permissions::{CapturePermissions, MacosCapturePermissions};
 use tokio::sync::mpsc;
@@ -225,14 +227,16 @@ fn open_onboarding_window(window: &WebviewWindow) {
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // The ScreenPipe Supervisor owns the child process; the Capture
             // Session coordinator owns the shell-state FSM and orchestrates
             // start/stop. The supervisor publishes outcomes on its events
             // channel, which the coordinator drains.
-            let binary_path = app
-                .path()
-                .resolve("resources/screenpipe", BaseDirectory::Resource)?;
+            let binary_path = app.path().resolve(
+                domains::capture::config::CAPTURE_HELPER_RESOURCE_PATH,
+                BaseDirectory::Resource,
+            )?;
             let spawner: Arc<dyn Spawner> = Arc::new(OsSpawner);
             let (events_tx, events_rx) = mpsc::unbounded_channel();
             let supervisor = ScreenpipeSupervisor::new(binary_path, spawner, events_tx);
@@ -508,6 +512,23 @@ pub fn run() {
                     open_onboarding_window(&window);
                 }
             }
+
+            // Silent in-app auto-update (ADR-0024). The coordinator owns the
+            // check→download→install pass behind the `UpdateChannel` seam; here
+            // we hand it the real Tauri-backed channel, fire one check on
+            // launch, and (on macOS) register the wake-from-sleep trigger so
+            // long-lived suspended installs still update. No UI: updates apply
+            // on the next launch with no prompt.
+            let update_coordinator = Arc::new(UpdateCoordinator::new(Arc::new(
+                TauriUpdateChannel::new(app.handle().clone()),
+            )
+                as Arc<dyn UpdateChannel>));
+            tauri::async_runtime::spawn({
+                let update_coordinator = update_coordinator.clone();
+                async move { update_coordinator.trigger().await }
+            });
+            #[cfg(target_os = "macos")]
+            domains::updates::runtime::register_wake_trigger(update_coordinator.clone());
 
             Ok(())
         });

@@ -30,7 +30,8 @@ reliability+privacy harness (#43), or AR runtime snapshot semantics (#38/#40).
    **cannot** be automated. Without the grants, capture parks in `SetupRequired`
    and the smoke times out waiting for snapshots.
 2. **Apple Silicon** (V1 only) with the bundled ScreenPipe resource present
-   (`src-tauri/resources/screenpipe`).
+   inside the helper bundle
+   (`src-tauri/resources/Intentive Capture.app/Contents/MacOS/screenpipe`, ADR-0015).
 3. ScreenPipe local API auth must be initialized. The harness reads the bundled
    binary's `auth token` output and passes it to heartbeat requests; it does not
    print the token.

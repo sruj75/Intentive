@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Intentive</string>
+	<key>CFBundleName</key>
+	<string>Intentive</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.heyintentive.capture</string>
+	<key>CFBundleExecutable</key>
+	<string>screenpipe</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSBackgroundOnly</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Intentive captures microphone audio together with your screen so it can build private, on-device summaries of your work.</string>
+</dict>
+</plist>

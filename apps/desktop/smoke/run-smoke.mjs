@@ -26,7 +26,16 @@ import { resolveSnapshotDbPath, runAssertions, printTable } from "./assert.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
 const OUT_DIR = join(HERE, ".out");
-const SCREENPIPE_BINARY = join(REPO_ROOT, "apps/desktop/src-tauri/resources/screenpipe");
+// The bundled ScreenPipe binary lives *inside* the Intentive Capture helper app
+// bundle, not at a flat `resources/screenpipe`, so macOS attributes capture
+// permission to "Intentive" rather than the raw helper (ADR-0015). This path
+// mirrors the Rust spawn path CAPTURE_HELPER_RESOURCE_PATH in
+// `src-tauri/src/domains/capture/config/mod.rs` — the app launches the binary
+// from there, the harness reads its auth token from here. Move one, move both.
+const SCREENPIPE_BINARY = join(
+  REPO_ROOT,
+  "apps/desktop/src-tauri/resources/Intentive Capture.app/Contents/MacOS/screenpipe",
+);
 
 const MIN_SNAPSHOTS = Number(process.env.INTENTIVE_SMOKE_MIN_SNAPSHOTS ?? 2);
 const HEARTBEAT_SECS = process.env.INTENTIVE_HEARTBEAT_INTERVAL_SECS ?? "30";
@@ -49,6 +58,19 @@ function readReceiptCounts(receiptsPath) {
   return { snapshots, markers };
 }
 
+// The bundled ScreenPipe binary is a documented precondition (SMOKE.md §2) and
+// has moved on disk before (ADR-0015). Verifying it up front turns a path drift
+// into an immediate, correctly-attributed failure instead of a silently empty
+// auth token and a confusing snapshot timeout six minutes downstream.
+function assertCaptureHelperPresent() {
+  if (!existsSync(SCREENPIPE_BINARY)) {
+    throw new Error(
+      `bundled ScreenPipe binary not found at ${SCREENPIPE_BINARY} — is the ` +
+        `Intentive Capture helper bundle in place? (see SMOKE.md §2, ADR-0015)`,
+    );
+  }
+}
+
 function readScreenpipeApiKey() {
   try {
     return execFileSync(SCREENPIPE_BINARY, ["auth", "token"], {
@@ -57,6 +79,9 @@ function readScreenpipeApiKey() {
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   } catch {
+    // The binary's presence is asserted at startup, so this only fires when
+    // ScreenPipe auth isn't initialized yet — a soft, operator-controlled
+    // precondition (SMOKE.md §3). Proceed tokenless; capture surfaces the gap.
     return "";
   }
 }
@@ -71,6 +96,9 @@ async function waitUntil(predicate, { timeoutMs, label }) {
 }
 
 async function main() {
+  // Fail fast on a missing bundled binary (a setup or path-drift bug) before we
+  // build packages and stand up the CP + gateway — see assertCaptureHelperPresent.
+  assertCaptureHelperPresent();
   mkdirSync(OUT_DIR, { recursive: true });
   const receiptsPath = join(OUT_DIR, "receipts.jsonl");
   const smokeLogPath = join(OUT_DIR, "smoke.log");
