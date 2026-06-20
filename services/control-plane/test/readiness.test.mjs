@@ -51,7 +51,7 @@ test("readiness reports JWKS failure without hiding Neon success", async () => {
   });
 });
 
-test("a hung dependency times out as failed instead of stalling /readyz", async () => {
+test("a hung dependency times out as failed instead of stalling /ready", async () => {
   const hang = () => new Promise(() => {});
   const startedAt = Date.now();
   const readiness = createReadiness({
