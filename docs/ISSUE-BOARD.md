@@ -137,15 +137,15 @@ flowchart TD
 
 ### Open
 
-| #   | Deployable         | Issue                                                                                      | Notes                                                                        |
-| --- | ------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| 50  | Control Plane      | [Cloud Run deploy + prod readiness](https://github.com/sruj75/Intentive/issues/50)         | Blocked by #49 closed/#51; re-enables skipped deploy workflow; production CP |
-| 51  | Shared             | [Providers telemetry + feature flags](https://github.com/sruj75/Intentive/issues/51)       | `#14` closed; observability for #50                                          |
-| 52  | Shared             | [Enforce inviolable rules in CI](https://github.com/sruj75/Intentive/issues/52)            | `#14` closed; keeps layer/boundary/vocabulary/version rules from rotting     |
-| 53  | Desktop            | [Signed + notarized DMG](https://github.com/sruj75/Intentive/issues/53)                    | Human signing credentials; can run in parallel with runtime lane             |
-| 54  | Desktop            | [macOS Privacy Settings identity](https://github.com/sruj75/Intentive/issues/54)           | Blocked by #53; required for #55                                             |
-| 55  | Desktop            | [Final packaged-app release smoke](https://github.com/sruj75/Intentive/issues/55)          | Blocked by #53/#54; release bar (#43 closed)                                 |
-| 56  | Desktop (optional) | [In-app updates (check / notify / install)](https://github.com/sruj75/Intentive/issues/56) | Not on core capture-runtime critical path; improves post-launch operability  |
+| #   | Deployable         | Issue                                                                                      | Notes                                                                                                                                |
+| --- | ------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 50  | Control Plane      | [Cloud Run deploy + prod readiness](https://github.com/sruj75/Intentive/issues/50)         | Blocked by #49 closed/#51 reconciliation; re-enables skipped deploy workflow; production CP                                          |
+| 51  | Shared             | [Providers telemetry + feature flags](https://github.com/sruj75/Intentive/issues/51)       | reconciled by branch `issue-52`: observability/telemetry already landed; real flags backend deferred until first named flag consumer |
+| 52  | Shared             | [Enforce inviolable rules in CI](https://github.com/sruj75/Intentive/issues/52)            | branch `issue-52`: provider-only cross-cutting ESLint rule enforces Sentry/Langfuse through `@intentive/providers/observability`     |
+| 53  | Desktop            | [Signed + notarized DMG](https://github.com/sruj75/Intentive/issues/53)                    | Human signing credentials; can run in parallel with runtime lane                                                                     |
+| 54  | Desktop            | [macOS Privacy Settings identity](https://github.com/sruj75/Intentive/issues/54)           | Blocked by #53; required for #55                                                                                                     |
+| 55  | Desktop            | [Final packaged-app release smoke](https://github.com/sruj75/Intentive/issues/55)          | Blocked by #53/#54; release bar (#43 closed)                                                                                         |
+| 56  | Desktop (optional) | [In-app updates (check / notify / install)](https://github.com/sruj75/Intentive/issues/56) | Not on core capture-runtime critical path; improves post-launch operability                                                          |
 
 ## Blocked / Waiting
 
@@ -159,7 +159,8 @@ flowchart TD
 ### Shared / Cross-Cutting (issues #14–#15, #51–#52)
 
 - `#14` (protocol/api-contract lock) and `#15` (Providers JWKS auth) are **closed**.
-- **Next:** `#51` (telemetry/flags) and `#52` (CI rules) only depend on `#14`; run them while other lanes progress.
+- `#51` is reconciled without new runtime behavior: observability/telemetry already landed in `@intentive/providers/observability`; `packages/providers/src/flags.ts` remains defaults-only until a named production flag consumer requires a live backend.
+- `#52` adds provider-only cross-cutting lint enforcement for Sentry and Langfuse tracing, wired through the architecture plugin and root ESLint config.
 - `packages/providers/src/auth.ts` now ships a real `jose`-backed `createJwtVerifier` (see `packages/providers/test/auth.test.mjs`); `#23` (closed) and `#25` consume it from `@intentive/providers/auth`.
 
 ### Mobile Client (issues #18–#22, #33–#34, #44–#48 closed)

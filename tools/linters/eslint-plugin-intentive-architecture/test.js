@@ -106,7 +106,12 @@ const MOBILE_CHAT_SERVICE = "/repo/apps/mobile/src/domains/chat/service/sendMess
 const MOBILE_CHAT_TYPES = "/repo/apps/mobile/src/domains/chat/types/index.ts";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CONTROL_PLANE_CONFIG = `${REPO_ROOT}/services/control-plane/src/config/env.ts`;
+const CONTROL_PLANE_IDENTITY_SERVICE = `${REPO_ROOT}/services/control-plane/src/domains/identity/service/resolve-account.ts`;
 const PROTOCOL_PACKAGE_SOURCE = `${REPO_ROOT}/packages/protocol/src/index.ts`;
+const PROVIDERS_SENTRY_SOURCE = `${REPO_ROOT}/packages/providers/src/observability/sentry.ts`;
+const PROVIDERS_LANGFUSE_SOURCE = `${REPO_ROOT}/packages/providers/src/observability/langfuse.ts`;
+const AGENT_RUNTIME_MAIN = `${REPO_ROOT}/services/agent-runtime/src/main.ts`;
+const AGENT_RUNTIME_TURN_SERVICE = `${REPO_ROOT}/services/agent-runtime/src/domains/runtime/service/turn.ts`;
 const MOBILE_AUTH_SOURCE = `${REPO_ROOT}/apps/mobile/src/domains/auth/service/neon-client.ts`;
 const DESKTOP_ONBOARDING_SOURCE = `${REPO_ROOT}/apps/desktop/src/domains/onboarding/ui/Onboarding.tsx`;
 const AGENT_INSTRUCTIVE_MESSAGE =
@@ -184,6 +189,65 @@ ruleTester.run("no-cross-deployable", plugin.rules["no-cross-deployable"], {
       ],
     },
   ],
+});
+
+ruleTester.run("provider-only-cross-cutting", plugin.rules["provider-only-cross-cutting"], {
+  valid: [
+    {
+      name: "providers observability may import Sentry directly",
+      filename: PROVIDERS_SENTRY_SOURCE,
+      code: "import * as Sentry from '@sentry/node';",
+    },
+    {
+      name: "providers observability may import Langfuse tracing handlers directly",
+      filename: PROVIDERS_LANGFUSE_SOURCE,
+      code: "import { CallbackHandler } from 'langfuse-langchain';",
+    },
+    {
+      name: "deployable code may import the providers observability seam",
+      filename: CONTROL_PLANE_IDENTITY_SERVICE,
+      code: "import { bootstrapObservability } from '@intentive/providers/observability';",
+    },
+    {
+      name: "Agent Runtime main may keep the prompt-floor Langfuse client exception",
+      filename: AGENT_RUNTIME_MAIN,
+      code: "import { Langfuse } from 'langfuse-langchain';",
+    },
+  ],
+  invalid: [
+    {
+      name: "Control Plane domain may not import Sentry directly",
+      filename: CONTROL_PLANE_IDENTITY_SERVICE,
+      code: "import * as Sentry from '@sentry/node';",
+      errors: [{ message: AGENT_INSTRUCTIVE_MESSAGE }],
+    },
+    {
+      name: "Agent Runtime domain may not instantiate Langfuse tracing directly",
+      filename: AGENT_RUNTIME_TURN_SERVICE,
+      code: "import { CallbackHandler } from 'langfuse-langchain';",
+      errors: [{ message: AGENT_INSTRUCTIVE_MESSAGE }],
+    },
+    {
+      name: "Agent Runtime main exception does not allow tracing handlers",
+      filename: AGENT_RUNTIME_MAIN,
+      code: "import { CallbackHandler, Langfuse } from 'langfuse-langchain';",
+      errors: [{ message: AGENT_INSTRUCTIVE_MESSAGE }],
+    },
+  ],
+});
+
+test("plugin exports and recommends provider-only-cross-cutting", () => {
+  assert.ok(plugin.rules["provider-only-cross-cutting"]);
+  assert.equal(
+    plugin.configs.recommended.rules["intentive-architecture/provider-only-cross-cutting"],
+    "error",
+  );
+});
+
+test("root ESLint config enables provider-only-cross-cutting", () => {
+  const rootConfig = require("../../../eslint.config.cjs");
+  assert.equal(rootConfig[0].rules["intentive-architecture/provider-only-cross-cutting"], "error");
+  assert.equal(rootConfig[1].rules["intentive-architecture/provider-only-cross-cutting"], "error");
 });
 
 ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {

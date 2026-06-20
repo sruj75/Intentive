@@ -13,7 +13,7 @@ The single explicit interface for cross-cutting concerns. Auth, telemetry, featu
 - **`auth.ts`** — `createJwtVerifier({ jwks_url, issuer, audience })` → `JwtVerifier` resolving a typed `VerifiedPrincipal` (`{ user_id }` from the JWT `sub` claim). Backed by `jose`'s `createRemoteJWKSet` (lazy fetch, in-memory cache, refetch on unknown `kid`). Every failure surfaces as one `JwtVerificationError` with a `JwtVerificationReason` discriminant (`expired`, `invalid_signature`, `wrong_issuer`, `wrong_audience`, `unknown_key`, `jwks_unavailable`, `malformed`); error messages never carry the token or claims. Callers recover a `reason` via `asJwtVerificationFailure` — the only sanctioned path; HTTP/protocol status mapping stays deployable-local. Both the Control Plane and the Agent Runtime verify Neon Auth JWTs through this one boundary. Construct once at startup and reuse.
 - **`telemetry.ts`** — `createLogger(name)` → `Logger` (`info`/`warn`/`error` with structured attrs). Emits one JSON line per record to stdout with an allowlisted attr key set (`allowedLogAttrKeys`); optional `SentrySink` breadcrumbs on warn/error. `errorMessage(error)` is the canonical error→string helper for log attrs and durable error columns. Domain code passes identifiers and metadata only — never conversation bodies, memory, or auth tokens.
 - **`observability/index.ts`** — `bootstrapObservability(config)` composes Sentry init (`skipOpenTelemetrySetup: true`), Langfuse callback handler factory, redacted loggers, and one `shutdown()` drain that closes Sentry and flushes active Langfuse handlers. v1 supports `SENTRY_MODE=errors-only` and `LANGFUSE_MODE=callback`; `errors-and-performance` and Langfuse `otel` are reserved and reject at bootstrap until OTel is composed here. Domain code must not import `@sentry/node` or instantiate Langfuse tracing directly.
-- **`flags.ts`** — `createFlagClient({ defaults })` → `FlagClient` with synchronous `isEnabled`. **Currently defaults-only.**
+- **`flags.ts`** — `createFlagClient({ defaults })` → `FlagClient` with synchronous `isEnabled`. **Currently defaults-only.** A real flags backend is deferred until a named production flag consumer exists.
 
 ## Invariants
 
@@ -27,11 +27,11 @@ The single explicit interface for cross-cutting concerns. Auth, telemetry, featu
 
 - **Consumers:** `services/control-plane` and `services/agent-runtime` (auth, telemetry, flags); Clients consume cross-cutting concerns through their own `providers/` boundary, sourcing shared ones from here.
 - **Sibling packages:** wire/HTTP contracts live in `@intentive/protocol` and `@intentive/api-contract`; non-wire domain shapes in `@intentive/domain-types`. This package is behavior/clients, not shapes.
-- **Enforcement:** the provider-only cross-cutting lint in `tools/linters/` fails any domain that imports auth/telemetry/flags from anywhere except here or a sanctioned re-export.
+- **Enforcement:** the provider-only cross-cutting lint in `tools/linters/` fails deployable/domain imports of cross-cutting SDKs such as `@sentry/node` and Langfuse tracing unless they go through this package or a sanctioned re-export.
 
 ## Change protocol
 
 1. Add or evolve the interface here first; keep it minimal and deep.
-2. Replace a stub with a real implementation behind the unchanged interface (e.g. the JWKS verifier) so consumers need no change.
+2. Replace a stub with a real implementation behind the unchanged interface (e.g. the JWKS verifier) so consumers need no change. For flags, wait for the first named live flag consumer before adding a vendor, refresh loop, or deployable kill switch.
 3. For a new cross-cutting concern, decide whether it is genuinely shared (lives here) or single-deployable (lives in that deployable's `providers/`).
 4. Run monorepo typecheck and the provider lint before merging.
