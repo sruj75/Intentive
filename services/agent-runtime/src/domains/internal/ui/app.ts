@@ -57,6 +57,9 @@ export function createInternalApp(deps: {
 }): Hono {
   const app = new Hono();
 
+  // Liveness probe; no auth, no body of interest. `/health` is the canonical
+  // route across deployables; `/healthz` remains a local compatibility alias.
+  app.get("/health", () => json({ ok: true, service: "agent-runtime" }, 200));
   app.get("/healthz", () => json({ ok: true, service: "agent-runtime" }, 200));
 
   app.post("/internal/sessions/start", async (c) => {

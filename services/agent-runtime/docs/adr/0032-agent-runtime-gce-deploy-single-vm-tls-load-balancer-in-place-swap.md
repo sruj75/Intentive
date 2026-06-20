@@ -37,7 +37,7 @@ That left a set of "the workflow runs, but is it actually serving users?" gaps t
 ## Consequences
 
 - `main.ts` gains a `SIGTERM`/`SIGINT` handler; `packages/providers` observability gains a `shutdown()` that flushes Sentry + Langfuse. The Dockerfile gains a Secret-Manager boot-fetch entrypoint.
-- The LB health check for the WebSocket backend is a **TCP check on `:8080`** (a raw `ws` server cannot answer an HTTP `GET`); the internal backend can health-check the existing `GET /healthz` on `:8081`. An app-level WebSocket ping is the clean long-term replacement for the high LB timeout.
+- The LB health check for the WebSocket backend is a **TCP check on `:8080`** (a raw `ws` server cannot answer an HTTP `GET`); the internal backend can health-check `GET /health` on `:8081`. An app-level WebSocket ping is the clean long-term replacement for the high LB timeout.
 - One VM is a single point of failure with a few-minutes reboot window; accepted for a pre-launch single-operator v1.
 - Provisioning is owned out-of-band (ADR-0033 pairing, README "Deployment"): the `agent_runtime` schema, a walled-off `agent_runtime_app` role with `CREATE`, migrations `0001`–`0009`, and the boot-time creation of the LangGraph store + checkpoint tables.
 - Re-introducing HA, autohealing, a metrics/alerting pipeline, or blue-green is a future, evidence-driven decision recorded as its own ADR.
