@@ -1,19 +1,38 @@
 {
   "expo": {
     "name": "Intentive",
-    "slug": "intentive-mobile",
+    "slug": "intentive",
     "scheme": "intentive",
     "version": "0.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/fd429803-2de2-493f-960f-cdaebdea7714"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.heyintentive.expo"
     },
-    "plugins": ["expo-router", "expo-secure-store", "expo-web-browser", "expo-image"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-image",
+      "expo-notifications"
+    ],
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fd429803-2de2-493f-960f-cdaebdea7714"
+      }
+    },
+    "owner": "srujxx"
   }
 }

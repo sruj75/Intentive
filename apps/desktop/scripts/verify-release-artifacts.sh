@@ -18,6 +18,44 @@ assert_macho() {
   file "$path" | grep -q "Mach-O" || fail "$path is not a Mach-O binary"
 }
 
+assert_icns() {
+  local path="$1"
+  [[ -s "$path" ]] || fail "$path is missing or empty"
+  file "$path" | grep -q "Mac OS X icon" || fail "$path is not an .icns icon"
+}
+
+assert_plist_value() {
+  local plist="$1"
+  local key="$2"
+  local expected="$3"
+  local actual
+
+  actual="$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist" 2>/dev/null)" ||
+    fail "$plist is missing $key"
+  [[ "$actual" == "$expected" ]] ||
+    fail "$plist has $key=$actual, expected $expected"
+}
+
+assert_helper_bundle() {
+  local helper_app="$1"
+  local helper_binary="$helper_app/Contents/MacOS/screenpipe"
+  local helper_icon="$helper_app/Contents/Resources/icon.icns"
+  local helper_plist="$helper_app/Contents/Info.plist"
+
+  [[ -d "$helper_app" ]] || fail "$helper_app is missing"
+  [[ -x "$helper_binary" ]] || fail "$helper_binary is missing or not executable"
+  [[ -f "$helper_plist" ]] || fail "$helper_plist is missing"
+  assert_not_lfs_pointer "$helper_binary"
+  assert_macho "$helper_binary"
+  assert_icns "$helper_icon"
+  assert_plist_value "$helper_plist" CFBundleDisplayName Intentive
+  assert_plist_value "$helper_plist" CFBundleName Intentive
+  assert_plist_value "$helper_plist" CFBundleIdentifier com.heyintentive.capture
+  assert_plist_value "$helper_plist" CFBundleExecutable screenpipe
+  assert_plist_value "$helper_plist" CFBundleIconFile icon.icns
+  assert_plist_value "$helper_plist" LSBackgroundOnly true
+}
+
 assert_signed_runtime() {
   local path="$1"
   local details
@@ -30,14 +68,12 @@ assert_signed_runtime() {
 
 verify_source_resources() {
   local root="${1:-apps/desktop/src-tauri}"
-  local helper="$root/resources/Intentive Capture.app/Contents/MacOS/screenpipe"
+  local helper="$root/resources/Intentive Capture.app"
   local ollama="$root/resources/ollama"
 
-  [[ -x "$helper" ]] || fail "$helper is missing or not executable"
+  assert_helper_bundle "$helper"
   [[ -x "$ollama" ]] || fail "$ollama is missing or not executable"
-  assert_not_lfs_pointer "$helper"
   assert_not_lfs_pointer "$ollama"
-  assert_macho "$helper"
   assert_macho "$ollama"
 }
 
@@ -81,11 +117,17 @@ verify_built_artifacts() {
   latest="$bundle_root/macos/latest.json"
 
   [[ -d "$app" ]] || fail "$app is missing"
+  [[ -d "$helper" ]] || fail "$helper is missing from nested app resources"
+  [[ ! -e "$bundle_root/macos/Intentive Capture.app" ]] ||
+    fail "helper app is exposed as a sibling macOS app"
+  [[ ! -e "$app/Contents/Resources/Intentive Capture.app" ]] ||
+    fail "helper app is exposed outside Contents/Resources/resources"
   [[ -n "$dmg" && -f "$dmg" ]] || fail "DMG artifact is missing"
   [[ -n "$tarball" && -f "$tarball" ]] || fail "updater tarball artifact is missing"
   [[ -n "$signature" && -f "$signature" ]] || fail "updater signature artifact is missing"
   [[ -f "$latest" ]] || fail "latest.json is missing"
 
+  assert_helper_bundle "$helper"
   assert_not_lfs_pointer "$ollama"
   assert_macho "$ollama"
 

@@ -84,6 +84,8 @@ Pull requests that touch Control Plane run `.github/workflows/neon-preview-branc
 
 ### Deploy procedure (careful path)
 
+Step-by-step release runbook (tag-free, SHA-identified): [`docs/RELEASE.md`](docs/RELEASE.md). Production state and the full smoke scripts: [`../../docs/DEPLOY.md`](../../docs/DEPLOY.md).
+
 1. Manually trigger `control-plane-deploy` (`workflow_dispatch`) — it builds, pushes, and deploys as a **no-traffic** revision.
 2. Smoke-check the new revision at its own URL:
    - `GET /health` → `200 {"ok":true,...}` (liveness; process is up).

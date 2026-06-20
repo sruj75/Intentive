@@ -37,7 +37,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - Expo / React Native, TypeScript
 - Local dev: `pnpm --dir apps/mobile dev` (or `ios` / `android`); tests: `pnpm --dir apps/mobile test` (Node) and `pnpm --dir apps/mobile test:rn` (Jest / RN harness); harness: `pnpm harness --scope apps/mobile`
 - iOS Simulator verification (start Metro from `apps/mobile`; wipe DerivedData on `clang`/`swift-frontend` crashes): see [`docs/TESTING.md` → Mobile Client → iOS simulator verification](../../docs/TESTING.md#ios-simulator-verification-visual-on-device)
-- Deploys to TestFlight / App Store via **EAS Build** (Git-based)
+- Deploys to TestFlight / App Store via **EAS Build** (Git-based); JS-only changes ship over-the-air via **EAS Update** (`expo-updates`). Push notifications go through the Expo Push Service (`expo-notifications`, APNs key in EAS credentials). Both paths + the push wiring: [`docs/RELEASE.md`](docs/RELEASE.md)
 - `@assistant-ui/react-native` is the **Chat Primitive Engine** behind Intentive Chat Components — keep it replaceable (ADR 0009 spike: KEEP)
 
 ## Guardrails specific to this deployable
