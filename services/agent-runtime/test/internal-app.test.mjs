@@ -82,7 +82,22 @@ test("POST /internal/sessions/start rejects malformed bodies before side effects
   assert.equal(calls, 0);
 });
 
-test("GET /healthz is a 200 liveness probe", async () => {
+test("GET /health is a 200 liveness probe", async () => {
+  const app = createInternalApp({
+    secret: "runtime-inbound-secret",
+    startSession: async () => ({
+      agent_instance_id: "agent_instance_1",
+      ws_url: "wss://runtime.example.com/ws",
+    }),
+  });
+
+  const res = await app.request("/health");
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, service: "agent-runtime" });
+});
+
+test("GET /healthz is not exposed", async () => {
   const app = createInternalApp({
     secret: "runtime-inbound-secret",
     startSession: async () => ({
@@ -93,6 +108,5 @@ test("GET /healthz is a 200 liveness probe", async () => {
 
   const res = await app.request("/healthz");
 
-  assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { ok: true, service: "agent-runtime" });
+  assert.equal(res.status, 404);
 });

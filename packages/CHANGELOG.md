@@ -12,6 +12,11 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
   v1 supports `SENTRY_MODE=errors-only` and `LANGFUSE_MODE=callback`; reserved OTel modes
   reject at bootstrap. Tests: `providers/test/observability.test.mjs`,
   `providers/test/telemetry.test.mjs`.
+- **Provider-only cross-cutting architecture lint** ([Issue #52]) —
+  `intentive-architecture/provider-only-cross-cutting` blocks deployable/domain imports of
+  Sentry and Langfuse tracing SDKs unless they go through
+  `@intentive/providers/observability`, with a narrow Agent Runtime prompt-floor client
+  exception for the existing `Langfuse` import.
 - **`@intentive/protocol` — optional `client_tz` on `connect`** ([Issue #39]) —
   clients may report an IANA timezone on every WebSocket handshake so the Agent
   Runtime can resolve wall-clock Cron schedules while the user is offline.
@@ -54,8 +59,12 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
   (replacing raw `ZodError` leakage). `safeParse*` wrappers unchanged.
 - **`packages/AGENTS.md`** — documents `boundary/` in the package table and the consolidated
   decode-at-boundary rule.
+- **`@intentive/providers/flags`** ([Issue #51]) — remains a defaults-only `FlagClient`
+  interface until the first named production flag consumer justifies a live backend.
 
 [Issue #39]: https://github.com/sruj75/Intentive/issues/39
 [Issue #42]: https://github.com/sruj75/Intentive/issues/42
 [Issue #47]: https://github.com/sruj75/Intentive/issues/47
 [Issue #49]: https://github.com/sruj75/Intentive/issues/49
+[Issue #51]: https://github.com/sruj75/Intentive/issues/51
+[Issue #52]: https://github.com/sruj75/Intentive/issues/52

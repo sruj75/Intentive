@@ -23,6 +23,12 @@ types  →  config  →  repo  →  service  →  runtime  →  ui
 
 Forbids one deployable from importing another deployable's source via relative paths. Shared code goes in `packages/*` and is imported by workspace name (e.g. `@intentive/protocol`), never by path.
 
+### `provider-only-cross-cutting`
+
+Forbids deployable/domain code from importing cross-cutting SDKs directly. Auth, telemetry, observability, feature flags, and other cross-cutting clients must enter through `@intentive/providers/*` or a deployable-local `providers/` seam.
+
+The first enforced SDKs are Sentry (`@sentry/node`) and Langfuse tracing (`langfuse-langchain`). Their initialization lives in `packages/providers/src/observability/`; the rule keeps a narrow Agent Runtime `Langfuse` prompt-floor client exception while blocking tracing handler setup outside Providers.
+
 ## Why mechanical?
 
 From [OpenAI's Harness Engineering post](https://openai.com/index/harness-engineering/):
@@ -37,7 +43,7 @@ A layer rule that lives only in a doc decays in weeks. The same rule expressed a
 node tools/linters/eslint-plugin-intentive-architecture/test.js
 ```
 
-Pure Node, no dependencies. Tests the path parser and layer-rule logic in isolation. Should print `12 passed, 0 failed`.
+Pure Node, no dependencies. Tests the path parser, rule logic, and ESLint integration fixtures in isolation. Should print `0 failed`.
 
 ## Using the plugin in the workspace
 

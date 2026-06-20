@@ -33,6 +33,7 @@ module.exports = [
       "intentive-architecture/no-cross-deployable": "error",
       "intentive-architecture/context-vocabulary": "error",
       "intentive-architecture/filename-case": "error",
+      "intentive-architecture/provider-only-cross-cutting": "error",
     },
   },
   {
@@ -53,6 +54,7 @@ module.exports = [
       "intentive-architecture/no-cross-deployable": "error",
       "intentive-architecture/context-vocabulary": "error",
       "intentive-architecture/filename-case": "error",
+      "intentive-architecture/provider-only-cross-cutting": "error",
     },
   },
   {

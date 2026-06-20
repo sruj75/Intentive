@@ -4,6 +4,7 @@ const layerDirection = require("./lib/rules/layer-direction");
 const noCrossDeployable = require("./lib/rules/no-cross-deployable");
 const contextVocabulary = require("./lib/rules/context-vocabulary");
 const filenameCase = require("./lib/rules/filename-case");
+const providerOnlyCrossCutting = require("./lib/rules/provider-only-cross-cutting");
 
 const plugin = {
   meta: {
@@ -15,6 +16,7 @@ const plugin = {
     "no-cross-deployable": noCrossDeployable,
     "context-vocabulary": contextVocabulary,
     "filename-case": filenameCase,
+    "provider-only-cross-cutting": providerOnlyCrossCutting,
   },
 };
 
@@ -27,6 +29,7 @@ plugin.configs = {
       "intentive-architecture/no-cross-deployable": "error",
       "intentive-architecture/context-vocabulary": "error",
       "intentive-architecture/filename-case": "error",
+      "intentive-architecture/provider-only-cross-cutting": "error",
     },
   },
 };

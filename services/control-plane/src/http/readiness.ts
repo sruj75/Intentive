@@ -28,7 +28,7 @@ export function createReadiness(deps: {
     async check() {
       // Bound each check so a dependency that accepts the connection but never
       // responds (a hung host, not a refused one) surfaces as `failed` promptly
-      // rather than letting `/readyz` block on the underlying fetch/socket
+      // rather than letting `/ready` block on the underlying fetch/socket
       // timeout — detecting that is the whole point of the probe.
       const [neon, jwks] = await Promise.allSettled([
         withTimeout(deps.sql`SELECT 1`, timeoutMs),
