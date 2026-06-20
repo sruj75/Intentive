@@ -44,8 +44,7 @@ re-parse `process.env`.
 | `GET  /health`                  | Shallow liveness probe                             |
 | `POST /internal/sessions/start` | Control Plane starts or confirms an Agent Instance |
 
-`/healthz` remains available as a local compatibility alias, but deployment
-docs and smoke checks should use `/health` to match the Control Plane.
+Health checks use `/health` to match the Control Plane.
 
 ## Deployment
 

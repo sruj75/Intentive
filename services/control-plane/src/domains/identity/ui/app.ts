@@ -58,10 +58,8 @@ export function createApp(deps: {
 }): Hono {
   const app = new Hono();
 
-  // Liveness probe; no auth, no body of interest. Cloud Run reserves some
-  // top-level paths ending in `z`, so production smoke checks use `/health`.
+  // Liveness probe; no auth, no body of interest.
   app.get("/health", () => json({ ok: true, service: "control-plane" }, 200));
-  app.get("/healthz", () => json({ ok: true, service: "control-plane" }, 200));
 
   async function handleReadiness(): Promise<Response> {
     if (!deps.readiness) {
@@ -72,7 +70,6 @@ export function createApp(deps: {
   }
 
   app.get("/ready", handleReadiness);
-  app.get("/readyz", handleReadiness);
 
   app.get("/me", async (c) => {
     const result = await deps.getMe.handle({

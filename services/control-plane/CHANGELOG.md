@@ -13,9 +13,8 @@ All notable changes to the Control Plane service. Format follows [Keep a Changel
   Sentry (`SENTRY_*`, Langfuse intentionally absent), redacted domain-event logs
   for auth/gates/Session Start/device registration/push fan-out, a
   monorepo-aware Dockerfile, and a no-traffic → smoke → promote deploy workflow.
-  The shallow liveness probe is `GET /health`; `/healthz` and `/readyz` remain
-  local compatibility aliases, but deploy smoke checks avoid Cloud Run-reserved
-  top-level `z` paths. Docs now count migrations `0001`-`0005` for production
+  The shallow liveness probe is `GET /health`, and the deploy smoke check uses
+  `GET /ready`. Docs now count migrations `0001`-`0005` for production
   provisioning. Pull requests now create a Neon preview branch, apply the
   Control Plane migrations, run Control Plane checks, and delete the branch on
   PR close.

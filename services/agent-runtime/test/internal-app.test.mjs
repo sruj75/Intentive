@@ -97,7 +97,7 @@ test("GET /health is a 200 liveness probe", async () => {
   assert.deepEqual(await res.json(), { ok: true, service: "agent-runtime" });
 });
 
-test("GET /healthz remains available as a local compatibility liveness alias", async () => {
+test("GET /healthz is not exposed", async () => {
   const app = createInternalApp({
     secret: "runtime-inbound-secret",
     startSession: async () => ({
@@ -108,6 +108,5 @@ test("GET /healthz remains available as a local compatibility liveness alias", a
 
   const res = await app.request("/healthz");
 
-  assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { ok: true, service: "agent-runtime" });
+  assert.equal(res.status, 404);
 });
