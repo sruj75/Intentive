@@ -27,6 +27,18 @@ _Avoid_: connection state, socket state, online/offline
 Whether the Protocol WebSocket to the **Agent Runtime** is connected **right now**. One of `disconnected`, `connecting`, `connected`, `reconnecting`. A dropped line moves only this state; it does not invalidate **Routing State**. The Rust core emits Protocol events only when Routing State is `routing_ready` **and** Session State is `connected`.
 _Avoid_: routing state, auth state, login state
 
+**Intentive Capture Helper**:
+The signed child app bundle (`Intentive Capture.app`, `CFBundleIdentifier = com.heyintentive.capture`) that wraps the ScreenPipe binary so macOS attributes Screen Recording to a product-owned name. It is the TCC principal the user sees in Privacy Settings — **Intentive Capture**, never `screenpipe`. Preserves the ADR-0002 child-process/HTTP boundary; only the on-disk shape and the OS-visible name differ from a flat binary. See ADR-0015.
+_Avoid_: screenpipe helper, sidecar, capture daemon
+
+**In-App Update**:
+The Desktop Client's silent self-update via Tauri's updater. Checks on **launch and on wake-from-sleep**, downloads and installs in the background with no prompt; the new version applies on next launch. Not a notification, not a nag, never interrupts a Capture Session. See ADR-0024.
+_Avoid_: auto-updater popup, update prompt, update notification
+
+**Release Smoke**:
+The merge-gate verification that a _shipped artifact_ is trustworthy: notarization/Gatekeeper verdict, the **Intentive Capture** identity string, first-launch behavior, and an updater round-trip — run on a simulated clean Mac (`docs/RELEASE.md`). Distinct from the **capture-session smoke** (`docs/SMOKE.md`), which checks that capture works when signed in.
+_Avoid_: smoke test (ambiguous — say Release Smoke or capture-session smoke)
+
 ## Relationships
 
 - The webview owns **sign-in** and re-syncs the login token to the Rust core when it changes (unchanged token is a no-op); the Rust core owns **Routing** end-to-end — it calls `GET /agent`, holds Routing in memory, and re-fetches it when the runtime rejects the badge.
