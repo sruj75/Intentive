@@ -31,9 +31,9 @@ Expected Release assets:
 
 The workflow's `Verify release artifacts` step is load-bearing. It verifies the
 same contract future releases need: no Git LFS pointer binaries, real Mach-O
-native resources, Developer ID + hardened runtime on nested binaries, stapled app
-and DMG tickets, Gatekeeper acceptance, and updater metadata/signature
-consistency.
+native resources, complete hidden helper-bundle identity (plist + Intentive icon),
+Developer ID + hardened runtime on nested binaries, stapled app and DMG tickets,
+Gatekeeper acceptance, and updater metadata/signature consistency.
 
 ---
 
@@ -73,7 +73,8 @@ commit.
    ```
 
    This catches the easy release blockers before GitHub Actions: missing
-   executables, Git LFS pointer files, or non-Mach-O native resources.
+   executables, incomplete helper-bundle identity, Git LFS pointer files, or
+   non-Mach-O native resources.
 
 4. Open and merge the PR to `main`.
 5. Confirm the merged commit on `origin/main` is the commit you want to ship:
@@ -243,7 +244,7 @@ tccutil reset Accessibility com.heyintentive.tauri
 ```
 
 Launch, run Capture Permission Setup, then open **System Settings → Privacy & Security → Screen & System Audio Recording**.
-**Pass:** the entry reads **Intentive** (never `screenpipe`, never lowercase `intentive`, never a path). This is the load-bearing observation for ADR-0015/#54 — confirm it on the real notarized build, not in `tauri dev`.
+**Pass:** the entry reads **Intentive** and shows the Intentive logo. It must not show `screenpipe`, `Intentive Capture`, lowercase `intentive`, a raw path, a blank icon, or the default macOS app icon. This is the load-bearing observation for ADR-0015/#54 — confirm it on the real notarized build, not in `tauri dev`.
 
 ### 4. The "downloaded from the internet" first-launch dialog
 
@@ -271,4 +272,4 @@ Intentive is in users' hands.
 
 ## Capture in docs after the smoke
 
-The clean-Mac observation in step 3 finalizes ADR-0015's open identity question. Record the observed Privacy-Settings string (expected: **Intentive**) as a closing note on ADR-0015 once verified.
+The clean-Mac observation in step 3 finalizes ADR-0015's open identity question. Record the observed Privacy-Settings string (expected: **Intentive**) and icon (expected: Intentive logo) as a closing note on ADR-0015 once verified.

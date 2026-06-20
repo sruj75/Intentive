@@ -10,6 +10,8 @@
 	<string>com.heyintentive.capture</string>
 	<key>CFBundleExecutable</key>
 	<string>screenpipe</string>
+	<key>CFBundleIconFile</key>
+	<string>icon.icns</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleInfoDictionaryVersion</key>
