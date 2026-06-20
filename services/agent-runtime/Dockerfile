@@ -12,22 +12,25 @@ COPY packages/domain-types/package.json packages/domain-types/package.json
 COPY packages/api-contract/package.json packages/api-contract/package.json
 COPY packages/protocol/package.json packages/protocol/package.json
 COPY packages/providers/package.json packages/providers/package.json
+COPY tools/linters/eslint-plugin-intentive-architecture/package.json tools/linters/eslint-plugin-intentive-architecture/package.json
 COPY services/agent-runtime/package.json services/agent-runtime/package.json
 
 RUN pnpm install --frozen-lockfile
 
 COPY packages packages
+COPY tools/linters/eslint-plugin-intentive-architecture tools/linters/eslint-plugin-intentive-architecture
 COPY services/agent-runtime services/agent-runtime
 
 RUN pnpm --filter "@intentive/agent-runtime..." run build
-RUN pnpm --filter @intentive/agent-runtime deploy --prod /app
+RUN pnpm --filter @intentive/agent-runtime deploy --prod --legacy /app
 
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
 COPY --from=build /app /app
+COPY --from=build /repo/services/agent-runtime/scripts /app/scripts
 
 USER node
 EXPOSE 8080 8081
-CMD ["node", "dist/main.js"]
+CMD ["node", "scripts/boot-fetch-secrets.mjs", "dist/main.js"]

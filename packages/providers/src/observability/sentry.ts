@@ -8,12 +8,17 @@ export interface SentryModule {
   init(options: NodeOptions): void;
   captureException(error: unknown, context?: { tags?: Record<string, string> }): void;
   addBreadcrumb(crumb: Breadcrumb): void;
+  close(timeout?: number): Promise<boolean> | boolean;
+}
+
+export interface SentrySinkWithShutdown extends SentrySink {
+  shutdown(timeoutMs?: number): Promise<void>;
 }
 
 export function createSentrySink(
   config: SentryConfig | null,
   sentry: SentryModule = Sentry,
-): SentrySink {
+): SentrySinkWithShutdown {
   if (!config) {
     return noopSentrySink;
   }
@@ -40,12 +45,16 @@ export function createSentrySink(
         data: crumb.data,
       });
     },
+    async shutdown(timeoutMs = 2_000) {
+      await sentry.close(timeoutMs);
+    },
   };
 }
 
-export const noopSentrySink: SentrySink = {
+export const noopSentrySink: SentrySinkWithShutdown = {
   captureException: () => {},
   addBreadcrumb: () => {},
+  shutdown: async () => {},
 };
 
 function stringifyTags(attrs: LogAttrs | undefined): Record<string, string> {

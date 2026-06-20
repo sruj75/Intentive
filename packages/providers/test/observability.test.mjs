@@ -20,6 +20,7 @@ test("bootstrap initializes Sentry errors-only with OpenTelemetry skipped", () =
         init: (options) => initCalls.push(options),
         captureException: () => {},
         addBreadcrumb: () => {},
+        close: async () => true,
       },
     },
   );
@@ -48,6 +49,7 @@ test("bootstrap rejects reserved observability modes in v1", () => {
             init: () => {},
             captureException: () => {},
             addBreadcrumb: () => {},
+            close: async () => true,
           },
         },
       ),
@@ -66,4 +68,101 @@ test("bootstrap rejects reserved observability modes in v1", () => {
       }),
     /not wired in v1/,
   );
+});
+
+test("shutdown closes Sentry and all created Langfuse callback handlers", async () => {
+  const sentryCloseCalls = [];
+  const handlerCalls = [];
+  const observability = bootstrapObservability(
+    {
+      sentry: {
+        dsn: "https://public@example.ingest.sentry.io/1",
+        mode: "errors-only",
+      },
+      langfuse: {
+        publicKey: "pk",
+        secretKey: "sk",
+        mode: "callback",
+      },
+    },
+    {
+      sentry: {
+        init: () => {},
+        captureException: () => {},
+        addBreadcrumb: () => {},
+        close: async (timeoutMs) => {
+          sentryCloseCalls.push(timeoutMs);
+          return true;
+        },
+      },
+      langfuse: {
+        createHandler: () => ({
+          name: "fake-langfuse",
+          async shutdownAsync() {
+            handlerCalls.push("shutdown");
+          },
+        }),
+      },
+    },
+  );
+
+  observability.createCallbackHandler();
+  observability.createCallbackHandler();
+  await observability.shutdown();
+
+  assert.deepEqual(sentryCloseCalls, [2_000]);
+  assert.deepEqual(handlerCalls, ["shutdown", "shutdown"]);
+});
+
+test("shutdown resolves when observability is unconfigured or a drain rejects", async () => {
+  await bootstrapObservability({ sentry: null, langfuse: null }).shutdown();
+
+  const observability = bootstrapObservability(
+    {
+      sentry: {
+        dsn: "https://public@example.ingest.sentry.io/1",
+        mode: "errors-only",
+      },
+      langfuse: {
+        publicKey: "pk",
+        secretKey: "sk",
+        mode: "callback",
+      },
+    },
+    {
+      sentry: {
+        init: () => {},
+        captureException: () => {},
+        addBreadcrumb: () => {},
+        close: async () => {
+          throw new Error("sentry unavailable");
+        },
+      },
+      langfuse: {
+        createHandler: () => ({
+          name: "fake-langfuse",
+          async flushAsync() {
+            throw new Error("langfuse unavailable");
+          },
+        }),
+      },
+    },
+  );
+
+  observability.createCallbackHandler();
+  await observability.shutdown();
+});
+
+test("shutdown drains additional observability-owned hooks", async () => {
+  const drains = [];
+  const observability = bootstrapObservability(
+    { sentry: null, langfuse: null },
+    {
+      shutdown: [async () => drains.push("prompt-client"), () => drains.push("sync-hook")],
+    },
+  );
+
+  await observability.shutdown();
+
+  assert.deepEqual(drains, ["prompt-client", "sync-hook"]);
 });

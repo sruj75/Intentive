@@ -6,13 +6,25 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **v1 production deploy drain + Secret Manager boot fetch** ([Issue #50], [ADR-0032](docs/adr/0032-agent-runtime-gce-deploy-single-vm-tls-load-balancer-in-place-swap.md), [ADR-0033](docs/adr/0033-agent-runtime-internal-session-start-public-ingress-shared-secret.md)) —
+  `main.ts` registers `SIGTERM`/`SIGINT` shutdown through `runtime/shutdown.ts`:
+  Cron and Heartbeat schedulers stop, connected WebSockets close with `1001`,
+  public/internal servers close, and `observability.shutdown()` flushes Sentry
+  - Langfuse before exit. `packages/providers/observability` now owns the
+    shutdown drain, keeping SDK shutdown out of domains. The production image
+    starts through `scripts/boot-fetch-secrets.mjs`, which fetches only
+    `SECRET_NAMES` from Google Secret Manager using the VM service account before
+    launching `dist/main.js`; the deploy workflow now passes the non-secret env
+    and Secret Manager allowlist during `update-container`. Tests:
+    `test/shutdown.test.mjs`, `test/boot-fetch-secrets.test.mjs`, and extended
+    provider observability tests.
 - **v1 production readiness — observability, isolation, deploy** ([Issue #42], [ADR-0030](docs/adr/0030-agent-runtime-v1-production-readiness-off-the-shelf-not-custom-program.md)) —
   `bootstrapObservability` from `@intentive/providers/observability` wires optional Sentry +
   Langfuse at `main.ts` boot; structured logs at domain seams (connection registry, delivery,
   Post-Message-Back, DeepAgents adapter, Per-User Channel, Cron/Heartbeat schedulers).
   `loadConfig` adds optional `SENTRY_*` and `LANGFUSE_MODE`; [`.env.example`](.env.example)
   documents both. Production container image via [`Dockerfile`](Dockerfile)
-  (`pnpm deploy` → `node dist/main.js`). Tests:
+  (`pnpm deploy` → `scripts/boot-fetch-secrets.mjs dist/main.js`). Tests:
   `test/multi-user-isolation.integration.test.mjs`,
   `test/reconnect-recovery.integration.test.mjs`,
   `test/restart-smoke.integration.test.mjs`, extended `test/config-env.test.mjs` and

@@ -51,12 +51,24 @@ import type { TransactionalSql } from "./domains/sessions/repo/sql.js";
 import { createPerUserChannel } from "./domains/sessions/runtime/per-user-channel.js";
 import { createStartSession } from "./domains/sessions/service/start-session.js";
 import type { PerUserChannel } from "./domains/sessions/types/event.js";
+import { createShutdown } from "./runtime/shutdown.js";
 
 const config = loadConfig();
-const observability = bootstrapObservability({
-  sentry: config.sentry,
-  langfuse: config.langfuse,
-});
+const langfuseConfig = config.langfuse;
+const langfuseClient = langfuseConfig
+  ? new Langfuse({
+      publicKey: langfuseConfig.publicKey,
+      secretKey: langfuseConfig.secretKey,
+      baseUrl: langfuseConfig.baseUrl,
+    })
+  : null;
+const observability = bootstrapObservability(
+  {
+    sentry: config.sentry,
+    langfuse: config.langfuse,
+  },
+  langfuseClient ? { shutdown: [() => drainLangfuseClient(langfuseClient)] } : {},
+);
 const log = observability.createLogger("agent-runtime");
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
 
@@ -98,14 +110,6 @@ const cronBackend = createCronBackend({
 });
 const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
 const fallbackFloorSource = createBundledFallbackSource();
-const langfuseConfig = config.langfuse;
-const langfuseClient = langfuseConfig
-  ? new Langfuse({
-      publicKey: langfuseConfig.publicKey,
-      secretKey: langfuseConfig.secretKey,
-      baseUrl: langfuseConfig.baseUrl,
-    })
-  : null;
 const floorResolver = createProcedureFloorResolver({
   source: langfuseClient ? createLangfuseFloorSource({ client: langfuseClient }) : null,
   fallback: fallbackFloorSource,
@@ -219,7 +223,7 @@ const connectHandler = createConnectHandler({
   },
 });
 
-serve({ fetch: internalApp.fetch, port: config.internalInbound.port });
+const internalServer = serve({ fetch: internalApp.fetch, port: config.internalInbound.port });
 
 // The Per-User Channel is the single serialization point: state-mutating ingress
 // (`user_message`, `context_snapshot`, `session_end_marker`) and History Backfill
@@ -241,3 +245,26 @@ log.info("runtime.public_ws_listening", { status: "ok" });
 log.info("runtime.internal_api_listening", { status: "ok" });
 cronScheduler.start();
 heartbeatScheduler.start();
+
+const shutdown = createShutdown({
+  schedulers: [cronScheduler, heartbeatScheduler],
+  wss,
+  internalServer,
+  observability,
+  logger: log,
+});
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
+
+async function drainLangfuseClient(client: LangfuseDrainClient): Promise<void> {
+  if (client.shutdownAsync) {
+    await client.shutdownAsync();
+    return;
+  }
+  await client.flushAsync?.();
+}
+
+interface LangfuseDrainClient {
+  shutdownAsync?: () => Promise<unknown>;
+  flushAsync?: () => Promise<unknown>;
+}

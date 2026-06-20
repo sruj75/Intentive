@@ -65,10 +65,10 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Workspace library entry — re-exports `loadConfig` and testable public surfaces for consumers and tests.
 
 `src/main.ts`
-: Composition root — loads config, bootstraps observability (`bootstrapObservability` from `@intentive/providers/observability`), constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, **Sensory Buffer** reader, delivery port, Control Plane push client, connection registry, Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter, one working-context assembler, and one **Turn Execution** spine shared by the **Interactive Turn** runner, Cron fire handler, and **Monitoring Turn** runner. It constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + perception-triggered best-effort Monitoring Turn enqueue + queue-serialized snapshot reads), the Cron poll scheduler, the Heartbeat computed scheduler, the private Internal API, and the public WebSocket gateway.
+: Composition root — loads config, bootstraps observability (`bootstrapObservability` from `@intentive/providers/observability`), constructs Providers, wires Neon-backed Agent Instance (including `client_tz` persistence on connect), event-ledger, conversation repos, **Sensory Buffer** reader, delivery port, Control Plane push client, connection registry, Procedure Floor resolver + memory/`cron` CompositeBackend + DeepAgents adapter, one working-context assembler, and one **Turn Execution** spine shared by the **Interactive Turn** runner, Cron fire handler, and **Monitoring Turn** runner. It constructs the **Per-User Channel** (transactional ingress + pinned floor + `runTurn` + perception-triggered best-effort Monitoring Turn enqueue + queue-serialized snapshot reads), the Cron poll scheduler, the Heartbeat computed scheduler, the private Internal API, the public WebSocket gateway, and the `SIGTERM`/`SIGINT` lightweight drain.
 
 `Dockerfile`
-: Production container image for GCE deploy — `pnpm deploy` of `@intentive/agent-runtime` and `node dist/main.js` entrypoint.
+: Production container image for GCE deploy — `pnpm deploy` of `@intentive/agent-runtime` and `scripts/boot-fetch-secrets.mjs dist/main.js` entrypoint, so the VM service account can fetch the allowlisted Secret Manager values before booting the runtime.
 
 `src/domains/delivery/service/delivery-port.ts`
 : Service-owned shared delivery port. Hides live stream vs Control Plane push branching and records every attempt in `deliveries`.
@@ -236,10 +236,16 @@ Procedure Floor and memory boundary:
 - Per-User Memory is separate from the Procedure Floor: `USER.md` is read from the user's StoreBackend namespace and injected; `/memories/` is exposed to DeepAgents VFS tools for on-demand reads/writes. Latest perception is separate from both: the **Sensory Buffer** read projection injects at most one `RECENT_PERCEPTION` fact per turn (ADR-0023).
 - Procedure Floor documents are never routed into the agent's filesystem, so immutability is structural rather than a write-rejection policy.
 
-Deployment boundary:
+Deployment boundary (ADR-0032):
 
 - Runtime deploys to GCE because it is always-alive and owns long-running loops.
 - Do not move this service to Cloud Run, Lambda, or another stateless platform without a replacement for resident queues, schedulers, sockets, and liveness.
+- **One VM, no horizontal scaling in v1.** The connection registry is process-local and both VMs would independently run the Cron + Heartbeat poll loops, double-firing every user. HA must first solve scheduler leader-election; do not "add instances" for reliability.
+- **TLS front door:** an External HTTPS Load Balancer (Google-managed cert) terminates `wss://` and forwards plain `ws` to `:8080`; the VM firewall accepts `:8080` only from load-balancer ranges. The LB backend timeout is high because there is no app-level WebSocket keepalive ping.
+- **Secrets** are fetched from Secret Manager at boot by a dedicated VM service account — never stored in instance metadata.
+- **Deploys are in-place image swaps** with a lightweight `SIGTERM` drain (stop schedulers → clean-close sockets → flush telemetry → exit); in-flight turns are not drained (durable execution + idempotent ingress + snapshot-first reconnect make a mid-turn kill safe). Every deploy is a brief rolling reconnect, not blue-green; rollback is re-deploying the previous image SHA.
+- **Crash recovery** is konlet container-restart + GCE host auto-restart; a hung process is surfaced by Sentry (ADR-0030) and fixed reactively — no autohealing or uptime-alert pipeline in v1.
+- **Neon connection is direct (non-pooled):** one always-alive process with LangGraph `PostgresStore`/`PostgresSaver` (persistent connections + prepared statements) that conflict with PgBouncer pooling — the opposite of the Control Plane's pooled choice.
 
 ## Cross-cutting Concerns
 
@@ -266,7 +272,7 @@ Reliability:
 Security:
 
 - Public WebSocket auth uses Neon Auth JWT verification via shared Providers.
-- Internal HTTP uses shared-secret auth on a private network path.
+- Internal HTTP (Session Start) uses shared-secret auth on **public ingress via the load balancer's `/internal` path**, not a private network path (ADR-0033). The bearer secret is the only guard; blast radius of a leak is a junk session row.
 - Runtime never handles push-provider credentials directly.
 - Cross-user data leakage is a critical bug; tests must cover user isolation for repos and queues.
 
