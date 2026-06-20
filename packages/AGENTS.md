@@ -1,20 +1,28 @@
 # Shared packages — working rules
 
+Read this when working under `packages/`.
+
 The cross-deployable shared kernel. Before changing anything here, read
 [`CONTEXT.md`](CONTEXT.md) for the vocabulary these packages own (Protocol,
 Context Snapshot, Internal API, …), [`CHANGELOG.md`](CHANGELOG.md) for shipped
 package deltas, root [`../AGENTS.md`](../AGENTS.md), and
 [`../CONTEXT-MAP.md`](../CONTEXT-MAP.md).
 
+## Local contracts
+
+- **Deployables import packages; packages never import deployables.** No `apps/**` or `services/**` imports from here, and nothing under `packages/` may import back into a deployable.
+- **Wire shapes live here, not in deployables.** Clients and servers consume `@intentive/protocol` and `@intentive/api-contract`; they do not redefine event or HTTP schemas locally.
+- **Dependency order:** `domain-types` and `boundary` are leaves; `protocol` and `api-contract` depend on both; `providers` is standalone cross-cutting infrastructure.
+
 ## The packages
 
-| Path                             | Owns                                                                                                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`protocol/`](protocol/)         | WebSocket event schemas (Zod). The single source of truth for the client↔runtime wire format.                                                                 |
-| [`api-contract/`](api-contract/) | Control Plane HTTP request/response schemas (public + internal).                                                                                              |
-| [`domain-types/`](domain-types/) | Shared domain shapes not tied to a wire format. Owns the canonical `CLIENT_KINDS` tuple.                                                                      |
-| [`providers/`](providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, observability bootstrap, feature flags). See [`providers/ARCHITECTURE.md`](providers/ARCHITECTURE.md).    |
-| [`boundary/`](boundary/)         | The one parse-at-boundary decode (`parseBoundary`/`BoundaryParseError`) for WS + HTTP (ADR-0004). See [`boundary/ARCHITECTURE.md`](boundary/ARCHITECTURE.md). |
+| Path                             | Owns                                                                                              | Local docs                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`protocol/`](protocol/)         | WebSocket event schemas (Zod). The single source of truth for the client↔runtime wire format.     | [`README.md`](protocol/README.md), [`ARCHITECTURE.md`](protocol/ARCHITECTURE.md)         |
+| [`api-contract/`](api-contract/) | Control Plane HTTP request/response schemas (public + internal).                                  | [`README.md`](api-contract/README.md), [`ARCHITECTURE.md`](api-contract/ARCHITECTURE.md) |
+| [`domain-types/`](domain-types/) | Shared domain shapes not tied to a wire format. Owns the canonical `CLIENT_KINDS` tuple.          | [`README.md`](domain-types/README.md), [`ARCHITECTURE.md`](domain-types/ARCHITECTURE.md) |
+| [`providers/`](providers/)       | Shared cross-cutting clients (auth/JWKS, telemetry, observability bootstrap, feature flags).      | [`README.md`](providers/README.md), [`ARCHITECTURE.md`](providers/ARCHITECTURE.md)       |
+| [`boundary/`](boundary/)         | The one parse-at-boundary decode (`parseBoundary`/`BoundaryParseError`) for WS + HTTP (ADR-0004). | [`README.md`](boundary/README.md), [`ARCHITECTURE.md`](boundary/ARCHITECTURE.md)         |
 
 ## Contract-change rules
 

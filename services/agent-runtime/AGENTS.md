@@ -36,8 +36,13 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - Domain folders are **lazy** (ADR-0002): add `src/domains/<name>/…` only when implementing that slice, not empty layer trees upfront
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane); SQL migrations live in `migrations/`
-- Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; `#36` adds `test/turn-runner.test.mjs`, `test/runtime-adapter.integration.test.mjs`, and turn coverage in `test/per-user-channel.test.mjs` / `test/runtime-ingress-projection.integration.test.mjs`; the Turn Execution refactor adds `test/turn.test.mjs` and `test/working-context.test.mjs`; `#37` adds `test/bundled-fallback.test.mjs`, `test/assemble-system-prompt.test.mjs`, `test/procedure-floor-resolver.test.mjs`, `test/langfuse-floor-source.test.mjs`, `test/memory-backend.test.mjs`, plus extended connect/turn/runtime coverage; `#38` adds `test/sensory-buffer.integration.test.mjs` and extends `test/assemble-system-prompt.test.mjs`, `test/turn-runner.test.mjs`, `test/runtime-adapter.integration.test.mjs`, and `test/per-user-channel.test.mjs`; `#39` adds `test/cron-backend.test.mjs`, `test/cron-card.test.mjs`, `test/cron-schedule.test.mjs`, `test/cron-scheduler.test.mjs`, `test/cron-turn.test.mjs`, plus extended connect/session-start coverage; the ADR-0027/0028/0029 slice adds delivery, registry, Post-Message-Back, heartbeat, and monitoring-turn tests; `#42` adds provider observability tests plus `test/multi-user-isolation.integration.test.mjs`, `test/reconnect-recovery.integration.test.mjs`, and `test/restart-smoke.integration.test.mjs`; harness: `pnpm harness --scope services/agent-runtime`
+- Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; harness: `pnpm harness --scope services/agent-runtime`. See [`../../docs/TESTING.md`](../../docs/TESTING.md) and `test/*.test.mjs` for domain coverage.
+- Release runbook (SHA-identified in-place VM swap): [`docs/RELEASE.md`](docs/RELEASE.md). Production state: [`../../docs/DEPLOY.md`](../../docs/DEPLOY.md).
 - Plans: [`docs/plans/agent-runtime-v1-implementation-plan.md`](docs/plans/agent-runtime-v1-implementation-plan.md)
+
+## Child Index
+
+- [`reference/AGENTS.md`](reference/AGENTS.md) — OpenClaw/Hermes pattern packs and DeepAgents production guidance for shell domains.
 
 ## Reference patterns
 

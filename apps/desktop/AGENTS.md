@@ -38,6 +38,7 @@ Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke 
 - [`../../docs/prd/desktop-PRD.md`](../../docs/prd/desktop-PRD.md) — Desktop PRD
 - [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/SMOKE.md`](docs/SMOKE.md) — signed-in Capture Session smoke runbook (#35)
+- [`docs/RELEASE.md`](docs/RELEASE.md) — notarized DMG release smoke (artifact identity, Gatekeeper, updater round-trip)
 - [`docs/EVAL.md`](docs/EVAL.md) — privacy efficacy eval runbook (guarantee C, #43; `pnpm eval:privacy`)
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)

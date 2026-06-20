@@ -29,6 +29,8 @@ Workflow skills (issues, labels, vocabulary): [`docs/agents/`](docs/agents/).
 | Factory rules, harness signals, and improvement loop                            | [`docs/FACTORY.md`](docs/FACTORY.md) and [`docs/factory/README.md`](docs/factory/README.md) |
 | Why a specific decision was made                                                | [`docs/adr/`](docs/adr/) (system-wide) or that deployable's own `docs/adr/`                 |
 | Sequenced v1 backlog and dependencies                                           | [`docs/ISSUE-BOARD.md`](docs/ISSUE-BOARD.md)                                                |
+| User journeys across deployables (cold launch, chat, capture, cross-client)     | [`docs/USER-JOURNEY.md`](docs/USER-JOURNEY.md)                                              |
+| Production deploy state and server smoke scripts                                | [`docs/DEPLOY.md`](docs/DEPLOY.md)                                                          |
 | Active or completed multi-step plans                                            | each deployable's own `docs/plans/` (where present)                                         |
 | Per-deployable working rules                                                    | each deployable's own `AGENTS.md`                                                           |
 
@@ -63,12 +65,13 @@ Working rules and contract-change ordering: [`packages/AGENTS.md`](packages/AGEN
 
 ## When you are about to do something
 
-| About to...                         | First check                                                                                                                                                                                         |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add a new term or rename one        | the owning context's `CONTEXT.md` (see `CONTEXT-MAP.md`) — update it before the code                                                                                                                |
-| Change a module boundary            | the owning deployable's `ARCHITECTURE.md`, `ARCHITECTURE.md`, and the layer rule                                                                                                                    |
-| Add a runtime dependency            | Does it belong in `packages/`?                                                                                                                                                                      |
-| Change a WebSocket event            | `packages/protocol/` is the source of truth                                                                                                                                                         |
-| Add a new Control Plane endpoint    | `packages/api-contract/` first, implementation second                                                                                                                                               |
-| Make a non-trivial decision         | Consider an ADR in the owning context's `docs/adr/` (system-wide → `docs/adr/`; per-deployable → that deployable's `docs/adr/`). See [`docs/adr/README.md`](docs/adr/README.md) for the convention. |
-| Respond to a factory sticky comment | Read [`docs/factory/SELF-IMPROVEMENT.md`](docs/factory/SELF-IMPROVEMENT.md). Write recommendations first; wait for approval before editing tracked files.                                           |
+| About to...                          | First check                                                                                                                                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a new term or rename one         | the owning context's `CONTEXT.md` (see `CONTEXT-MAP.md`) — update it before the code                                                                                                                |
+| Change a module boundary             | the owning deployable's `ARCHITECTURE.md`, `ARCHITECTURE.md`, and the layer rule                                                                                                                    |
+| Add a runtime dependency             | Does it belong in `packages/`?                                                                                                                                                                      |
+| Change a WebSocket event             | `packages/protocol/` is the source of truth                                                                                                                                                         |
+| Add a new Control Plane endpoint     | `packages/api-contract/` first, implementation second                                                                                                                                               |
+| Release or smoke a server deployable | That deployable's `docs/RELEASE.md` for procedure; [`docs/DEPLOY.md`](docs/DEPLOY.md) for production state                                                                                          |
+| Make a non-trivial decision          | Consider an ADR in the owning context's `docs/adr/` (system-wide → `docs/adr/`; per-deployable → that deployable's `docs/adr/`). See [`docs/adr/README.md`](docs/adr/README.md) for the convention. |
+| Respond to a factory sticky comment  | Read [`docs/factory/SELF-IMPROVEMENT.md`](docs/factory/SELF-IMPROVEMENT.md). Write recommendations first; wait for approval before editing tracked files.                                           |
