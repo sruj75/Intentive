@@ -6,6 +6,7 @@ import {
 
 import { createMessageStore } from "../service/message-store.js";
 import { getRuntimeRouting, type FetchLike } from "../service/routing-client.js";
+import { noopTelemetry, type Telemetry } from "../../../providers/telemetry/types.js";
 import type {
   ConnectionState,
   MessageStoreState,
@@ -34,6 +35,7 @@ export interface RuntimeAdapterDeps {
   readonly schedule: (fn: () => void, delayMs: number) => { cancel(): void };
   readonly maxRoutingRetries?: number;
   readonly backoffMs?: readonly number[];
+  readonly telemetry?: Telemetry;
   /**
    * Resolves the device IANA timezone for the `connect.client_tz` field. Injected
    * (matching `now`/`id`/`clientVersion`) so tests stay deterministic without
@@ -55,6 +57,7 @@ export const defaultResolveTimeZone = (): string | undefined => {
 };
 
 export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
+  const telemetry = deps.telemetry ?? noopTelemetry;
   const listeners = new Set<() => void>();
   const messageStore = createMessageStore();
   let state: RuntimeAdapterState = {
@@ -155,9 +158,13 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
       if (!isCurrentGeneration(generation)) return;
       handleRuntimeFrame(generation, event.data);
     };
-    socket.onerror = () => {
+    socket.onerror = (event) => {
       if (!isCurrentGeneration(generation)) return;
-      failPendingOutboundAndSetError("network", "Companion Chat connection failed.");
+      failPendingOutboundAndSetError(
+        "network",
+        "Companion Chat connection failed.",
+        event instanceof Error ? event : undefined,
+      );
     };
     socket.onclose = () => {
       if (!isCurrentGeneration(generation)) return;
@@ -214,9 +221,9 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     let event: RuntimeToClientEvent;
     try {
       event = parseRuntimeToClientEvent(JSON.parse(data));
-    } catch {
+    } catch (error) {
       if (!isCurrentGeneration(generation)) return;
-      failPendingOutboundAndSetError("protocol", "Received an invalid Protocol frame.");
+      failPendingOutboundAndSetError("protocol", "Received an invalid Protocol frame.", error);
       return;
     }
     if (!isCurrentGeneration(generation)) return;
@@ -252,7 +259,7 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
         enqueueOutbound({ type: "delivery_ack", message_id: event.message_id });
         return;
       case "runtime_error":
-        failPendingOutboundAndSetError("protocol", event.message);
+        failPendingOutboundAndSetError("protocol", event.message, new Error(event.message));
         return;
     }
   };
@@ -307,14 +314,24 @@ export function createRuntimeAdapter(deps: RuntimeAdapterDeps): RuntimeAdapter {
     setState({ connectionState, error: null });
   };
 
-  const setError = (kind: RuntimeAdapterError["kind"], message: string) => {
+  const setError = (kind: RuntimeAdapterError["kind"], message: string, error?: unknown) => {
     closeSocket();
+    telemetry.addBreadcrumb({
+      message: "Runtime Adapter entered error state.",
+      level: "error",
+      data: { error_type: kind },
+    });
+    telemetry.captureException(error ?? new Error(message), { tags: { error_type: kind } });
     setState({ connectionState: "error", error: { kind, message } });
   };
 
-  const failPendingOutboundAndSetError = (kind: RuntimeAdapterError["kind"], message: string) => {
+  const failPendingOutboundAndSetError = (
+    kind: RuntimeAdapterError["kind"],
+    message: string,
+    error?: unknown,
+  ) => {
     markPendingOutboundFailed();
-    setError(kind, message);
+    setError(kind, message, error);
   };
 
   const markPendingOutboundFailed = () => {

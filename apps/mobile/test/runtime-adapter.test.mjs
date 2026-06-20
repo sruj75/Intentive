@@ -97,6 +97,27 @@ test("malformed hello_ok rejects at the Protocol boundary without replacing the 
   );
 });
 
+test("Runtime Adapter captures terminal errors through injected telemetry", async () => {
+  const telemetry = createTelemetry();
+  const harness = createHarness({ telemetry });
+  await harness.adapter.connect();
+  harness.sockets[0].open();
+  harness.sockets[0].message(snapshot("opening"));
+
+  harness.sockets[0].messageRaw("{not json");
+
+  assert.equal(harness.adapter.getState().connectionState, "error");
+  assert.equal(harness.adapter.getState().error.kind, "protocol");
+  assert.deepEqual(
+    harness.adapter.getState().messages.map((message) => message.id),
+    ["opening"],
+  );
+  assert.equal(telemetry.captured.length, 1);
+  assert.equal(telemetry.captured[0].ctx.tags.error_type, "protocol");
+  assert.equal(telemetry.breadcrumbs.length, 1);
+  assert.equal(telemetry.breadcrumbs[0].data.error_type, "protocol");
+});
+
 test("inbound companion_message appends and sends delivery_ack", async () => {
   const harness = createHarness();
   await harness.adapter.connect();
@@ -677,6 +698,7 @@ function createHarness(options = {}) {
     },
     backoffMs: [1, 1, 1],
     maxRoutingRetries: options.maxRoutingRetries,
+    telemetry: options.telemetry?.port,
   });
 
   return {
@@ -688,6 +710,23 @@ function createHarness(options = {}) {
       if (timer && (!timer.cancelled || options.forceCancelled)) timer.fn();
     },
     flush: () => new Promise((resolve) => setTimeout(resolve, 0)),
+  };
+}
+
+function createTelemetry() {
+  const captured = [];
+  const breadcrumbs = [];
+  return {
+    captured,
+    breadcrumbs,
+    port: {
+      captureException(error, ctx) {
+        captured.push({ error, ctx });
+      },
+      addBreadcrumb(crumb) {
+        breadcrumbs.push(crumb);
+      },
+    },
   };
 }
 

@@ -45,6 +45,24 @@ test("google routes to the Neon provider and signs in", async () => {
   assert.deepEqual(await adapter.signIn("google"), { status: "signed-in" });
 });
 
+test("recoverable sign-in failures are captured through injected telemetry", async () => {
+  const telemetry = createTelemetry();
+  const adapter = createAuthAdapter({
+    client: fakeClient({ attempt: { result: "failed", message: "oauth failed" } }),
+    enabled: new Set(["google"]),
+    includeDev: false,
+    telemetry: telemetry.port,
+  });
+
+  assert.deepEqual(await adapter.signIn("google"), {
+    status: "error",
+    message: "oauth failed",
+  });
+  assert.equal(telemetry.captured.length, 1);
+  assert.equal(telemetry.captured[0].ctx.tags.error_type, "auth");
+  assert.equal(telemetry.captured[0].ctx.tags.auth_provider, "google");
+});
+
 test("a social provider without credentials is not-configured, opening no OAuth flow", async () => {
   const client = fakeClient();
   const adapter = createAuthAdapter({
@@ -66,3 +84,34 @@ test("session, token, and sign-out delegate to the shared client", async () => {
   await adapter.signOut();
   assert.equal(client.signedOut, true);
 });
+
+test("thrown JWT failures are captured and rethrown", async () => {
+  const telemetry = createTelemetry();
+  const jwtError = new Error("jwt unavailable");
+  const client = fakeClient();
+  client.getJwt = () => Promise.reject(jwtError);
+  const adapter = createAuthAdapter({
+    client,
+    enabled: ALL,
+    includeDev: true,
+    telemetry: telemetry.port,
+  });
+
+  await assert.rejects(() => adapter.getUserJwt(), jwtError);
+  assert.equal(telemetry.captured.length, 1);
+  assert.equal(telemetry.captured[0].error, jwtError);
+  assert.equal(telemetry.captured[0].ctx.tags.error_type, "auth");
+});
+
+function createTelemetry() {
+  const captured = [];
+  return {
+    captured,
+    port: {
+      captureException(error, ctx) {
+        captured.push({ error, ctx });
+      },
+      addBreadcrumb: () => undefined,
+    },
+  };
+}

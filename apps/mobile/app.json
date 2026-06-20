@@ -22,7 +22,15 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-image",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "hypermind-project-sh",
+          "project": "mobile",
+          "url": "https://sentry.io/"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

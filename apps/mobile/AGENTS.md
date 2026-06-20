@@ -39,6 +39,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - iOS Simulator verification (start Metro from `apps/mobile`; wipe DerivedData on `clang`/`swift-frontend` crashes): see [`docs/TESTING.md` → Mobile Client → iOS simulator verification](../../docs/TESTING.md#ios-simulator-verification-visual-on-device)
 - Deploys to TestFlight / App Store via **EAS Build** (Git-based); JS-only changes ship over-the-air via **EAS Update** (`expo-updates`). Push notifications go through the Expo Push Service (`expo-notifications`, APNs key in EAS credentials). Both paths + the push wiring: [`docs/RELEASE.md`](docs/RELEASE.md)
 - `@assistant-ui/react-native` is the **Chat Primitive Engine** behind Intentive Chat Components — keep it replaceable (ADR 0009 spike: KEEP)
+- Error reporting goes through `src/providers/telemetry`; never import `@sentry/react-native` directly in domains or routes.
 
 ## Guardrails specific to this deployable
 
