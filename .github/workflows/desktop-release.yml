@@ -23,6 +23,9 @@ on:
       - "desktop-v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   # Public Developer ID identity (also visible in the signed app). Used both by
   # the explicit deep-sign step and handed to Tauri as APPLE_SIGNING_IDENTITY.
