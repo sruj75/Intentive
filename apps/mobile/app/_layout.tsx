@@ -21,6 +21,13 @@ import {
   createControlPlaneLaunchStateSource,
   useLaunchState,
 } from "../src/providers/launch-state";
+import { createSentryTelemetry, initTelemetry, wrapRoot } from "../src/providers/telemetry";
+
+initTelemetry({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? "",
+  environment: __DEV__ ? "development" : "production",
+});
+const telemetry = createSentryTelemetry();
 
 /**
  * The single real Auth Adapter, built once from the Neon client. No social
@@ -33,6 +40,7 @@ const authAdapter = createAuthAdapter({
   client: createNeonAuthClient(),
   enabled: NEON_ENABLED_PROVIDERS,
   includeDev: __DEV__,
+  telemetry,
 });
 
 /**
@@ -67,7 +75,7 @@ function RootNavigator(): React.JSX.Element {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
-export default function RootLayout(): React.JSX.Element {
+function RootLayout(): React.JSX.Element {
   return (
     <LaunchStateProvider source={launchStateSource}>
       <AuthAdapterProvider adapter={authAdapter}>
@@ -76,3 +84,5 @@ export default function RootLayout(): React.JSX.Element {
     </LaunchStateProvider>
   );
 }
+
+export default wrapRoot(RootLayout);

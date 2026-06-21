@@ -13,6 +13,16 @@ const CROSS_CUTTING_SDKS = {
       return isProvidersObservabilityPath(pathname);
     },
   },
+  "@sentry/react-native": {
+    concern: "observability",
+    owningBoundary: "apps/mobile/src/providers/telemetry",
+    preferredImport: "apps/mobile/src/providers/telemetry",
+    exampleFix:
+      "inject the Telemetry port from 'src/providers/telemetry' instead of importing '@sentry/react-native' in domain or route code.",
+    allowedPath(pathname) {
+      return isMobileTelemetryProviderPath(pathname);
+    },
+  },
   "langfuse-langchain": {
     concern: "Langfuse tracing",
     owningBoundary: "packages/providers/src/observability",
@@ -100,6 +110,10 @@ function normalizePath(filepath) {
 
 function isProvidersObservabilityPath(filepath) {
   return /\/packages\/providers\/src\/observability(?:\/|$)/.test(filepath);
+}
+
+function isMobileTelemetryProviderPath(filepath) {
+  return /\/apps\/mobile\/src\/providers\/telemetry(?:\/|$)/.test(filepath);
 }
 
 function isAgentRuntimePromptClientException(filepath, node) {

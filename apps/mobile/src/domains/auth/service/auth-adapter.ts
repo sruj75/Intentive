@@ -14,6 +14,7 @@
  * dev fake.
  */
 import type { AuthAdapter, AuthProviderId, SignInOutcome } from "../types/auth.js";
+import { noopTelemetry, type Telemetry } from "../../../providers/telemetry/types.js";
 import type { NeonAuthClientPort, SocialProvider } from "./ports.js";
 import { createDevAuthProvider } from "./dev-provider.js";
 import { createNeonAuthProvider } from "./neon-provider.js";
@@ -22,26 +23,59 @@ export function createAuthAdapter(deps: {
   client: NeonAuthClientPort;
   enabled: ReadonlySet<SocialProvider>;
   includeDev: boolean;
+  telemetry?: Telemetry;
 }): AuthAdapter {
-  const { client, enabled, includeDev } = deps;
+  const { client, enabled, includeDev, telemetry = noopTelemetry } = deps;
   const google = createNeonAuthProvider({ client, social: "google" });
   const apple = createNeonAuthProvider({ client, social: "apple" });
   const dev = includeDev ? createDevAuthProvider() : null;
+
+  const captureAuthFailure = (error: unknown, provider?: AuthProviderId) => {
+    telemetry.captureException(error, {
+      tags: {
+        error_type: "auth",
+        ...(provider ? { auth_provider: provider } : {}),
+      },
+    });
+  };
+
+  const signIn = async (
+    provider: AuthProviderId,
+    attempt: () => Promise<SignInOutcome>,
+  ): Promise<SignInOutcome> => {
+    try {
+      const outcome = await attempt();
+      if (outcome.status === "error") captureAuthFailure(new Error(outcome.message), provider);
+      return outcome;
+    } catch (error) {
+      captureAuthFailure(error, provider);
+      throw error;
+    }
+  };
 
   return {
     signIn(provider: AuthProviderId): Promise<SignInOutcome> {
       switch (provider) {
         case "google":
-          return enabled.has("google") ? google.signIn() : notConfigured();
+          return signIn(provider, () =>
+            enabled.has("google") ? google.signIn() : notConfigured(),
+          );
         case "apple":
-          return enabled.has("apple") ? apple.signIn() : notConfigured();
+          return signIn(provider, () => (enabled.has("apple") ? apple.signIn() : notConfigured()));
         case "dev":
-          return dev ? dev.signIn() : notConfigured();
+          return signIn(provider, () => (dev ? dev.signIn() : notConfigured()));
       }
     },
     signOut: () => client.signOut(),
     restoreSession: () => client.hasSession(),
-    getUserJwt: () => client.getJwt(),
+    async getUserJwt() {
+      try {
+        return await client.getJwt();
+      } catch (error) {
+        captureAuthFailure(error);
+        throw error;
+      }
+    },
   };
 }
 

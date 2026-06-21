@@ -112,6 +112,7 @@ const PROVIDERS_SENTRY_SOURCE = `${REPO_ROOT}/packages/providers/src/observabili
 const PROVIDERS_LANGFUSE_SOURCE = `${REPO_ROOT}/packages/providers/src/observability/langfuse.ts`;
 const AGENT_RUNTIME_MAIN = `${REPO_ROOT}/services/agent-runtime/src/main.ts`;
 const AGENT_RUNTIME_TURN_SERVICE = `${REPO_ROOT}/services/agent-runtime/src/domains/runtime/service/turn.ts`;
+const MOBILE_TELEMETRY_SOURCE = `${REPO_ROOT}/apps/mobile/src/providers/telemetry/sentry-telemetry.ts`;
 const MOBILE_AUTH_SOURCE = `${REPO_ROOT}/apps/mobile/src/domains/auth/service/neon-client.ts`;
 const DESKTOP_ONBOARDING_SOURCE = `${REPO_ROOT}/apps/desktop/src/domains/onboarding/ui/Onboarding.tsx`;
 const AGENT_INSTRUCTIVE_MESSAGE =
@@ -209,12 +210,23 @@ ruleTester.run("provider-only-cross-cutting", plugin.rules["provider-only-cross-
       code: "import { bootstrapObservability } from '@intentive/providers/observability';",
     },
     {
+      name: "mobile telemetry provider may import Sentry React Native directly",
+      filename: MOBILE_TELEMETRY_SOURCE,
+      code: "import * as Sentry from '@sentry/react-native';",
+    },
+    {
       name: "Agent Runtime main may keep the prompt-floor Langfuse client exception",
       filename: AGENT_RUNTIME_MAIN,
       code: "import { Langfuse } from 'langfuse-langchain';",
     },
   ],
   invalid: [
+    {
+      name: "mobile domain may not import Sentry React Native directly",
+      filename: MOBILE_AUTH_SOURCE,
+      code: "import * as Sentry from '@sentry/react-native';",
+      errors: [{ message: AGENT_INSTRUCTIVE_MESSAGE }],
+    },
     {
       name: "Control Plane domain may not import Sentry directly",
       filename: CONTROL_PLANE_IDENTITY_SERVICE,

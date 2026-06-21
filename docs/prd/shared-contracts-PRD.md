@@ -27,7 +27,7 @@ Treat the shared packages as first-class, planned work tracked on GitHub with th
 
 - `packages/protocol/` is imported at exactly one version across the monorepo (inviolable rule 5). Single-live-shape semantics are locked in v1 (no `min_protocol`/`max_protocol` negotiation fields, no `negotiated_protocol` field, no compatibility aliases).
 - `packages/api-contract/` owns both the public (JWT) and internal (shared-secret) HTTP surfaces. Deployables implement these schemas; they never redefine them.
-- `packages/providers/` is the only sanctioned path for auth, telemetry, and feature flags (inviolable rule 3). The auth verifier wraps Neon Auth JWKS.
+- `packages/providers/` is the shared cross-cutting path for auth, telemetry, and feature flags on **server deployables** (Control Plane, Agent Runtime). **Clients** use deployable-local `providers/` seams for platform-specific observability (e.g. Mobile Client errors-only Sentry in `apps/mobile/src/providers/telemetry/`). Inviolable rule 3 applies to both — domains never import observability SDKs directly. The auth verifier wraps Neon Auth JWKS.
 - `packages/domain-types/` holds in-process domain shapes (branded ids, Device, AgentInstance, ConversationMessage) and stays free of wire-format concerns.
 - The five inviolable rules in `AGENTS.md` are enforced by lint/typecheck in CI, not by convention.
 

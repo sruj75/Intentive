@@ -21,6 +21,7 @@ import {
   useAccountStateProjection,
   type AccountStateSource,
 } from "../providers/account-state";
+import { createSentryTelemetry, type Telemetry } from "../providers/telemetry";
 import { useOptionalAuthAdapter } from "../domains/auth/ui/auth-context";
 import { AccountSurface } from "../domains/account/ui/account-surface";
 import { createDevRuntimeAdapter } from "../domains/chat/runtime/dev-transport";
@@ -58,6 +59,7 @@ export interface ChatEntryProps {
   readonly initialSafeAreaMetrics?: Metrics;
   readonly pushRegistration?: PushRegistration;
   readonly pushRegistrationEvents?: PushRegistrationEvents;
+  readonly telemetry?: Telemetry;
 }
 
 export function ChatEntry({
@@ -67,8 +69,13 @@ export function ChatEntry({
   initialSafeAreaMetrics,
   pushRegistration: injectedPushRegistration,
   pushRegistrationEvents: injectedPushRegistrationEvents,
+  telemetry: injectedTelemetry,
 }: ChatEntryProps = {}): React.JSX.Element {
   const authAdapter = useOptionalAuthAdapter();
+  const telemetry = useMemo(
+    () => injectedTelemetry ?? createSentryTelemetry(),
+    [injectedTelemetry],
+  );
   const [accountVisible, setAccountVisible] = useState(false);
   const didRegisterForPush = useRef(false);
   const pushRegistrationInFlight = useRef(false);
@@ -95,8 +102,9 @@ export function ChatEntry({
         return { cancel: () => clearTimeout(timer) };
       },
       resolveTimeZone: defaultResolveTimeZone,
+      telemetry,
     });
-  }, [authAdapter, baseUrl, injectedAdapter]);
+  }, [authAdapter, baseUrl, injectedAdapter, telemetry]);
 
   const accountStateSource = useMemo(
     () =>

@@ -66,15 +66,51 @@ the in-repo layers are committed, the EAS-side layers live in the Expo project.
   `expo.version` (currently `0.0.0`).
 - `plugins` includes `expo-notifications` — under CNG this declares the iOS push
   capability and, on a fresh prebuild, writes the APNs entitlement.
+- `plugins` includes `@sentry/react-native/expo` — native Sentry build integration;
+  requires a **new binary** (OTA cannot add this plugin to an older build). Set
+  `EXPO_PUBLIC_SENTRY_DSN` in the EAS build environment for production error
+  capture; leave blank in local dev to keep telemetry disabled.
 
-**2. `eas.json`** (committed) — each build profile is bound to an update **channel**:
+**2. `eas.json`** (committed) — each build profile is bound to an update **channel**
+and an EAS **environment** (so `EXPO_PUBLIC_*` vars from EAS inject at build time):
 
-- `production` → channel `production`
-- `preview` → channel `preview`
+- `production` → channel `production`, environment `production`
+- `preview` → channel `preview`, environment `preview`
 - `development` (dev client) has no channel and runs any compatible update.
 
 A channel points at a branch of published updates; you publish to a branch and map
 the channel to it (`eas update --branch <name>`, `eas channel:edit`).
+
+**2b. EAS environment variables** (Expo project, not the repo) — `EXPO_PUBLIC_*`
+values are baked into the binary at **EAS Build** time (OTA updates inherit the
+build they ship on top of). Local dev uses `.env` / `.env.local`; leave
+`EXPO_PUBLIC_SENTRY_DSN` blank there to keep telemetry off.
+
+Set the public Sentry DSN once per environment that ships real builds:
+
+```bash
+cd apps/mobile
+
+# Preview / TestFlight-style internal builds:
+eas env:create --name EXPO_PUBLIC_SENTRY_DSN --value "<public-dsn>" \
+  --environment preview --visibility plaintext
+
+# Production App Store builds:
+eas env:create --name EXPO_PUBLIC_SENTRY_DSN --value "<public-dsn>" \
+  --environment production --visibility plaintext
+
+# Verify:
+eas env:list --environment production
+```
+
+To pull EAS vars for local simulator runs against a specific environment:
+
+```bash
+eas env:pull --environment preview   # writes .env.local (gitignored)
+```
+
+Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL) follow the same
+pattern when they differ per environment. See [Expo EAS environment variables](https://docs.expo.dev/eas/environment-variables/).
 
 **3. Committed iOS native** (`ios/Intentive/Supporting/Expo.plist`,
 `ios/Intentive/Intentive.entitlements`) — because `ios/` is committed (prebuild
