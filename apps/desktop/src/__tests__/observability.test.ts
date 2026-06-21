@@ -52,6 +52,16 @@ describe("desktop observability scrubbers", () => {
     });
   });
 
+  it("does not redact benign substrings inside free-form message keys", () => {
+    const breadcrumb = beforeBreadcrumb({
+      message: "monkey=see myauth=token keyboard=click token=secret authorization=Bearer",
+    } satisfies Breadcrumb);
+
+    expect(breadcrumb?.message).toBe(
+      "monkey=see myauth=token keyboard=click token=[Filtered] authorization=[Filtered]",
+    );
+  });
+
   it("keeps Sentry default global handlers installed", () => {
     let initOptions: unknown;
 

@@ -1,8 +1,6 @@
 import * as Sentry from "@sentry/react";
 import type { Breadcrumb, ErrorEvent, EventHint } from "@sentry/react";
 
-const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
-const SECRET_PATTERN = /(token|jwt|authorization|auth|password|secret|key)=([^&\s]+)/gi;
 const SENSITIVE_KEYS = new Set([
   "authorization",
   "cookie",
@@ -141,7 +139,29 @@ function sanitizeObject(value: unknown): unknown {
 }
 
 function sanitizeString(value: string | undefined): string | undefined {
-  return value?.replace(JWT_PATTERN, "[Filtered]").replace(SECRET_PATTERN, "$1=[Filtered]");
+  if (value === undefined) return undefined;
+  return value
+    .split(/(\s+)/)
+    .map((part) => (part.trim() === "" ? part : sanitizeStringSegment(part)))
+    .join("");
+}
+
+function sanitizeStringSegment(value: string): string {
+  if (looksLikeJwt(value)) {
+    return "[Filtered]";
+  }
+
+  const [key] = value.split("=", 1);
+  if (key && value.includes("=") && isSensitiveStringKey(key)) {
+    return `${key}=[Filtered]`;
+  }
+  return value;
+}
+
+function looksLikeJwt(value: string): boolean {
+  const trimmed = value.replace(/^["',;]+|["',;]+$/g, "");
+  const parts = trimmed.split(".");
+  return parts.length === 3 && parts[0].startsWith("eyJ") && parts[1] !== "" && parts[2] !== "";
 }
 
 function sanitizeUrl(value: string | undefined): string | undefined {
@@ -159,6 +179,10 @@ function sanitizeUrl(value: string | undefined): string | undefined {
 function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase();
   return Array.from(SENSITIVE_KEYS).some((sensitive) => normalized.includes(sensitive));
+}
+
+function isSensitiveStringKey(key: string): boolean {
+  return SENSITIVE_KEYS.has(key.toLowerCase());
 }
 
 function readOptional(value: string | boolean | undefined): string | undefined {

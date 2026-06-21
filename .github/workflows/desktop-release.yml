@@ -199,16 +199,6 @@ jobs:
       - name: Verify release artifacts
         run: apps/desktop/scripts/verify-release-artifacts.sh bundle
 
-      - name: Upload DMG + updater artifacts to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/latest.json
-          generate_release_notes: true
-
       - name: Create Sentry release and upload webview source maps
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -219,3 +209,13 @@ jobs:
           sentry-cli sourcemaps upload --release "$DESKTOP_SENTRY_RELEASE" "$DESKTOP_SENTRY_SOURCEMAPS"
           sentry-cli releases set-commits "$DESKTOP_SENTRY_RELEASE" --auto
           sentry-cli releases finalize "$DESKTOP_SENTRY_RELEASE"
+
+      - name: Upload DMG + updater artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/latest.json
+          generate_release_notes: true
