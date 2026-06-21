@@ -8,7 +8,10 @@ import {
   syncLoginTokenToRust,
   type LoginTokenSyncState,
 } from "../service/auth";
-import { captureException } from "../../../providers/observability";
+import { CaptureRateLimiter, captureException } from "../../../providers/observability";
+
+const LOGIN_TOKEN_SYNC_FAILURE = "auth.login_token_sync";
+const LOGIN_TOKEN_SYNC_FAILURE_CAPTURE_COOLDOWN_MS = 30 * 60 * 1_000;
 
 type Props = {
   children: React.ReactNode;
@@ -32,6 +35,9 @@ export default function IntentiveAuthProvider({ children }: Props) {
   useEffect(() => {
     let cancelled = false;
     let synced: LoginTokenSyncState = { kind: "unknown" };
+    const failureCaptureLimiter = new CaptureRateLimiter<string>(
+      LOGIN_TOKEN_SYNC_FAILURE_CAPTURE_COOLDOWN_MS,
+    );
     const sync = () => {
       if (cancelled) return;
       void syncLoginTokenToRust(authClient, synced)
@@ -41,7 +47,9 @@ export default function IntentiveAuthProvider({ children }: Props) {
         .catch((error: unknown) => {
           // Browser preview and tests do not have a Rust command host. The app
           // retries on focus and on the interval once it is running under Tauri.
-          captureException(error);
+          if (failureCaptureLimiter.shouldCapture(LOGIN_TOKEN_SYNC_FAILURE)) {
+            captureException(error);
+          }
         });
     };
 

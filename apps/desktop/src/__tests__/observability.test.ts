@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Breadcrumb, ErrorEvent } from "@sentry/react";
-import { beforeBreadcrumb, beforeSend, initObservability } from "../providers/observability";
+import {
+  beforeBreadcrumb,
+  beforeSend,
+  CaptureRateLimiter,
+  initObservability,
+} from "../providers/observability";
 
 describe("desktop observability scrubbers", () => {
   it("strips URL query strings and request secrets before sending events", () => {
@@ -79,5 +84,14 @@ describe("desktop observability scrubbers", () => {
     expect(integrations?.([{ name: "GlobalHandlers" }, { name: "BrowserSession" }])).toEqual([
       { name: "GlobalHandlers" },
     ]);
+  });
+
+  it("rate-limits captures by failure class", () => {
+    const limiter = new CaptureRateLimiter<string>(1_000);
+
+    expect(limiter.shouldCapture("auth", 1_000)).toBe(true);
+    expect(limiter.shouldCapture("auth", 1_500)).toBe(false);
+    expect(limiter.shouldCapture("routing", 1_500)).toBe(true);
+    expect(limiter.shouldCapture("auth", 2_000)).toBe(true);
   });
 });

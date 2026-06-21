@@ -21,6 +21,21 @@ let initialized = false;
 
 export const ErrorBoundary = Sentry.ErrorBoundary;
 
+export class CaptureRateLimiter<K> {
+  private readonly lastCaptured = new Map<K, number>();
+
+  constructor(private readonly cooldownMs: number) {}
+
+  shouldCapture(key: K, nowMs = Date.now()): boolean {
+    const previous = this.lastCaptured.get(key);
+    if (previous !== undefined && nowMs - previous < this.cooldownMs) {
+      return false;
+    }
+    this.lastCaptured.set(key, nowMs);
+    return true;
+  }
+}
+
 export function initObservability(
   env: ImportMetaEnv = import.meta.env,
   sentry: Pick<typeof Sentry, "init"> = Sentry,
