@@ -20,7 +20,7 @@ use domains::capture::types::session::{CaptureSessionControl, CoordinatorCommand
 use domains::capture::types::state::CaptureState;
 use domains::routing::runtime::{
     DisabledRoutingSource, FastrandJitter, FixtureRoutingSource, RoutingFetcher, RoutingObserver,
-    RoutingSource, TungsteniteTransport, WsSession,
+    RoutingSource, TryEmitError, TungsteniteTransport, WsSession,
 };
 use domains::routing::types::{ConnectionStatus, RoutingState, SessionState};
 use domains::snapshots::repo::SnapshotStore;
@@ -193,9 +193,15 @@ impl AgentSink for WsSessionAgentSink {
             .try_emit(session_end_marker_frame(marker))
             .await
         {
-            providers::observability::capture_error(&err);
+            if should_capture_try_emit_error(&err) {
+                providers::observability::capture_error(&err);
+            }
         }
     }
+}
+
+fn should_capture_try_emit_error(error: &TryEmitError) -> bool {
+    !matches!(error, TryEmitError::NotConnected)
 }
 
 struct TauriRoutingObserver {
@@ -597,9 +603,13 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_snapshot_frame, session_end_marker_frame, WsSessionAgentSink};
+    use super::{
+        context_snapshot_frame, session_end_marker_frame, should_capture_try_emit_error,
+        WsSessionAgentSink,
+    };
     use crate::domains::routing::runtime::{
-        DisabledRoutingSource, FastrandJitter, NoopRoutingObserver, TungsteniteTransport, WsSession,
+        DisabledRoutingSource, FastrandJitter, NoopRoutingObserver, TryEmitError,
+        TungsteniteTransport, WsSession,
     };
     use crate::domains::snapshots::runtime::agent_interface::{AgentSink, PushError};
     use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
@@ -607,6 +617,11 @@ mod tests {
     use serde_json::{json, Value};
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn not_connected_marker_emit_failures_are_expected_not_sentry_errors() {
+        assert!(!should_capture_try_emit_error(&TryEmitError::NotConnected));
+    }
 
     #[test]
     fn context_snapshot_frame_carries_only_the_frozen_v1_fields() {

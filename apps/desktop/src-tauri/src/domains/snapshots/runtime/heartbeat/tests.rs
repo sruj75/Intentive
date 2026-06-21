@@ -8,7 +8,7 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::domains::snapshots::repo::SnapshotStore;
-use crate::domains::snapshots::runtime::agent_interface::AgentSink;
+use crate::domains::snapshots::runtime::agent_interface::{AgentSink, PushError};
 use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
 
 use super::activity::{ActivityClient, ActivityError};
@@ -17,6 +17,14 @@ use super::{ContextHeartbeat, Summarizer, SummarizerError};
 /// Short cadence used by every test. 50 ms gives the spawned tick task time
 /// to run a full pass without making suites slow.
 const TEST_INTERVAL: Duration = Duration::from_millis(50);
+
+#[test]
+fn not_connected_push_failures_are_expected_not_sentry_errors() {
+    assert!(!super::should_capture_push_error(&PushError::NotConnected));
+    assert!(super::should_capture_push_error(&PushError::Network(
+        "offline".to_string()
+    )));
+}
 
 /// Returns a canned activity string. Captures the `screenpipe_url` it was
 /// asked for so window-construction tests can inspect call shape.

@@ -21,7 +21,7 @@ use uuid::Uuid;
 use url::Url;
 
 use crate::domains::snapshots::repo::SnapshotStore;
-use crate::domains::snapshots::runtime::agent_interface::AgentSink;
+use crate::domains::snapshots::runtime::agent_interface::{AgentSink, PushError};
 use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
 use crate::providers::observability;
 
@@ -261,9 +261,15 @@ async fn tick_once(deps: &Deps, interval: Duration) {
             }
         }
         Err(e) => {
-            observability::capture_error(&e);
+            if should_capture_push_error(&e) {
+                observability::capture_error(&e);
+            }
         }
     }
+}
+
+fn should_capture_push_error(error: &PushError) -> bool {
+    !matches!(error, PushError::NotConnected)
 }
 
 fn warn(msg: &str) {
