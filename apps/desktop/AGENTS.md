@@ -33,12 +33,15 @@ Rust side (`src-tauri/src/domains/<name>/`):
 
 Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke hooks) live in `src-tauri/src/providers/` (`providers/permissions/` implements `CapturePermissions` + `ReadinessChecker`; setup polling via `status_emitter`; `providers/smoke.rs` holds `#[cfg(debug_assertions)]` smoke env readers). Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`, `CapturePermissions`, `Summarizer`, `AgentSink`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
 
+Sentry observability is deployable-local: webview code imports `src/providers/observability.ts`, Rust code imports `src-tauri/src/providers/observability/`. Keep it errors-only and preserve the Snapshot Privacy Boundary (ADR-0025).
+
 ## Working docs
 
 - [`../../docs/prd/desktop-PRD.md`](../../docs/prd/desktop-PRD.md) — Desktop PRD
 - [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/SMOKE.md`](docs/SMOKE.md) — signed-in Capture Session smoke runbook (#35)
 - [`docs/RELEASE.md`](docs/RELEASE.md) — notarized DMG release smoke (artifact identity, Gatekeeper, updater round-trip)
+- [`docs/INTERNAL-BUILD.md`](docs/INTERNAL-BUILD.md) — `--debug` bundle in a disposable Tart VM for a clean-slate permission flow (`tart-internal-build.sh`)
 - [`docs/EVAL.md`](docs/EVAL.md) — privacy efficacy eval runbook (guarantee C, #43; `pnpm eval:privacy`)
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)
@@ -47,7 +50,9 @@ Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke 
 
 - React + Vite (frontend), Rust + Tauri (backend), TypeScript + sqlx
 - Local dev: `pnpm --filter ./apps/desktop dev`; tests: `pnpm --filter ./apps/desktop test` (Vitest + Rust; see [`docs/TESTING.md` § Desktop](../../docs/TESTING.md#desktop))
+  - This machine relocates `CARGO_HOME`/`RUSTUP_HOME` to `/Volumes/T9` (via `~/.zshenv`). When T9 is mounted, `cargo` runs normally (e.g. `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`); if T9 is unmounted, override to `RUSTUP_HOME=~/.rustup` plus a writable `CARGO_HOME` (toolchain `stable-aarch64-apple-darwin`).
 - Signed-in Capture Session smoke (Mac, all three grants): `pnpm --filter ./apps/desktop smoke` — runbook at [`docs/SMOKE.md`](docs/SMOKE.md)
+- Internal build on a clean macOS slate: `apps/desktop/scripts/tart-internal-build.sh` — runbook at [`docs/INTERNAL-BUILD.md`](docs/INTERNAL-BUILD.md)
 - `pnpm lint:architecture:rust` when touching `src-tauri/`
 - **Apple Silicon only in V1** (Intel deferred)
 - Builds, signs (Developer ID), notarizes to `.dmg` via GitHub Actions → uploads to GitHub Releases / R2 → linked from landing page

@@ -33,6 +33,7 @@ vi.mock("../App", () => ({
 }));
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.resetModules();
   document.body.innerHTML = "";
   capturedAuthProviderProps.length = 0;
@@ -90,5 +91,16 @@ describe("Intentive Auth provider wiring", () => {
       expect(document.body.textContent).toContain("Intentive Settings");
     });
     expect(capturedAuthProviderProps).toHaveLength(0);
+  });
+
+  it("does not register a second unhandled rejection listener", async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const addEventListener = vi.spyOn(window, "addEventListener");
+
+    await import("../main");
+
+    expect(addEventListener.mock.calls.some(([event]) => event === "unhandledrejection")).toBe(
+      false,
+    );
   });
 });

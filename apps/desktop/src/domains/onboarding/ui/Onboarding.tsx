@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { captureException } from "../../../providers/observability";
 
 /// Step machine for the onboarding flow. Welcome is the cold-start view with
 /// a Continue button; Downloading shows the live progress bar while
@@ -81,6 +82,7 @@ export default function Onboarding() {
       // Dispatch can fail before Rust has a chance to emit EVENT_FAILED
       // (missing command, state, or IPC wiring), so do not strand the setup
       // flow at "starting".
+      captureException(error);
       setStep({
         kind: "failed",
         message: error instanceof Error ? error.message : String(error),

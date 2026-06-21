@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@neondatabase/neon-js": "^0.6.1-beta",
+    "@sentry/react": "^10.59.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "react": "^19.1.0",

@@ -118,6 +118,9 @@ verify_built_artifacts() {
 
   [[ -d "$app" ]] || fail "$app is missing"
   [[ -d "$helper" ]] || fail "$helper is missing from nested app resources"
+  if find "$app/Contents/Resources" -name "*.map" -print -quit | grep -q .; then
+    fail "source maps must not be shipped inside Intentive.app"
+  fi
   [[ ! -e "$bundle_root/macos/Intentive Capture.app" ]] ||
     fail "helper app is exposed as a sibling macOS app"
   [[ ! -e "$app/Contents/Resources/Intentive Capture.app" ]] ||

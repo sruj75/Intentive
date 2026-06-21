@@ -33,6 +33,8 @@ cargo clippy  --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ## Environment
 
+Copy [`.env.example`](.env.example) to `.env` for local development (Neon Auth, Control Plane Routing, optional Sentry — see [ADR-0025](docs/adr/0025-desktop-sentry-errors-only-observability.md)).
+
 Frontend (`.env` or shell):
 
 ```bash

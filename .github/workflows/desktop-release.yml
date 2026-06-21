@@ -12,6 +12,10 @@ name: desktop-release
 #   APPLE_TEAM_ID                       — 10-char Team ID from developer.apple.com/account
 #   TAURI_SIGNING_PRIVATE_KEY           — Tauri updater signing key (run `tauri signer generate`)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — passphrase for that key
+#   SENTRY_AUTH_TOKEN                   — token with project:releases for source-map upload
+#
+# Required GitHub variables:
+#   DESKTOP_SENTRY_DSN                  — public DSN for hypermind-project-sh/desktop
 #
 # After release: flip the landing-page link to the .dmg; in-app updates use
 # Tauri's built-in updater pointing at this Release's `latest.json` (ADR-0024).
@@ -37,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           lfs: true
 
       - name: Setup pnpm
@@ -60,6 +65,19 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Resolve release version
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == desktop-v* ]]; then
+            VERSION="${GITHUB_REF_NAME#desktop-v}"
+          else
+            VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "DESKTOP_SENTRY_RELEASE=desktop@$VERSION" >> "$GITHUB_ENV"
+
+      - name: Install Sentry CLI
+        run: npm install --global @sentry/cli
 
       - name: Import Developer ID certificate
         env:
@@ -100,6 +118,34 @@ jobs:
             --sign "$SIGNING_IDENTITY" \
             resources/ollama
 
+      - name: Build webview with Sentry release metadata
+        working-directory: apps/desktop
+        env:
+          VITE_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+          VITE_SENTRY_ENVIRONMENT: production
+          VITE_SENTRY_RELEASE: ${{ env.DESKTOP_SENTRY_RELEASE }}
+        run: pnpm build
+
+      - name: Inject Sentry source-map debug IDs
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: hypermind-project-sh
+          SENTRY_PROJECT: desktop
+        run: sentry-cli sourcemaps inject apps/desktop/dist
+
+      - name: Stage Sentry source maps outside bundled dist
+        run: |
+          MAP_DIR="$RUNNER_TEMP/desktop-sentry-sourcemaps"
+          rm -rf "$MAP_DIR"
+          mkdir -p "$MAP_DIR"
+          while IFS= read -r -d '' map; do
+            rel="${map#apps/desktop/dist/}"
+            mkdir -p "$MAP_DIR/$(dirname "$rel")"
+            cp "$map" "$MAP_DIR/$rel"
+            rm "$map"
+          done < <(find apps/desktop/dist -name '*.map' -print0)
+          echo "DESKTOP_SENTRY_SOURCEMAPS=$MAP_DIR" >> "$GITHUB_ENV"
+
       - name: Build, sign, and notarize
         working-directory: apps/desktop
         env:
@@ -109,7 +155,10 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ env.SIGNING_IDENTITY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --target aarch64-apple-darwin
+          SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+          SENTRY_ENVIRONMENT: production
+          SENTRY_RELEASE: ${{ env.DESKTOP_SENTRY_RELEASE }}
+        run: pnpm tauri build --target aarch64-apple-darwin --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Notarize and staple DMG
         env:
@@ -132,7 +181,6 @@ jobs:
       - name: Generate updater latest.json
         working-directory: apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
         run: |
-          VERSION="${GITHUB_REF_NAME#desktop-v}"
           TARBALL="$(basename "$(ls *.app.tar.gz)")"
           SIGNATURE="$(cat "$TARBALL.sig")"
           cat > latest.json <<EOF
@@ -150,6 +198,17 @@ jobs:
 
       - name: Verify release artifacts
         run: apps/desktop/scripts/verify-release-artifacts.sh bundle
+
+      - name: Create Sentry release and upload webview source maps
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: hypermind-project-sh
+          SENTRY_PROJECT: desktop
+        run: |
+          sentry-cli releases new "$DESKTOP_SENTRY_RELEASE" || true
+          sentry-cli sourcemaps upload --release "$DESKTOP_SENTRY_RELEASE" "$DESKTOP_SENTRY_SOURCEMAPS"
+          sentry-cli releases set-commits "$DESKTOP_SENTRY_RELEASE" --auto
+          sentry-cli releases finalize "$DESKTOP_SENTRY_RELEASE"
 
       - name: Upload DMG + updater artifacts to GitHub Release
         uses: softprops/action-gh-release@v2

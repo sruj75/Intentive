@@ -3,6 +3,7 @@
 //! (subprocess / network / Tauri bootstrap) is needed.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use super::*;
 
@@ -48,7 +49,9 @@ impl ProviderResolver for CountingResolver {
     }
 }
 
-fn ok_provider(summary: &'static str) -> impl Fn() -> Result<Arc<dyn ReadyProvider>, ProviderError> {
+fn ok_provider(
+    summary: &'static str,
+) -> impl Fn() -> Result<Arc<dyn ReadyProvider>, ProviderError> {
     move || {
         Ok(Arc::new(StubProvider {
             result: Ok(summary.to_string()),
@@ -62,11 +65,17 @@ async fn first_summarize_resolves_caches_and_returns() {
     let resolver = CountingResolver::new(ok_provider("a summary"));
     let lazy = LazyLlmProvider::new(slot.clone(), resolver.clone());
 
-    let summary = lazy.summarize("activity").await.expect("resolves and summarizes");
+    let summary = lazy
+        .summarize("activity")
+        .await
+        .expect("resolves and summarizes");
 
     assert_eq!(summary, "a summary");
     assert_eq!(resolver.call_count(), 1);
-    assert!(slot.0.lock().await.is_some(), "resolution caches into the slot");
+    assert!(
+        slot.0.lock().await.is_some(),
+        "resolution caches into the slot"
+    );
 }
 
 #[tokio::test]
@@ -97,7 +106,10 @@ async fn slot_populated_by_command_path_is_used_as_is() {
     let resolver = CountingResolver::new(|| panic!("must not resolve when slot is pre-populated"));
     let lazy = LazyLlmProvider::new(slot, resolver.clone());
 
-    let summary = lazy.summarize("activity").await.expect("uses pre-populated provider");
+    let summary = lazy
+        .summarize("activity")
+        .await
+        .expect("uses pre-populated provider");
 
     assert_eq!(summary, "from onboarding");
     assert_eq!(resolver.call_count(), 0);
@@ -109,9 +121,15 @@ async fn failed_resolution_reports_unresolved_and_retries_next_time() {
     let resolver = CountingResolver::new(|| Err(ProviderError::Unavailable));
     let lazy = LazyLlmProvider::new(slot.clone(), resolver.clone());
 
-    let err = lazy.summarize("activity").await.expect_err("nothing resolved");
+    let err = lazy
+        .summarize("activity")
+        .await
+        .expect_err("nothing resolved");
     assert!(matches!(err, SummarizeError::Unresolved));
-    assert!(slot.0.lock().await.is_none(), "a failed resolve caches nothing");
+    assert!(
+        slot.0.lock().await.is_none(),
+        "a failed resolve caches nothing"
+    );
 
     // The slot stays empty, so the next tick tries to resolve again.
     let _ = lazy.summarize("activity").await;
@@ -130,8 +148,25 @@ async fn resolved_provider_summarize_error_surfaces_as_provider_error() {
     });
     let lazy = LazyLlmProvider::new(slot, resolver);
 
-    let err = lazy.summarize("activity").await.expect_err("provider failed");
-    assert!(
-        matches!(err, SummarizeError::Provider(ProviderError::Http(msg)) if msg == "boom"),
-    );
+    let err = lazy
+        .summarize("activity")
+        .await
+        .expect_err("provider failed");
+    assert!(matches!(err, SummarizeError::Provider(ProviderError::Http(msg)) if msg == "boom"),);
+}
+
+#[test]
+fn summarization_failure_reporting_is_rate_limited_by_failure_class() {
+    let mut reporter = SummarizationFailureReporter::default();
+    let now = Instant::now();
+
+    assert!(reporter.should_capture(SummarizationFailureKind::ResolveProvider, now));
+    assert!(!reporter.should_capture(
+        SummarizationFailureKind::ResolveProvider,
+        now + Duration::from_secs(30),
+    ));
+    assert!(reporter.should_capture(
+        SummarizationFailureKind::ResolveProvider,
+        now + SUMMARIZATION_FAILURE_CAPTURE_COOLDOWN + Duration::from_secs(1),
+    ));
 }

@@ -113,6 +113,60 @@ describe("Capture Permission Setup", () => {
     expect(invokeMock).toHaveBeenCalledWith("capture_permission_status");
   });
 
+  it("requests microphone access before falling back to Microphone Settings", async () => {
+    localStorage.setItem("intentive.capture-consent-acknowledged", "true");
+    invokeMock.mockResolvedValueOnce({
+      screen_recording: true,
+      microphone: false,
+      accessibility: false,
+    } satisfies PermissionSet);
+    invokeMock.mockResolvedValueOnce({
+      screen_recording: true,
+      microphone: false,
+      accessibility: false,
+    } satisfies PermissionSet);
+
+    render(<CapturePermissionSetup />);
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Microphone Settings" }));
+    await flush();
+
+    expect(invokeMock).toHaveBeenCalledWith("request_microphone_permission");
+    expect(invokeMock).toHaveBeenCalledWith("open_permission_pane", {
+      kind: "microphone",
+    });
+  });
+
+  it("does not open Microphone Settings after the system prompt grants access", async () => {
+    localStorage.setItem("intentive.capture-consent-acknowledged", "true");
+    invokeMock.mockResolvedValueOnce({
+      screen_recording: true,
+      microphone: false,
+      accessibility: false,
+    } satisfies PermissionSet);
+    invokeMock.mockResolvedValueOnce({
+      screen_recording: true,
+      microphone: true,
+      accessibility: false,
+    } satisfies PermissionSet);
+
+    render(<CapturePermissionSetup />);
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Microphone Settings" }));
+    await flush();
+
+    expect(invokeMock).toHaveBeenCalledWith("request_microphone_permission");
+    expect(
+      invokeMock.mock.calls.some(
+        ([command, payload]) =>
+          command === "open_permission_pane" &&
+          (payload as { kind?: string } | undefined)?.kind === "microphone",
+      ),
+    ).toBe(false);
+  });
+
   it("auto-advances as permissions:status events arrive", async () => {
     render(<CapturePermissionSetup />);
     await flush();

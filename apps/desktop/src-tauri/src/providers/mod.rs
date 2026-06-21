@@ -3,6 +3,7 @@
 //! `crate::providers::…`; it is intentionally outside the layered-domain rule.
 
 pub mod permissions;
+pub mod observability;
 pub mod port;
 
 /// Dev-only structured smoke trace (#35). Present only in `debug_assertions`

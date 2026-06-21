@@ -44,18 +44,29 @@ These are credential steps only the owner can do. None are committed to the repo
 1. **Apple Developer ID Application cert** — already held: `Developer ID Application: Srujan Gowda (24D6NXS6H7)`, valid to 2030. Export it from Keychain Access → right-click the cert → **Export** _with its private key_ → `.p12` with a password.
 2. **App-specific password** — appleid.apple.com → Sign-In & Security → App-Specific Passwords. Used by `notarytool`.
 3. **Tauri updater key** — `pnpm tauri signer generate` (run once). Keep the private key + passphrase backed up out of band (losing it strands the installed base — ADR-0024). Paste the **public** key into `tauri.conf.json` at `plugins.updater.pubkey`. The private key becomes the `TAURI_SIGNING_PRIVATE_KEY` secret below.
-4. **Set GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions):
+4. **Desktop Sentry project** — project `hypermind-project-sh/desktop` owns webview
+   and Rust errors for the Desktop Client (ADR-0025). Its DSN is public and goes
+   in the GitHub variable below; source-map upload uses the private
+   `SENTRY_AUTH_TOKEN` secret.
+5. **Set GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions):
 
-   | Secret                               | Value                       |
-   | ------------------------------------ | --------------------------- |
-   | `APPLE_DEVELOPER_ID_CERT`            | `base64 -i cert.p12` output |
-   | `APPLE_DEVELOPER_ID_CERT_PASSWORD`   | the `.p12` password         |
-   | `KEYCHAIN_PASSWORD`                  | any random string           |
-   | `APPLE_ID`                           | `22btrsn071@gmail.com`      |
-   | `APPLE_APP_SPECIFIC_PASSWORD`        | from step 2                 |
-   | `APPLE_TEAM_ID`                      | `24D6NXS6H7`                |
-   | `TAURI_SIGNING_PRIVATE_KEY`          | from step 3                 |
-   | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | step 3 passphrase           |
+   | Secret                               | Value                                  |
+   | ------------------------------------ | -------------------------------------- |
+   | `APPLE_DEVELOPER_ID_CERT`            | `base64 -i cert.p12` output            |
+   | `APPLE_DEVELOPER_ID_CERT_PASSWORD`   | the `.p12` password                    |
+   | `KEYCHAIN_PASSWORD`                  | any random string                      |
+   | `APPLE_ID`                           | `22btrsn071@gmail.com`                 |
+   | `APPLE_APP_SPECIFIC_PASSWORD`        | from step 2                            |
+   | `APPLE_TEAM_ID`                      | `24D6NXS6H7`                           |
+   | `TAURI_SIGNING_PRIVATE_KEY`          | from step 3                            |
+   | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | step 3 passphrase                      |
+   | `SENTRY_AUTH_TOKEN`                  | Sentry token with release upload scope |
+
+6. **Set GitHub Actions variables**:
+
+   | Variable             | Value                                   |
+   | -------------------- | --------------------------------------- |
+   | `DESKTOP_SENTRY_DSN` | DSN from `hypermind-project-sh/desktop` |
 
 ---
 
@@ -120,11 +131,19 @@ The run must end with `conclusion: success`. The important steps are:
 
 - `Verify native release resources`
 - `Deep-sign nested helper + ollama (inside-out)`
+- `Build webview with Sentry release metadata`
+- `Inject Sentry source-map debug IDs`
+- `Stage Sentry source maps outside bundled dist`
 - `Build, sign, and notarize`
 - `Notarize and staple DMG`
 - `Generate updater latest.json`
 - `Verify release artifacts`
 - `Upload DMG + updater artifacts to GitHub Release`
+- `Create Sentry release and upload webview source maps`
+
+`Verify release artifacts` also fails if `.map` files are present inside the
+packaged `Intentive.app`; source maps must be uploaded from the staged runner
+directory, not shipped in the DMG.
 
 If the workflow fails after a tag push, fix the problem in a PR, merge it, then
 move the same tag only after confirming the fix is on `origin/main`:

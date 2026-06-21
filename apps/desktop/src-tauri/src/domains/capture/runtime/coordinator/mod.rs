@@ -20,6 +20,7 @@ use crate::domains::capture::types::session::{
 };
 use crate::domains::capture::types::state::CaptureState;
 use crate::domains::snapshots::types::SessionEndReason;
+use crate::providers::observability;
 
 struct Inner {
     fsm: Mutex<CaptureStateMachine>,
@@ -168,18 +169,27 @@ impl Inner {
         // Observers see the settled state before any async effect runs, so a
         // StopSession/EndSession marker fires after the FSM has settled in its
         // terminal state (preserving prior ordering).
+        observability::breadcrumb(
+            "desktop.capture",
+            &format!("capture state: {}", capture_state_label(&transition.next)),
+            sentry::Level::Info,
+        );
         self.notify_observers(&transition.next);
         match transition.effect {
             Effect::None => {}
             Effect::StartSession => {
-                let _ = self.supervisor.start().await;
+                if let Err(err) = self.supervisor.start().await {
+                    observability::capture_error(&err);
+                }
                 self.start_heartbeat().await;
             }
             // Heartbeat before supervisor: the Session End Marker needs the
             // socket, not ScreenPipe — reverse StartSession ordering.
             Effect::StopSession(reason) => {
                 self.stop_heartbeat(reason).await;
-                let _ = self.supervisor.stop().await;
+                if let Err(err) = self.supervisor.stop().await {
+                    observability::capture_error(&err);
+                }
             }
             // ScreenPipe is already gone (supervisor reported Stopped/Crashed):
             // end the heartbeat without re-issuing supervisor.stop().
@@ -206,6 +216,16 @@ impl Inner {
         if let Some(hb) = self.heartbeat_handle() {
             hb.on_session_end(reason).await;
         }
+    }
+}
+
+fn capture_state_label(state: &CaptureState) -> &'static str {
+    match state {
+        CaptureState::Unauthenticated => "unauthenticated",
+        CaptureState::SetupRequired => "setup_required",
+        CaptureState::Stopped => "stopped",
+        CaptureState::Capturing => "capturing",
+        CaptureState::Error(_) => "error",
     }
 }
 

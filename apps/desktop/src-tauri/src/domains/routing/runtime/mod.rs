@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
@@ -18,6 +18,7 @@ use crate::domains::routing::service::{
 use crate::domains::routing::types::{
     connection_mood, ConnectionStatus, Routing, RoutingState, RuntimeHandshakeFrame, SessionState,
 };
+use crate::providers::observability;
 use crate::providers::permissions::CapturePermissions;
 
 pub mod commands;
@@ -72,6 +73,88 @@ struct GetAgentResponse {
     agent_instance_id: String,
     ws_url: Url,
     runtime_jwt: String,
+}
+
+#[derive(Deserialize)]
+struct RuntimeFrameEnvelope {
+    #[serde(rename = "type")]
+    frame_type: String,
+}
+
+const ROUTING_FAILURE_CAPTURE_COOLDOWN: Duration = Duration::from_secs(30 * 60);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum RoutingFailureKind {
+    FetchNotConfigured,
+    FetchNetwork,
+    FetchStatus(u16),
+    FetchMalformed,
+    WsConnect,
+    WsConnectFrame,
+    WsRead,
+    WsSend,
+    HandshakeMalformed,
+}
+
+impl RoutingFailureKind {
+    fn from_fetch_error(error: &RoutingFetchError) -> Self {
+        match error {
+            RoutingFetchError::NotConfigured => Self::FetchNotConfigured,
+            RoutingFetchError::Network(_) => Self::FetchNetwork,
+            RoutingFetchError::Status(status) => Self::FetchStatus(*status),
+            RoutingFetchError::Malformed(_) => Self::FetchMalformed,
+        }
+    }
+
+    fn message(self) -> &'static str {
+        match self {
+            Self::FetchNotConfigured => "control plane routing fetch is not configured",
+            Self::FetchNetwork => "control plane routing fetch failed",
+            Self::FetchStatus(_) => "control plane routing fetch returned non-success status",
+            Self::FetchMalformed => "control plane routing response was malformed",
+            Self::WsConnect => "protocol websocket connect failed",
+            Self::WsConnectFrame => "protocol websocket connect frame failed",
+            Self::WsRead => "protocol websocket read failed",
+            Self::WsSend => "protocol websocket outbound send failed",
+            Self::HandshakeMalformed => "runtime handshake frame was malformed",
+        }
+    }
+}
+
+/// Routing is a long-lived reconnect loop, so repeated transport failures are
+/// lifecycle signal, not distinct bugs. This reporter keeps breadcrumbs for
+/// every failure class while rate-limiting Sentry events per class.
+struct RoutingFailureReporter {
+    limiter: observability::CaptureRateLimiter<RoutingFailureKind>,
+}
+
+impl Default for RoutingFailureReporter {
+    fn default() -> Self {
+        Self {
+            limiter: observability::CaptureRateLimiter::new(ROUTING_FAILURE_CAPTURE_COOLDOWN),
+        }
+    }
+}
+
+impl RoutingFailureReporter {
+    fn record_fetch_error(&mut self, error: &RoutingFetchError) {
+        self.record_error(RoutingFailureKind::from_fetch_error(error), error);
+    }
+
+    fn record_error(
+        &mut self,
+        kind: RoutingFailureKind,
+        error: &(dyn std::error::Error + Send + Sync + 'static),
+    ) {
+        observability::breadcrumb("desktop.routing", kind.message(), sentry::Level::Warning);
+        if self.should_capture(kind, Instant::now()) {
+            observability::capture_error(error);
+        }
+    }
+
+    fn should_capture(&mut self, kind: RoutingFailureKind, now: Instant) -> bool {
+        self.limiter.should_capture(kind, now)
+    }
 }
 
 #[async_trait]
@@ -377,6 +460,7 @@ impl WsSession {
         let mut session_state = SessionState::Disconnected;
         let mut routing: Option<Routing> = None;
         let mut attempt = 0;
+        let mut failure_reporter = RoutingFailureReporter::default();
 
         loop {
             if self.login_token.lock().await.as_deref() != Some(token.as_str()) {
@@ -393,6 +477,7 @@ impl WsSession {
                     }
                     Err(e) => {
                         eprintln!("routing: fetch failed: {e}");
+                        failure_reporter.record_fetch_error(&e);
                         (routing_state, session_state) = self.apply(
                             routing_state,
                             session_state,
@@ -418,6 +503,7 @@ impl WsSession {
                 &active_routing,
                 self.transport.as_ref(),
                 outbound_rx,
+                &mut failure_reporter,
                 |event| {
                     (routing_state, session_state) =
                         self.apply(routing_state, session_state, event);
@@ -450,6 +536,13 @@ impl WsSession {
         event: RoutingEvent,
     ) -> (RoutingState, SessionState) {
         let next = transition(routing_state, session_state, event);
+        if next != (routing_state, session_state) {
+            observability::breadcrumb(
+                "desktop.routing",
+                &format!("routing={:?} session={:?}", next.0, next.1),
+                sentry::Level::Info,
+            );
+        }
         self.note(next.0, next.1);
         next
     }
@@ -484,12 +577,14 @@ async fn drive_connection(
     routing: &Routing,
     transport: &dyn WsTransport,
     mut outbound_rx: mpsc::UnboundedReceiver<String>,
+    failure_reporter: &mut RoutingFailureReporter,
     mut observe_event: impl FnMut(RoutingEvent),
 ) -> ConnectionExit {
     let mut connection = match transport.connect(&routing.ws_url).await {
         Ok(connection) => connection,
         Err(e) => {
             eprintln!("routing: websocket connect failed: {e}");
+            failure_reporter.record_error(RoutingFailureKind::WsConnect, &e);
             observe_event(RoutingEvent::TransportDropped);
             return ConnectionExit {
                 cause: ReconnectCause::TransportDropped,
@@ -504,6 +599,7 @@ async fn drive_connection(
     let connect = build_connect_frame(routing, client_tz.as_deref());
     if let Err(e) = connection.send_text(connect.to_string()).await {
         eprintln!("routing: websocket connect frame failed: {e}");
+        failure_reporter.record_error(RoutingFailureKind::WsConnectFrame, &e);
         observe_event(RoutingEvent::TransportDropped);
         return ConnectionExit {
             cause: ReconnectCause::TransportDropped,
@@ -514,6 +610,7 @@ async fn drive_connection(
     // the receiver closes; stop selecting on it to avoid a busy loop, while the
     // inbound read keeps driving the connection.
     let mut outbound_open = true;
+    let mut handshake_accepted = false;
     loop {
         let next = tokio::select! {
             inbound = connection.next_text() => match inbound {
@@ -526,6 +623,7 @@ async fn drive_connection(
                 }
                 Err(e) => {
                     eprintln!("routing: websocket read failed: {e}");
+                    failure_reporter.record_error(RoutingFailureKind::WsRead, &e);
                     observe_event(RoutingEvent::TransportDropped);
                     return ConnectionExit {
                         cause: ReconnectCause::TransportDropped,
@@ -537,6 +635,7 @@ async fn drive_connection(
                     Some(frame) => {
                         if let Err(e) = connection.send_text(frame).await {
                             eprintln!("routing: outbound send failed: {e}");
+                            failure_reporter.record_error(RoutingFailureKind::WsSend, &e);
                             observe_event(RoutingEvent::TransportDropped);
                             return ConnectionExit {
                                 cause: ReconnectCause::TransportDropped,
@@ -552,11 +651,27 @@ async fn drive_connection(
             },
         };
 
+        if handshake_accepted {
+            observe_post_handshake_frame(&next);
+            continue;
+        }
+
         match serde_json::from_str::<RuntimeHandshakeFrame>(&next) {
             Ok(RuntimeHandshakeFrame::HelloOk { .. }) => {
+                observability::breadcrumb(
+                    "desktop.routing",
+                    "runtime handshake accepted",
+                    sentry::Level::Info,
+                );
+                handshake_accepted = true;
                 observe_event(RoutingEvent::HandshakeAccepted);
             }
             Ok(RuntimeHandshakeFrame::RuntimeError { code, .. }) => {
+                observability::breadcrumb(
+                    "desktop.routing",
+                    &format!("runtime rejected connect: {code:?}"),
+                    sentry::Level::Warning,
+                );
                 observe_event(RoutingEvent::RuntimeRejected(code));
                 return ConnectionExit {
                     cause: ReconnectCause::RuntimeError(code),
@@ -564,9 +679,24 @@ async fn drive_connection(
             }
             Err(e) => {
                 eprintln!("routing: ignored malformed runtime frame: {e}");
+                failure_reporter.record_error(RoutingFailureKind::HandshakeMalformed, &e);
             }
         }
     }
+}
+
+fn observe_post_handshake_frame(text: &str) {
+    let message = match post_handshake_frame_type(text) {
+        Some(frame_type) => format!("ignored runtime frame: {frame_type}"),
+        None => "ignored runtime frame: unreadable type".to_string(),
+    };
+    observability::breadcrumb("desktop.routing", &message, sentry::Level::Info);
+}
+
+fn post_handshake_frame_type(text: &str) -> Option<String> {
+    serde_json::from_str::<RuntimeFrameEnvelope>(text)
+        .ok()
+        .map(|frame| frame.frame_type)
 }
 
 pub fn status_for(routing_state: RoutingState, session_state: SessionState) -> ConnectionStatus {
@@ -842,11 +972,16 @@ mod tests {
                 "session_snapshot": { "messages": [], "before_cursor": null }
             })]));
         let mut events = Vec::new();
+        let mut failure_reporter = RoutingFailureReporter::default();
 
         let (_outbound_tx, outbound_rx) = mpsc::unbounded_channel();
-        let exit = drive_connection(&sample_routing(), &transport, outbound_rx, |event| {
-            events.push(event)
-        })
+        let exit = drive_connection(
+            &sample_routing(),
+            &transport,
+            outbound_rx,
+            &mut failure_reporter,
+            |event| events.push(event),
+        )
         .await;
 
         let sent = transport.sent.lock().await;
@@ -880,11 +1015,16 @@ mod tests {
                 "message": "expired"
             })]));
         let mut events = Vec::new();
+        let mut failure_reporter = RoutingFailureReporter::default();
 
         let (_outbound_tx, outbound_rx) = mpsc::unbounded_channel();
-        let exit = drive_connection(&sample_routing(), &transport, outbound_rx, |event| {
-            events.push(event)
-        })
+        let exit = drive_connection(
+            &sample_routing(),
+            &transport,
+            outbound_rx,
+            &mut failure_reporter,
+            |event| events.push(event),
+        )
         .await;
 
         assert_eq!(
@@ -896,6 +1036,47 @@ mod tests {
         assert_eq!(
             reconnect_decision(exit.cause),
             ReconnectDecision::RefreshRouting
+        );
+    }
+
+    #[tokio::test]
+    async fn post_handshake_runtime_traffic_stays_out_of_handshake_parser() {
+        let transport = FakeTransport::with_connection(FakeConnection::with_frames([
+            serde_json::json!({
+                "type": "hello_ok",
+                "session_snapshot": { "messages": [], "before_cursor": null }
+            }),
+            serde_json::json!({
+                "type": "companion_message",
+                "message": { "id": "msg_1", "body": "hello" }
+            }),
+        ]));
+        let mut routing_events = Vec::new();
+        let mut failure_reporter = RoutingFailureReporter::default();
+
+        let (_outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+        let exit = drive_connection(
+            &sample_routing(),
+            &transport,
+            outbound_rx,
+            &mut failure_reporter,
+            |event| routing_events.push(event),
+        )
+        .await;
+
+        assert_eq!(
+            routing_events,
+            vec![
+                RoutingEvent::HandshakeAccepted,
+                RoutingEvent::TransportDropped
+            ]
+        );
+        assert_eq!(exit.cause, ReconnectCause::TransportDropped);
+        assert_eq!(
+            post_handshake_frame_type(
+                r#"{"type":"companion_message","message":{"id":"msg_1","body":"hello"}}"#
+            ),
+            Some("companion_message".to_string())
         );
     }
 
@@ -914,6 +1095,25 @@ mod tests {
     #[test]
     fn static_jitter_is_available_for_paused_time_tests() {
         assert_eq!(StaticJitter.jitter(Duration::from_secs(1)), Duration::ZERO);
+    }
+
+    #[test]
+    fn routing_failure_reporting_is_rate_limited_by_failure_class() {
+        let mut reporter = RoutingFailureReporter::default();
+        let now = Instant::now();
+
+        assert!(reporter.should_capture(RoutingFailureKind::WsConnect, now));
+        assert!(
+            !reporter.should_capture(RoutingFailureKind::WsConnect, now + Duration::from_secs(30),)
+        );
+        assert!(reporter.should_capture(
+            RoutingFailureKind::FetchNetwork,
+            now + Duration::from_secs(30),
+        ));
+        assert!(reporter.should_capture(
+            RoutingFailureKind::WsConnect,
+            now + ROUTING_FAILURE_CAPTURE_COOLDOWN + Duration::from_secs(1),
+        ));
     }
 
     struct CountingObserver {
@@ -1107,7 +1307,13 @@ mod tests {
         // The connect frame lands once the connection is live and the outbound
         // sender is registered.
         let sent_for_wait = sent.clone();
-        wait_until(|| sent_for_wait.try_lock().map(|s| !s.is_empty()).unwrap_or(false)).await;
+        wait_until(|| {
+            sent_for_wait
+                .try_lock()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+        })
+        .await;
 
         let frame = r#"{"type":"context_snapshot"}"#.to_string();
         session
@@ -1116,8 +1322,18 @@ mod tests {
             .expect("a live connection accepts the frame");
 
         let sent_for_wait = sent.clone();
-        wait_until(|| sent_for_wait.try_lock().map(|s| s.len() >= 2).unwrap_or(false)).await;
-        assert_eq!(sent.lock().await[1], frame, "the frame was sent on the socket");
+        wait_until(|| {
+            sent_for_wait
+                .try_lock()
+                .map(|s| s.len() >= 2)
+                .unwrap_or(false)
+        })
+        .await;
+        assert_eq!(
+            sent.lock().await[1],
+            frame,
+            "the frame was sent on the socket"
+        );
 
         // Dropping the inbound read drives the existing reconnect path, which
         // clears the outbound seam — a fresh try_emit reports NotConnected
@@ -1132,6 +1348,9 @@ mod tests {
             }
             tokio::task::yield_now().await;
         }
-        assert!(cleared, "the outbound seam clears when the connection drops");
+        assert!(
+            cleared,
+            "the outbound seam clears when the connection drops"
+        );
     }
 }

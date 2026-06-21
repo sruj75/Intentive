@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { captureException } from "../../../providers/observability";
 
 type PermissionSet = {
   screen_recording: boolean;
@@ -60,6 +61,7 @@ export default function CapturePermissionSetup() {
       setStatus(next);
       setError(null);
     } catch (err) {
+      captureException(err);
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -103,9 +105,16 @@ export default function CapturePermissionSetup() {
 
   const openSettings = useCallback(async (kind: PermissionKind) => {
     try {
+      if (kind === "microphone") {
+        const next = await invoke<PermissionSet>("request_microphone_permission");
+        setStatus(next);
+        setError(null);
+        if (next.microphone) return;
+      }
       await invoke("open_permission_pane", { kind });
       setError(null);
     } catch (err) {
+      captureException(err);
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);

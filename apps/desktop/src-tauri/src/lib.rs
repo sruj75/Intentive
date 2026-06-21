@@ -20,7 +20,7 @@ use domains::capture::types::session::{CaptureSessionControl, CoordinatorCommand
 use domains::capture::types::state::CaptureState;
 use domains::routing::runtime::{
     DisabledRoutingSource, FastrandJitter, FixtureRoutingSource, RoutingFetcher, RoutingObserver,
-    RoutingSource, TungsteniteTransport, WsSession,
+    RoutingSource, TryEmitError, TungsteniteTransport, WsSession,
 };
 use domains::routing::types::{ConnectionStatus, RoutingState, SessionState};
 use domains::snapshots::repo::SnapshotStore;
@@ -36,7 +36,9 @@ use domains::summarization::runtime::{
 use domains::updates::runtime::{TauriUpdateChannel, UpdateCoordinator};
 use domains::updates::types::UpdateChannel;
 use providers::permissions::status_emitter::PermissionEmitterSupervisor;
-use providers::permissions::{CapturePermissions, MacosCapturePermissions};
+use providers::permissions::{
+    request_microphone_access, CapturePermissions, MacosCapturePermissions,
+};
 use tokio::sync::mpsc;
 
 /// Cross-domain bridge: implements the snapshots `Summarizer` trait by
@@ -56,13 +58,10 @@ impl Summarizer for LlmProviderSlotSummarizer {
     }
 
     async fn summarize(&self, activity: &str) -> Result<String, SummarizerError> {
-        self.lazy
-            .summarize(activity)
-            .await
-            .map_err(|e| match e {
-                SummarizeError::Unresolved => SummarizerError::Unresolved,
-                SummarizeError::Provider(pe) => SummarizerError::Failed(pe.to_string()),
-            })
+        self.lazy.summarize(activity).await.map_err(|e| match e {
+            SummarizeError::Unresolved => SummarizerError::Unresolved,
+            SummarizeError::Provider(pe) => SummarizerError::Failed(pe.to_string()),
+        })
     }
 }
 
@@ -191,8 +190,20 @@ impl AgentSink for WsSessionAgentSink {
             "marker_emit",
             serde_json::json!({ "reason": format!("{:?}", marker.reason) }),
         );
-        let _ = self.session.try_emit(session_end_marker_frame(marker)).await;
+        if let Err(err) = self
+            .session
+            .try_emit(session_end_marker_frame(marker))
+            .await
+        {
+            if should_capture_try_emit_error(&err) {
+                providers::observability::capture_error(&err);
+            }
+        }
     }
+}
+
+fn should_capture_try_emit_error(error: &TryEmitError) -> bool {
+    !matches!(error, TryEmitError::NotConnected)
 }
 
 struct TauriRoutingObserver {
@@ -225,6 +236,7 @@ fn open_onboarding_window(window: &WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _sentry = providers::observability::init();
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -504,6 +516,9 @@ pub fn run() {
             // path; StateHolder no longer exists. Models-root resolution,
             // disk probe, and failsafe direction live inside the helper.
             if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
+                if !permissions.snapshot().microphone {
+                    std::thread::spawn(request_microphone_access);
+                }
                 domains::menubar::ui::open_permission_setup_window(app.handle());
             } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
                 && domains::summarization::service::bundled::bundled_model_needs_install()
@@ -545,6 +560,7 @@ pub fn run() {
             domains::routing::runtime::commands::clear_login_token,
             domains::routing::runtime::commands::get_connection_status,
             providers::permissions::commands::capture_permission_status,
+            providers::permissions::commands::request_microphone_permission,
             providers::permissions::commands::open_permission_pane,
             domains::summarization::runtime::commands::start_model_download,
         ]);
@@ -560,6 +576,7 @@ pub fn run() {
             domains::routing::runtime::commands::clear_login_token,
             domains::routing::runtime::commands::get_connection_status,
             providers::permissions::commands::capture_permission_status,
+            providers::permissions::commands::request_microphone_permission,
             providers::permissions::commands::open_permission_pane,
             domains::summarization::runtime::commands::start_model_download,
         ]);
@@ -593,9 +610,13 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_snapshot_frame, session_end_marker_frame, WsSessionAgentSink};
+    use super::{
+        context_snapshot_frame, session_end_marker_frame, should_capture_try_emit_error,
+        WsSessionAgentSink,
+    };
     use crate::domains::routing::runtime::{
-        DisabledRoutingSource, FastrandJitter, NoopRoutingObserver, TungsteniteTransport, WsSession,
+        DisabledRoutingSource, FastrandJitter, NoopRoutingObserver, TryEmitError,
+        TungsteniteTransport, WsSession,
     };
     use crate::domains::snapshots::runtime::agent_interface::{AgentSink, PushError};
     use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
@@ -603,6 +624,11 @@ mod tests {
     use serde_json::{json, Value};
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn not_connected_marker_emit_failures_are_expected_not_sentry_errors() {
+        assert!(!should_capture_try_emit_error(&TryEmitError::NotConnected));
+    }
 
     #[test]
     fn context_snapshot_frame_carries_only_the_frozen_v1_fields() {
@@ -623,9 +649,18 @@ mod tests {
         assert_eq!(frame["snapshot_id"], json!(Uuid::nil().to_string()));
         assert_eq!(frame["summary"], json!("did some things"));
         // Datetimes pass through the struct's own serialization unchanged.
-        assert_eq!(frame["captured_at"], serde_json::to_value(captured_at).unwrap());
-        assert_eq!(frame["period_start"], serde_json::to_value(period_start).unwrap());
-        assert_eq!(frame["period_end"], serde_json::to_value(captured_at).unwrap());
+        assert_eq!(
+            frame["captured_at"],
+            serde_json::to_value(captured_at).unwrap()
+        );
+        assert_eq!(
+            frame["period_start"],
+            serde_json::to_value(period_start).unwrap()
+        );
+        assert_eq!(
+            frame["period_end"],
+            serde_json::to_value(captured_at).unwrap()
+        );
         // Invariant 6: no fields beyond `type` + the five frozen payload fields.
         assert_eq!(
             object.len(),
