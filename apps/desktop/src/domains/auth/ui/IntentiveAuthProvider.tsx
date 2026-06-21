@@ -8,6 +8,7 @@ import {
   syncLoginTokenToRust,
   type LoginTokenSyncState,
 } from "../service/auth";
+import { captureException } from "../../../providers/observability";
 
 type Props = {
   children: React.ReactNode;
@@ -37,9 +38,10 @@ export default function IntentiveAuthProvider({ children }: Props) {
         .then((next) => {
           if (!cancelled) synced = next;
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           // Browser preview and tests do not have a Rust command host. The app
           // retries on focus and on the interval once it is running under Tauri.
+          captureException(error);
         });
     };
 

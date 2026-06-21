@@ -35,6 +35,7 @@ async-trait = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio-rustls", "chrono", "migrate", "macros"] }
 fastrand = "2"
 iana-time-zone = "0.1"
+sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
 
 [dev-dependencies]
 wiremock = "0.6"

@@ -18,6 +18,7 @@ use crate::domains::routing::service::{
 use crate::domains::routing::types::{
     connection_mood, ConnectionStatus, Routing, RoutingState, RuntimeHandshakeFrame, SessionState,
 };
+use crate::providers::observability;
 use crate::providers::permissions::CapturePermissions;
 
 pub mod commands;
@@ -393,6 +394,7 @@ impl WsSession {
                     }
                     Err(e) => {
                         eprintln!("routing: fetch failed: {e}");
+                        observability::capture_error(&e);
                         (routing_state, session_state) = self.apply(
                             routing_state,
                             session_state,
@@ -450,6 +452,13 @@ impl WsSession {
         event: RoutingEvent,
     ) -> (RoutingState, SessionState) {
         let next = transition(routing_state, session_state, event);
+        if next != (routing_state, session_state) {
+            observability::breadcrumb(
+                "desktop.routing",
+                &format!("routing={:?} session={:?}", next.0, next.1),
+                sentry::Level::Info,
+            );
+        }
         self.note(next.0, next.1);
         next
     }
@@ -490,6 +499,7 @@ async fn drive_connection(
         Ok(connection) => connection,
         Err(e) => {
             eprintln!("routing: websocket connect failed: {e}");
+            observability::capture_error(&e);
             observe_event(RoutingEvent::TransportDropped);
             return ConnectionExit {
                 cause: ReconnectCause::TransportDropped,
@@ -504,6 +514,7 @@ async fn drive_connection(
     let connect = build_connect_frame(routing, client_tz.as_deref());
     if let Err(e) = connection.send_text(connect.to_string()).await {
         eprintln!("routing: websocket connect frame failed: {e}");
+        observability::capture_error(&e);
         observe_event(RoutingEvent::TransportDropped);
         return ConnectionExit {
             cause: ReconnectCause::TransportDropped,
@@ -526,6 +537,7 @@ async fn drive_connection(
                 }
                 Err(e) => {
                     eprintln!("routing: websocket read failed: {e}");
+                    observability::capture_error(&e);
                     observe_event(RoutingEvent::TransportDropped);
                     return ConnectionExit {
                         cause: ReconnectCause::TransportDropped,
@@ -537,6 +549,7 @@ async fn drive_connection(
                     Some(frame) => {
                         if let Err(e) = connection.send_text(frame).await {
                             eprintln!("routing: outbound send failed: {e}");
+                            observability::capture_error(&e);
                             observe_event(RoutingEvent::TransportDropped);
                             return ConnectionExit {
                                 cause: ReconnectCause::TransportDropped,
@@ -554,9 +567,19 @@ async fn drive_connection(
 
         match serde_json::from_str::<RuntimeHandshakeFrame>(&next) {
             Ok(RuntimeHandshakeFrame::HelloOk { .. }) => {
+                observability::breadcrumb(
+                    "desktop.routing",
+                    "runtime handshake accepted",
+                    sentry::Level::Info,
+                );
                 observe_event(RoutingEvent::HandshakeAccepted);
             }
             Ok(RuntimeHandshakeFrame::RuntimeError { code, .. }) => {
+                observability::breadcrumb(
+                    "desktop.routing",
+                    &format!("runtime rejected connect: {code:?}"),
+                    sentry::Level::Warning,
+                );
                 observe_event(RoutingEvent::RuntimeRejected(code));
                 return ConnectionExit {
                     cause: ReconnectCause::RuntimeError(code),
@@ -564,6 +587,7 @@ async fn drive_connection(
             }
             Err(e) => {
                 eprintln!("routing: ignored malformed runtime frame: {e}");
+                observability::capture_error(&e);
             }
         }
     }

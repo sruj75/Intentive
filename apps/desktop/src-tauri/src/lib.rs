@@ -180,7 +180,10 @@ impl AgentSink for WsSessionAgentSink {
             .try_emit(context_snapshot_frame(snapshot))
             .await
             // The only TryEmitError is NotConnected → the socket is down.
-            .map_err(|_| PushError::NotConnected)
+            .map_err(|err| {
+                providers::observability::capture_error(&err);
+                PushError::NotConnected
+            })
     }
 
     async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
@@ -191,7 +194,9 @@ impl AgentSink for WsSessionAgentSink {
             "marker_emit",
             serde_json::json!({ "reason": format!("{:?}", marker.reason) }),
         );
-        let _ = self.session.try_emit(session_end_marker_frame(marker)).await;
+        if let Err(err) = self.session.try_emit(session_end_marker_frame(marker)).await {
+            providers::observability::capture_error(&err);
+        }
     }
 }
 
@@ -225,6 +230,7 @@ fn open_onboarding_window(window: &WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _sentry = providers::observability::init();
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

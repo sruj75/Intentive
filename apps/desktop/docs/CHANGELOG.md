@@ -24,6 +24,18 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 
 ### Added
 
+- **Desktop Sentry errors-only observability (ADR-0025)** — The Desktop Client now
+  reports webview and Rust backend errors to the single `desktop` Sentry project
+  through deployable-local provider seams (`src/providers/observability.ts` and
+  `src-tauri/src/providers/observability/`). Session Replay and performance
+  tracing stay disabled in v1; both SDKs use `sendDefaultPii: false` /
+  `send_default_pii: false`, and scrubbers remove request bodies, cookies,
+  query strings, sensitive headers, JWT/token-shaped values, ScreenPipe text,
+  and Context Snapshot summaries from events and breadcrumbs. The release
+  workflow builds hidden webview source maps, injects Sentry debug IDs before
+  Tauri bundles `dist`, compiles Rust with the same `desktop@<version>` release,
+  and uploads/finalizes source maps under `hypermind-project-sh/desktop`.
+
 - **macOS distribution readiness — signed/notarized DMG + silent auto-update
   (#53/#54/#55/#56)** — The Desktop Client now ships as a deep-signed, notarized
   Apple-Silicon `.dmg` that self-updates silently. ScreenPipe is wrapped in a

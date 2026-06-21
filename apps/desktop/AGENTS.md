@@ -33,6 +33,8 @@ Rust side (`src-tauri/src/domains/<name>/`):
 
 Cross-cutting Rust helpers (port probe, macOS permission probes, dev-only smoke hooks) live in `src-tauri/src/providers/` (`providers/permissions/` implements `CapturePermissions` + `ReadinessChecker`; setup polling via `status_emitter`; `providers/smoke.rs` holds `#[cfg(debug_assertions)]` smoke env readers). Cross-domain wiring happens at the `lib.rs` composition root via trait seams (`ScreenpipeUrlSource`, `SessionHooks`, `CaptureSessionControl`, `CapturePermissions`, `Summarizer`, `AgentSink`). Layer direction is enforced by `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
 
+Sentry observability is deployable-local: webview code imports `src/providers/observability.ts`, Rust code imports `src-tauri/src/providers/observability/`. Keep it errors-only and preserve the Snapshot Privacy Boundary (ADR-0025).
+
 ## Working docs
 
 - [`../../docs/prd/desktop-PRD.md`](../../docs/prd/desktop-PRD.md) — Desktop PRD

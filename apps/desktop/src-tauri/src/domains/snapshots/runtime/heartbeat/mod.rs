@@ -23,6 +23,7 @@ use url::Url;
 use crate::domains::snapshots::repo::SnapshotStore;
 use crate::domains::snapshots::runtime::agent_interface::AgentSink;
 use crate::domains::snapshots::types::{ContextSnapshot, SessionEndMarker, SessionEndReason};
+use crate::providers::observability;
 
 /// Source of the live ScreenPipe HTTP endpoint the heartbeat queries each
 /// tick. A trait seam so the snapshots domain does not depend on the capture
@@ -178,6 +179,11 @@ impl ContextHeartbeat {
             ended_at: Utc::now(),
             reason,
         };
+        observability::breadcrumb(
+            "desktop.heartbeat",
+            &format!("session end marker: {:?}", marker.reason),
+            sentry::Level::Info,
+        );
         self.deps.sink.emit_session_end_marker(&marker).await;
     }
 }
@@ -196,6 +202,7 @@ async fn run_loop(deps: Arc<Deps>, mut kill_rx: oneshot::Receiver<()>, interval:
 }
 
 async fn tick_once(deps: &Deps, interval: Duration) {
+    observability::breadcrumb("desktop.heartbeat", "tick", sentry::Level::Info);
     let period_end: DateTime<Utc> = Utc::now();
     let period_start = period_end - chrono::Duration::from_std(interval).unwrap();
     let screenpipe_url = deps.screenpipe_endpoint.current_or_primary_url();
@@ -206,15 +213,26 @@ async fn tick_once(deps: &Deps, interval: Duration) {
         .await
     {
         Ok(a) => a,
-        Err(e) => return warn(&format!("activity query failed: {e}")),
+        Err(e) => {
+            observability::capture_error(&e);
+            return warn(&format!("activity query failed: {e}"));
+        }
     };
 
     let summary = match deps.summarizer.summarize(&activity).await {
         Ok(s) => s,
         Err(SummarizerError::Unresolved) => {
+            observability::breadcrumb(
+                "desktop.heartbeat",
+                "skipping tick: llm provider unresolved",
+                sentry::Level::Warning,
+            );
             return warn("skipping tick — on-device LLM provider not resolved yet");
         }
-        Err(SummarizerError::Failed(msg)) => return warn(&format!("summarization failed: {msg}")),
+        Err(SummarizerError::Failed(msg)) => {
+            observability::capture_message("summarization failed", sentry::Level::Error);
+            return warn(&format!("summarization failed: {msg}"));
+        }
     };
 
     let snapshot = ContextSnapshot {
@@ -226,14 +244,24 @@ async fn tick_once(deps: &Deps, interval: Duration) {
     };
 
     if let Err(e) = deps.snapshot_store.insert(&snapshot).await {
+        observability::capture_message("snapshot store insert failed", sentry::Level::Error);
         return warn(&format!("snapshot store insert failed: {e}"));
     }
 
     // Write-before-push (ADR-0007): the row exists locally regardless of
     // delivery outcome. Failed pushes stay unmarked per ADR-0005.
-    if deps.sink.emit_context_snapshot(&snapshot).await.is_ok() {
-        if let Err(e) = deps.snapshot_store.mark_pushed(snapshot.snapshot_id).await {
-            warn(&format!("snapshot delivery status update failed: {e}"));
+    match deps.sink.emit_context_snapshot(&snapshot).await {
+        Ok(()) => {
+            if let Err(e) = deps.snapshot_store.mark_pushed(snapshot.snapshot_id).await {
+                observability::capture_message(
+                    "snapshot delivery status update failed",
+                    sentry::Level::Error,
+                );
+                warn(&format!("snapshot delivery status update failed: {e}"));
+            }
+        }
+        Err(e) => {
+            observability::capture_error(&e);
         }
     }
 }

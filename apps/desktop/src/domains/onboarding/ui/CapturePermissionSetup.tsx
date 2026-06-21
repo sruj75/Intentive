@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { captureException } from "../../../providers/observability";
 
 type PermissionSet = {
   screen_recording: boolean;
@@ -60,6 +61,7 @@ export default function CapturePermissionSetup() {
       setStatus(next);
       setError(null);
     } catch (err) {
+      captureException(err);
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -106,6 +108,7 @@ export default function CapturePermissionSetup() {
       await invoke("open_permission_pane", { kind });
       setError(null);
     } catch (err) {
+      captureException(err);
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
