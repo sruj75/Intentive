@@ -28,6 +28,7 @@ initTelemetry({
   environment: __DEV__ ? "development" : "production",
 });
 const telemetry = createSentryTelemetry();
+const sentrySmokeMessage = "mobile sentry smoke 2026-06-21T00:20:00Z";
 
 /**
  * The single real Auth Adapter, built once from the Neon client. No social
@@ -61,6 +62,16 @@ function RootNavigator(): React.JSX.Element {
   const { state } = useLaunchState();
   const route = routeForDestination(resolveLaunchState(state));
   const router = useRouter();
+
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_SENTRY_SMOKE_THROW !== "1") return;
+
+    const timer = setTimeout(() => {
+      throw new Error(sentrySmokeMessage);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // The launch decision (resolver + route mapping) is pure and tested in
   // route-for-destination.ts; the layout owns only the effect. A `splash` route

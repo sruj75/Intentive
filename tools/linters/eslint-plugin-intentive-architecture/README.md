@@ -27,7 +27,13 @@ Forbids one deployable from importing another deployable's source via relative p
 
 Forbids deployable/domain code from importing cross-cutting SDKs directly. Auth, telemetry, observability, feature flags, and other cross-cutting clients must enter through `@intentive/providers/*` or a deployable-local `providers/` seam.
 
-The first enforced SDKs are Sentry (`@sentry/node`) and Langfuse tracing (`langfuse-langchain`). Their initialization lives in `packages/providers/src/observability/`; the rule keeps a narrow Agent Runtime `Langfuse` prompt-floor client exception while blocking tracing handler setup outside Providers.
+Enforced SDKs today:
+
+- **`@sentry/node`** (Control Plane, Agent Runtime) — init in `packages/providers/src/observability/`.
+- **`@sentry/react-native`** (Mobile Client only) — init in `apps/mobile/src/providers/telemetry/`; domains receive the injected `Telemetry` port.
+- **`langfuse-langchain`** — tracing handlers in `packages/providers/src/observability/`; narrow Agent Runtime `Langfuse` prompt-floor client exception in `main.ts`.
+
+Direct imports of these SDKs outside their owning boundary fail CI with remediation text pointing at the provider seam.
 
 ## Why mechanical?
 

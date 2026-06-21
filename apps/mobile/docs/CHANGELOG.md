@@ -11,6 +11,16 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Errors-only Sentry telemetry** — `src/providers/telemetry/` is the Mobile Client's
+  Sentry seam (`Telemetry` port, `initTelemetry`, `createSentryTelemetry`,
+  `wrapRoot`). `app/_layout.tsx` initializes from `EXPO_PUBLIC_SENTRY_DSN` (blank
+  disables reporting in local dev); the `@sentry/react-native/expo` plugin in
+  `app.json` wires native build integration. Domains receive injected telemetry
+  only — **Auth Adapter** and **Runtime Adapter** capture explicit failures;
+  `@sentry/react-native` never imports from domain or route code. Errors-only:
+  no tracing, replay, profiling, or **Conversation History** payloads. Tests:
+  `auth-adapter.test.mjs`, `runtime-adapter.test.mjs`.
+
 - **Expo Push Token registration** ([Issue #49]) — `notifications` domain now asks
   permission on first **Companion Chat** entry, obtains an Expo Push Token through
   a narrow platform port, reads a stable SecureStore-backed device fingerprint,
