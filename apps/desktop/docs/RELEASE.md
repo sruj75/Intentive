@@ -133,12 +133,17 @@ The run must end with `conclusion: success`. The important steps are:
 - `Deep-sign nested helper + ollama (inside-out)`
 - `Build webview with Sentry release metadata`
 - `Inject Sentry source-map debug IDs`
+- `Stage Sentry source maps outside bundled dist`
 - `Build, sign, and notarize`
 - `Notarize and staple DMG`
 - `Generate updater latest.json`
 - `Verify release artifacts`
 - `Upload DMG + updater artifacts to GitHub Release`
 - `Create Sentry release and upload webview source maps`
+
+`Verify release artifacts` also fails if `.map` files are present inside the
+packaged `Intentive.app`; source maps must be uploaded from the staged runner
+directory, not shipped in the DMG.
 
 If the workflow fails after a tag push, fix the problem in a PR, merge it, then
 move the same tag only after confirming the fix is on `origin/main`:

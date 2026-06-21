@@ -27,7 +27,7 @@ pub fn init() -> Option<sentry::ClientInitGuard> {
 }
 
 pub fn capture_error(error: &(dyn Error + Send + Sync + 'static)) {
-    sentry::capture_error(error);
+    sentry::capture_event(sanitize_event(sentry::event_from_error(error)));
 }
 
 pub fn capture_message(message: &str, level: Level) {
@@ -77,7 +77,7 @@ fn sanitize_event(mut event: Event<'static>) -> Event<'static> {
         request.headers = sanitize_string_map(&request.headers);
         request.env = sanitize_string_map(&request.env);
     }
-    event
+    sanitize_serialized_event(event)
 }
 
 fn sanitize_breadcrumb(mut breadcrumb: Breadcrumb) -> Breadcrumb {
@@ -101,15 +101,20 @@ fn sanitize_string_map(map: &Map<String, String>) -> Map<String, String> {
 
 fn sanitize_value_map(map: &Map<String, Value>) -> Map<String, Value> {
     map.iter()
-        .map(|(key, value)| {
-            let next = if is_sensitive_key(key) {
-                Value::String(FILTERED.to_string())
-            } else {
-                sanitize_value(value)
-            };
-            (key.clone(), next)
-        })
+        .map(|(key, value)| (key.clone(), sanitize_value_for_key(key, value)))
         .collect()
+}
+
+fn sanitize_value_for_key(key: &str, value: &Value) -> Value {
+    if is_sensitive_key(key) {
+        return Value::String(FILTERED.to_string());
+    }
+    if key.eq_ignore_ascii_case("url") {
+        if let Value::String(url) = value {
+            return Value::String(sanitize_url_string(url));
+        }
+    }
+    sanitize_value(value)
 }
 
 fn sanitize_value(value: &Value) -> Value {
@@ -123,15 +128,25 @@ fn sanitize_value(value: &Value) -> Value {
 
 fn sanitize_json_map(map: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
     map.iter()
-        .map(|(key, value)| {
-            let next = if is_sensitive_key(key) {
-                Value::String(FILTERED.to_string())
-            } else {
-                sanitize_value(value)
-            };
-            (key.clone(), next)
-        })
+        .map(|(key, value)| (key.clone(), sanitize_value_for_key(key, value)))
         .collect()
+}
+
+fn sanitize_serialized_event(event: Event<'static>) -> Event<'static> {
+    let fallback_level = event.level;
+    let Ok(value) = serde_json::to_value(event) else {
+        return sanitization_fallback_event(fallback_level);
+    };
+    let value = sanitize_value(&value);
+    serde_json::from_value(value).unwrap_or_else(|_| sanitization_fallback_event(fallback_level))
+}
+
+fn sanitization_fallback_event(level: Level) -> Event<'static> {
+    Event {
+        message: Some("event sanitization failed".to_string()),
+        level,
+        ..Default::default()
+    }
 }
 
 fn sanitize_string(value: &str) -> String {
@@ -152,6 +167,17 @@ fn sanitize_string(value: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn sanitize_url_string(value: &str) -> String {
+    match url::Url::parse(value) {
+        Ok(mut url) => {
+            url.set_query(None);
+            url.set_fragment(None);
+            url.to_string()
+        }
+        Err(_) => sanitize_string(value),
+    }
 }
 
 fn looks_like_jwt(value: &str) -> bool {
@@ -207,7 +233,10 @@ mod tests {
             request.headers.get("authorization").map(String::as_str),
             Some(FILTERED)
         );
-        assert_eq!(request.headers.get("x-safe").map(String::as_str), Some("ok"));
+        assert_eq!(
+            request.headers.get("x-safe").map(String::as_str),
+            Some("ok")
+        );
         assert!(request.data.is_none());
         assert!(request.query_string.is_none());
         assert!(request.cookies.is_none());
@@ -216,12 +245,14 @@ mod tests {
     #[test]
     fn breadcrumb_scrubber_filters_snapshot_data_and_jwts() {
         let mut data = Map::new();
-        data.insert("state".to_string(), Value::String("routing_ready".to_string()));
+        data.insert(
+            "state".to_string(),
+            Value::String("routing_ready".to_string()),
+        );
         data.insert("snapshot".to_string(), Value::String("private".to_string()));
         let breadcrumb = sanitize_breadcrumb(Breadcrumb {
             message: Some(
-                "failed token=secret eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature"
-                    .to_string(),
+                "failed token=secret eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature".to_string(),
             ),
             data,
             ..Default::default()
@@ -233,6 +264,35 @@ mod tests {
         );
         assert_eq!(
             breadcrumb.data.get("snapshot"),
+            Some(&Value::String(FILTERED.to_string()))
+        );
+    }
+
+    #[test]
+    fn before_send_scrubs_exception_payloads_and_extra_values() {
+        let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature";
+        let mut event = sentry::event_from_error(&std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("malformed runtime frame token=secret {jwt}"),
+        ));
+        event.message = Some(format!("request failed jwt={jwt}"));
+        event.extra.insert(
+            "screenpipe_summary".to_string(),
+            Value::String("private summary".to_string()),
+        );
+
+        let event = sanitize_event(event);
+        let exception = event.exception.values.first().expect("exception");
+        assert_eq!(
+            exception.value.as_deref(),
+            Some("malformed runtime frame token=[Filtered] [Filtered]")
+        );
+        assert_eq!(
+            event.message.as_deref(),
+            Some("request failed jwt=[Filtered]")
+        );
+        assert_eq!(
+            event.extra.get("screenpipe_summary"),
             Some(&Value::String(FILTERED.to_string()))
         );
     }

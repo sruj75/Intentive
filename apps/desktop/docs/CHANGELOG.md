@@ -33,7 +33,8 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   query strings, sensitive headers, JWT/token-shaped values, ScreenPipe text,
   and Context Snapshot summaries from events and breadcrumbs. The release
   workflow builds hidden webview source maps, injects Sentry debug IDs before
-  Tauri bundles `dist`, compiles Rust with the same `desktop@<version>` release,
+  Tauri packaging, stages the maps outside `dist`, removes them from the
+  notarized app bundle, compiles Rust with the same `desktop@<version>` release,
   and uploads/finalizes source maps under `hypermind-project-sh/desktop`.
 
 - **macOS distribution readiness — signed/notarized DMG + silent auto-update

@@ -132,6 +132,19 @@ jobs:
           SENTRY_PROJECT: desktop
         run: sentry-cli sourcemaps inject apps/desktop/dist
 
+      - name: Stage Sentry source maps outside bundled dist
+        run: |
+          MAP_DIR="$RUNNER_TEMP/desktop-sentry-sourcemaps"
+          rm -rf "$MAP_DIR"
+          mkdir -p "$MAP_DIR"
+          while IFS= read -r -d '' map; do
+            rel="${map#apps/desktop/dist/}"
+            mkdir -p "$MAP_DIR/$(dirname "$rel")"
+            cp "$map" "$MAP_DIR/$rel"
+            rm "$map"
+          done < <(find apps/desktop/dist -name '*.map' -print0)
+          echo "DESKTOP_SENTRY_SOURCEMAPS=$MAP_DIR" >> "$GITHUB_ENV"
+
       - name: Build, sign, and notarize
         working-directory: apps/desktop
         env:
@@ -202,6 +215,6 @@ jobs:
           SENTRY_PROJECT: desktop
         run: |
           sentry-cli releases new "$DESKTOP_SENTRY_RELEASE" || true
-          sentry-cli sourcemaps upload --release "$DESKTOP_SENTRY_RELEASE" apps/desktop/dist
+          sentry-cli sourcemaps upload --release "$DESKTOP_SENTRY_RELEASE" "$DESKTOP_SENTRY_SOURCEMAPS"
           sentry-cli releases set-commits "$DESKTOP_SENTRY_RELEASE" --auto
           sentry-cli releases finalize "$DESKTOP_SENTRY_RELEASE"

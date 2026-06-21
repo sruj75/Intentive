@@ -41,8 +41,10 @@ The Sentry DSN is build-time configuration for distributed releases:
 
 The canonical release name is `desktop@<version>`. The desktop release workflow
 builds the webview with hidden source maps, injects Sentry debug IDs before Tauri
-bundles `dist`, builds/notarizes the app with the same Rust release string, then
-creates/finalizes the matching Sentry release and uploads source maps.
+bundles `dist`, stages the injected source maps outside `dist`, removes `.map`
+files before Tauri packages the app, builds/notarizes the app with the same Rust
+release string, then creates/finalizes the matching Sentry release and uploads
+the staged source maps.
 
 ## Consequences
 
@@ -50,6 +52,8 @@ creates/finalizes the matching Sentry release and uploads source maps.
 - Sentry release/source-map fidelity depends on GitHub variable
   `DESKTOP_SENTRY_DSN` and secret `SENTRY_AUTH_TOKEN`.
 - JavaScript events can symbolicate to original TypeScript frames after release.
+- Source maps are uploaded to Sentry but are not shipped inside the notarized
+  `.app` bundle.
 - Rust panics and captured runtime errors land in the same Desktop project as
   webview errors, with the shared `desktop@<version>` release.
 - Privacy scrubbers are now part of the Desktop Client behavior contract and

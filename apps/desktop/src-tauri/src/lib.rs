@@ -56,13 +56,10 @@ impl Summarizer for LlmProviderSlotSummarizer {
     }
 
     async fn summarize(&self, activity: &str) -> Result<String, SummarizerError> {
-        self.lazy
-            .summarize(activity)
-            .await
-            .map_err(|e| match e {
-                SummarizeError::Unresolved => SummarizerError::Unresolved,
-                SummarizeError::Provider(pe) => SummarizerError::Failed(pe.to_string()),
-            })
+        self.lazy.summarize(activity).await.map_err(|e| match e {
+            SummarizeError::Unresolved => SummarizerError::Unresolved,
+            SummarizeError::Provider(pe) => SummarizerError::Failed(pe.to_string()),
+        })
     }
 }
 
@@ -180,10 +177,7 @@ impl AgentSink for WsSessionAgentSink {
             .try_emit(context_snapshot_frame(snapshot))
             .await
             // The only TryEmitError is NotConnected → the socket is down.
-            .map_err(|err| {
-                providers::observability::capture_error(&err);
-                PushError::NotConnected
-            })
+            .map_err(|_| PushError::NotConnected)
     }
 
     async fn emit_session_end_marker(&self, marker: &SessionEndMarker) {
@@ -194,7 +188,11 @@ impl AgentSink for WsSessionAgentSink {
             "marker_emit",
             serde_json::json!({ "reason": format!("{:?}", marker.reason) }),
         );
-        if let Err(err) = self.session.try_emit(session_end_marker_frame(marker)).await {
+        if let Err(err) = self
+            .session
+            .try_emit(session_end_marker_frame(marker))
+            .await
+        {
             providers::observability::capture_error(&err);
         }
     }
@@ -629,9 +627,18 @@ mod tests {
         assert_eq!(frame["snapshot_id"], json!(Uuid::nil().to_string()));
         assert_eq!(frame["summary"], json!("did some things"));
         // Datetimes pass through the struct's own serialization unchanged.
-        assert_eq!(frame["captured_at"], serde_json::to_value(captured_at).unwrap());
-        assert_eq!(frame["period_start"], serde_json::to_value(period_start).unwrap());
-        assert_eq!(frame["period_end"], serde_json::to_value(captured_at).unwrap());
+        assert_eq!(
+            frame["captured_at"],
+            serde_json::to_value(captured_at).unwrap()
+        );
+        assert_eq!(
+            frame["period_start"],
+            serde_json::to_value(period_start).unwrap()
+        );
+        assert_eq!(
+            frame["period_end"],
+            serde_json::to_value(captured_at).unwrap()
+        );
         // Invariant 6: no fields beyond `type` + the five frozen payload fields.
         assert_eq!(
             object.len(),

@@ -75,6 +75,12 @@ struct GetAgentResponse {
     runtime_jwt: String,
 }
 
+#[derive(Deserialize)]
+struct RuntimeFrameEnvelope {
+    #[serde(rename = "type")]
+    frame_type: String,
+}
+
 #[async_trait]
 impl RoutingSource for RoutingFetcher {
     async fn fetch(&self, login_token: &str) -> Result<Routing, RoutingFetchError> {
@@ -525,6 +531,7 @@ async fn drive_connection(
     // the receiver closes; stop selecting on it to avoid a busy loop, while the
     // inbound read keeps driving the connection.
     let mut outbound_open = true;
+    let mut handshake_accepted = false;
     loop {
         let next = tokio::select! {
             inbound = connection.next_text() => match inbound {
@@ -565,6 +572,11 @@ async fn drive_connection(
             },
         };
 
+        if handshake_accepted {
+            observe_post_handshake_frame(&next);
+            continue;
+        }
+
         match serde_json::from_str::<RuntimeHandshakeFrame>(&next) {
             Ok(RuntimeHandshakeFrame::HelloOk { .. }) => {
                 observability::breadcrumb(
@@ -572,6 +584,7 @@ async fn drive_connection(
                     "runtime handshake accepted",
                     sentry::Level::Info,
                 );
+                handshake_accepted = true;
                 observe_event(RoutingEvent::HandshakeAccepted);
             }
             Ok(RuntimeHandshakeFrame::RuntimeError { code, .. }) => {
@@ -591,6 +604,20 @@ async fn drive_connection(
             }
         }
     }
+}
+
+fn observe_post_handshake_frame(text: &str) {
+    let message = match post_handshake_frame_type(text) {
+        Some(frame_type) => format!("ignored runtime frame: {frame_type}"),
+        None => "ignored runtime frame: unreadable type".to_string(),
+    };
+    observability::breadcrumb("desktop.routing", &message, sentry::Level::Info);
+}
+
+fn post_handshake_frame_type(text: &str) -> Option<String> {
+    serde_json::from_str::<RuntimeFrameEnvelope>(text)
+        .ok()
+        .map(|frame| frame.frame_type)
 }
 
 pub fn status_for(routing_state: RoutingState, session_state: SessionState) -> ConnectionStatus {
@@ -923,6 +950,42 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn post_handshake_runtime_traffic_stays_out_of_handshake_parser() {
+        let transport = FakeTransport::with_connection(FakeConnection::with_frames([
+            serde_json::json!({
+                "type": "hello_ok",
+                "session_snapshot": { "messages": [], "before_cursor": null }
+            }),
+            serde_json::json!({
+                "type": "companion_message",
+                "message": { "id": "msg_1", "body": "hello" }
+            }),
+        ]));
+        let mut routing_events = Vec::new();
+
+        let (_outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+        let exit = drive_connection(&sample_routing(), &transport, outbound_rx, |event| {
+            routing_events.push(event)
+        })
+        .await;
+
+        assert_eq!(
+            routing_events,
+            vec![
+                RoutingEvent::HandshakeAccepted,
+                RoutingEvent::TransportDropped
+            ]
+        );
+        assert_eq!(exit.cause, ReconnectCause::TransportDropped);
+        assert_eq!(
+            post_handshake_frame_type(
+                r#"{"type":"companion_message","message":{"id":"msg_1","body":"hello"}}"#
+            ),
+            Some("companion_message".to_string())
+        );
+    }
+
     #[test]
     fn status_projects_plain_english_mood() {
         assert_eq!(
@@ -1131,7 +1194,13 @@ mod tests {
         // The connect frame lands once the connection is live and the outbound
         // sender is registered.
         let sent_for_wait = sent.clone();
-        wait_until(|| sent_for_wait.try_lock().map(|s| !s.is_empty()).unwrap_or(false)).await;
+        wait_until(|| {
+            sent_for_wait
+                .try_lock()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+        })
+        .await;
 
         let frame = r#"{"type":"context_snapshot"}"#.to_string();
         session
@@ -1140,8 +1209,18 @@ mod tests {
             .expect("a live connection accepts the frame");
 
         let sent_for_wait = sent.clone();
-        wait_until(|| sent_for_wait.try_lock().map(|s| s.len() >= 2).unwrap_or(false)).await;
-        assert_eq!(sent.lock().await[1], frame, "the frame was sent on the socket");
+        wait_until(|| {
+            sent_for_wait
+                .try_lock()
+                .map(|s| s.len() >= 2)
+                .unwrap_or(false)
+        })
+        .await;
+        assert_eq!(
+            sent.lock().await[1],
+            frame,
+            "the frame was sent on the socket"
+        );
 
         // Dropping the inbound read drives the existing reconnect path, which
         // clears the outbound seam — a fresh try_emit reports NotConnected
@@ -1156,6 +1235,9 @@ mod tests {
             }
             tokio::task::yield_now().await;
         }
-        assert!(cleared, "the outbound seam clears when the connection drops");
+        assert!(
+            cleared,
+            "the outbound seam clears when the connection drops"
+        );
     }
 }
