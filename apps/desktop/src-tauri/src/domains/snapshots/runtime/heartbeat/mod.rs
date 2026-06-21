@@ -10,7 +10,7 @@
 //! provider isn't resolved — is hidden inside this module.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -40,6 +40,8 @@ pub use activity::{ActivityClient, ActivityError, ReqwestActivityClient};
 /// Fixed cadence per ADR-0008. The first tick fires after a full window, not
 /// at t=0 — see `tokio::time::interval_at` in the tick loop.
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(600);
+
+const HEARTBEAT_FAILURE_CAPTURE_COOLDOWN: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Debug, thiserror::Error)]
 pub enum HeartbeatError {
@@ -78,6 +80,69 @@ struct Deps {
     screenpipe_endpoint: Arc<dyn ScreenpipeUrlSource>,
     snapshot_store: Arc<SnapshotStore>,
     sink: Arc<dyn AgentSink>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum HeartbeatFailureKind {
+    ActivityQuery,
+    Summarization,
+    SnapshotStoreInsert,
+    DeliveryStatusUpdate,
+    PushNetwork,
+}
+
+impl HeartbeatFailureKind {
+    fn message(self) -> &'static str {
+        match self {
+            Self::ActivityQuery => "activity query failed",
+            Self::Summarization => "summarization failed",
+            Self::SnapshotStoreInsert => "snapshot store insert failed",
+            Self::DeliveryStatusUpdate => "snapshot delivery status update failed",
+            Self::PushNetwork => "snapshot push failed",
+        }
+    }
+}
+
+struct HeartbeatFailureReporter {
+    limiter: observability::CaptureRateLimiter<HeartbeatFailureKind>,
+}
+
+impl Default for HeartbeatFailureReporter {
+    fn default() -> Self {
+        Self {
+            limiter: observability::CaptureRateLimiter::new(HEARTBEAT_FAILURE_CAPTURE_COOLDOWN),
+        }
+    }
+}
+
+impl HeartbeatFailureReporter {
+    fn record_error(
+        &mut self,
+        kind: HeartbeatFailureKind,
+        error: &(dyn std::error::Error + Send + Sync + 'static),
+    ) {
+        observability::breadcrumb("desktop.heartbeat", kind.message(), sentry::Level::Warning);
+        if self.should_capture(kind, Instant::now()) {
+            observability::capture_error(error);
+        }
+    }
+
+    fn record_message(&mut self, kind: HeartbeatFailureKind, level: sentry::Level) {
+        observability::breadcrumb("desktop.heartbeat", kind.message(), sentry::Level::Warning);
+        if self.should_capture(kind, Instant::now()) {
+            observability::capture_message(kind.message(), level);
+        }
+    }
+
+    fn record_push_error(&mut self, error: &PushError) {
+        if should_capture_push_error(error) {
+            self.record_error(HeartbeatFailureKind::PushNetwork, error);
+        }
+    }
+
+    fn should_capture(&mut self, kind: HeartbeatFailureKind, now: Instant) -> bool {
+        self.limiter.should_capture(kind, now)
+    }
 }
 
 pub struct ContextHeartbeat {
@@ -193,15 +258,20 @@ async fn run_loop(deps: Arc<Deps>, mut kill_rx: oneshot::Receiver<()>, interval:
     // not immediately on creation. Without this, every Capture Session would
     // produce one near-empty snapshot right at start.
     let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + interval, interval);
+    let mut failure_reporter = HeartbeatFailureReporter::default();
     loop {
         tokio::select! {
             _ = &mut kill_rx => return,
-            _ = ticker.tick() => tick_once(&deps, interval).await,
+            _ = ticker.tick() => tick_once(&deps, interval, &mut failure_reporter).await,
         }
     }
 }
 
-async fn tick_once(deps: &Deps, interval: Duration) {
+async fn tick_once(
+    deps: &Deps,
+    interval: Duration,
+    failure_reporter: &mut HeartbeatFailureReporter,
+) {
     observability::breadcrumb("desktop.heartbeat", "tick", sentry::Level::Info);
     let period_end: DateTime<Utc> = Utc::now();
     let period_start = period_end - chrono::Duration::from_std(interval).unwrap();
@@ -214,7 +284,7 @@ async fn tick_once(deps: &Deps, interval: Duration) {
     {
         Ok(a) => a,
         Err(e) => {
-            observability::capture_error(&e);
+            failure_reporter.record_error(HeartbeatFailureKind::ActivityQuery, &e);
             return warn(&format!("activity query failed: {e}"));
         }
     };
@@ -230,7 +300,8 @@ async fn tick_once(deps: &Deps, interval: Duration) {
             return warn("skipping tick — on-device LLM provider not resolved yet");
         }
         Err(SummarizerError::Failed(msg)) => {
-            observability::capture_message("summarization failed", sentry::Level::Error);
+            failure_reporter
+                .record_message(HeartbeatFailureKind::Summarization, sentry::Level::Error);
             return warn(&format!("summarization failed: {msg}"));
         }
     };
@@ -244,7 +315,10 @@ async fn tick_once(deps: &Deps, interval: Duration) {
     };
 
     if let Err(e) = deps.snapshot_store.insert(&snapshot).await {
-        observability::capture_message("snapshot store insert failed", sentry::Level::Error);
+        failure_reporter.record_message(
+            HeartbeatFailureKind::SnapshotStoreInsert,
+            sentry::Level::Error,
+        );
         return warn(&format!("snapshot store insert failed: {e}"));
     }
 
@@ -253,17 +327,15 @@ async fn tick_once(deps: &Deps, interval: Duration) {
     match deps.sink.emit_context_snapshot(&snapshot).await {
         Ok(()) => {
             if let Err(e) = deps.snapshot_store.mark_pushed(snapshot.snapshot_id).await {
-                observability::capture_message(
-                    "snapshot delivery status update failed",
+                failure_reporter.record_message(
+                    HeartbeatFailureKind::DeliveryStatusUpdate,
                     sentry::Level::Error,
                 );
                 warn(&format!("snapshot delivery status update failed: {e}"));
             }
         }
         Err(e) => {
-            if should_capture_push_error(&e) {
-                observability::capture_error(&e);
-            }
+            failure_reporter.record_push_error(&e);
         }
     }
 }

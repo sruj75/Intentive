@@ -10,7 +10,8 @@
 
 pub mod commands;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -20,6 +21,8 @@ use crate::domains::summarization::config::ProviderConfig;
 use crate::domains::summarization::service::LlmProvider;
 use crate::domains::summarization::types::ProviderError;
 use crate::providers::observability;
+
+const SUMMARIZATION_FAILURE_CAPTURE_COOLDOWN: Duration = Duration::from_secs(30 * 60);
 
 /// Tauri-managed state for the resolved on-device LLM Provider. Starts `None`;
 /// the Context Heartbeat prepares any already-available tier when a Capture
@@ -126,11 +129,16 @@ pub enum SummarizeError {
 pub struct LazyLlmProvider {
     slot: Arc<LlmProviderSlot>,
     resolver: Arc<dyn ProviderResolver>,
+    failure_reporter: StdMutex<SummarizationFailureReporter>,
 }
 
 impl LazyLlmProvider {
     pub fn new(slot: Arc<LlmProviderSlot>, resolver: Arc<dyn ProviderResolver>) -> Self {
-        Self { slot, resolver }
+        Self {
+            slot,
+            resolver,
+            failure_reporter: StdMutex::new(SummarizationFailureReporter::default()),
+        }
     }
 
     /// Resolve a tier ahead of the first summarize, if the slot is still empty.
@@ -156,9 +164,55 @@ impl LazyLlmProvider {
                 *self.slot.0.lock().await = Some(provider);
             }
             Err(err) => {
-                observability::capture_error(&err);
+                self.failure_reporter
+                    .lock()
+                    .expect("summarization failure reporter mutex poisoned")
+                    .record_error(&err);
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SummarizationFailureKind {
+    ResolveProvider,
+}
+
+impl SummarizationFailureKind {
+    fn message(self) -> &'static str {
+        match self {
+            Self::ResolveProvider => "llm provider resolution failed",
+        }
+    }
+}
+
+struct SummarizationFailureReporter {
+    limiter: observability::CaptureRateLimiter<SummarizationFailureKind>,
+}
+
+impl Default for SummarizationFailureReporter {
+    fn default() -> Self {
+        Self {
+            limiter: observability::CaptureRateLimiter::new(SUMMARIZATION_FAILURE_CAPTURE_COOLDOWN),
+        }
+    }
+}
+
+impl SummarizationFailureReporter {
+    fn record_error(&mut self, error: &(dyn std::error::Error + Send + Sync + 'static)) {
+        let kind = SummarizationFailureKind::ResolveProvider;
+        observability::breadcrumb(
+            "desktop.summarization",
+            kind.message(),
+            sentry::Level::Warning,
+        );
+        if self.should_capture(kind, Instant::now()) {
+            observability::capture_error(error);
+        }
+    }
+
+    fn should_capture(&mut self, kind: SummarizationFailureKind, now: Instant) -> bool {
+        self.limiter.should_capture(kind, now)
     }
 }
 

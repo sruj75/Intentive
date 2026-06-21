@@ -1,16 +1,9 @@
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import IntentiveAuthProvider from "./domains/auth/ui/IntentiveAuthProvider";
-import {
-  ErrorBoundary,
-  forwardUnhandledRejection,
-  initObservability,
-} from "./providers/observability";
+import { ErrorBoundary, initObservability } from "./providers/observability";
 
 initObservability();
-window.addEventListener("unhandledrejection", (event) => {
-  forwardUnhandledRejection(event.reason);
-});
 
 function isSetupSurface(): boolean {
   const params = new URLSearchParams(window.location.search);

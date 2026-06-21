@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -125,9 +124,16 @@ impl RoutingFailureKind {
 /// Routing is a long-lived reconnect loop, so repeated transport failures are
 /// lifecycle signal, not distinct bugs. This reporter keeps breadcrumbs for
 /// every failure class while rate-limiting Sentry events per class.
-#[derive(Default)]
 struct RoutingFailureReporter {
-    last_captured: HashMap<RoutingFailureKind, Instant>,
+    limiter: observability::CaptureRateLimiter<RoutingFailureKind>,
+}
+
+impl Default for RoutingFailureReporter {
+    fn default() -> Self {
+        Self {
+            limiter: observability::CaptureRateLimiter::new(ROUTING_FAILURE_CAPTURE_COOLDOWN),
+        }
+    }
 }
 
 impl RoutingFailureReporter {
@@ -147,15 +153,7 @@ impl RoutingFailureReporter {
     }
 
     fn should_capture(&mut self, kind: RoutingFailureKind, now: Instant) -> bool {
-        let should_capture = self
-            .last_captured
-            .get(&kind)
-            .map(|last| now.duration_since(*last) >= ROUTING_FAILURE_CAPTURE_COOLDOWN)
-            .unwrap_or(true);
-        if should_capture {
-            self.last_captured.insert(kind, now);
-        }
-        should_capture
+        self.limiter.should_capture(kind, now)
     }
 }
 

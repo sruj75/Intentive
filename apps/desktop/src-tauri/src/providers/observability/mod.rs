@@ -1,10 +1,45 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::error::Error;
+use std::hash::Hash;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use sentry::protocol::{Breadcrumb, Event, Level, Map, Value};
 
 const FILTERED: &str = "[Filtered]";
+
+/// Shared primitive for long-lived loops that can observe the same failure
+/// class repeatedly. Domains keep their own failure taxonomy; this type owns
+/// only the cooldown bookkeeping.
+pub struct CaptureRateLimiter<K> {
+    cooldown: Duration,
+    last_captured: HashMap<K, Instant>,
+}
+
+impl<K> CaptureRateLimiter<K>
+where
+    K: Copy + Eq + Hash,
+{
+    pub fn new(cooldown: Duration) -> Self {
+        Self {
+            cooldown,
+            last_captured: HashMap::new(),
+        }
+    }
+
+    pub fn should_capture(&mut self, key: K, now: Instant) -> bool {
+        let should_capture = self
+            .last_captured
+            .get(&key)
+            .map(|last| now.duration_since(*last) >= self.cooldown)
+            .unwrap_or(true);
+        if should_capture {
+            self.last_captured.insert(key, now);
+        }
+        should_capture
+    }
+}
 
 pub fn init() -> Option<sentry::ClientInitGuard> {
     let dsn = option_env!("SENTRY_DSN")
@@ -295,5 +330,22 @@ mod tests {
             event.extra.get("screenpipe_summary"),
             Some(&Value::String(FILTERED.to_string()))
         );
+    }
+
+    #[test]
+    fn capture_rate_limiter_is_per_class_and_cooldown_bound() {
+        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+        enum FailureClass {
+            Activity,
+            Summarization,
+        }
+
+        let mut limiter = CaptureRateLimiter::new(Duration::from_secs(60));
+        let now = Instant::now();
+
+        assert!(limiter.should_capture(FailureClass::Activity, now));
+        assert!(!limiter.should_capture(FailureClass::Activity, now + Duration::from_secs(30)));
+        assert!(limiter.should_capture(FailureClass::Summarization, now + Duration::from_secs(30)));
+        assert!(limiter.should_capture(FailureClass::Activity, now + Duration::from_secs(61)));
     }
 }

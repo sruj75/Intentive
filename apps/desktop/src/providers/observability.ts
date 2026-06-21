@@ -56,10 +56,6 @@ export function addBreadcrumb(breadcrumb: Breadcrumb): void {
   Sentry.addBreadcrumb(sanitizeBreadcrumb(breadcrumb));
 }
 
-export function forwardUnhandledRejection(reason: unknown): void {
-  captureException(reason instanceof Error ? reason : new Error(String(reason)));
-}
-
 export function beforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
   return sanitizeEvent(event);
 }

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::time::sleep;
@@ -24,6 +24,26 @@ fn not_connected_push_failures_are_expected_not_sentry_errors() {
     assert!(super::should_capture_push_error(&PushError::Network(
         "offline".to_string()
     )));
+}
+
+#[test]
+fn heartbeat_failure_reporting_is_rate_limited_by_failure_class() {
+    let mut reporter = super::HeartbeatFailureReporter::default();
+    let now = Instant::now();
+
+    assert!(reporter.should_capture(super::HeartbeatFailureKind::ActivityQuery, now));
+    assert!(!reporter.should_capture(
+        super::HeartbeatFailureKind::ActivityQuery,
+        now + Duration::from_secs(30),
+    ));
+    assert!(reporter.should_capture(
+        super::HeartbeatFailureKind::Summarization,
+        now + Duration::from_secs(30),
+    ));
+    assert!(reporter.should_capture(
+        super::HeartbeatFailureKind::ActivityQuery,
+        now + super::HEARTBEAT_FAILURE_CAPTURE_COOLDOWN + Duration::from_secs(1),
+    ));
 }
 
 /// Returns a canned activity string. Captures the `screenpipe_url` it was
@@ -177,7 +197,9 @@ impl super::ScreenpipeUrlSource for FixedUrlSource {
 }
 
 fn fixed_endpoint() -> Arc<dyn super::ScreenpipeUrlSource> {
-    Arc::new(FixedUrlSource(Url::parse("http://127.0.0.1:44380").unwrap()))
+    Arc::new(FixedUrlSource(
+        Url::parse("http://127.0.0.1:44380").unwrap(),
+    ))
 }
 
 fn heartbeat_with(
@@ -269,9 +291,11 @@ impl AgentSink for FailingSink {
         &self,
         _snapshot: &ContextSnapshot,
     ) -> Result<(), crate::domains::snapshots::runtime::agent_interface::PushError> {
-        Err(crate::domains::snapshots::runtime::agent_interface::PushError::Network(
-            "offline".to_string(),
-        ))
+        Err(
+            crate::domains::snapshots::runtime::agent_interface::PushError::Network(
+                "offline".to_string(),
+            ),
+        )
     }
 
     async fn emit_session_end_marker(&self, _marker: &SessionEndMarker) {}
@@ -307,9 +331,11 @@ impl AgentSink for FailFirstThenRecordingSink {
         let is_first = ids.is_empty();
         ids.push(snapshot.snapshot_id);
         if is_first {
-            Err(crate::domains::snapshots::runtime::agent_interface::PushError::Network(
-                "first emit fails".to_string(),
-            ))
+            Err(
+                crate::domains::snapshots::runtime::agent_interface::PushError::Network(
+                    "first emit fails".to_string(),
+                ),
+            )
         } else {
             Ok(())
         }
