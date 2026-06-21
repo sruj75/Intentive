@@ -9,6 +9,7 @@ packages:
   - "tools/linters/*"
 
 allowBuilds:
+  "@sentry/cli": true
   core-js: true
   esbuild: true
   msgpackr-extract: true
