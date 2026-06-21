@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Breadcrumb, ErrorEvent } from "@sentry/react";
-import { beforeBreadcrumb, beforeSend } from "../providers/observability";
+import { beforeBreadcrumb, beforeSend, initObservability } from "../providers/observability";
 
 describe("desktop observability scrubbers", () => {
   it("strips URL query strings and request secrets before sending events", () => {
@@ -45,5 +45,39 @@ describe("desktop observability scrubbers", () => {
       state: "routing_ready",
       snapshot: "[Filtered]",
     });
+  });
+
+  it("keeps Sentry default global handlers installed", () => {
+    let initOptions: unknown;
+
+    initObservability(
+      {
+        BASE_URL: "/",
+        DEV: false,
+        MODE: "test",
+        PROD: false,
+        SSR: false,
+        VITE_SENTRY_DSN: "https://public@example.ingest.sentry.io/1",
+      } as ImportMetaEnv,
+      {
+        init: (options) => {
+          initOptions = options;
+          return undefined;
+        },
+      },
+    );
+
+    expect(initOptions).toMatchObject({
+      dsn: "https://public@example.ingest.sentry.io/1",
+      tracesSampleRate: 0,
+      sendDefaultPii: false,
+    });
+    const integrations = (
+      initOptions as { integrations?: (defaults: { name: string }[]) => unknown }
+    ).integrations;
+    expect(integrations).toBeTypeOf("function");
+    expect(integrations?.([{ name: "GlobalHandlers" }, { name: "BrowserSession" }])).toEqual([
+      { name: "GlobalHandlers" },
+    ]);
   });
 });

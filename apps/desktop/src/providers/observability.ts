@@ -36,7 +36,12 @@ export function initObservability(
     environment: readOptional(env.VITE_SENTRY_ENVIRONMENT) ?? env.MODE,
     release: readOptional(env.VITE_SENTRY_RELEASE),
     sendDefaultPii: false,
-    integrations: [],
+    // Keep Sentry's default browser integrations so GlobalHandlers captures
+    // uncaught webview errors from event handlers and timers. Replay and
+    // performance remain absent because we never add Replay/BrowserTracing;
+    // release-health sessions stay out by removing BrowserSession only.
+    integrations: (defaultIntegrations) =>
+      defaultIntegrations.filter((integration) => integration.name !== "BrowserSession"),
     tracesSampleRate: 0,
     beforeSend,
     beforeBreadcrumb,
