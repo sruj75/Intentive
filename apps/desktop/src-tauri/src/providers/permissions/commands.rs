@@ -4,7 +4,9 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tauri::Emitter;
 
-use super::{CapturePermissions, PermissionSet, PERMISSIONS_STATUS_EVENT};
+use super::{
+    request_microphone_access, CapturePermissions, PermissionSet, PERMISSIONS_STATUS_EVENT,
+};
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -22,6 +24,15 @@ pub fn capture_permission_status(
     let snapshot = permissions.inner().snapshot();
     let _ = app.emit(PERMISSIONS_STATUS_EVENT, snapshot);
     snapshot
+}
+
+#[tauri::command]
+pub fn request_microphone_permission(
+    app: tauri::AppHandle,
+    permissions: tauri::State<'_, Arc<dyn CapturePermissions>>,
+) -> PermissionSet {
+    let _ = request_microphone_access();
+    capture_permission_status(app, permissions)
 }
 
 #[tauri::command]
@@ -53,4 +64,15 @@ fn open_url(url: &str) -> Result<(), String> {
                 Err(format!("open exited with status {status}"))
             }
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_kind_accepts_microphone_payload() {
+        let kind: PermissionKind = serde_json::from_str("\"microphone\"").unwrap();
+        assert!(matches!(kind, PermissionKind::Microphone));
+    }
 }

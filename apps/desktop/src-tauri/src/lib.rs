@@ -36,7 +36,9 @@ use domains::summarization::runtime::{
 use domains::updates::runtime::{TauriUpdateChannel, UpdateCoordinator};
 use domains::updates::types::UpdateChannel;
 use providers::permissions::status_emitter::PermissionEmitterSupervisor;
-use providers::permissions::{CapturePermissions, MacosCapturePermissions};
+use providers::permissions::{
+    request_microphone_access, CapturePermissions, MacosCapturePermissions,
+};
 use tokio::sync::mpsc;
 
 /// Cross-domain bridge: implements the snapshots `Summarizer` trait by
@@ -514,6 +516,9 @@ pub fn run() {
             // path; StateHolder no longer exists. Models-root resolution,
             // disk probe, and failsafe direction live inside the helper.
             if matches!(coordinator.snapshot(), CaptureState::SetupRequired) {
+                if !permissions.snapshot().microphone {
+                    std::thread::spawn(request_microphone_access);
+                }
                 domains::menubar::ui::open_permission_setup_window(app.handle());
             } else if matches!(coordinator.snapshot(), CaptureState::Capturing)
                 && domains::summarization::service::bundled::bundled_model_needs_install()
@@ -555,6 +560,7 @@ pub fn run() {
             domains::routing::runtime::commands::clear_login_token,
             domains::routing::runtime::commands::get_connection_status,
             providers::permissions::commands::capture_permission_status,
+            providers::permissions::commands::request_microphone_permission,
             providers::permissions::commands::open_permission_pane,
             domains::summarization::runtime::commands::start_model_download,
         ]);
@@ -570,6 +576,7 @@ pub fn run() {
             domains::routing::runtime::commands::clear_login_token,
             domains::routing::runtime::commands::get_connection_status,
             providers::permissions::commands::capture_permission_status,
+            providers::permissions::commands::request_microphone_permission,
             providers::permissions::commands::open_permission_pane,
             domains::summarization::runtime::commands::start_model_download,
         ]);

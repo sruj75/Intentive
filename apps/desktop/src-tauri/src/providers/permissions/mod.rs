@@ -114,6 +114,11 @@ fn platform_snapshot() -> PermissionSet {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub fn request_microphone_access() -> bool {
+    macos::request_microphone_access()
+}
+
 #[cfg(not(target_os = "macos"))]
 fn platform_snapshot() -> PermissionSet {
     PermissionSet {
@@ -123,10 +128,18 @@ fn platform_snapshot() -> PermissionSet {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+pub fn request_microphone_access() -> bool {
+    false
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
     use std::ffi::{c_char, c_void};
     use std::ptr;
+    use std::sync::mpsc;
+
+    use block2::{Block, RcBlock};
 
     type CFTypeRef = *const c_void;
     type CFArrayRef = *const c_void;
@@ -210,6 +223,32 @@ mod macos {
             unsafe { std::mem::transmute(objc_msgSend as *const ()) };
         let status = unsafe { send(class, selector, AVMediaTypeAudio) };
         status == AV_AUTHORIZED
+    }
+
+    pub fn request_microphone_access() -> bool {
+        if microphone_granted() {
+            return true;
+        }
+
+        type RequestAccessForMediaType = unsafe extern "C" fn(
+            *mut c_void,
+            *mut c_void,
+            *mut c_void,
+            &Block<dyn Fn(i8)>,
+        );
+
+        let class = unsafe { objc_getClass(c"AVCaptureDevice".as_ptr()) };
+        let selector =
+            unsafe { sel_registerName(c"requestAccessForMediaType:completionHandler:".as_ptr()) };
+        let send: RequestAccessForMediaType =
+            unsafe { std::mem::transmute(objc_msgSend as *const ()) };
+        let (tx, rx) = mpsc::channel();
+        let block: RcBlock<dyn Fn(i8)> = RcBlock::new(move |granted: i8| {
+            let _ = tx.send(granted != 0);
+        });
+
+        unsafe { send(class, selector, AVMediaTypeAudio, &block) };
+        rx.recv().unwrap_or(false)
     }
 
     fn screen_recording_granted_via_window_list() -> bool {

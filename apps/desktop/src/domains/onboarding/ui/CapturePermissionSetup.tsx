@@ -105,6 +105,12 @@ export default function CapturePermissionSetup() {
 
   const openSettings = useCallback(async (kind: PermissionKind) => {
     try {
+      if (kind === "microphone") {
+        const next = await invoke<PermissionSet>("request_microphone_permission");
+        setStatus(next);
+        setError(null);
+        if (next.microphone) return;
+      }
       await invoke("open_permission_pane", { kind });
       setError(null);
     } catch (err) {
