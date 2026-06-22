@@ -13,7 +13,7 @@ The shared packages are the seams that hold the four deployables together, but t
 
 ## Solution
 
-Treat the shared packages as first-class, planned work tracked on GitHub with the `SHARED` label (per `docs/agents/issue-tracker.md` and `docs/ISSUE-BOARD.md`). Lock the `protocol` and `api-contract` v1 surfaces with explicit version-negotiation and single-version rules, implement the real `providers` auth/telemetry/flags boundaries that the Control Plane and Agent Runtime depend on, keep `domain-types` aligned, and enforce the inviolable lint rules (layer direction, no cross-deployable imports, cross-cutting only via Providers, vocabulary, one protocol version) in CI.
+Treat the shared packages as first-class, planned work tracked on GitHub with the `shared` label (per `docs/agents/issue-tracker.md` and `docs/ISSUE-BOARD.md`). Lock the `protocol` and `api-contract` v1 surfaces with explicit version-negotiation and single-version rules, implement the real `providers` auth/telemetry/flags boundaries that the Control Plane and Agent Runtime depend on, keep `domain-types` aligned, and enforce the inviolable lint rules (layer direction, no cross-deployable imports, cross-cutting only via Providers, vocabulary, one protocol version) in CI.
 
 ## User Stories
 

@@ -3,6 +3,7 @@ import { createNoopLogger } from "@intentive/providers/telemetry";
 
 import type { CronJob } from "../types/cron.js";
 import type { CronJobsRepo } from "../repo/cron-jobs.js";
+import { isTransient } from "../service/cron-turn.js";
 
 export interface CronScheduler {
   tick(): Promise<void>;
@@ -48,7 +49,11 @@ export function createCronScheduler(params: {
     try {
       await tick();
     } catch (error) {
-      logger.error("cron.tick", error, { status: "failed" });
+      if (isTransient(error)) {
+        logger.warn("cron.tick", { status: "failed" });
+      } else {
+        logger.error("cron.tick", error, { status: "failed" });
+      }
     } finally {
       if (!stopped) {
         expectedTickAt = clock().getTime() + pollIntervalMs;

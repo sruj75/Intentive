@@ -21,9 +21,9 @@ Infer the repo from `git remote -v` — `gh` does this automatically when run in
 
 ## Deployable labels
 
-Each issue has a deployable code label: `DESKTOP`, `MOBILE`, `AR` (agent-runtime), `CP` (control-plane), `SHARED`.
+Each issue has a deployable label: `desktop`, `mobile`, `agent-runtime`, `control-plane`, `shared`.
 
-Filter examples: `gh issue list --label AR --state open`, `gh issue list --label MOBILE`.
+Filter examples: `gh issue list --label agent-runtime --state open`, `gh issue list --label mobile`.
 
 ## PRDs
 
@@ -31,7 +31,7 @@ Parent scope docs: `docs/prd/<deployable>-PRD.md`
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue with `gh issue create`. Add a deployable label (`DESKTOP`, `MOBILE`, `AR`, `CP`, `SHARED`) when appropriate.
+Create a GitHub issue with `gh issue create`. Add a deployable label (`desktop`, `mobile`, `agent-runtime`, `control-plane`, `shared`) when appropriate.
 
 ## When a skill says "fetch the relevant ticket"
 

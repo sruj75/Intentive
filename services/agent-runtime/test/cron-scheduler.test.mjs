@@ -54,6 +54,33 @@ test("cron scheduler start contains tick failures inside the poll loop", async (
   assert.equal(errors[0].event, "cron.tick");
 });
 
+test("cron scheduler warns instead of erroring on transient database connectivity", async () => {
+  const errors = [];
+  const warns = [];
+  const scheduler = createCronScheduler({
+    cronJobsRepo: {
+      selectDue: async () => {
+        throw new Error("Error connecting to database: TypeError: fetch failed");
+      },
+    },
+    enqueueCron: async () => {},
+    pollIntervalMs: 1_000,
+    logger: recordingLogger({ errors, warns }),
+  });
+
+  try {
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    scheduler.stop();
+  } finally {
+    scheduler.stop();
+  }
+
+  assert.equal(errors.length, 0);
+  assert.equal(warns.length, 1);
+  assert.equal(warns[0].event, "cron.tick");
+});
+
 test("cron scheduler measures scheduler_lag_ms against the expected poll cadence", async () => {
   const infos = [];
   // clock() is read once at tick entry and once when the next poll is scheduled.
@@ -100,11 +127,11 @@ function job(id) {
   };
 }
 
-function recordingLogger({ errors, infos } = {}) {
+function recordingLogger({ errors, infos, warns } = {}) {
   return {
     info: (event, attrs) => infos?.push({ event, attrs }),
-    warn: () => {},
+    warn: (event, attrs) => warns?.push({ event, attrs }),
     error: (event, error, attrs) => errors?.push({ event, error, attrs }),
-    child: () => recordingLogger({ errors, infos }),
+    child: () => recordingLogger({ errors, infos, warns }),
   };
 }

@@ -169,6 +169,7 @@ export function isTransient(error: unknown): boolean {
     "server_error",
     "server error",
     "timeout",
+    "fetch failed",
   ].some((needle) => text.includes(needle));
 }
 

@@ -16,18 +16,24 @@ The skills speak in terms of five canonical triage roles:
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-## Deployable codes
+## Automation labels
 
-Every backlog issue carries **exactly one** deployable code label:
+| Label    | Meaning                                         |
+| -------- | ----------------------------------------------- |
+| `sentry` | Created from Sentry production issue automation |
 
-| Label | Deployable | Use when |
-| ----- | ---------- | -------- |
-| `DESKTOP` | Desktop client | `apps/desktop/` work |
-| `MOBILE` | Mobile client | `apps/mobile/` work |
-| `AR` | Agent Runtime | `services/agent-runtime/` work |
-| `CP` | Control Plane | `services/control-plane/` work |
-| `SHARED` | Shared packages | `packages/` or cross-cutting contract work |
+## Deployable labels
 
-Filter examples: `gh issue list --label AR --state open`, `gh issue list --label MOBILE`.
+Every backlog issue carries **exactly one** deployable label:
+
+| Label           | Deployable      | Use when                                   |
+| --------------- | --------------- | ------------------------------------------ |
+| `desktop`       | Desktop client  | `apps/desktop/` work                       |
+| `mobile`        | Mobile client   | `apps/mobile/` work                        |
+| `agent-runtime` | Agent Runtime   | `services/agent-runtime/` work             |
+| `control-plane` | Control Plane   | `services/control-plane/` work             |
+| `shared`        | Shared packages | `packages/` or cross-cutting contract work |
+
+Filter examples: `gh issue list --label agent-runtime --state open`, `gh issue list --label mobile`.
 
 When creating an issue, add one deployable label plus any triage labels that apply.
