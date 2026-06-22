@@ -20,10 +20,21 @@ set -euo pipefail
 # still self-heals. `--delete` is the manual nuke.)
 #
 # Usage:
-#   scripts/tart-internal-build.sh            # build + fresh ephemeral VM + run (auto-clean on exit)
-#   scripts/tart-internal-build.sh --keep     # same, but DON'T delete on exit (persist for re-use)
-#   scripts/tart-internal-build.sh --build    # only build the --debug .app
-#   scripts/tart-internal-build.sh --delete   # stop + delete the instance now (no-op if absent)
+#   scripts/tart-internal-build.sh                  # build + fresh ephemeral VM + run (auto-clean on exit)
+#   scripts/tart-internal-build.sh --keep           # same, but DON'T delete on exit (persist for re-use)
+#   scripts/tart-internal-build.sh --build          # only build the --debug .app
+#   scripts/tart-internal-build.sh --delete         # stop + delete the instance now (no-op if absent)
+#   scripts/tart-internal-build.sh --create-base <ipsw-url-or-path>
+#                                                   # one-time: make a local base VM from an Apple IPSW
+#                                                   # (use on networks where the ghcr base CDN is unreachable)
+#
+# Base image — two ways to get the clone source ($TART_BASE_IMAGE):
+#   1. ghcr OCI image (default): pulled automatically; ships a baked-in admin/admin user.
+#   2. Local base VM from an Apple IPSW (--create-base): for networks where ghcr's blob
+#      CDN drops large pulls. Bare macOS — you do a ONE-TIME Setup Assistant to bake an
+#      admin account, then point TART_BASE_IMAGE at the base VM's name. The IPSW's macOS
+#      version MUST be <= the host's (`sw_vers -productVersion`) or the install step fails
+#      with "a software update is required". See docs/INTERNAL-BUILD.md.
 #
 # Offloading off a small boot volume (the heavy bits are the VM images and the
 # Rust target/). Point both at a roomy volume via env vars — the script reads
@@ -35,7 +46,18 @@ set -euo pipefail
 # See docs/INTERNAL-BUILD.md.
 
 # --- config -----------------------------------------------------------------
-BASE_IMAGE="${TART_BASE_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-base:latest}"
+# Clone source, in priority order:
+#   1. explicit TART_BASE_IMAGE override (OCI ref or local VM name),
+#   2. a local 'intentive-base' VM (created once via --create-base) if present,
+#   3. the ghcr OCI base image (auto-pulled; needs a reachable ghcr blob CDN).
+BASE_IMAGE="${TART_BASE_IMAGE:-}"
+if [[ -z "$BASE_IMAGE" ]]; then
+  if command -v tart >/dev/null 2>&1 && tart list 2>/dev/null | awk '{print $2}' | grep -qx "intentive-base"; then
+    BASE_IMAGE="intentive-base"
+  else
+    BASE_IMAGE="ghcr.io/cirruslabs/macos-sequoia-base:latest"
+  fi
+fi
 VM_NAME="${TART_VM_NAME:-intentive-clean}"
 MIN_FREE_GB_PULL="${MIN_FREE_GB_PULL:-90}"   # first base-image pull needs ~50-90GB
 MIN_FREE_GB_BUILD="${MIN_FREE_GB_BUILD:-12}" # target/ + bundled ScreenPipe/Ollama
@@ -117,6 +139,11 @@ ensure_base_image() {
   if tart list --source oci 2>/dev/null | grep -q "$BASE_IMAGE"; then
     return 0
   fi
+  # A base with no '/' is a LOCAL base VM (e.g. from --create-base), not an OCI ref —
+  # it can't be pulled, so if it's absent the user must create it first.
+  if [[ "$BASE_IMAGE" != */* ]]; then
+    fail "Local base VM '$BASE_IMAGE' not found. Create it once from an Apple IPSW: scripts/tart-internal-build.sh --create-base <ipsw-url-or-path> (then boot it once for Setup Assistant). See docs/INTERNAL-BUILD.md."
+  fi
   local free; free="$(free_gb "$TART_STORE")"
   if [[ "${free:-0}" -lt "$MIN_FREE_GB_PULL" ]]; then
     fail "Only ${free}GB free on the Tart store volume ($TART_STORE); pulling $BASE_IMAGE needs ~${MIN_FREE_GB_PULL}GB. Set TART_HOME to a roomier volume or free space — a partial pull on a near-full boot volume can wedge macOS."
@@ -125,9 +152,36 @@ ensure_base_image() {
   tart pull "$BASE_IMAGE"
 }
 
+# One-time: build a LOCAL base VM from an Apple IPSW, for networks where ghcr's blob
+# CDN drops big pulls. URLs are downloaded resumably (tart's own --from-ipsw downloader
+# has NO retry — a single transient drop kills the whole 18GB; curl -C - resumes).
+create_base() {
+  local src="${1:-}" base="${TART_BASE_VM:-intentive-base}"
+  [[ -n "$src" ]] || fail "Usage: --create-base <ipsw-url-or-path>. The IPSW's macOS version must be <= host ($(sw_vers -productVersion 2>/dev/null))."
+  if tart list 2>/dev/null | awk '{print $2}' | grep -qx "$base"; then
+    fail "Base VM '$base' already exists. Delete it (tart delete $base) or set TART_BASE_VM to a new name."
+  fi
+  if [[ "$src" =~ ^https?:// ]]; then
+    local out="$TART_STORE/$(basename "$src")"
+    mkdir -p "$TART_STORE"
+    log "Downloading IPSW (resumable) → $out — survives transient drops…"
+    curl -4 -L -C - --retry 1000 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$out" "$src"
+    src="$out"
+  fi
+  [[ -f "$src" ]] || fail "IPSW not found: $src"
+  log "Creating base VM '$base' from $src (macOS must be <= host $(sw_vers -productVersion 2>/dev/null))…"
+  tart create --from-ipsw "$src" "$base" --disk-size 60
+  log "Base '$base' created. Finish the one-time setup:"
+  log "  1) tart run $base        # complete Setup Assistant; create an admin account; do NOT grant any permissions"
+  log "  2) shut it down, then run builds against it with:"
+  log "       TART_BASE_IMAGE=$base TART_VM_NAME=intentive-clean scripts/tart-internal-build.sh"
+  log "  Clones of '$base' start from its clean TCC slate (it never granted anything)."
+}
+
 # Fresh, pristine instance every run: delete any stale clone first (self-heals
 # after a prior hard kill), then clone copy-on-write from the kept base template.
 fresh_clone() {
+  [[ "$VM_NAME" == "$BASE_IMAGE" ]] && fail "TART_VM_NAME ($VM_NAME) must differ from the base ($BASE_IMAGE) — cloning onto the same name would clobber the base. Set a different TART_VM_NAME."
   ensure_base_image
   destroy_instance
   log "Cloning pristine VM '$VM_NAME' from base (copy-on-write)…"
@@ -151,9 +205,10 @@ run_vm() {
 # --- main -------------------------------------------------------------------
 require_arm64
 case "${1:-run}" in
-  --build)  build_debug_app ;;
-  --delete) ensure_tart; destroy_instance; log "Deleted VM '$VM_NAME' (base template on $TART_STORE kept)." ;;
-  --keep)   ensure_tart; EPHEMERAL=0; run_vm ;;
-  run|"")   ensure_tart; EPHEMERAL=1; run_vm ;;
-  *)        fail "Unknown arg: $1 (use --build | --keep | --delete | run)" ;;
+  --build)       build_debug_app ;;
+  --delete)      ensure_tart; destroy_instance; log "Deleted VM '$VM_NAME' (base template on $TART_STORE kept)." ;;
+  --create-base) ensure_tart; create_base "${2:-}" ;;
+  --keep)        ensure_tart; EPHEMERAL=0; run_vm ;;
+  run|"")        ensure_tart; EPHEMERAL=1; run_vm ;;
+  *)             fail "Unknown arg: $1 (use --build | --keep | --delete | --create-base <ipsw> | run)" ;;
 esac
