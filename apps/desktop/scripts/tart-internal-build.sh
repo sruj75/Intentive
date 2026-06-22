@@ -120,6 +120,39 @@ build_debug_app() {
   if [[ "${free:-0}" -lt "$MIN_FREE_GB_BUILD" ]]; then
     fail "Only ${free}GB free on the target volume ($TARGET_DIR); the --debug build needs ~${MIN_FREE_GB_BUILD}GB. Set CARGO_TARGET_DIR to a roomier volume or free space."
   fi
+  # --- Sentry: bake the DSN into the bundle at BUILD time ---------------------
+  # Sentry is compiled in, not carried by the VM clone: Rust reads
+  # option_env!("SENTRY_DSN") at compile time and Vite inlines VITE_SENTRY_DSN at
+  # build time. If neither is set when we build, every clone runs with Sentry OFF
+  # and reports nothing. Pull them from the shell or apps/desktop/.env, tag a
+  # distinct environment so VM errors stay separable from production, stamp a
+  # release, and warn loudly when there's no DSN. (Public DSN — Sentry project
+  # heyintentive/desktop; see apps/desktop/.env.example.)
+  [[ -f "$DESKTOP_DIR/.env" ]] && { set -a; . "$DESKTOP_DIR/.env"; set +a; }
+  [[ -z "${SENTRY_DSN:-}"      && -n "${VITE_SENTRY_DSN:-}" ]] && SENTRY_DSN="$VITE_SENTRY_DSN"
+  [[ -z "${VITE_SENTRY_DSN:-}" && -n "${SENTRY_DSN:-}"      ]] && VITE_SENTRY_DSN="$SENTRY_DSN"
+  : "${SENTRY_ENVIRONMENT:=internal-build}"
+  : "${VITE_SENTRY_ENVIRONMENT:=internal-build}"
+  : "${SENTRY_RELEASE:=desktop@internal-$( (cd "$DESKTOP_DIR" && git rev-parse --short HEAD) 2>/dev/null || echo unknown )}"
+  : "${VITE_SENTRY_RELEASE:=$SENTRY_RELEASE}"
+  export SENTRY_ENVIRONMENT VITE_SENTRY_ENVIRONMENT SENTRY_RELEASE VITE_SENTRY_RELEASE
+  [[ -n "${SENTRY_DSN:-}" ]] && export SENTRY_DSN VITE_SENTRY_DSN
+  # Cargo won't recompile just because an env var changed, so option_env! would bake
+  # a stale DSN; force the file that reads it to rebuild only when the DSN actually
+  # changes (Vite re-inlines every build). Marker keeps steady-state builds fast.
+  local sentry_obs="$DESKTOP_DIR/src-tauri/src/providers/observability/mod.rs"
+  local sentry_marker="$TARGET_DIR/.sentry-dsn-baked"
+  if [[ "$(cat "$sentry_marker" 2>/dev/null || true)" != "${SENTRY_DSN:-}" ]]; then
+    touch "$sentry_obs" 2>/dev/null || true
+    mkdir -p "$TARGET_DIR" && printf '%s' "${SENTRY_DSN:-}" > "$sentry_marker"
+  fi
+  if [[ -n "${SENTRY_DSN:-}" ]]; then
+    log "Sentry: baking DSN (environment=$SENTRY_ENVIRONMENT, release=$SENTRY_RELEASE) — VM errors will report to Sentry."
+  else
+    warn "Sentry: no SENTRY_DSN / VITE_SENTRY_DSN (shell or $DESKTOP_DIR/.env) — this build runs with Sentry DISABLED; errors from the VM will NOT reach Sentry. Add the public DSN to apps/desktop/.env (keys are in .env.example)."
+  fi
+  # ---------------------------------------------------------------------------
+
   log "Building --debug .app bundle → $TARGET_DIR (real backend, ScreenPipe + Ollama staged)…"
   # .app only (skip the .dmg) — faster and smaller; we install the bundle directly.
   # Disable updater artifacts: an ephemeral internal build never ships through the

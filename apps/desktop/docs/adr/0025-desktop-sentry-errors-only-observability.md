@@ -17,7 +17,7 @@ not enter Sentry.
 
 ## Decision
 
-Use one Sentry project for the deployable: `hypermind-project-sh/desktop`.
+Use one Sentry project for the deployable: `heyintentive/desktop`.
 
 Both SDKs run in errors-only mode:
 

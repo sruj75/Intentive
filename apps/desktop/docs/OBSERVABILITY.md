@@ -21,7 +21,7 @@ replay, or user-behavior analytics.
 
 All Desktop events land in a single Sentry project:
 
-**`hypermind-project-sh/desktop`**
+**`heyintentive/desktop`**
 
 Webview and Rust share the same release name: **`desktop@<version>`** (for example
 `desktop@0.1.0`). That lets you correlate a React error with a Rust panic from the

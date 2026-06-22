@@ -35,7 +35,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   workflow builds hidden webview source maps, injects Sentry debug IDs before
   Tauri packaging, stages the maps outside `dist`, removes them from the
   notarized app bundle, compiles Rust with the same `desktop@<version>` release,
-  and uploads/finalizes source maps under `hypermind-project-sh/desktop`.
+  and uploads/finalizes source maps under `heyintentive/desktop`.
 
 - **macOS distribution readiness — signed/notarized DMG + silent auto-update
   (#53/#54/#55/#56)** — The Desktop Client now ships as a deep-signed, notarized

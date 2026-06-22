@@ -15,7 +15,7 @@ name: desktop-release
 #   SENTRY_AUTH_TOKEN                   — token with project:releases for source-map upload
 #
 # Required GitHub variables:
-#   DESKTOP_SENTRY_DSN                  — public DSN for hypermind-project-sh/desktop
+#   DESKTOP_SENTRY_DSN                  — public DSN for heyintentive/desktop
 #
 # After release: flip the landing-page link to the .dmg; in-app updates use
 # Tauri's built-in updater pointing at this Release's `latest.json` (ADR-0024).
@@ -129,7 +129,7 @@ jobs:
       - name: Inject Sentry source-map debug IDs
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: hypermind-project-sh
+          SENTRY_ORG: heyintentive
           SENTRY_PROJECT: desktop
         run: sentry-cli sourcemaps inject apps/desktop/dist
 
@@ -202,7 +202,7 @@ jobs:
       - name: Create Sentry release and upload webview source maps
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: hypermind-project-sh
+          SENTRY_ORG: heyintentive
           SENTRY_PROJECT: desktop
         run: |
           sentry-cli releases new "$DESKTOP_SENTRY_RELEASE" || true

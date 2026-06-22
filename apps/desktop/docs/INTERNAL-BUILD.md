@@ -39,6 +39,21 @@ In the VM window, log in as `admin` if prompted (the account set during base set
 
 `intentive-base` is the **golden base**: macOS + the `admin` account, captured **pre-permission-grants**. Every "spin up" makes a copy-on-write clone (`intentive-clean`) — so each run starts from the base's _clean TCC slate_ and the first-run grant flow behaves exactly as it does for a brand-new user, without polluting the host's permission state. Any stale `intentive-clean` is deleted before the next clone, so it self-heals even after a hard `kill -9`. Clones are cheap (CoW); the base holds no grants and runs nothing.
 
+## Debugging the clone (Sentry)
+
+A clone has no host-visible terminal, so the way errors reach a coding agent is **Sentry** — but only if the DSN is **baked into the bundle at build time**. Rust reads `option_env!("SENTRY_DSN")` at compile time and Vite inlines `VITE_SENTRY_DSN` at build time; the clone carries neither, so a build with no DSN ships Sentry **off** and the VM reports nothing.
+
+`tart-internal-build.sh` bakes it for you: it reads `SENTRY_DSN` / `VITE_SENTRY_DSN` from your shell or `apps/desktop/.env`, tags `environment=internal-build` (so VM errors stay separate from production), stamps a `desktop@internal-<sha>` release, **re-bakes only when the DSN changes**, and **warns if no DSN is found** (so Sentry-off is never silent).
+
+**One-time setup** — drop the **public** DSN into `apps/desktop/.env` (keys are in `.env.example`):
+
+```
+SENTRY_DSN=…            # public DSN, Sentry project heyintentive/desktop
+VITE_SENTRY_DSN=…       # same value (webview)
+```
+
+Then a coding agent reads VM errors via the **Sentry MCP** — org `heyintentive`, project `desktop`, filter `environment:internal-build` — or the Sentry UI. The DSN is public; only the source-map upload token is secret. Note this is **errors/panics only**, not a full debug-log stream (the Rust side has no logging facade yet — only `eprintln!` to stderr, which stays inside the VM).
+
 ## The build ladder
 
 From least to most production-like: `pnpm --filter ./apps/desktop dev` (UI only) → `pnpm tauri dev` (real backend, unstable permission identity) → **`--debug` bundle in a Tart VM (real backend + clean permission identity)** → `pnpm tauri build` notarized DMG (Gatekeeper-clean, updater-backed; [`RELEASE.md`](RELEASE.md)).
