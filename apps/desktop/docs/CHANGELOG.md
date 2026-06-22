@@ -22,7 +22,26 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
   before ScreenPipe exits. Pinned by a coordinator ordering test and asserted
   end-to-end by the #35 smoke. No wire-format change.
 
+- **Sentry org rename (`heyintentive`)** — Desktop, Mobile, and Agent Runtime
+  Sentry projects and CI now reference org `heyintentive` (was
+  `hypermind-project-sh`). DSN values are unchanged; update local comments and
+  GitHub variable `DESKTOP_SENTRY_DSN` only if the org slug in your notes is
+  stale.
+
 ### Added
+
+- **Tart internal-build agent ops + VM Sentry debugging** —
+  [`docs/INTERNAL-BUILD.md`](INTERNAL-BUILD.md) now defines agent trigger phrases
+  ("spin up an internal build", "close it"), canonical `TART_HOME` /
+  `CARGO_TARGET_DIR` env, and in-VM human steps. `tart-internal-build.sh` bakes
+  `SENTRY_DSN` / `VITE_SENTRY_DSN` at build time with
+  `environment=internal-build` and `desktop@internal-<sha>` release tagging;
+  warns when no DSN is set so Sentry-off VM runs are never silent.
+
+- **`--create-base` for IPSW-based Tart golden VM** — One-time local
+  `intentive-base` from an Apple IPSW when ghcr blob pulls fail; resumable
+  `curl` download; auto-detected as the clone source when present. Runbook:
+  [`docs/INTERNAL-BUILD.md`](INTERNAL-BUILD.md).
 
 - **Desktop Sentry errors-only observability (ADR-0025)** — The Desktop Client now
   reports webview and Rust backend errors to the single `desktop` Sentry project
