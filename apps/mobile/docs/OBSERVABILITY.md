@@ -90,7 +90,7 @@ development does not noise the project.
 environment (`preview`, `production`). OTA updates inherit the DSN from the
 binary they run on — changing the DSN requires a new build, not just an update.
 
-Sentry project: **mobile** (org `hypermind-project-sh`). Setup details:
+Sentry project: **mobile** (org `heyintentive`). Setup details:
 [RELEASE.md](./RELEASE.md).
 
 ## Mental model

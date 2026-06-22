@@ -26,7 +26,7 @@
       [
         "@sentry/react-native/expo",
         {
-          "organization": "hypermind-project-sh",
+          "organization": "heyintentive",
           "project": "mobile",
           "url": "https://sentry.io/"
         }

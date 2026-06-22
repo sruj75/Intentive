@@ -44,7 +44,7 @@ These are credential steps only the owner can do. None are committed to the repo
 1. **Apple Developer ID Application cert** — already held: `Developer ID Application: Srujan Gowda (24D6NXS6H7)`, valid to 2030. Export it from Keychain Access → right-click the cert → **Export** _with its private key_ → `.p12` with a password.
 2. **App-specific password** — appleid.apple.com → Sign-In & Security → App-Specific Passwords. Used by `notarytool`.
 3. **Tauri updater key** — `pnpm tauri signer generate` (run once). Keep the private key + passphrase backed up out of band (losing it strands the installed base — ADR-0024). Paste the **public** key into `tauri.conf.json` at `plugins.updater.pubkey`. The private key becomes the `TAURI_SIGNING_PRIVATE_KEY` secret below.
-4. **Desktop Sentry project** — project `hypermind-project-sh/desktop` owns webview
+4. **Desktop Sentry project** — project `heyintentive/desktop` owns webview
    and Rust errors for the Desktop Client (ADR-0025). Its DSN is public and goes
    in the GitHub variable below; source-map upload uses the private
    `SENTRY_AUTH_TOKEN` secret.
@@ -64,9 +64,9 @@ These are credential steps only the owner can do. None are committed to the repo
 
 6. **Set GitHub Actions variables**:
 
-   | Variable             | Value                                   |
-   | -------------------- | --------------------------------------- |
-   | `DESKTOP_SENTRY_DSN` | DSN from `hypermind-project-sh/desktop` |
+   | Variable             | Value                           |
+   | -------------------- | ------------------------------- |
+   | `DESKTOP_SENTRY_DSN` | DSN from `heyintentive/desktop` |
 
 ---
 
