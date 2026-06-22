@@ -125,6 +125,10 @@ test("cron turn routes floor-resolution failure through the spine's failure path
 
 test("transient classifier recognizes provider and network failures", () => {
   assert.equal(isTransient(new Error("rate_limit")), true);
+  assert.equal(
+    isTransient(new Error("Error connecting to database: TypeError: fetch failed")),
+    true,
+  );
   assert.equal(isTransient(new Error("validation failed")), false);
 });
 

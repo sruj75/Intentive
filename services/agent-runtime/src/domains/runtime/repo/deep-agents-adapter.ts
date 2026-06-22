@@ -124,7 +124,11 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
           },
         );
       } catch (error) {
-        logger.error("model.invoked", error, {
+        const normalizedError = normalizeModelInvocationError(error, {
+          modelName: params.modelName,
+          trigger: input.trigger,
+        });
+        logger.error("model.invoked", normalizedError, {
           user_id: input.userId,
           thread_id: input.threadId,
           trigger: input.trigger,
@@ -132,7 +136,7 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
           status: "failed",
           duration_ms: clock() - startedAt,
         });
-        throw error;
+        throw normalizedError;
       } finally {
         // Per-turn handler owns a per-turn buffer; flush it so the trace is not
         // lost to GC — and so the observability factory evicts it from its
@@ -169,6 +173,40 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
 
 function firstPromptHandle(handles: readonly unknown[]): unknown {
   return handles[0];
+}
+
+export class RuntimeModelResponseError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "RuntimeModelResponseError";
+  }
+}
+
+export function normalizeModelInvocationError(
+  error: unknown,
+  context: { readonly modelName: string; readonly trigger: TurnTrigger },
+): Error {
+  if (isLangChainEmptyGenerationError(error)) {
+    return new RuntimeModelResponseError(
+      `Runtime model returned an empty chat generation (model=${context.modelName}, trigger=${context.trigger}).`,
+      error,
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function isLangChainEmptyGenerationError(error: unknown): boolean {
+  let current = error;
+  while (current instanceof Error) {
+    if (
+      current instanceof TypeError &&
+      current.message === "Cannot read properties of undefined (reading 'message')"
+    ) {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
 }
 
 function extractReply(result: unknown): string {

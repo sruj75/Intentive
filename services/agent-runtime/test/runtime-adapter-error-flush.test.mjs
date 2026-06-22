@@ -4,6 +4,7 @@ import test from "node:test";
 import { createLangfuseCallbackHandlerFactory } from "@intentive/providers/observability";
 
 import { createDeepAgentsAdapter } from "../dist/index.js";
+import { normalizeModelInvocationError } from "../dist/domains/runtime/repo/deep-agents-adapter.js";
 
 // Regression for the langfuse per-turn handler leak: the factory only evicts a
 // handler from its active set when that handler is flushed or shut down. The
@@ -53,4 +54,16 @@ test("DeepAgents adapter flushes the per-turn handler when a turn fails", async 
 
   assert.equal(created, 1, "a per-turn handler should have been created");
   assert.equal(flushed, 1, "a failed turn must still flush (and thus evict) its handler");
+});
+
+test("DeepAgents adapter normalizes LangChain empty-generation crashes", () => {
+  const normalized = normalizeModelInvocationError(
+    new TypeError("Cannot read properties of undefined (reading 'message')"),
+    { modelName: "nvidia/nemotron-3-ultra-550b-a55b:free", trigger: "heartbeat" },
+  );
+
+  assert.match(normalized.message, /empty chat generation/);
+  assert.match(normalized.message, /nvidia\/nemotron-3-ultra-550b-a55b:free/);
+  assert.match(normalized.message, /heartbeat/);
+  assert.equal(normalized.cause instanceof TypeError, true);
 });
