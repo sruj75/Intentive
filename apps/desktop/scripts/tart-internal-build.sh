@@ -34,7 +34,7 @@ set -euo pipefail
 #      CDN drops large pulls. Bare macOS — you do a ONE-TIME Setup Assistant to bake an
 #      admin account, then point TART_BASE_IMAGE at the base VM's name. The IPSW's macOS
 #      version MUST be <= the host's (`sw_vers -productVersion`) or the install step fails
-#      with "a software update is required". See docs/INTERNAL-BUILD.md.
+#      with "a software update is required". See docs/DEVELOPMENT.md.
 #
 # Offloading off a small boot volume (the heavy bits are the VM images and the
 # Rust target/). Point both at a roomy volume via env vars — the script reads
@@ -43,7 +43,7 @@ set -euo pipefail
 #   CARGO_TARGET_DIR=/Volumes/T9/intentive-target \
 #     scripts/tart-internal-build.sh
 #
-# See docs/INTERNAL-BUILD.md.
+# See docs/DEVELOPMENT.md.
 
 # --- config -----------------------------------------------------------------
 # Clone source, in priority order:
@@ -175,7 +175,7 @@ ensure_base_image() {
   # A base with no '/' is a LOCAL base VM (e.g. from --create-base), not an OCI ref —
   # it can't be pulled, so if it's absent the user must create it first.
   if [[ "$BASE_IMAGE" != */* ]]; then
-    fail "Local base VM '$BASE_IMAGE' not found. Create it once from an Apple IPSW: scripts/tart-internal-build.sh --create-base <ipsw-url-or-path> (then boot it once for Setup Assistant). See docs/INTERNAL-BUILD.md."
+    fail "Local base VM '$BASE_IMAGE' not found. Create it once from an Apple IPSW: scripts/tart-internal-build.sh --create-base <ipsw-url-or-path> (then boot it once for Setup Assistant). See docs/DEVELOPMENT.md."
   fi
   local free; free="$(free_gb "$TART_STORE")"
   if [[ "${free:-0}" -lt "$MIN_FREE_GB_PULL" ]]; then
