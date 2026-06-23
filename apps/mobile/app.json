@@ -7,9 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "0.0.0",
     "updates": {
       "url": "https://u.expo.dev/fd429803-2de2-493f-960f-cdaebdea7714"
     },
