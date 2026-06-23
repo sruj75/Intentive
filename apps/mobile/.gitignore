@@ -3,6 +3,9 @@
 # Build / test output
 dist/
 
+# EAS local build artifacts
+build-*.tar.gz
+
 # Expo
 .expo/
 web-build/
