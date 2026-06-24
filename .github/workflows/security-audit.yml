@@ -1,9 +1,9 @@
 name: security-audit
 
-# JS dependency audit. Pull requests use GitHub's dependency diff review so they
-# do not spend PR time on the slow `pnpm audit` registry call. The weekly/manual
-# path still runs the full workspace audit to catch newly-disclosed advisories in
-# unchanged dependencies.
+# JS dependency audit. Pull requests only run this workflow when pnpm dependency
+# inputs change, so code-only PRs do not spend time on the slow `pnpm audit`
+# registry call. The weekly/manual path still runs the full workspace audit to
+# catch newly-disclosed advisories in unchanged dependencies.
 # Rust/cargo auditing for the desktop app lives in desktop-audit.yml.
 
 on:
@@ -24,7 +24,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   pnpm-audit:
@@ -35,26 +34,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Review dependency changes
-        if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-
       - name: Setup pnpm
-        if: github.event_name != 'pull_request'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        if: github.event_name != 'pull_request'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
-        if: github.event_name != 'pull_request'
         run: pnpm install --frozen-lockfile
+
+      - name: Audit production dependencies
+        if: github.event_name == 'pull_request'
+        run: pnpm audit --prod --audit-level high
 
       - name: Audit all dependencies
         if: github.event_name != 'pull_request'
