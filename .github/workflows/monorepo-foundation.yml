@@ -6,9 +6,233 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM || secrets.TURBO_TEAM }}
+
 jobs:
-  verify:
+  changes:
+    name: Detect changed areas
     runs-on: ubuntu-latest
+    outputs:
+      typecheck: ${{ steps.filter.outputs.typecheck }}
+      lint: ${{ steps.filter.outputs.lint }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+      workspace_tests: ${{ steps.filter.outputs.workspace_tests }}
+      mobile_react_native: ${{ steps.filter.outputs.mobile_react_native }}
+      impact_radius: ${{ steps.filter.outputs.impact_radius }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            typecheck:
+              - "apps/**"
+              - "services/**"
+              - "packages/**"
+              - "tools/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig.base.json"
+              - "turbo.json"
+              - ".github/workflows/monorepo-foundation.yml"
+            lint:
+              - "**/*.ts"
+              - "**/*.tsx"
+              - "**/*.js"
+              - "**/*.mjs"
+              - "**/*.cjs"
+              - "**/*.json"
+              - "**/*.yml"
+              - "**/*.yaml"
+              - "**/*.md"
+              - "apps/**"
+              - "services/**"
+              - "packages/**"
+              - "tools/**"
+              - ".github/workflows/monorepo-foundation.yml"
+            contracts:
+              - "apps/**"
+              - "services/**"
+              - "packages/**"
+              - "tools/**"
+              - "docs/**"
+              - "AGENTS.md"
+              - "CLAUDE.md"
+              - "CONTEXT-MAP.md"
+              - "ARCHITECTURE.md"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig.base.json"
+              - "turbo.json"
+              - ".github/workflows/monorepo-foundation.yml"
+            workspace_tests:
+              - "apps/**"
+              - "services/**"
+              - "packages/**"
+              - "tools/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig.base.json"
+              - "turbo.json"
+              - ".github/workflows/monorepo-foundation.yml"
+            mobile_react_native:
+              - "apps/mobile/**"
+              - "packages/**"
+              - "tools/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig.base.json"
+              - "turbo.json"
+              - ".github/workflows/monorepo-foundation.yml"
+            impact_radius:
+              - "apps/**"
+              - "services/**"
+              - "packages/**"
+              - "tools/**"
+              - "docs/**"
+              - "AGENTS.md"
+              - "CLAUDE.md"
+              - "CONTEXT-MAP.md"
+              - "ARCHITECTURE.md"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig.base.json"
+              - "turbo.json"
+              - ".github/workflows/monorepo-foundation.yml"
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.typecheck == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.lint == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Architecture lint (Rust layer + structure)
+        run: pnpm lint:architecture:rust
+
+  contracts:
+    name: Contracts and sensors
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deployable harness template contract
+        run: pnpm harness:test
+
+      - name: CONTEXT vocabulary docs contract
+        run: pnpm docs:context:test
+
+      - name: Agent docs integrity contract
+        run: pnpm docs:agents:test
+
+      - name: Architecture lint message contract
+        run: pnpm lint:architecture:test
+
+      - name: Impact radius sensor contract
+        run: pnpm sensor:impact-radius:test
+
+      - name: Harness health report contract
+        run: pnpm sensor:harness-health:test
+
+      - name: Factory report contract
+        run: pnpm sensor:factory-report:test
+
+      - name: Factory self-improvement contract
+        run: pnpm factory:test
+
+      - name: Factory docs integrity contract
+        run: pnpm docs:factory:test
+
+      - name: Contract drift sensor
+        run: pnpm sensor:contract-drift
+
+      - name: Contract drift sensor contract
+        run: pnpm sensor:contract-drift:test
+
+  workspace-tests:
+    name: Workspace tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.workspace_tests == 'true' }}
 
     steps:
       - name: Checkout
@@ -39,33 +263,78 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Workspace tests
+        run: pnpm test
+
+  mobile-react-native:
+    name: Mobile React Native tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.mobile_react_native == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Mobile React Native tests
+        run: pnpm --dir apps/mobile test:rn
+
+  impact-radius:
+    name: Impact radius advisory
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.impact_radius == 'true' }}
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Impact radius advisory
         run: pnpm sensor:impact-radius
-        continue-on-error: true
 
-      - name: Deployable harness template contract
-        run: pnpm harness:test
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - typecheck
+      - lint
+      - contracts
+      - workspace-tests
+      - mobile-react-native
+    if: ${{ always() }}
 
-      - name: Harness health report contract
-        run: pnpm sensor:harness-health:test
+    steps:
+      - name: Check blocking jobs
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more blocking monorepo-foundation jobs failed or were cancelled."
+            exit 1
+          fi
 
-      - name: Factory report contract
-        run: pnpm sensor:factory-report:test
-
-      - name: Factory self-improvement contract
-        run: pnpm factory:test
-
-      - name: Factory docs integrity contract
-        run: pnpm docs:factory:test
-
-      - name: CONTEXT vocabulary docs contract
-        run: pnpm docs:context:test
-
-      - name: Agent docs integrity contract
-        run: pnpm docs:agents:test
-
-      - name: Architecture lint message contract
-        run: pnpm lint:architecture:test
-
-      - name: Harness
-        run: pnpm harness:ci
+          echo "All blocking monorepo-foundation jobs passed."
