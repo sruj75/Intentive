@@ -1,18 +1,50 @@
 version: 2
 updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:30"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
   - package-ecosystem: pnpm
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: Etc/UTC
     open-pull-requests-limit: 5
     groups:
       pnpm-development:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
       pnpm-production:
         dependency-type: production
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: cargo
     directory: /apps/desktop/src-tauri
     schedule:
       interval: weekly
+      day: monday
+      time: "08:30"
+      timezone: Etc/UTC
     open-pull-requests-limit: 5
+    groups:
+      cargo:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
