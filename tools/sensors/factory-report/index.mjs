@@ -24,7 +24,7 @@ not a quality score and does not fail on findings.
 
 Usage:
   pnpm sensor:factory-report
-  node tools/sensors/factory-report/index.mjs [--format markdown] [--base <ref>] [--repo <path>] [--output <path>] [--ledger <path>] [--audit]
+  node tools/sensors/factory-report/index.mjs [--format markdown] [--base <ref>] [--repo <path>] [--output <path>] [--ledger <path>] [--btar-base-report <path>] [--btar-head-report <path>] [--audit]
 
 Options:
   --format markdown  Output format. Only markdown is supported.
@@ -32,6 +32,12 @@ Options:
   --repo <path>      Repository root to analyze. Defaults to the current directory.
   --output <path>    Write the markdown report to this path as well as stdout.
   --ledger <path>    Ledger file used to mark findings as new or repeated.
+  --btar-base-report <path>
+                     Include baseline BTAR agent-readiness JSON in the Radar comment.
+  --btar-head-report <path>
+                     Include head BTAR agent-readiness JSON in the Radar comment.
+  --btar-report <path>
+                     Include a single BTAR JSON snapshot. Prefer base/head reports in CI.
   --audit            Include full repo-wide sensor details.
   --help             Show this help.
 `;
@@ -46,8 +52,10 @@ if (isMainModule(import.meta.url)) {
 
     const report = analyzeFactoryReport(options);
     const ledger = readLedgerSafe(path.resolve(options.repo, options.ledger));
+    const btarReports = readBtarReportsSafe(options.repo, options);
     const output = formatMarkdownReport(report, {
       ledgerEntries: ledger.entries,
+      btarReports,
       audit: options.audit,
     });
     if (options.output) {
@@ -74,7 +82,10 @@ export function analyzeFactoryReport({ repo = process.cwd(), base = "HEAD" } = {
   };
 }
 
-export function formatMarkdownReport(report, { ledgerEntries = {}, audit = false } = {}) {
+export function formatMarkdownReport(
+  report,
+  { ledgerEntries = {}, btarReports = null, btarReport = null, audit = false } = {},
+) {
   const findings = extractFindingsFromReport(report);
   const findingsByCategory = groupFindings(findings);
   const factoryContext = buildFactoryContext({
@@ -99,7 +110,13 @@ export function formatMarkdownReport(report, { ledgerEntries = {}, audit = false
   );
   lines.push("");
 
-  radarSection(lines, factoryContext, report.behaviorProof, report.impactRadius);
+  radarSection(
+    lines,
+    factoryContext,
+    report.behaviorProof,
+    report.impactRadius,
+    btarReports ?? normalizeLegacyBtarReport(btarReport),
+  );
 
   if (audit) {
     lines.push("### Audit Details");
@@ -118,7 +135,7 @@ export function formatMarkdownReport(report, { ledgerEntries = {}, audit = false
   return lines.join("\n");
 }
 
-function radarSection(lines, context, behaviorProof, impactRadius) {
+function radarSection(lines, context, behaviorProof, impactRadius, btarReport) {
   const actionable = context.items.filter((item) => {
     if (item.finding.category === "dependency") return false;
     return (
@@ -147,7 +164,156 @@ function radarSection(lines, context, behaviorProof, impactRadius) {
   section(lines, "Changed Files", impactRadius.changedFiles, (file) => `- \`${file}\``);
   changedWorkspacesSection(lines, context.changedWorkspaces);
   behaviorProofSection(lines, behaviorProof);
+  btarSection(lines, btarReport);
   repoWideSummarySection(lines, context.metrics);
+}
+
+function btarSection(lines, btarReport) {
+  if (!btarReport) return;
+
+  lines.push("#### BTAR Agent Readiness");
+  lines.push("");
+  lines.push(
+    "BTAR reads the repo's verification infrastructure as an advisory signal for how well coding agents can verify their own work.",
+  );
+  lines.push("");
+
+  if (btarReport.mode === "delta") {
+    btarDeltaSection(lines, btarReport);
+    return;
+  }
+
+  if (!btarReport.head?.available) {
+    const reason = btarReport.head?.reason ?? "BTAR report was not provided";
+    lines.push(`- not available: ${reason}`);
+    lines.push("");
+    return;
+  }
+
+  btarSnapshotSection(lines, btarReport.head, { label: "head snapshot" });
+}
+
+function btarDeltaSection(lines, btarReports) {
+  const { base, head } = btarReports;
+
+  if (!base.available || !head.available) {
+    if (!base.available) lines.push(`- base unavailable: ${base.reason}`);
+    if (!head.available) lines.push(`- head unavailable: ${head.reason}`);
+    lines.push("- factory interpretation: BTAR could not compare this PR's agent-readiness.");
+    lines.push("");
+    return;
+  }
+
+  const scoreDelta = numericDelta(head.score, base.score);
+  const typeErrorDelta = numericDelta(head.summary?.totalTypeErrors, base.summary?.totalTypeErrors);
+  const lintErrorDelta = numericDelta(head.summary?.totalLintErrors, base.summary?.totalLintErrors);
+  const coverageDelta = numericDelta(head.summary?.averageCoverage, base.summary?.averageCoverage);
+
+  lines.push(
+    `- score: ${formatBtarNumber(base.score)} -> ${formatBtarNumber(head.score)} (${formatSignedDelta(scoreDelta)})`,
+  );
+  lines.push(
+    `- type errors: ${formatBtarNumber(base.summary?.totalTypeErrors)} -> ${formatBtarNumber(head.summary?.totalTypeErrors)} (${formatErrorDelta(typeErrorDelta)})`,
+  );
+  lines.push(
+    `- lint errors: ${formatBtarNumber(base.summary?.totalLintErrors)} -> ${formatBtarNumber(head.summary?.totalLintErrors)} (${formatErrorDelta(lintErrorDelta)})`,
+  );
+  lines.push(
+    `- average coverage: ${formatBtarNumber(base.summary?.averageCoverage)}% -> ${formatBtarNumber(head.summary?.averageCoverage)}% (${formatSignedDelta(coverageDelta)}pp)`,
+  );
+  lines.push(
+    `- interpretation: ${base.interpretation ?? "unknown"} -> ${head.interpretation ?? "unknown"}`,
+  );
+  lines.push(
+    `- factory interpretation: ${btarFactoryInterpretation({ scoreDelta, typeErrorDelta, lintErrorDelta, coverageDelta })}`,
+  );
+
+  const recommendations = Array.isArray(head.recommendations) ? head.recommendations : [];
+  btarRecommendations(lines, recommendations);
+  lines.push("");
+}
+
+function btarSnapshotSection(lines, report, { label }) {
+  const summary = report.summary ?? {};
+  const breakdown = report.breakdown ?? {};
+  const recommendations = Array.isArray(report.recommendations) ? report.recommendations : [];
+
+  lines.push(
+    `- ${label}: ${formatBtarNumber(report.score)}/100 (${report.interpretation ?? "unknown"})`,
+  );
+  lines.push(`- type errors: ${formatBtarNumber(summary.totalTypeErrors)}`);
+  lines.push(`- lint errors: ${formatBtarNumber(summary.totalLintErrors)}`);
+  lines.push(`- average coverage: ${formatBtarNumber(summary.averageCoverage)}%`);
+  lines.push(
+    `- breakdown: type strictness ${formatBtarNumber(breakdown.typeStrictness)}, lint ${formatBtarNumber(breakdown.lintErrors)}, coverage ${formatBtarNumber(breakdown.coverage)}`,
+  );
+  lines.push(
+    "- factory interpretation: BTAR has no baseline for this run, so treat this as a snapshot instead of PR improvement/regression.",
+  );
+
+  btarRecommendations(lines, recommendations);
+  lines.push("");
+}
+
+function btarRecommendations(lines, recommendations) {
+  if (recommendations.length === 0) {
+    lines.push("- recommendations: none");
+  } else {
+    lines.push("- recommendations:");
+    for (const recommendation of recommendations.slice(0, 5)) {
+      const command = recommendation.tool ? ` (run: \`${recommendation.tool}\`)` : "";
+      lines.push(`  - ${recommendation.tier}: ${recommendation.message}${command}`);
+    }
+    if (recommendations.length > 5) {
+      lines.push(`  - ...and ${recommendations.length - 5} more`);
+    }
+  }
+}
+
+function formatBtarNumber(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "unknown";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function numericDelta(head, base) {
+  if (typeof head !== "number" || typeof base !== "number") return null;
+  if (Number.isNaN(head) || Number.isNaN(base)) return null;
+  return head - base;
+}
+
+function formatSignedDelta(delta) {
+  if (delta === null) return "unknown";
+  if (delta === 0) return "+0";
+  return delta > 0 ? `+${formatBtarNumber(delta)}` : formatBtarNumber(delta);
+}
+
+function formatErrorDelta(delta) {
+  if (delta === null) return "unknown";
+  if (delta === 0) return "unchanged";
+  return delta > 0 ? `+${formatBtarNumber(delta)} worse` : `${formatBtarNumber(delta)} better`;
+}
+
+function btarFactoryInterpretation({ scoreDelta, typeErrorDelta, lintErrorDelta, coverageDelta }) {
+  const regressions = [];
+  const improvements = [];
+
+  if (scoreDelta !== null && scoreDelta < 0) regressions.push("lower BTAR score");
+  if (typeErrorDelta !== null && typeErrorDelta > 0) regressions.push("more type errors");
+  if (lintErrorDelta !== null && lintErrorDelta > 0) regressions.push("more lint errors");
+  if (coverageDelta !== null && coverageDelta < 0) regressions.push("lower coverage");
+
+  if (scoreDelta !== null && scoreDelta > 0) improvements.push("higher BTAR score");
+  if (typeErrorDelta !== null && typeErrorDelta < 0) improvements.push("fewer type errors");
+  if (lintErrorDelta !== null && lintErrorDelta < 0) improvements.push("fewer lint errors");
+  if (coverageDelta !== null && coverageDelta > 0) improvements.push("higher coverage");
+
+  if (regressions.length > 0) {
+    return `this PR weakens agent-readiness via ${regressions.join(", ")}; fix before merge or classify the factory trade-off.`;
+  }
+  if (improvements.length > 0) {
+    return `this PR improves agent-readiness via ${improvements.join(", ")}.`;
+  }
+  return "this PR keeps BTAR's agent-readiness signals unchanged.";
 }
 
 function learningMetricsSection(lines, metrics) {
@@ -257,6 +423,9 @@ function parseArgs(args) {
     format: "markdown",
     output: null,
     ledger: "docs/factory/LEDGER.md",
+    btarReport: null,
+    btarBaseReport: null,
+    btarHeadReport: null,
     audit: false,
     help: false,
   };
@@ -279,6 +448,15 @@ function parseArgs(args) {
       index += 1;
     } else if (arg === "--ledger") {
       options.ledger = requireValue(args, index, arg);
+      index += 1;
+    } else if (arg === "--btar-report") {
+      options.btarReport = requireValue(args, index, arg);
+      index += 1;
+    } else if (arg === "--btar-base-report") {
+      options.btarBaseReport = requireValue(args, index, arg);
+      index += 1;
+    } else if (arg === "--btar-head-report") {
+      options.btarHeadReport = requireValue(args, index, arg);
       index += 1;
     } else if (arg === "--audit") {
       options.audit = true;
@@ -661,6 +839,50 @@ function readLedgerSafe(ledgerPath) {
       return { entries: {}, updatedAt: null };
     }
     throw error;
+  }
+}
+
+function normalizeLegacyBtarReport(report) {
+  if (!report) return null;
+  return { mode: "snapshot", head: report };
+}
+
+function readBtarReportsSafe(repo, options) {
+  if (options.btarBaseReport || options.btarHeadReport) {
+    return {
+      mode: "delta",
+      base: readBtarReportSafe(repo, options.btarBaseReport, "base"),
+      head: readBtarReportSafe(repo, options.btarHeadReport, "head"),
+    };
+  }
+
+  if (options.btarReport) {
+    return normalizeLegacyBtarReport(readBtarReportSafe(repo, options.btarReport, "head"));
+  }
+
+  return null;
+}
+
+function readBtarReportSafe(repo, reportPath, label) {
+  if (!reportPath) {
+    return label
+      ? { available: false, label, reason: `${label} BTAR report was not provided` }
+      : null;
+  }
+
+  const resolvedPath = path.resolve(repo, reportPath);
+  if (!existsSync(resolvedPath)) {
+    return { available: false, label, reason: `${reportPath} was not created` };
+  }
+
+  try {
+    return {
+      available: true,
+      label,
+      ...JSON.parse(readFileSync(resolvedPath, "utf8")),
+    };
+  } catch (error) {
+    return { available: false, label, reason: `could not parse ${reportPath}: ${error.message}` };
   }
 }
 

@@ -91,6 +91,58 @@ try {
       2,
     ),
   );
+  write(
+    "btar-head-report.json",
+    JSON.stringify(
+      {
+        score: 83,
+        interpretation: "good",
+        summary: {
+          totalTypeErrors: 0,
+          totalLintErrors: 3,
+          averageCoverage: 78,
+        },
+        breakdown: {
+          typeStrictness: 30,
+          lintErrors: 20.4,
+          coverage: 31.2,
+        },
+        recommendations: [
+          {
+            tier: "P1",
+            category: "lint",
+            message: "Fix 3 lint errors.",
+            impact: "high",
+            tool: "npx eslint --fix .",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+  write(
+    "btar-base-report.json",
+    JSON.stringify(
+      {
+        score: 80,
+        interpretation: "good",
+        summary: {
+          totalTypeErrors: 1,
+          totalLintErrors: 3,
+          averageCoverage: 76,
+        },
+        breakdown: {
+          typeStrictness: 24,
+          lintErrors: 20.4,
+          coverage: 30.4,
+        },
+        recommendations: [],
+      },
+      null,
+      2,
+    ),
+  );
 
   git(["init"]);
   git(["config", "user.email", "sensor@example.test"]);
@@ -116,6 +168,23 @@ try {
     [sensorPath, "--repo", repo, "--format", "markdown", "--base", "HEAD", "--audit"],
     { encoding: "utf8" },
   );
+  const btarOutput = execFileSync(
+    process.execPath,
+    [
+      sensorPath,
+      "--repo",
+      repo,
+      "--format",
+      "markdown",
+      "--base",
+      "HEAD",
+      "--btar-base-report",
+      "btar-base-report.json",
+      "--btar-head-report",
+      "btar-head-report.json",
+    ],
+    { encoding: "utf8" },
+  );
 
   assert.match(output, /<!-- intentive:factory-report -->/);
   assert.match(output, /## Factory Radar/);
@@ -133,6 +202,7 @@ try {
   assert.doesNotMatch(output, /### Harness Health/);
   assert.doesNotMatch(output, /### Impact Radius/);
   assert.doesNotMatch(output, /### Improvement Handoff/);
+  assert.doesNotMatch(output, /#### BTAR Agent Readiness/);
 
   assert.match(auditOutput, /### Audit Details/);
   assert.match(auditOutput, /### Radar Metrics/);
@@ -148,6 +218,12 @@ try {
   assert.match(output, /`stale-scaffold:apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts`/);
   assert.match(output, /`untested-export:packages\/protocol\/src\/events\.ts:untestedevent`/);
   assert.match(auditOutput, /### Finding Memory/);
+  assert.match(btarOutput, /#### BTAR Agent Readiness/);
+  assert.match(btarOutput, /score: 80 -> 83 \(\+3\)/);
+  assert.match(btarOutput, /type errors: 1 -> 0 \(-1 better\)/);
+  assert.match(btarOutput, /average coverage: 76% -> 78% \(\+2pp\)/);
+  assert.match(btarOutput, /this PR improves agent-readiness/);
+  assert.match(btarOutput, /P1: Fix 3 lint errors/);
 
   console.log("factory-report: fixture test passed");
 } finally {
