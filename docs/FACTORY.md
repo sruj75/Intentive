@@ -61,7 +61,7 @@ Run:
 pnpm harness
 ```
 
-The Gate owns typecheck, lint/docs checks, format check, architecture rules, contract drift, workspace tests, and the Mobile React Native harness. Local pre-handoff uses `pnpm harness`; CI runs the relevant root check set as path-filtered parallel `monorepo-foundation` jobs.
+The Gate owns typecheck, lint/docs checks, format check, architecture rules, contract drift, workspace tests, and the Mobile React Native harness. CI uses the same path through `pnpm harness:ci`.
 
 Gate rules:
 

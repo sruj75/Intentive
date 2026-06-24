@@ -149,9 +149,9 @@ pnpm --dir apps/mobile typecheck
 ```
 
 The root `pnpm test` runs the Node `test` script above. The React Native harness
-is included in the blocking root gate through `pnpm --dir apps/mobile test:rn`
-(`pnpm harness` locally, the Mobile React Native job in CI), so run it directly
-for focused mobile UI/gate debugging.
+is included in the blocking root harness through `pnpm --dir apps/mobile test:rn`
+(`pnpm harness` locally, `pnpm harness:ci` in CI), so run it directly for focused
+mobile UI/gate debugging.
 
 ### iOS simulator verification (visual / on-device)
 
@@ -246,8 +246,7 @@ vertical slices land.
 
 ## CI Expectations
 
-- `.github/workflows/monorepo-foundation.yml` is the root PR gate. CI uses path filters, then runs the same relevant root check set as `pnpm harness` across parallel jobs: typecheck, lint/format, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness`; the workflow preserves the aggregate `verify` job for branch protection.
-- Turbo remote cache is wired through `TURBO_TOKEN` and `TURBO_TEAM` when those GitHub secrets/variables are configured; without them, Turbo falls back to local CI execution.
+- `.github/workflows/monorepo-foundation.yml` is the root PR gate. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness` and includes typecheck, lint, format check, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests.
 - `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. It builds optional BTAR base/head JSON reports, then runs `pnpm sensor:factory-report` with those reports so the sticky comment can include a BTAR agent-readiness delta alongside impact-radius and harness-health. BTAR setup or analysis failures are advisory only and do not fail the job. Use `--audit` locally for full repo-wide maintenance output.
 - `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite on pull requests that touch `services/control-plane/` or its shared-package dependencies. It intentionally omits `NEON_*` so branch-spawning repo integration tests skip in PR CI.
 - `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, runs the Control Plane checks without creating extra Neon branches, and deletes the branch when the PR closes.

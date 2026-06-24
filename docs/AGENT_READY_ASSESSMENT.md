@@ -32,7 +32,7 @@ Agents can work productively here with human oversight on most changes. Progress
 - **Language tier:** statically-typed
 - **Commit count:** 98 | **Contributors:** 2
 - **Source files:** 190 | **Test files:** 60 (~31.6% test-to-source file ratio)
-- **CI/CD:** GitHub Actions — `monorepo-foundation.yml` path-filtered parallel root gate, `desktop-ci.yml`, `desktop-audit.yml`, `coverage.yml`, `harness-health.yml`, deploy workflows
+- **CI/CD:** GitHub Actions — `monorepo-foundation.yml` (`pnpm harness:ci`), `desktop-ci.yml`, `desktop-audit.yml`, `coverage.yml`, `harness-health.yml`, deploy workflows
 - **Agent entry:** root `AGENTS.md` (66 lines) + **6** nested `AGENTS.md`; `CLAUDE.md` companions are symlinks to sibling `AGENTS.md` files
 - **Lint/format:** ESLint 9 + `@intentive/eslint-plugin-architecture`, Prettier, Husky + lint-staged, Rust architecture linter
 - **README:** 34 lines — delegates to `AGENTS.md`, `CONTEXT-MAP.md`, `ARCHITECTURE.md`
@@ -61,7 +61,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 2. **Architecture Clarity (76)** — Domain folders exist but backend deployables are types/scaffold-heavy; desktop product logic lives mainly in Rust while TS `src/domains/` is thin; docs still describe full six-layer trees not yet implemented everywhere.
 
-3. **Feedback Loops (76)** — Sub-5-minute main gate is excellent; gaps are Codecov non-blocking, audit-only security (no CodeQL/SAST), and no per-PR preview environments outside the Control Plane Neon path.
+3. **Feedback Loops (76)** — Sub-5-minute main gate is excellent; gaps are monolithic sequential job (no fail-fast split), Codecov non-blocking, audit-only security (no CodeQL/SAST), no per-PR preview environments.
 
 ---
 
@@ -69,7 +69,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 | Signal                       | Status  | What it means                                                    |
 | ---------------------------- | ------- | ---------------------------------------------------------------- |
-| Tests run in < 10 min        | Yes     | `monorepo-foundation` path-filtered parallel root gate           |
+| Tests run in < 10 min        | Yes     | `monorepo-foundation` verify ~4–5 min (harness:ci)               |
 | Security scanning automated  | Partial | `desktop-audit.yml` (pnpm + cargo audit); no CodeQL/SAST         |
 | Property-based tests present | No      | —                                                                |
 | Reproducible dev state       | Partial | devcontainer + frozen lockfile; no docker-compose / preview envs |
@@ -101,6 +101,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 - Add `coverageThreshold` in `apps/desktop/vitest.config.ts` at current baseline; make `coverage.yml` fail below threshold.
 - Add short `packages/AGENTS.md` pointing to `packages/CONTEXT.md` and contract-change rules.
+- Split `monorepo-foundation.yml` into parallel jobs (typecheck, lint, harness) with `fail-fast: true`.
 - Extend README with a “Local setup” subsection (env vars, which deployables to run).
 
 ### High-Value Investments (1–4 weeks each)
@@ -126,7 +127,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 - **Ratio:** 60 test files / 190 source files = **31.6%**
 - **Coverage:** Vitest LCOV (desktop); Jest RN (mobile); no `coverageThreshold`; Codecov non-blocking
-- **CI:** path-filtered parallel root gate in `monorepo-foundation.yml`; Turbo remote cache is wired through `TURBO_TOKEN` / `TURBO_TEAM` when configured
+- **CI:** `pnpm harness:ci` in `monorepo-foundation.yml` (~4m 24s)
 - **Pyramid:** Unit + contract + architecture tests + Rust domain `tests.rs`; no E2E; no fast-check/Stryker
 - **Strengths:** Harness with hard-gated contract-drift; real JWKS integration tests in `packages/providers`; meaningful Rust tests on desktop capture/snapshots/summarization
 - **Gaps:** Backend deployables mostly scaffold tests; mobile RN harness opt-in for some flows
@@ -154,7 +155,7 @@ No dimension below 40. Highest-impact remaining gaps:
 
 ### Consistency & Conventions — **89/100** (+7)
 
-- Custom `@intentive/eslint-plugin-architecture` (layer-direction, no-cross-deployable, context-vocabulary) + Rust architecture linter; all enforced in the root gate
+- Custom `@intentive/eslint-plugin-architecture` (layer-direction, no-cross-deployable, context-vocabulary) + Rust architecture linter; all enforced in `harness:ci`
 - Prettier + `format:check` in CI; strict `tsconfig.base.json`
 - **Gaps:** No `typescript-eslint` recommended rules or React ESLint at deployable level
 

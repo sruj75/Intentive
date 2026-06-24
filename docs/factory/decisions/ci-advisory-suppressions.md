@@ -12,7 +12,7 @@ The factory report flags workflow suppressions such as `continue-on-error: true`
 
 `pnpm sensor:impact-radius` runs in `monorepo-foundation.yml` with `continue-on-error: true` because it is a review-triage signal, not a merge gate.
 
-Ledger ID: `suppression:.github/workflows/monorepo-foundation.yml:299:workflow-continue-on-error`
+Ledger ID: `suppression:.github/workflows/monorepo-foundation.yml:44:workflow-continue-on-error`
 
 Status: **accepted**
 
