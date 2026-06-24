@@ -31,7 +31,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 ### Added
 
 - **Tart internal-build agent ops + VM Sentry debugging** —
-  [`docs/INTERNAL-BUILD.md`](INTERNAL-BUILD.md) now defines agent trigger phrases
+  [`docs/DEVELOPMENT.md`](DEVELOPMENT.md) now defines agent trigger phrases
   ("spin up an internal build", "close it"), canonical `TART_HOME` /
   `CARGO_TARGET_DIR` env, and in-VM human steps. `tart-internal-build.sh` bakes
   `SENTRY_DSN` / `VITE_SENTRY_DSN` at build time with
@@ -41,7 +41,7 @@ this project will adopt [Semantic Versioning](https://semver.org/) once v1 ships
 - **`--create-base` for IPSW-based Tart golden VM** — One-time local
   `intentive-base` from an Apple IPSW when ghcr blob pulls fail; resumable
   `curl` download; auto-detected as the clone source when present. Runbook:
-  [`docs/INTERNAL-BUILD.md`](INTERNAL-BUILD.md).
+  [`docs/DEVELOPMENT.md`](DEVELOPMENT.md).
 
 - **Desktop Sentry errors-only observability (ADR-0025)** — The Desktop Client now
   reports webview and Rust backend errors to the single `desktop` Sentry project

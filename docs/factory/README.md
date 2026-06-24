@@ -17,12 +17,14 @@ For the operating model, read [`docs/FACTORY.md`](../FACTORY.md). For verificati
 
 ```bash
 pnpm sensor:factory-report --base origin/main
+pnpm sensor:factory-report --base origin/main --btar-base-report btar-base-report.json --btar-head-report btar-head-report.json
 pnpm sensor:factory-report --base origin/main --audit
 pnpm factory:recommend --report factory-report.md
 pnpm factory:ledger --report factory-report.md
 ```
 
 - `sensor:factory-report` is Radar: PR review attention, not a merge gate.
+- `--btar-base-report` and `--btar-head-report` fold a BTAR agent-readiness delta into the same sticky Radar comment.
 - `--audit` includes full repo-wide sensor details for maintenance.
 - `factory:recommend` writes `.context/factory-recommendations.md`.
 - `factory:ledger` refreshes `LEDGER.md` while preserving human-approved statuses.

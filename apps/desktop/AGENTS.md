@@ -41,7 +41,7 @@ Sentry observability is deployable-local: webview code imports `src/providers/ob
 - [`docs/SPEC.md`](docs/SPEC.md), [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Desktop-specific product/design/architecture
 - [`docs/SMOKE.md`](docs/SMOKE.md) — signed-in Capture Session smoke runbook (#35)
 - [`docs/RELEASE.md`](docs/RELEASE.md) — notarized DMG release smoke (artifact identity, Gatekeeper, updater round-trip)
-- [`docs/INTERNAL-BUILD.md`](docs/INTERNAL-BUILD.md) — `--debug` bundle in a disposable Tart VM for a clean-slate permission flow. Tag this doc and say **"spin up an internal build"** (run `tart-internal-build.sh` in background) or **"close it"** (`--delete`); agent ops table inside.
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — `--debug` bundle in a disposable Tart VM for a clean-slate permission flow. Tag this doc and say **"spin up an internal build"** (run `tart-internal-build.sh` in background) or **"close it"** (`--delete`); agent ops table inside.
 - [`docs/EVAL.md`](docs/EVAL.md) — privacy efficacy eval runbook (guarantee C, #43; `pnpm eval:privacy`)
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — user-visible changes
 - [`../../docs/adr/`](../../docs/adr/) — Unified ADRs (desktop entries are prefixed `desktop-` where relevant)
@@ -52,7 +52,7 @@ Sentry observability is deployable-local: webview code imports `src/providers/ob
 - Local dev: `pnpm --filter ./apps/desktop dev`; tests: `pnpm --filter ./apps/desktop test` (Vitest + Rust; see [`docs/TESTING.md` § Desktop](../../docs/TESTING.md#desktop))
   - This machine relocates `CARGO_HOME`/`RUSTUP_HOME` to `/Volumes/T9` (via `~/.zshenv`). When T9 is mounted, `cargo` runs normally (e.g. `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`); if T9 is unmounted, override to `RUSTUP_HOME=~/.rustup` plus a writable `CARGO_HOME` (toolchain `stable-aarch64-apple-darwin`).
 - Signed-in Capture Session smoke (Mac, all three grants): `pnpm --filter ./apps/desktop smoke` — runbook at [`docs/SMOKE.md`](docs/SMOKE.md)
-- Internal build on a clean macOS slate: tag [`docs/INTERNAL-BUILD.md`](docs/INTERNAL-BUILD.md) and say **"spin up an internal build"** / **"close it"** — agent runs `apps/desktop/scripts/tart-internal-build.sh` (background) / `--delete`. Set `TART_HOME` + `CARGO_TARGET_DIR` on a roomy volume first (see runbook § Agent operations).
+- Internal build on a clean macOS slate: tag [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) and say **"spin up an internal build"** / **"close it"** — agent runs `apps/desktop/scripts/tart-internal-build.sh` (background) / `--delete`. Set `TART_HOME` + `CARGO_TARGET_DIR` on a roomy volume first (see runbook § Agent operations).
 - `pnpm lint:architecture:rust` when touching `src-tauri/`
 - **Apple Silicon only in V1** (Intel deferred)
 - Builds, signs (Developer ID), notarizes to `.dmg` via GitHub Actions → uploads to GitHub Releases / R2 → linked from landing page

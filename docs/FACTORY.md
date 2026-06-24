@@ -82,6 +82,8 @@ pnpm sensor:factory-report --base origin/main
 
 Radar should be PR-delta-first. By default it shows changed-file findings, changed-workspace findings, repeated unclassified findings, returned findings, behavior coverage for changed workspaces, and compact counts for repo-wide drift.
 
+The GitHub PR comment also includes a BTAR agent-readiness delta when CI can build and run [`jaredmcfarland/btar`](https://github.com/jaredmcfarland/btar) against the PR base and head. Treat that subsection as another advisory verification signal: it asks whether this PR improved or weakened type-check, lint, and coverage readiness for future agents. It does not block the Gate.
+
 Use the full audit view only when you are intentionally doing maintenance:
 
 ```bash

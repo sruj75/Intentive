@@ -24,8 +24,10 @@ There are **two** ways code reaches a device, and which one you can use depends 
 | Native code, a new native module, `app.json` native keys, SDK bump, icons/splash | **EAS Build** (new binary) | Yes (App Store / TestFlight) |
 
 If you are unsure whether a change is "native", it almost certainly is whenever a
-**new dependency adds native code** or you touch anything under `ios/`. Native
-changes require a new binary; an OTA pushed on top of a stale binary is rejected by
+**new dependency adds native code**, you add or change a **config plugin**, or you
+edit an `app.json` **native key** (the `ios/` project is generated from these by
+`expo prebuild`, never hand-edited — see [ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
+Native changes require a new binary; an OTA pushed on top of a stale binary is rejected by
 the runtime-version guard (it will simply not be downloaded), so the worst case is
 "update silently ignored", not a crash.
 
@@ -60,10 +62,12 @@ the in-repo layers are committed, the EAS-side layers live in the Expo project.
 
 - `updates.url` → `https://u.expo.dev/<projectId>` (the EAS Update endpoint;
   `projectId` is `extra.eas.projectId`, currently `fd429803-2de2-493f-960f-cdaebdea7714`).
-- `runtimeVersion.policy` → `appVersion`. The runtime version is the binary's
+- `runtimeVersion` → the literal `"0.0.0"`. The runtime version is the binary's
   compatibility key: an update is only delivered to a build whose runtime version
-  matches the update's. With the `appVersion` policy the runtime version **is**
-  `expo.version` (currently `0.0.0`).
+  matches the update's. We pin a literal (kept equal to `expo.version`) rather than
+  a policy so the OTA compatibility key is explicit and deterministic; `expo
+prebuild` writes it into `Expo.plist` as `EXUpdatesRuntimeVersion`. Bump
+  `runtimeVersion` and `expo.version` together.
 - `plugins` includes `expo-notifications` — under CNG this declares the iOS push
   capability and, on a fresh prebuild, writes the APNs entitlement.
 - `plugins` includes `@sentry/react-native/expo` — native Sentry build integration;
@@ -112,14 +116,15 @@ eas env:pull --environment preview   # writes .env.local (gitignored)
 Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL) follow the same
 pattern when they differ per environment. See [Expo EAS environment variables](https://docs.expo.dev/eas/environment-variables/).
 
-**3. Committed iOS native** (`ios/Intentive/Supporting/Expo.plist`,
-`ios/Intentive/Intentive.entitlements`) — because `ios/` is committed (prebuild
-output lives in git), EAS Build uses it **as-is** and does not re-run prebuild. The
-plist therefore carries the resolved values:
+**3. Generated iOS native (CNG)** (`ios/Intentive/Supporting/Expo.plist`,
+`ios/Intentive/Intentive.entitlements`) — `ios/` is **not** committed; `expo
+prebuild` generates it from `app.json` + config plugins at build time ([ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
+EAS Build prebuilds automatically when `ios/` is absent. The generated plist
+carries the resolved values:
 
 - `EXUpdatesEnabled` → `true`
 - `EXUpdatesURL` → the same `u.expo.dev` URL as `app.json`
-- `EXUpdatesRuntimeVersion` → `0.0.0` (the resolved `appVersion`)
+- `EXUpdatesRuntimeVersion` → `0.0.0` (the literal `runtimeVersion` from `app.json`)
 - `EXUpdatesCheckOnLaunch` → `ALWAYS`, `EXUpdatesLaunchWaitMs` → `0`: check on
   every launch, never block startup. A downloaded update applies on the **next**
   launch.
@@ -148,13 +153,12 @@ local commit.
 
 1. Decide the path from the table above (OTA vs new binary). When in doubt, treat
    it as native.
-2. **Keep the runtime-version values in sync.** Because native is committed, three
-   values are coupled and must move together: `expo.version` (`app.json`),
-   `version` in the binary, and `EXUpdatesRuntimeVersion` (`Expo.plist`). The safe
-   way to bump them is to change `expo.version` and run
-   `npx expo prebuild -p ios` to regenerate the plist, then commit. If you bump
-   `expo.version` without rebuilding the binary, OTA updates published under the new
-   runtime version will not reach the old build (by design).
+2. **Keep the runtime-version values in sync.** Two `app.json` values are coupled
+   and must move together: `expo.version` and the literal `runtimeVersion`. Because
+   native is generated (CNG), there is no committed plist to update — `expo
+prebuild` resolves `EXUpdatesRuntimeVersion` from `app.json` at build time. If you
+   bump `runtimeVersion` without shipping a new binary, OTA updates published under
+   the new runtime version will not reach the old build (by design).
 3. If release behavior changed, update [`CHANGELOG.md`](../CHANGELOG.md).
 4. Merge the PR to `main` and confirm the commit you intend to ship is on
    `origin/main`:
@@ -164,9 +168,10 @@ local commit.
    git rev-parse origin/main
    ```
 
-5. For a **local** Xcode build only: `expo-updates` and `expo-notifications` are
-   dependencies, so run `cd apps/mobile/ios && pod install` first (EAS Build runs
-   this automatically).
+5. For a **local** Xcode build only: generate native first with `npx expo prebuild
+-p ios` (it runs `pod install` for the `expo-updates` / `expo-notifications`
+   native deps). EAS Build does both automatically. For the local dev-client
+   simulator loop, see [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ---
 

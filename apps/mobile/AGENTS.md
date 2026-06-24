@@ -30,6 +30,8 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - [`../../docs/prd/mobile-PRD.md`](../../docs/prd/mobile-PRD.md) — Mobile PRD
 - [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Mobile-specific design and architecture
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — shipped and in-progress Mobile Client changes
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local dev workflow (tag it to build + run the dev client in the iOS simulator)
+- [`docs/RELEASE.md`](docs/RELEASE.md) — release/OTA path (EAS Build + EAS Update)
 - [`docs/adr/`](docs/adr/) — Mobile Client ADRs (system-wide → [`docs/adr/`](../../docs/adr/))
 
 ## Stack & deploy
