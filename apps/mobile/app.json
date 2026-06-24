@@ -5,6 +5,7 @@
     "scheme": "intentive",
     "version": "0.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "runtimeVersion": "0.0.0",
@@ -13,7 +14,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.heyintentive.expo"
+      "bundleIdentifier": "com.heyintentive.expo",
+      "icon": "./assets/Intentive.icon"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F5F5F5"
+      }
     },
     "plugins": [
       "expo-router",

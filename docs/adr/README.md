@@ -47,6 +47,9 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0012 | Auth Adapter with dev provider                                   | accepted                        |
 | 0013 | Consent Primer writes Launch State directly — no consent service | accepted                        |
 | 0014 | Sibling Client Invitation is a skippable invite screen           | accepted                        |
+| 0015 | Push external-store runtime for proactive Companion              | accepted                        |
+| 0016 | Mobile never authors the opening; idempotent by store            | accepted                        |
+| 0017 | iOS native via Continuous Native Generation (CNG)                | accepted                        |
 
 ### Desktop Client — `apps/desktop/docs/adr/`
 
