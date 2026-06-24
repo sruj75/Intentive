@@ -5,17 +5,23 @@
     "scheme": "intentive",
     "version": "0.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "0.0.0",
     "updates": {
       "url": "https://u.expo.dev/fd429803-2de2-493f-960f-cdaebdea7714"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.heyintentive.expo"
+      "bundleIdentifier": "com.heyintentive.expo",
+      "icon": "./assets/Intentive.icon"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F5F5F5"
+      }
     },
     "plugins": [
       "expo-router",
