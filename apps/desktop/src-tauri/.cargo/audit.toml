@@ -5,7 +5,8 @@
 # as visible, non-failing warnings on purpose — silencing them would erode the signal
 # the day a real, patchable CVE lands. Today that means 17 such warnings from the
 # Tauri 2.x Linux WebView stack (gtk-rs 0.18 generation via wry → webkit2gtk-rs):
-# the gtk3-rs bindings (RUSTSEC-2024-0411..0420), glib unsoundness (RUSTSEC-2024-0429),
+# the gtk3-rs bindings (RUSTSEC-2024-0411..0420), glib unsoundness (RUSTSEC-2024-0429
+# / GHSA-wrw7-89jp-8q8g),
 # proc-macro-error (RUSTSEC-2024-0370), and unic-* (RUSTSEC-2025-0075/0080/0081/0098/0100).
 # None are fixable until webkit2gtk-rs moves to gtk-rs 0.20+; they stay visible, unignored.
 

@@ -280,7 +280,9 @@ gcloud compute backend-services get-health agent-runtime-internal-backend \
 
 Both must be `HEALTHY`.
 
-9. Smoke Session Start over the real public HTTPS load balancer. Use a UUID-shaped user id:
+9. Smoke Session Start over the real public HTTPS load balancer. Use a UUID-shaped user id.
+
+   > **This smoke writes durable production state — you MUST tear it down (step 9, teardown below).** `/internal/sessions/start` upserts a row into `agent_runtime.agent_instances`, and the always-alive heartbeat scheduler drives **every** row in that table as a live user, firing Monitoring Turns and LLM calls on each heartbeat — forever. Leftover smoke rows were the root cause of Sentry `AGENT-RUNTIME-2`/`-4` (GitHub #115/#116): the runtime called the model on a ~5-minute heartbeat for phantom smoke users no human ever created.
 
 ```bash
 secret_file=$(mktemp)
@@ -293,7 +295,7 @@ gcloud secrets versions access latest \
   --project agentic-accountability > "$secret_file"
 
 cat > "$body_file" <<'JSON'
-{"user_id":"00000000-0000-4000-8000-000000000052","auth_subject":"smoke-agent-runtime-final-20260620"}
+{"user_id":"00000000-0000-4000-8000-0000000000ff","auth_subject":"smoke-session-start"}
 JSON
 
 curl -sS -o "$response_file" -w '%{http_code}\n' \
@@ -317,6 +319,20 @@ Expected response shape:
   "ws_url": "wss://runtime.heyintentive.com/ws"
 }
 ```
+
+**Teardown (required — run even if the smoke fails).** Delete the instance this smoke just created, so the heartbeat scheduler does not keep waking it as a live user. Run against the agent-runtime Neon database (project **Intentive**, schema `agent_runtime`) via the Neon SQL editor or any psql client:
+
+```sql
+DELETE FROM agent_runtime.agent_instances WHERE auth_subject LIKE 'smoke-%';
+```
+
+Confirm no smoke rows survive (expect `0`):
+
+```sql
+SELECT count(*) FROM agent_runtime.agent_instances WHERE auth_subject LIKE 'smoke-%';
+```
+
+Until real users exist, `agent_instances` should be **empty** between deploys — any row there is a live heartbeat target.
 
 If this Mac has stale DNS cache, add:
 

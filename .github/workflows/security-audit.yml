@@ -1,16 +1,29 @@
 name: security-audit
 
-# Workspace-wide JS dependency audit. `pnpm audit` covers every workspace in
-# the monorepo, so this runs on all PRs (not just desktop-touching ones) and
-# on a weekly schedule to catch newly-disclosed advisories in unchanged deps.
+# JS dependency audit. Pull requests only run this workflow when pnpm dependency
+# inputs change, so code-only PRs do not spend time on the slow `pnpm audit`
+# registry call. The weekly/manual path still runs the full workspace audit to
+# catch newly-disclosed advisories in unchanged dependencies.
 # Rust/cargo auditing for the desktop app lives in desktop-audit.yml.
 
 on:
   pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "apps/**/package.json"
+      - "services/**/package.json"
+      - "packages/**/package.json"
+      - "tools/**/package.json"
+      - ".github/workflows/security-audit.yml"
   schedule:
     # Mondays 07:00 UTC.
     - cron: "0 7 * * 1"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   pnpm-audit:
@@ -33,5 +46,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Audit dependencies
+      - name: Audit production dependencies
+        if: github.event_name == 'pull_request'
+        run: pnpm audit --prod --audit-level high
+
+      - name: Audit all dependencies
+        if: github.event_name != 'pull_request'
         run: pnpm audit --audit-level high
