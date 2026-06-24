@@ -36,8 +36,52 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build BTAR advisory
+        env:
+          BTAR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          run_btar() {
+            local label="$1"
+            local repo_path="$2"
+            local output_path="$3"
+            local install_deps="${4:-false}"
+
+            if [ "$install_deps" = "true" ]; then
+              timeout 180s pnpm --dir "$repo_path" install --frozen-lockfile || return 1
+            fi
+
+            timeout 300s node "$RUNNER_TEMP/btar/dist/cli.js" analyze "$repo_path" --json > "$output_path"
+          }
+
+          if (
+            rm -rf "$RUNNER_TEMP/btar" "$RUNNER_TEMP/btar-base" &&
+            git clone --depth 1 https://github.com/jaredmcfarland/btar.git "$RUNNER_TEMP/btar" &&
+            npm --prefix "$RUNNER_TEMP/btar" ci &&
+            npm --prefix "$RUNNER_TEMP/btar" run build
+          ); then
+            if run_btar "head" "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/btar-head-report.json"; then
+              echo "BTAR head advisory written to btar-head-report.json"
+            else
+              echo "::warning::BTAR head advisory failed; Factory Radar will mark it unavailable."
+              rm -f "$GITHUB_WORKSPACE/btar-head-report.json"
+            fi
+
+            if (
+              git worktree add --detach "$RUNNER_TEMP/btar-base" "$BTAR_BASE_SHA" &&
+              run_btar "base" "$RUNNER_TEMP/btar-base" "$GITHUB_WORKSPACE/btar-base-report.json" true
+            ); then
+              echo "BTAR base advisory written to btar-base-report.json"
+            else
+              echo "::warning::BTAR base advisory failed; Factory Radar will mark it unavailable."
+              rm -f "$GITHUB_WORKSPACE/btar-base-report.json"
+            fi
+          else
+            echo "::warning::BTAR setup failed; Factory Radar will mark BTAR unavailable."
+            rm -f "$GITHUB_WORKSPACE/btar-base-report.json" "$GITHUB_WORKSPACE/btar-head-report.json"
+          fi
+
       - name: Build factory report
-        run: pnpm sensor:factory-report --format markdown --base origin/main --ledger docs/factory/LEDGER.md --output factory-report.md
+        run: pnpm sensor:factory-report --format markdown --base origin/main --ledger docs/factory/LEDGER.md --btar-base-report btar-base-report.json --btar-head-report btar-head-report.json --output factory-report.md
 
       - name: Add job summary
         run: cat factory-report.md >> "$GITHUB_STEP_SUMMARY"
