@@ -83,7 +83,7 @@ Same Neon project as the Control Plane, **separate schema and role**. Via the Ne
 
 ### Deploy procedure (careful path)
 
-Step-by-step release runbook (tag-free, SHA-identified; in-place swap gated by load-balancer convergence): [`docs/RELEASE.md`](docs/RELEASE.md). Production state and the full smoke scripts: [`../../docs/DEPLOY.md`](../../docs/DEPLOY.md).
+Step-by-step release runbook (tag-free, SHA-identified; in-place swap gated by load-balancer convergence): [`docs/RELEASE.md`](docs/RELEASE.md). Production state and the full smoke scripts: [`../../docs/PRODUCTION.md`](../../docs/PRODUCTION.md).
 
 1. **First deploy is manual and pre-launch.** A single VM has no no-traffic revision — the image swap _is_ the promotion — so run the first `workflow_dispatch` deploy **before real users exist**, when dropping connections costs nothing.
 2. **Smoke-check the real `wss://` end to end** (not just `/health`, since the live conversation is the thing that breaks): a client completes the TLS handshake → `connect` returns a snapshot → a `user_message` gets a **companion reply** (proves TLS + Neon + OpenRouter + the turn spine). Confirm a Control-Plane Session Start reaches `/internal`, the Cron/Heartbeat loops logged "started," and Sentry is receiving events.

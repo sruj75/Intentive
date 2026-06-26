@@ -37,7 +37,8 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane); SQL migrations live in `migrations/`
 - Tests: `pnpm --filter ./services/agent-runtime test`; repo-tier Neon integration tests skip unless `NEON_API_KEY` and `NEON_PROJECT_ID` are set; harness: `pnpm harness --scope services/agent-runtime`. See [`../../docs/TESTING.md`](../../docs/TESTING.md) and `test/*.test.mjs` for domain coverage.
-- Release runbook (SHA-identified in-place VM swap): [`docs/RELEASE.md`](docs/RELEASE.md). Production state: [`../../docs/DEPLOY.md`](../../docs/DEPLOY.md).
+- Release runbook (SHA-identified in-place VM swap): [`docs/RELEASE.md`](docs/RELEASE.md). Production state: [`../../docs/PRODUCTION.md`](../../docs/PRODUCTION.md).
+- Local dev / smoke: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) runs the real service (WS gateway, turn spine, cron + heartbeat) against an **isolated Neon dev branch** (tag it and say "run the agent runtime" / "kill it"). Full four-deployable stack + live `user_message` → companion reply: [`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) (`scripts/local-stack.sh`). Domain SQL migrations apply via `pnpm --filter ./services/agent-runtime migrate` (for an empty branch; a forked branch already carries the schema).
 - Plans: [`docs/plans/agent-runtime-v1-implementation-plan.md`](docs/plans/agent-runtime-v1-implementation-plan.md)
 
 ## Child Index

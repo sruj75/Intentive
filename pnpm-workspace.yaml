@@ -15,11 +15,13 @@ allowBuilds:
   msgpackr-extract: true
 
 overrides:
-  "@better-auth/passkey>better-auth": "1.4.18"
-  "@daveyplate/better-auth-tanstack>better-auth": "1.4.18"
-  "@daveyplate/better-auth-ui>better-auth": "1.4.18"
-  "@neondatabase/auth-ui>@better-auth/passkey": "1.4.18"
-  "@neondatabase/auth-ui>better-auth": "1.4.18"
+  "@better-auth/passkey": "1.6.22"
+  "@better-auth/passkey>better-auth": "1.6.22"
+  "@daveyplate/better-auth-tanstack>better-auth": "1.6.22"
+  "@daveyplate/better-auth-ui>better-auth": "1.6.22"
+  "@neondatabase/auth>better-auth": "1.6.22"
+  "@neondatabase/auth-ui>@better-auth/passkey": "1.6.22"
+  "@neondatabase/auth-ui>better-auth": "1.6.22"
   esbuild: "0.28.1"
   form-data: "4.0.6"
   js-yaml: "4.2.0"
@@ -35,3 +37,14 @@ auditConfig:
   # (<0.28.0). Remove this ignore once vite ships an esbuild ^0.28 range.
   ignoreGhsas:
     - GHSA-gv7w-rqvm-qjhr
+
+minimumReleaseAgeExclude:
+  - "@better-auth/core@1.6.22"
+  - "@better-auth/drizzle-adapter@1.6.22"
+  - "@better-auth/kysely-adapter@1.6.22"
+  - "@better-auth/memory-adapter@1.6.22"
+  - "@better-auth/mongo-adapter@1.6.22"
+  - "@better-auth/passkey@1.6.22"
+  - "@better-auth/prisma-adapter@1.6.22"
+  - "@better-auth/telemetry@1.6.22"
+  - better-auth@1.6.22

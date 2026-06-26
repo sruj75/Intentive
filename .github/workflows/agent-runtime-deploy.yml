@@ -138,7 +138,7 @@ jobs:
       # makes the job go green only once the swap has fully converged and the
       # public WebSocket front door is serving again. A 426 through the load
       # balancer means the request reached a HEALTHY ws backend without an
-      # upgrade (see docs/DEPLOY.md). If it never converges, the job fails red
+      # upgrade (see docs/PRODUCTION.md). If it never converges, the job fails red
       # and the operator rolls the image tag back per the runbook.
       - name: Wait for runtime to serve through the load balancer
         run: |

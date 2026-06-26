@@ -7,8 +7,8 @@ stays `0.0.0`). The image tag, the Cloud Run candidate, and the Sentry release
 are all `github.sha`.
 
 Production facts (project, region, URLs, secret/variable inventory) live in the
-one-stop [`../../../docs/DEPLOY.md`](../../../docs/DEPLOY.md). This runbook is the
-_release procedure_; DEPLOY.md is the _production state_. Keep values there, not
+one-stop [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md). This runbook is the
+_release procedure_; PRODUCTION.md is the _production state_. Keep values there, not
 duplicated here.
 
 ---
@@ -38,7 +38,7 @@ is the preview, and promotion is the single moment traffic flows.
 ## One-time setup
 
 Credentials and project config are set once and live in GitHub, not the repo.
-See [`../../../docs/DEPLOY.md` § GitHub Actions Wiring](../../../docs/DEPLOY.md#github-actions-wiring)
+See [`../../../docs/PRODUCTION.md` § GitHub Actions Wiring](../../../docs/PRODUCTION.md#github-actions-wiring)
 for the authoritative list. In summary:
 
 - **Secrets** (repo → Settings → Secrets and variables → Actions → Secrets):
@@ -63,7 +63,7 @@ Do this from a clean branch and merge through PR. Do not deploy an unreviewed
 local commit.
 
 1. If the schema changed, confirm the production Neon schema/role/migrations are
-   in place per [`../../../docs/DEPLOY.md` § Control Plane First Deploy](../../../docs/DEPLOY.md#control-plane-first-deploy).
+   in place per [`../../../docs/PRODUCTION.md` § Control Plane First Deploy](../../../docs/PRODUCTION.md#control-plane-first-deploy).
 2. Confirm the Secret Manager values exist (same section).
 3. Update [`CHANGELOG.md`](../CHANGELOG.md) if release behavior changed.
 4. Merge the PR to `main`.
@@ -106,7 +106,7 @@ back.
 
 ## Verify the live release
 
-After promotion, smoke the public service (same checks as DEPLOY.md):
+After promotion, smoke the public service (same checks as PRODUCTION.md):
 
 ```bash
 curl -sS -i https://control-plane-pqenui44sa-uw.a.run.app/health | sed -n '1,14p'
