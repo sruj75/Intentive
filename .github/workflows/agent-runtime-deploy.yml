@@ -62,6 +62,9 @@ on:
       - ".github/workflows/agent-runtime-deploy.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     if: >-

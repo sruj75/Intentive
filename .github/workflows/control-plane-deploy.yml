@@ -51,6 +51,9 @@ on:
       - ".github/workflows/control-plane-deploy.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     if: >-

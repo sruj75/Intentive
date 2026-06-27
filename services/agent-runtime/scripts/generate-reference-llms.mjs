@@ -34,7 +34,12 @@ export function pathToSlug(filePath) {
 function matchPath(filePath, pattern) {
   if (pattern.includes("*")) {
     const re = new RegExp(
-      "^" + pattern.replace(/\./g, "\\.").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*") + "$",
+      "^" +
+        pattern
+          .replace(/[.*+?^${}()|[\]\\]/g, (c) => (c === "*" ? c : "\\" + c))
+          .replace(/\*\*/g, ".*")
+          .replace(/\*/g, "[^/]*") +
+        "$",
     );
     return re.test(filePath);
   }
