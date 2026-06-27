@@ -29,11 +29,11 @@ production release path see [`docs/RELEASE.md`](RELEASE.md) and
 Run from the repo root. Config is read from the git-ignored `.env` (already
 pre-filled for the `dev-local-smoke` branch; see [Configuration](#configuration)).
 
-| You say…                      | Agent runs                                                                                                                                                      | What happens                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **"run the control plane"**   | `pnpm --filter "@intentive/control-plane..." run build` then `node --env-file=services/control-plane/.env services/control-plane/dist/main.js` (**background**) | Builds workspace deps + the service, boots Hono on `:8080` against the dev branch. |
-| **"smoke the control plane"** | the three curls in [Smoke it](#smoke-it)                                                                                                                        | `/health` 200, `/ready` 200 (Neon + JWKS reachable), `/me` no-token → 401.         |
-| **"kill it"**                 | `lsof -ti tcp:8080 \| xargs kill -9`                                                                                                                            | Frees port 8080. No on-disk state to clean — the dev branch persists on Neon.      |
+| You say…                      | Agent runs                                                                                                                                                                                                                     | What happens                                                                                                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **"run the control plane"**   | `pnpm --filter "@intentive/control-plane..." run build` then `node --dns-result-order=ipv4first --no-network-family-autoselection --env-file=services/control-plane/.env services/control-plane/dist/main.js` (**background**) | Builds workspace deps + the service, boots Hono on `:8080` against the dev branch. The two IPv4 flags pin Neon traffic to IPv4 on IPv6-less networks (see [Gotchas](#gotchas-why-its-set-up-this-way)). |
+| **"smoke the control plane"** | the three curls in [Smoke it](#smoke-it)                                                                                                                                                                                       | `/health` 200, `/ready` 200 (Neon + JWKS reachable), `/me` no-token → 401.                                                                                                                              |
+| **"kill it"**                 | `lsof -ti tcp:8080 \| xargs kill -9`                                                                                                                                                                                           | Frees port 8080. No on-disk state to clean — the dev branch persists on Neon.                                                                                                                           |
 
 > **Node 24's `--env-file` is how the `.env` reaches the process** — `pnpm start`
 > (`node dist/main.js`) does **not** auto-load `.env` (the service never imports
@@ -121,3 +121,10 @@ sign-in) → a no-traffic Cloud Run revision smoke ([`docs/RELEASE.md`](RELEASE.
 4. **Never point at production.** The dev branch is isolated; keep
    `NEON_DATABASE_URL` on `dev-local-smoke` (or your own branch), never the
    production branch.
+5. **No IPv6 on this Mac → pin Neon to IPv4.** Neon hosts are dual-stack, this
+   machine has no IPv6 egress, and Node's Happy Eyeballs races the dead `AAAA`
+   route — so `GET /me`/`GET /agent` (which read Neon via the serverless HTTP
+   driver) intermittently `500` with `NeonDbError` → `fetch failed` →
+   `AggregateError [ETIMEDOUT]`. Launch with `--dns-result-order=ipv4first
+--no-network-family-autoselection` (the standalone command above and
+   `scripts/local-stack.sh` already do); the `ipv4first` reorder alone is not enough.

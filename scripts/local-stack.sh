@@ -24,9 +24,16 @@ if [[ -n "${NVM_DIR:-}" && -s "$NVM_DIR/nvm.sh" ]]; then
   nvm use 24 >/dev/null
 fi
 
-# Neon exposes IPv6 and IPv4 addresses. Some local networks do not have usable
-# IPv6 egress, so prefer IPv4 for the two local Node services.
-export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
+# Neon exposes IPv6 and IPv4 addresses. Some local networks (this one included)
+# have no usable IPv6 egress, so the dual-stack Neon hosts' AAAA addresses are
+# unreachable. `--dns-result-order=ipv4first` only *reorders* the resolved
+# addresses; Node's Happy Eyeballs (autoSelectFamily) still races the dead IPv6
+# route, which surfaces intermittently as `EHOSTUNREACH`/`ETIMEDOUT` ->
+# `AggregateError` -> `NeonDbError` on both the pg (5432) and serverless-HTTP
+# paths, aborting turns before the companion reply lands.
+# `--no-network-family-autoselection` stops the IPv6 race so both services
+# connect over IPv4 only.
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first --no-network-family-autoselection"
 
 CP_DIR="services/control-plane"
 AR_DIR="services/agent-runtime"

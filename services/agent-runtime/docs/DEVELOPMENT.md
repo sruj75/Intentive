@@ -31,11 +31,11 @@ Run from the repo root. Config is read from the git-ignored `.env` (pre-filled f
 the `dev-local-smoke` branch; **you must set a real `OPENROUTER_API_KEY`** — see
 [Configuration](#configuration)).
 
-| You say…                      | Agent runs                                                                                                                                                      | What happens                                                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **"run the agent runtime"**   | `pnpm --filter "@intentive/agent-runtime..." run build` then `node --env-file=services/agent-runtime/.env services/agent-runtime/dist/main.js` (**background**) | Builds deps + service, boots the WS server on `:8787`, the internal API on `:8081`, and starts the cron + heartbeat poll loops. |
-| **"smoke the agent runtime"** | `curl -s localhost:8081/health`                                                                                                                                 | `200 {"ok":true,"service":"agent-runtime"}`. The live WS turn needs a real JWT — see below.                                     |
-| **"kill it"**                 | `lsof -ti tcp:8787 tcp:8081 \| xargs kill -9`                                                                                                                   | Frees both ports. No on-disk state — the dev branch persists on Neon.                                                           |
+| You say…                      | Agent runs                                                                                                                                                                                                                     | What happens                                                                                                                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **"run the agent runtime"**   | `pnpm --filter "@intentive/agent-runtime..." run build` then `node --dns-result-order=ipv4first --no-network-family-autoselection --env-file=services/agent-runtime/.env services/agent-runtime/dist/main.js` (**background**) | Builds deps + service, boots the WS server on `:8787`, the internal API on `:8081`, and starts the cron + heartbeat poll loops. The two `--…ipv4first`/`--no-network-family-autoselection` flags pin Neon traffic to IPv4 on IPv6-less networks (see [Gotchas](#gotchas-why-its-set-up-this-way)). |
+| **"smoke the agent runtime"** | `curl -s localhost:8081/health`                                                                                                                                                                                                | `200 {"ok":true,"service":"agent-runtime"}`. The live WS turn needs a real JWT — see below.                                                                                                                                                                                                        |
+| **"kill it"**                 | `lsof -ti tcp:8787 tcp:8081 \| xargs kill -9`                                                                                                                                                                                  | Frees both ports. No on-disk state — the dev branch persists on Neon.                                                                                                                                                                                                                              |
 
 > **Use Node 24's `--env-file`** — `pnpm start` does not auto-load `.env` (the
 > service never imports dotenv).
@@ -49,16 +49,16 @@ The local `.env` is git-ignored and pre-filled for the isolated Neon dev branch
 copy-on-write and **never reach production**. Committed template:
 [`.env.example`](../.env.example). What matters locally:
 
-| Var                                                           | Local value                               | Why                                                                                                          |
-| ------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `OPENROUTER_API_KEY`                                          | **your real key** (the one thing to fill) | Required — the companion reply runs through OpenRouter (`RUNTIME_MODEL` default is free).                    |
-| `PORT` / `INTERNAL_PORT`                                      | `8787` / `8081`                           | Public WS / private internal HTTP. WS moves off 8080 so it doesn't collide with CP.                          |
-| `PUBLIC_WS_URL`                                               | `ws://localhost:8787/ws`                  | What the Control Plane hands clients in `GET /agent`; must be loopback-reachable.                            |
-| `NEON_DATABASE_URL`                                           | dev branch connection string              | Runtime-owned schema. On this Mac, the local stack uses the Neon pooler host for more reliable local egress. |
-| `CONTROL_PLANE_INTERNAL_BASE_URL`                             | `http://localhost:8080`                   | Where Post-Message-Back pushes to the Control Plane.                                                         |
-| `INTERNAL_SECRET_FROM_CONTROL_PLANE` / `..._TO_CONTROL_PLANE` | dummy, **paired**                         | Must match the Control Plane's `.env` (see its runbook).                                                     |
-| `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | the **real** Neon Auth instance           | Local client-JWT verification, same as production.                                                           |
-| `INTENTIVE_AUTH_MODE` / `INTENTIVE_DEV_AUTH_SECRET`           | optional `local-dev` pair                 | Local signed JWTs for mocked-auth E2E; omit or set `neon` for real auth.                                     |
+| Var                                                           | Local value                               | Why                                                                                                                                                                               |
+| ------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`                                          | **your real key** (the one thing to fill) | Required — the companion reply runs through OpenRouter (`RUNTIME_MODEL` default is free).                                                                                         |
+| `PORT` / `INTERNAL_PORT`                                      | `8787` / `8081`                           | Public WS / private internal HTTP. WS moves off 8080 so it doesn't collide with CP.                                                                                               |
+| `PUBLIC_WS_URL`                                               | `ws://localhost:8787/ws`                  | What the Control Plane hands clients in `GET /agent`; must be loopback-reachable.                                                                                                 |
+| `NEON_DATABASE_URL`                                           | dev branch connection string              | Runtime-owned schema. Uses the Neon **pooled** host (fine for LangGraph here — see Gotcha 2). Local-egress reliability comes from the IPv4 flags, not the host choice (Gotcha 3). |
+| `CONTROL_PLANE_INTERNAL_BASE_URL`                             | `http://localhost:8080`                   | Where Post-Message-Back pushes to the Control Plane.                                                                                                                              |
+| `INTERNAL_SECRET_FROM_CONTROL_PLANE` / `..._TO_CONTROL_PLANE` | dummy, **paired**                         | Must match the Control Plane's `.env` (see its runbook).                                                                                                                          |
+| `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | the **real** Neon Auth instance           | Local client-JWT verification, same as production.                                                                                                                                |
+| `INTENTIVE_AUTH_MODE` / `INTENTIVE_DEV_AUTH_SECRET`           | optional `local-dev` pair                 | Local signed JWTs for mocked-auth E2E; omit or set `neon` for real auth.                                                                                                          |
 
 ### Database setup
 
@@ -109,11 +109,25 @@ in-place VM swap smoke ([`docs/RELEASE.md`](RELEASE.md)).
    `loadConfig` fails fast at boot without it, and no companion reply is possible
    without it. The `local-stack.sh` launcher refuses to start until you replace the
    placeholder.
-2. **Direct (non-pooled) Neon URL only.** A `-pooler` host will break LangGraph's
-   prepared statements. The dev branch's direct host is already in `.env`.
-3. **`.env` is not auto-loaded.** Launch with `node --env-file=…` (Node ≥ 22).
-4. **Auth is real, not faked.** The WS gateway verifies real Neon Auth JWTs locally
+2. **Neon pooler host is fine locally.** The `.env` uses the dev branch's **pooled**
+   host. Neon's pooler runs PgBouncer in _transaction_ mode, which supports the
+   unnamed/extended-query prepared statements `node-postgres` uses by default — so
+   LangGraph's `PostgresStore`/`PostgresSaver` work over it (verified end-to-end:
+   memory read + checkpointer + the live turn). It would only break if something
+   relied on _named_ server-side prepared-statement caching, which this stack does
+   not. (Use the direct host if you ever add that.)
+3. **No IPv6 on this Mac → pin Neon to IPv4.** Neon hosts are dual-stack, this
+   machine has no IPv6 egress, and Node's Happy Eyeballs races the dead `AAAA`
+   route — surfacing intermittently as `EHOSTUNREACH`/`ETIMEDOUT` →
+   `AggregateError` → `NeonDbError` on both the pg (`:5432`) and serverless-HTTP
+   paths, which can drop a turn _after_ the model replies. Launch with both
+   `--dns-result-order=ipv4first --no-network-family-autoselection` (the standalone
+   command above and `scripts/local-stack.sh` already do). As a backstop, the turn
+   write path retries transient Neon connection errors (`retryTransientDb`), so a
+   single blip no longer drops the reply.
+4. **`.env` is not auto-loaded.** Launch with `node --env-file=…` (Node ≥ 22).
+5. **Auth is real, not faked.** The WS gateway verifies real Neon Auth JWTs locally
    against the public JWKS; the Mobile dev auth provider yields no server-valid
    token. There is intentionally no server bypass — exercise the live turn through a
    real sign-in.
-5. **Ports.** Public WS `8787`, internal `8081`; the Control Plane owns `8080`.
+6. **Ports.** Public WS `8787`, internal `8081`; the Control Plane owns `8080`.

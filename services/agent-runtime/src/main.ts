@@ -71,6 +71,15 @@ const observability = bootstrapObservability(
 );
 const log = observability.createLogger("agent-runtime");
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
+// The turn write path and Per-User Channel ingress each commit through one Neon
+// array transaction. On a network without IPv6 egress (Neon is dual-stack), a
+// transient connect blip would otherwise abort the turn *after* the model replied
+// — so no companion reply lands. Retry the whole atomic transaction on transient
+// errors: every batched insert is `ON CONFLICT DO NOTHING` (ledger, conversation)
+// except the single `runtime_turns` anchor, and a rolled-back transaction re-runs
+// cleanly. ADR-0020 containment is unchanged — a turn still failing after retries
+// fails per-trigger.
+const resilientSql = withTransactionRetry(sql);
 
 const verifier =
   config.auth.mode === "local-dev"
@@ -153,7 +162,7 @@ const workingContext = createWorkingContext({
   readRecentPerception: (userId) => retryTransientDb(() => sensoryBuffer.readLatest(userId)),
 });
 const turn = createTurn({
-  sql,
+  sql: resilientSql,
   adapter: runtimeAdapter,
   workingContext,
   runtimeTurns,
@@ -182,7 +191,7 @@ const monitoringTurn = createMonitoringTurn({
 });
 let channel: PerUserChannel;
 channel = createPerUserChannel({
-  sql,
+  sql: resilientSql,
   ledger,
   conversation,
   // A `user_message` is transactionally projected into Conversation History
@@ -279,6 +288,19 @@ async function drainLangfuseClient(client: LangfuseDrainClient): Promise<void> {
     return;
   }
   await client.flushAsync?.();
+}
+
+/**
+ * Wrap a `TransactionalSql` so its array `transaction()` retries transient Neon
+ * connection errors. The tagged-template call is passed through unchanged (it
+ * only *builds* the lazy queries the repos batch into a transaction; reads on the
+ * turn path are retried separately via `retryTransientDb`).
+ */
+function withTransactionRetry(base: TransactionalSql): TransactionalSql {
+  const wrapped = ((strings: TemplateStringsArray, ...values: unknown[]) =>
+    base(strings, ...values)) as TransactionalSql;
+  wrapped.transaction = (queries) => retryTransientDb(() => base.transaction(queries));
+  return wrapped;
 }
 
 async function retryTransientDb<T>(operation: () => Promise<T>): Promise<T> {

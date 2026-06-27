@@ -26,6 +26,35 @@ runbook:
 
 ---
 
+## Two ways to exercise the stack (both are "development")
+
+Development is the **code → run → verify** loop, and there are two ways to drive the
+running stack. They are not rivals — they are the iterate phase and the final-check
+phase of the same workflow, the same way you write code and then test it.
+
+1. **Interactive loop — with the simulator.** Bring the backend up once
+   (`scripts/local-stack.sh`), then iterate on a client and watch real behavior:
+   edit code → reload the **iOS simulator** (and optionally the Desktop app) → tap
+   through sign-in → gates → chat → companion reply → repeat. You leave the two
+   backend services running and keep reloading the client. **Here _you_ are the
+   test** — the simulator is how you drive requests and eyeball the result. This is
+   where you spend most of your day. ([The user journey to approve](#the-user-journey-to-approve)
+   is the script to walk.)
+
+2. **Final check — the headless smoke.** When the loop looks good, run
+   `scripts/local-backend-e2e.mjs` ([Backend E2E without Google sign-in](#backend-e2e-without-google-sign-in)).
+   **No simulator** — a script mints a local token and drives one `user_message` →
+   `companion_message` straight over HTTP/WS, so the backend path is proven
+   automatically and repeatably. This is the "now run the test" at the end of the day.
+
+Crucially, **both modes hit the exact same stack** — local Control Plane → local
+Agent Runtime → the same isolated Neon dev branch → the same OpenRouter model. The
+only thing that changes is _who sends the request_: you through the simulator, or the
+script headlessly. So a green smoke and a good hands-on session are testing the same
+wiring from two angles.
+
+---
+
 ## How the four wire together locally
 
 ```
@@ -175,6 +204,18 @@ around; delete it from the Neon console / MCP if you want a clean slate.
 6. **Production is untouchable from here.** The stack only ever talks to the isolated
    `dev-local-smoke` branch; keep it that way — never repoint a `.env` at the
    production branch.
+7. **No IPv6 on this Mac → force IPv4 to Neon.** Neon hosts are dual-stack (publish
+   both IPv4 `A` and IPv6 `AAAA` records). This machine has **no IPv6 egress**, so
+   Node's Happy Eyeballs (`autoSelectFamily`) keeps racing the dead IPv6 route, and
+   stalls surface intermittently as `EHOSTUNREACH`/`ETIMEDOUT` → `AggregateError`
+   (empty message) → `NeonDbError` — which can kill a turn _after_ the model replies,
+   so no `companion_message` lands. `scripts/local-stack.sh` already exports
+   `NODE_OPTIONS=--dns-result-order=ipv4first --no-network-family-autoselection`
+   to pin both services to IPv4 (the `ipv4first` reorder alone is **not** enough —
+   `--no-network-family-autoselection` is what stops the IPv6 race). If you launch a
+   service **standalone** (per its modular runbook) on this network, use the same two
+   flags. The runtime also retries transient Neon connection errors on the turn write
+   path, so a single blip no longer drops a reply — but avoiding the blip is cheaper.
 
 ## Backend E2E without Google sign-in
 
