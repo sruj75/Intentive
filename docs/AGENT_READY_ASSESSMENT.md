@@ -36,7 +36,7 @@ Agents can work productively here with human oversight on most changes. Progress
 - **Agent entry:** root `AGENTS.md` (66 lines) + **6** nested `AGENTS.md`; `CLAUDE.md` companions are symlinks to sibling `AGENTS.md` files
 - **Lint/format:** ESLint 9 + `@intentive/eslint-plugin-architecture`, Prettier, Husky + lint-staged, Rust architecture linter
 - **README:** 34 lines — delegates to `AGENTS.md`, `CONTEXT-MAP.md`, `ARCHITECTURE.md`
-- **Reproducibility:** `.devcontainer/devcontainer.json` (Node 22, pnpm, Rust, Tauri Linux deps)
+- **Reproducibility:** `.devcontainer/devcontainer.json` (Node 24, pnpm, Rust, Tauri Linux deps)
 - **Domains on disk:** `src/domains/` present across deployables (**81** domain-related files); desktop splits TS UI domains and Rust product domains
 
 ---
