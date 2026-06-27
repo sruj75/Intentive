@@ -14,7 +14,7 @@ export class CronScheduleError extends Error {
 
 export function parseSchedule(input: string): ParsedSchedule {
   const trimmed = input.trim();
-  const match = /^(at|every|cron)\s+(.+)$/u.exec(trimmed);
+  const match = /^(at|every|cron)\s+(\S.*)$/u.exec(trimmed);
   if (!match) {
     throw new CronScheduleError("Schedule must start with at, every, or cron.");
   }

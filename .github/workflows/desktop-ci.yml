@@ -24,6 +24,9 @@ on:
       - "turbo.json"
       - ".github/workflows/desktop-ci.yml"
 
+permissions:
+  contents: read
+
 jobs:
   frontend:
     name: Frontend (typecheck + build + test)

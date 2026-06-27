@@ -208,6 +208,7 @@ export function ledgerStatusForFinding(entry) {
 
 function escapeCell(value) {
   return String(value ?? "")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\n/g, " ");
 }

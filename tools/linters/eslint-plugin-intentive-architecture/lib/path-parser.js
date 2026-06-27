@@ -18,14 +18,20 @@
  */
 function parseDomainPath(absPath) {
   if (typeof absPath !== "string" || absPath.length === 0) return null;
-  const norm = absPath.replace(/\\/g, "/");
   // Find ".../{apps|services}/<deployable>/.../domains/<domain>/<layer>/..."
-  // The middle ".../" allows for "src/", "src-tauri/src/", or any nesting.
-  const m = norm.match(
-    /\/(apps|services)\/([^/]+)\/(?:[^/]+\/)*?domains\/([^/]+)\/([^/]+)(?:\/|$)/,
-  );
-  if (!m) return null;
-  const [, kind, deployable, domain, layer] = m;
+  // A linear split scan, equivalent to the old regex but provably O(n):
+  // locate the deployable root, then the first "domains" segment after it.
+  const segments = absPath.replace(/\\/g, "/").split("/");
+  const rootIdx = segments.findIndex((s) => s === "apps" || s === "services");
+  if (rootIdx === -1 || rootIdx + 1 >= segments.length) return null;
+  const kind = segments[rootIdx];
+  const deployable = segments[rootIdx + 1];
+  // first "domains" strictly after the deployable name
+  const domainsIdx = segments.indexOf("domains", rootIdx + 2);
+  if (domainsIdx === -1 || domainsIdx + 2 >= segments.length) return null;
+  const domain = segments[domainsIdx + 1];
+  const layer = segments[domainsIdx + 2];
+  if (!deployable || !domain || !layer) return null;
   return { kind, deployable, domain, layer };
 }
 
