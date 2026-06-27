@@ -132,6 +132,44 @@ export function createJwtVerifier(
 }
 
 /**
+ * Build a verifier for local development tokens minted with the repo-local
+ * shared secret. This keeps mocked local auth as a signed-token path with the
+ * same `{ sub } -> user_id` contract as Neon Auth, instead of accepting an
+ * arbitrary bearer string.
+ */
+export function createLocalDevJwtVerifier(config: {
+  secret: string;
+  issuer: string;
+  audience: string;
+}): JwtVerifier {
+  const key = new TextEncoder().encode(config.secret);
+
+  return {
+    async probe(): Promise<void> {
+      return;
+    },
+
+    async verify(token: string): Promise<VerifiedPrincipal> {
+      let payload;
+      try {
+        ({ payload } = await jwtVerify(token, key, {
+          issuer: config.issuer,
+          audience: config.audience,
+          algorithms: ["HS256"],
+        }));
+      } catch (err) {
+        throw toVerificationError(err);
+      }
+
+      if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+        throw new JwtVerificationError("malformed", "Token is missing a subject (sub) claim");
+      }
+      return { user_id: payload.sub };
+    },
+  };
+}
+
+/**
  * Collapse jose's error taxonomy into one typed, leak-free error. We match on
  * jose's error classes (not string codes) so the mapping survives jose's
  * internal code churn.
