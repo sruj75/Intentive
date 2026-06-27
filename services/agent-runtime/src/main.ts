@@ -7,7 +7,7 @@
  */
 import { serve } from "@hono/node-server";
 import { neon } from "@neondatabase/serverless";
-import { createJwtVerifier } from "@intentive/providers/auth";
+import { createJwtVerifier, createLocalDevJwtVerifier } from "@intentive/providers/auth";
 import { bootstrapObservability } from "@intentive/providers/observability";
 import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
 import { Langfuse } from "langfuse-langchain";
@@ -72,11 +72,18 @@ const observability = bootstrapObservability(
 const log = observability.createLogger("agent-runtime");
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
 
-const verifier = createJwtVerifier({
-  jwks_url: config.neonAuth.jwksUrl,
-  issuer: config.neonAuth.issuer,
-  audience: config.neonAuth.audience,
-});
+const verifier =
+  config.auth.mode === "local-dev"
+    ? createLocalDevJwtVerifier({
+        secret: config.auth.localDevSecret ?? "",
+        issuer: config.neonAuth.issuer,
+        audience: config.neonAuth.audience,
+      })
+    : createJwtVerifier({
+        jwks_url: config.neonAuth.jwksUrl,
+        issuer: config.neonAuth.issuer,
+        audience: config.neonAuth.audience,
+      });
 
 const registry = createAgentInstanceRepo(sql);
 const ledger = createEventLedger(sql);

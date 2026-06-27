@@ -19,6 +19,7 @@
 import { z } from "zod";
 
 const SentryModeSchema = z.enum(["errors-only", "errors-and-performance"]);
+const AuthModeSchema = z.enum(["neon", "local-dev"]);
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
@@ -33,6 +34,11 @@ const EnvSchema = z.object({
   NEON_AUTH_JWKS_URL: z.string().url(),
   NEON_AUTH_ISSUER: z.string().min(1),
   NEON_AUTH_AUDIENCE: z.string().min(1),
+
+  // Local-only signed token mode for full-stack development. Default stays Neon
+  // Auth; production envs should not set these.
+  INTENTIVE_AUTH_MODE: AuthModeSchema.default("neon"),
+  INTENTIVE_DEV_AUTH_SECRET: z.string().min(32).optional(),
 
   // Internal HTTP surface — Directional Secrets (one per direction)
   RUNTIME_INTERNAL_BASE_URL: z.string().url(),
@@ -57,6 +63,10 @@ export interface ControlPlaneConfig {
     readonly jwksUrl: string;
     readonly issuer: string;
     readonly audience: string;
+  };
+  readonly auth: {
+    readonly mode: "neon" | "local-dev";
+    readonly localDevSecret?: string;
   };
   readonly runtimeInternal: { readonly baseUrl: string; readonly secretToRuntime: string };
   readonly internalInbound: {
@@ -100,6 +110,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
   }
 
   const e = parsed.data;
+  if (e.INTENTIVE_AUTH_MODE === "local-dev" && !e.INTENTIVE_DEV_AUTH_SECRET) {
+    throw new ControlPlaneConfigError(["INTENTIVE_DEV_AUTH_SECRET"]);
+  }
+
   return Object.freeze({
     port: e.PORT,
     neon: Object.freeze({ url: e.NEON_DATABASE_URL, role: e.NEON_DATABASE_ROLE }),
@@ -107,6 +121,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
       jwksUrl: e.NEON_AUTH_JWKS_URL,
       issuer: e.NEON_AUTH_ISSUER,
       audience: e.NEON_AUTH_AUDIENCE,
+    }),
+    auth: Object.freeze({
+      mode: e.INTENTIVE_AUTH_MODE,
+      localDevSecret: e.INTENTIVE_DEV_AUTH_SECRET,
     }),
     runtimeInternal: Object.freeze({
       baseUrl: e.RUNTIME_INTERNAL_BASE_URL,

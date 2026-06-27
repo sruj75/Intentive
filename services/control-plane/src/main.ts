@@ -8,7 +8,7 @@
  * thin: construction only, no domain logic.
  */
 import { serve } from "@hono/node-server";
-import { createJwtVerifier } from "@intentive/providers/auth";
+import { createJwtVerifier, createLocalDevJwtVerifier } from "@intentive/providers/auth";
 import { bootstrapObservability } from "@intentive/providers/observability";
 import { neon } from "@neondatabase/serverless";
 
@@ -44,11 +44,18 @@ const log = observability.createLogger("control-plane");
 
 // Construct the verifier once: it closes over a lazily-fetched JWKS cache, so a
 // per-request verifier would defeat the cache and hammer Neon Auth.
-const verifier = createJwtVerifier({
-  jwks_url: config.neonAuth.jwksUrl,
-  issuer: config.neonAuth.issuer,
-  audience: config.neonAuth.audience,
-});
+const verifier =
+  config.auth.mode === "local-dev"
+    ? createLocalDevJwtVerifier({
+        secret: config.auth.localDevSecret ?? "",
+        issuer: config.neonAuth.issuer,
+        audience: config.neonAuth.audience,
+      })
+    : createJwtVerifier({
+        jwks_url: config.neonAuth.jwksUrl,
+        issuer: config.neonAuth.issuer,
+        audience: config.neonAuth.audience,
+      });
 
 const sql = neon(config.neon.url) as unknown as Sql;
 const users = createUsersRepo(sql);
