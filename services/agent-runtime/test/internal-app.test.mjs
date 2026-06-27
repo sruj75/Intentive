@@ -96,17 +96,3 @@ test("GET /health is a 200 liveness probe", async () => {
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, service: "agent-runtime" });
 });
-
-test("GET /healthz is not exposed", async () => {
-  const app = createInternalApp({
-    secret: "runtime-inbound-secret",
-    startSession: async () => ({
-      agent_instance_id: "agent_instance_1",
-      ws_url: "wss://runtime.example.com/ws",
-    }),
-  });
-
-  const res = await app.request("/healthz");
-
-  assert.equal(res.status, 404);
-});

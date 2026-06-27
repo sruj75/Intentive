@@ -54,11 +54,26 @@ export function createConnectHandler(deps: {
         return { response: invalidConnect, closeSocket: true };
       }
 
-      let session: Omit<BoundSession, "pinnedFloor"> | null;
+      let authSubject: string;
       try {
         const principal = await deps.verifier.verify(parsed.data.auth_token);
+        authSubject = principal.user_id;
+      } catch (error) {
+        logger.warn("gateway.connect", {
+          status: "reject",
+          client_kind: parsed.data.client_kind,
+          error_type: error instanceof Error ? error.name : typeof error,
+        });
+        return {
+          response: mapJwtVerificationErrorToRuntimeError(asJwtVerificationFailure(error)),
+          closeSocket: true,
+        };
+      }
+
+      let session: Omit<BoundSession, "pinnedFloor"> | null;
+      try {
         session = await deps.sessions.loadSessionByAuthSubject({
-          authSubject: principal.user_id,
+          authSubject,
           clientKind: parsed.data.client_kind,
           clientTz: parsed.data.client_tz,
         });
@@ -69,7 +84,11 @@ export function createConnectHandler(deps: {
           error_type: error instanceof Error ? error.name : typeof error,
         });
         return {
-          response: mapJwtVerificationErrorToRuntimeError(asJwtVerificationFailure(error)),
+          response: {
+            type: "runtime_error",
+            code: "service_unavailable",
+            message: "Session is temporarily unavailable.",
+          },
           closeSocket: true,
         };
       }

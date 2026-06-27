@@ -16,7 +16,7 @@
     "eval:privacy": "cargo +stable test --manifest-path src-tauri/Cargo.toml privacy_eval -- --ignored --nocapture"
   },
   "dependencies": {
-    "@neondatabase/neon-js": "^0.6.1-beta",
+    "@neondatabase/neon-js": "^0.6.2-beta",
     "@sentry/react": "^10.59.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",

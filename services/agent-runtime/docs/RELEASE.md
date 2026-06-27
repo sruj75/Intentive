@@ -7,8 +7,8 @@ there is no semver tag for this deployable (`package.json` stays `0.0.0`). The
 image tag and the Sentry release are both `github.sha`.
 
 Production facts (project, zone, VM, load balancer inventory, DNS, secret/variable
-inventory) live in the one-stop [`../../../docs/DEPLOY.md`](../../../docs/DEPLOY.md).
-This runbook is the _release procedure_; DEPLOY.md is the _production state_. Keep
+inventory) live in the one-stop [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md).
+This runbook is the _release procedure_; PRODUCTION.md is the _production state_. Keep
 values there, not duplicated here.
 
 ---
@@ -51,7 +51,7 @@ health check plus this convergence gate.
 ## One-time setup
 
 Credentials and config are set once and live in GitHub, not the repo. See
-[`../../../docs/DEPLOY.md` § GitHub Actions Wiring](../../../docs/DEPLOY.md#github-actions-wiring)
+[`../../../docs/PRODUCTION.md` § GitHub Actions Wiring](../../../docs/PRODUCTION.md#github-actions-wiring)
 for the authoritative list. In summary:
 
 - **Secrets**: `GCP_PROJECT_ID`, `AGENT_RUNTIME_GCP_SA_KEY` (Artifact Registry
@@ -62,7 +62,7 @@ for the authoritative list. In summary:
 - **GCP, one-time**: Artifact Registry repo, the `agent-runtime` VM on
   Container-Optimized OS, the global HTTPS load balancer (forwarding rule, proxy,
   URL map, managed cert, backends, health checks), DNS `A` record, and the
-  Runtime Secret Manager values. Full inventory in DEPLOY.md.
+  Runtime Secret Manager values. Full inventory in PRODUCTION.md.
 
 Push deploys stay **off** until `DEPLOY_ENABLED=true`. Until then, releases are
 manual (`workflow_dispatch`), which always runs regardless of `DEPLOY_ENABLED`.
@@ -73,17 +73,16 @@ Prove the manual production deploy first; only then flip `DEPLOY_ENABLED`.
 ## Before deploying
 
 Do this from a clean branch and merge through PR. Treat the first deploy as a
-pre-user operation per [`../../../docs/DEPLOY.md` § Agent Runtime First Deploy](../../../docs/DEPLOY.md#agent-runtime-first-deploy).
+pre-user operation per [`../../../docs/PRODUCTION.md` § Agent Runtime First Deploy](../../../docs/PRODUCTION.md#agent-runtime-first-deploy).
 
-1. Confirm DNS, the managed cert, and both backends are healthy (DEPLOY.md smoke).
+1. Confirm DNS, the managed cert, and both backends are healthy (PRODUCTION.md smoke).
 2. Confirm the production Neon schema/role/grants and the direct (non-pooled)
    connection string.
 3. **Directional secrets must be newline-free.** A trailing newline in
    `INTERNAL_SECRET_TO_RUNTIME` / `INTERNAL_SECRET_FROM_RUNTIME` causes
-   `401 auth_failed`. Verify with the byte-count check in DEPLOY.md.
-4. **Health route drift.** Confirm the GCP internal backend health-check path
-   matches the deployed image's internal liveness route before enabling push
-   deploys (DEPLOY.md flags `/healthz` vs `/health`).
+   `401 auth_failed`. Verify with the byte-count check in PRODUCTION.md.
+4. **Health route.** Confirm the GCP internal backend health-check path is
+   `GET /health` before enabling push deploys.
 5. Update [`CHANGELOG.md`](../CHANGELOG.md) if release behavior changed.
 6. Merge the PR to `main` and confirm the commit on `origin/main`:
 
@@ -132,7 +131,7 @@ Good logs include `Loaded N runtime secrets`, `runtime.public_ws_listening`,
 
 ## Verify the live release
 
-After a green run, run the full Agent Runtime smoke from DEPLOY.md:
+After a green run, run the full Agent Runtime smoke from PRODUCTION.md:
 
 ```bash
 dig runtime.heyintentive.com A +short        # → 8.232.97.220
@@ -146,7 +145,7 @@ gcloud compute backend-services get-health agent-runtime-internal-backend \
 Both backends must be `HEALTHY`. Then run the **Session Start smoke** over the
 real public HTTPS load balancer (the authenticated end-to-end check that CI can't
 run without the bearer secret) — the full script is in
-[`../../../docs/DEPLOY.md` § Agent Runtime First Deploy](../../../docs/DEPLOY.md#agent-runtime-first-deploy),
+[`../../../docs/PRODUCTION.md` § Agent Runtime First Deploy](../../../docs/PRODUCTION.md#agent-runtime-first-deploy),
 step 9. It must return `200` with:
 
 ```json
@@ -167,12 +166,12 @@ gcloud compute instances describe agent-runtime \
 
 Rollback is an image-tag re-swap — Artifact Registry keeps SHA tags. Use the full
 `update-container` invocation with the env file from
-[`../../../docs/DEPLOY.md` § Rollback](../../../docs/DEPLOY.md#rollback):
+[`../../../docs/PRODUCTION.md` § Rollback](../../../docs/PRODUCTION.md#rollback):
 
 ```bash
 LAST_GOOD_SHA=<sha>
 IMAGE="us-west1-docker.pkg.dev/agentic-accountability/intentive/agent-runtime:${LAST_GOOD_SHA}"
-# build the env file exactly as in DEPLOY.md, then:
+# build the env file exactly as in PRODUCTION.md, then:
 gcloud compute instances update-container agent-runtime \
   --zone us-west1-a --project agentic-accountability \
   --container-image "$IMAGE" \

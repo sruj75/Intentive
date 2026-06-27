@@ -9,6 +9,7 @@ import { z } from "zod";
 
 const SentryModeSchema = z.enum(["errors-only", "errors-and-performance"]);
 const LangfuseModeSchema = z.enum(["callback", "otel"]);
+const AuthModeSchema = z.enum(["neon", "local-dev"]);
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
@@ -22,6 +23,8 @@ const EnvSchema = z.object({
   NEON_AUTH_JWKS_URL: z.string().url(),
   NEON_AUTH_ISSUER: z.string().min(1),
   NEON_AUTH_AUDIENCE: z.string().min(1),
+  INTENTIVE_AUTH_MODE: AuthModeSchema.default("neon"),
+  INTENTIVE_DEV_AUTH_SECRET: z.string().min(32).optional(),
   OPENROUTER_API_KEY: z.string().min(1),
   OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
   RUNTIME_MODEL: z.string().min(1).default("nvidia/nemotron-3-ultra-550b-a55b:free"),
@@ -46,6 +49,10 @@ export interface AgentRuntimeConfig {
     readonly jwksUrl: string;
     readonly issuer: string;
     readonly audience: string;
+  };
+  readonly auth: {
+    readonly mode: "neon" | "local-dev";
+    readonly localDevSecret?: string;
   };
   readonly model: {
     readonly apiKey: string;
@@ -89,6 +96,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
   }
 
   const e = parsed.data;
+  if (e.INTENTIVE_AUTH_MODE === "local-dev" && !e.INTENTIVE_DEV_AUTH_SECRET) {
+    throw new AgentRuntimeConfigError(["INTENTIVE_DEV_AUTH_SECRET"]);
+  }
+
   return Object.freeze({
     port: e.PORT,
     publicWsUrl: e.PUBLIC_WS_URL,
@@ -105,6 +116,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
       jwksUrl: e.NEON_AUTH_JWKS_URL,
       issuer: e.NEON_AUTH_ISSUER,
       audience: e.NEON_AUTH_AUDIENCE,
+    }),
+    auth: Object.freeze({
+      mode: e.INTENTIVE_AUTH_MODE,
+      localDevSecret: e.INTENTIVE_DEV_AUTH_SECRET,
     }),
     model: Object.freeze({
       apiKey: e.OPENROUTER_API_KEY,

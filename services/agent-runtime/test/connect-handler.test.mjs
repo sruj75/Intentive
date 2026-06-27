@@ -124,6 +124,30 @@ test("connect handshake maps Session Snapshot read failures to the history failu
   });
 });
 
+test("connect handshake maps session lookup failures to service_unavailable", async () => {
+  const handler = createConnectHandler({
+    sessions: {
+      loadSessionByAuthSubject: async () => {
+        const err = new Error("database unavailable");
+        err.name = "NeonDbError";
+        throw err;
+      },
+    },
+    verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    floorResolver: floorResolver(),
+    conversation: snapshotReader(),
+  });
+
+  const result = await handler.handle(validConnect);
+
+  assert.equal(result.closeSocket, true);
+  assert.deepEqual(result.response, {
+    type: "runtime_error",
+    code: "service_unavailable",
+    message: "Session is temporarily unavailable.",
+  });
+});
+
 test("connect handshake still maps JWT failures through the auth taxonomy", async () => {
   const handler = createConnectHandler({
     sessions: sessionRegistry({

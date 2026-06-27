@@ -1,4 +1,4 @@
-FROM node:22-slim AS base
+FROM node:24-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@11.5.2 --activate
@@ -27,7 +27,7 @@ RUN pnpm --filter "@intentive/control-plane..." run build
 RUN pnpm --filter @intentive/control-plane deploy --prod --legacy /app \
   && cp -R services/control-plane/dist /app/dist
 
-FROM gcr.io/distroless/nodejs22-debian12:nonroot AS runtime
+FROM gcr.io/distroless/nodejs24-debian12:nonroot AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 

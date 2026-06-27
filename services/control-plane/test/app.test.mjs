@@ -162,12 +162,6 @@ test("GET /health is a 200 liveness probe", async () => {
   assert.deepEqual(await res.json(), { ok: true, service: "control-plane" });
 });
 
-test("GET /healthz is not exposed", async () => {
-  const app = createApp({ getMe: { handle: async () => ({ status: 200, body: {} }) } });
-  const res = await app.request("/healthz");
-  assert.equal(res.status, 404);
-});
-
 test("GET /ready is a 200 deep readiness probe when dependencies pass", async () => {
   const app = appWith({
     readiness: {
@@ -178,17 +172,6 @@ test("GET /ready is a 200 deep readiness probe when dependencies pass", async ()
   const res = await app.request("/ready");
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ready: true, checks: { neon: "ok", jwks: "ok" } });
-});
-
-test("GET /readyz is not exposed", async () => {
-  const app = appWith({
-    readiness: {
-      check: async () => ({ ready: true, checks: { neon: "ok", jwks: "ok" } }),
-    },
-  });
-
-  const res = await app.request("/readyz");
-  assert.equal(res.status, 404);
 });
 
 test("GET /ready is a 503 deep readiness probe when a dependency fails", async () => {

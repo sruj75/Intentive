@@ -46,7 +46,8 @@ Request/response schemas live in `packages/api-contract/`.
 - Deploys to **Google Cloud Run** (stateless HTTP, request/response only in v1)
 - Reads Neon Postgres via control-plane-owned schema (separate role from Agent Runtime)
 - PR CI: `.github/workflows/control-plane-ci.yml` (typecheck + full test suite with Neon branch-spawning integration tests skipped) and `.github/workflows/neon-preview-branches.yml` (one PR preview branch + migration validation). Repo integration tests still use ephemeral Neon branches for local/on-demand runs when `NEON_API_KEY` / `NEON_PROJECT_ID` are set (ADR-0003).
-- Release runbook (SHA-identified no-traffic revision promotion): [`docs/RELEASE.md`](docs/RELEASE.md). Production state: [`../../docs/DEPLOY.md`](../../docs/DEPLOY.md).
+- Release runbook (SHA-identified no-traffic revision promotion): [`docs/RELEASE.md`](docs/RELEASE.md). Production state: [`../../docs/PRODUCTION.md`](../../docs/PRODUCTION.md).
+- Local dev / smoke: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) runs the real service against an **isolated Neon dev branch** (tag it and say "run the control plane" / "kill it"). To bring up all four deployables together and walk the user journey, see the full local stack runbook [`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) (`scripts/local-stack.sh`).
 
 ## Guardrails specific to this deployable
 

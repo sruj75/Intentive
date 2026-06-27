@@ -1,6 +1,6 @@
 # User Journey Map
 
-How Intentive's four deployables and shared packages connect to the journeys users actually take. For vocabulary, see [`CONTEXT-MAP.md`](../CONTEXT-MAP.md). For deployment topology, see [`DEPLOY.md`](DEPLOY.md). For layer rules and invariants, see [`ARCHITECTURE.md`](../ARCHITECTURE.md).
+How Intentive's four deployables and shared packages connect to the journeys users actually take. For vocabulary, see [`CONTEXT-MAP.md`](../CONTEXT-MAP.md). For deployment topology, see [`PRODUCTION.md`](PRODUCTION.md). For layer rules and invariants, see [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ## Deployables at a glance
 
@@ -417,5 +417,5 @@ Full schemas: `packages/protocol/src/index.ts`.
 | Control Plane structure | [`services/control-plane/ARCHITECTURE.md`](../services/control-plane/ARCHITECTURE.md)                                                                                   |
 | Agent Runtime structure | [`services/agent-runtime/ARCHITECTURE.md`](../services/agent-runtime/ARCHITECTURE.md)                                                                                   |
 | Wire contracts          | [`packages/api-contract/ARCHITECTURE.md`](../packages/api-contract/ARCHITECTURE.md), [`packages/CONTEXT.md`](../packages/CONTEXT.md)                                    |
-| Production deploy       | [`DEPLOY.md`](DEPLOY.md)                                                                                                                                                |
+| Production deploy       | [`PRODUCTION.md`](PRODUCTION.md)                                                                                                                                        |
 | PRDs                    | [`docs/prd/mobile-PRD.md`](prd/mobile-PRD.md), [`docs/prd/control-plane-PRD.md`](prd/control-plane-PRD.md), [`docs/prd/agent-runtime-PRD.md`](prd/agent-runtime-PRD.md) |

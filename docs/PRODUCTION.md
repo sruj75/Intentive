@@ -102,6 +102,7 @@ Load balancer inventory:
 - Active managed certificate: `agent-runtime-cert`
 - Host rule: `runtime.heyintentive.com -> internal-paths`
 - URL map routes:
+  - `/health` -> `agent-runtime-internal-backend`
   - `/internal/*` -> `agent-runtime-internal-backend`
   - default -> `agent-runtime-ws-backend`
 - Backends:
@@ -109,13 +110,23 @@ Load balancer inventory:
   - `agent-runtime-internal-backend` -> instance group `agent-runtime-ig`, named port `runtime-internal:8081`
 - Health checks:
   - `agent-runtime-ws-tcp-hc`: TCP `8080`
-  - `agent-runtime-internal-http-hc`: currently HTTP `8081` path `/healthz` in production infrastructure
+  - `agent-runtime-internal-http-hc`: HTTP `8081` path `/health`
 
-Important health route note:
+Health-check verification:
 
-- Current repo code after the health cleanup commits makes Agent Runtime internal liveness `GET /health`.
-- The production GCP health check was observed as `/healthz` on 2026-06-20.
-- Before deploying an Agent Runtime image that removes `/healthz`, update `agent-runtime-internal-http-hc` to `/health`, or keep a temporary alias until the health check has been migrated.
+```bash
+gcloud compute health-checks describe agent-runtime-internal-http-hc \
+  --project agentic-accountability \
+  --format='yaml(name,type,httpHealthCheck.port,httpHealthCheck.requestPath)'
+```
+
+Expected request path after migration:
+
+```text
+httpHealthCheck:
+  port: 8081
+  requestPath: /health
+```
 
 ## GitHub Actions Wiring
 
@@ -282,31 +293,10 @@ Both must be `HEALTHY`.
 
 9. Smoke Session Start over the real public HTTPS load balancer. Use a UUID-shaped user id.
 
-   > **This smoke writes durable production state — you MUST tear it down (step 9, teardown below).** `/internal/sessions/start` upserts a row into `agent_runtime.agent_instances`, and the always-alive heartbeat scheduler drives **every** row in that table as a live user, firing Monitoring Turns and LLM calls on each heartbeat — forever. Leftover smoke rows were the root cause of Sentry `AGENT-RUNTIME-2`/`-4` (GitHub #115/#116): the runtime called the model on a ~5-minute heartbeat for phantom smoke users no human ever created.
+   > **This smoke writes durable production state. Use the script below because it always attempts teardown.** `/internal/sessions/start` upserts a row into `agent_runtime.agent_instances`, and the always-alive heartbeat scheduler drives **every** row in that table as a live user, firing Monitoring Turns and LLM calls on each heartbeat — forever. Leftover smoke rows were the root cause of Sentry `AGENT-RUNTIME-2`/`-4` (GitHub #115/#116): the runtime called the model on a ~5-minute heartbeat for phantom smoke users no human ever created.
 
 ```bash
-secret_file=$(mktemp)
-body_file=$(mktemp)
-response_file=$(mktemp)
-trap 'rm -f "$secret_file" "$body_file" "$response_file"' EXIT
-
-gcloud secrets versions access latest \
-  --secret=INTERNAL_SECRET_TO_RUNTIME \
-  --project agentic-accountability > "$secret_file"
-
-cat > "$body_file" <<'JSON'
-{"user_id":"00000000-0000-4000-8000-0000000000ff","auth_subject":"smoke-session-start"}
-JSON
-
-curl -sS -o "$response_file" -w '%{http_code}\n' \
-  -X POST 'https://runtime.heyintentive.com/internal/sessions/start' \
-  -H "authorization: Bearer $(cat "$secret_file")" \
-  -H 'content-type: application/json' \
-  --data-binary "@$body_file" \
-  --connect-timeout 8 \
-  --max-time 20
-
-cat "$response_file"
+scripts/production-session-start-smoke.sh
 ```
 
 Expected status: `200`
@@ -320,7 +310,9 @@ Expected response shape:
 }
 ```
 
-**Teardown (required — run even if the smoke fails).** Delete the instance this smoke just created, so the heartbeat scheduler does not keep waking it as a live user. Run against the agent-runtime Neon database (project **Intentive**, schema `agent_runtime`) via the Neon SQL editor or any psql client:
+The script fetches `INTERNAL_SECRET_TO_RUNTIME` and `AGENT_RUNTIME_NEON_DATABASE_URL` from Secret Manager, calls Session Start, and then deletes the exact smoke row (`auth_subject='smoke-session-start'`) before exiting. If it cannot verify teardown, the script fails.
+
+Manual teardown fallback. If the script is interrupted before teardown, delete the instance it created so the heartbeat scheduler does not keep waking it as a live user. Run against the agent-runtime Neon database (project **Intentive**, schema `agent_runtime`) via the Neon SQL editor or any psql client:
 
 ```sql
 DELETE FROM agent_runtime.agent_instances WHERE auth_subject LIKE 'smoke-%';

@@ -7,7 +7,7 @@
  */
 import { serve } from "@hono/node-server";
 import { neon } from "@neondatabase/serverless";
-import { createJwtVerifier } from "@intentive/providers/auth";
+import { createJwtVerifier, createLocalDevJwtVerifier } from "@intentive/providers/auth";
 import { bootstrapObservability } from "@intentive/providers/observability";
 import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
 import { Langfuse } from "langfuse-langchain";
@@ -71,14 +71,40 @@ const observability = bootstrapObservability(
 );
 const log = observability.createLogger("agent-runtime");
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
+// The turn write path and Per-User Channel ingress each commit through one Neon
+// array transaction. On a network without IPv6 egress (Neon is dual-stack), a
+// transient connect blip would otherwise abort the turn *after* the model replied
+// — so no companion reply lands. Retry the whole atomic transaction on transient
+// errors: every batched insert is `ON CONFLICT DO NOTHING` (ledger, conversation)
+// except the single `runtime_turns` anchor, and a rolled-back transaction re-runs
+// cleanly. ADR-0020 containment is unchanged — a turn still failing after retries
+// fails per-trigger.
+const resilientSql = withTransactionRetry(sql);
 
-const verifier = createJwtVerifier({
-  jwks_url: config.neonAuth.jwksUrl,
-  issuer: config.neonAuth.issuer,
-  audience: config.neonAuth.audience,
-});
+const verifier =
+  config.auth.mode === "local-dev"
+    ? createLocalDevJwtVerifier({
+        secret: config.auth.localDevSecret ?? "",
+        issuer: config.neonAuth.issuer,
+        audience: config.neonAuth.audience,
+      })
+    : createJwtVerifier({
+        jwks_url: config.neonAuth.jwksUrl,
+        issuer: config.neonAuth.issuer,
+        audience: config.neonAuth.audience,
+      });
 
 const registry = createAgentInstanceRepo(sql);
+const resilientRegistry = {
+  loadOrCreate: (input: Parameters<typeof registry.loadOrCreate>[0]) =>
+    retryTransientDb(() => registry.loadOrCreate(input)),
+  loadByAuthSubject: (authSubject: string) =>
+    retryTransientDb(() => registry.loadByAuthSubject(authSubject)),
+  loadByUserId: (userId: string) => retryTransientDb(() => registry.loadByUserId(userId)),
+  recordClientTzByAuthSubject: (authSubject: string, clientTz?: string) =>
+    retryTransientDb(() => registry.recordClientTzByAuthSubject(authSubject, clientTz)),
+  loadUserTz: (userId: string) => retryTransientDb(() => registry.loadUserTz(userId)),
+};
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const sensoryBuffer = createSensoryBufferReader(sql);
@@ -103,10 +129,10 @@ const postMessageBack = createPostMessageBack({
   logger: log,
 });
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
-await memoryStore.setup();
+await retryTransientDb(() => memoryStore.setup());
 const cronBackend = createCronBackend({
   repo: cronJobs,
-  loadUserTz: (userId) => registry.loadUserTz(userId),
+  loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
 });
 const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
 const fallbackFloorSource = createBundledFallbackSource();
@@ -130,13 +156,13 @@ const runtimeAdapter = createDeepAgentsAdapter({
   },
   logger: log,
 });
-await runtimeAdapter.setup();
+await retryTransientDb(() => runtimeAdapter.setup());
 const workingContext = createWorkingContext({
-  readUserProfile: (userId) => readUserProfile(memoryStore, userId, log),
-  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
+  readUserProfile: (userId) => retryTransientDb(() => readUserProfile(memoryStore, userId, log)),
+  readRecentPerception: (userId) => retryTransientDb(() => sensoryBuffer.readLatest(userId)),
 });
 const turn = createTurn({
-  sql,
+  sql: resilientSql,
   adapter: runtimeAdapter,
   workingContext,
   runtimeTurns,
@@ -155,7 +181,7 @@ const fireCron = createCronTurnHandler({
   cronJobs,
   cronRuns,
   floorResolver,
-  loadUserTz: (userId) => registry.loadUserTz(userId),
+  loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
   turn,
   logger: log,
 });
@@ -165,7 +191,7 @@ const monitoringTurn = createMonitoringTurn({
 });
 let channel: PerUserChannel;
 channel = createPerUserChannel({
-  sql,
+  sql: resilientSql,
   ledger,
   conversation,
   // A `user_message` is transactionally projected into Conversation History
@@ -197,7 +223,7 @@ const heartbeatScheduler = createHeartbeatScheduler({
   logger: log,
 });
 const startSession = createStartSession({
-  registry,
+  registry: resilientRegistry,
   wsUrl: config.publicWsUrl,
 });
 const internalApp = createInternalApp({
@@ -211,8 +237,8 @@ const connectHandler = createConnectHandler({
   logger: log,
   sessions: {
     async loadSessionByAuthSubject({ authSubject, clientKind, clientTz }) {
-      await registry.recordClientTzByAuthSubject(authSubject, clientTz);
-      const agentInstance = await registry.loadByAuthSubject(authSubject);
+      await resilientRegistry.recordClientTzByAuthSubject(authSubject, clientTz);
+      const agentInstance = await resilientRegistry.loadByAuthSubject(authSubject);
       if (!agentInstance) {
         return null;
       }
@@ -262,6 +288,49 @@ async function drainLangfuseClient(client: LangfuseDrainClient): Promise<void> {
     return;
   }
   await client.flushAsync?.();
+}
+
+/**
+ * Wrap a `TransactionalSql` so its array `transaction()` retries transient Neon
+ * connection errors. The tagged-template call is passed through unchanged (it
+ * only *builds* the lazy queries the repos batch into a transaction; reads on the
+ * turn path are retried separately via `retryTransientDb`).
+ */
+function withTransactionRetry(base: TransactionalSql): TransactionalSql {
+  const wrapped = ((strings: TemplateStringsArray, ...values: unknown[]) =>
+    base(strings, ...values)) as TransactionalSql;
+  wrapped.transaction = (queries) => retryTransientDb(() => base.transaction(queries));
+  return wrapped;
+}
+
+async function retryTransientDb<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === 5 || !isTransientDbError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+  }
+  throw lastError;
+}
+
+function isTransientDbError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  if (code === "ETIMEDOUT" || code === "EHOSTUNREACH") return true;
+  const nested = (error as { errors?: unknown }).errors;
+  if (Array.isArray(nested) && nested.some((item) => isTransientDbError(item))) return true;
+  return (
+    error.name === "NeonDbError" ||
+    error.message.includes("fetch failed") ||
+    error.message.includes("ETIMEDOUT") ||
+    error.message.includes("EHOSTUNREACH")
+  );
 }
 
 interface LangfuseDrainClient {

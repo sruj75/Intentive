@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --outDir dist",
+    "migrate": "node scripts/apply-migrations.mjs",
     "start": "node dist/main.js",
     "test": "pnpm --filter \"@intentive/agent-runtime...\" run build && node --test",
     "typecheck": "tsc --noEmit"

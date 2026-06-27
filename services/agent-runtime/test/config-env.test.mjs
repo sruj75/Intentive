@@ -33,6 +33,7 @@ test("loadConfig returns grouped Agent Runtime config for valid env", () => {
       issuer: "https://auth.example.com",
       audience: "intentive-runtime",
     },
+    auth: { mode: "neon", localDevSecret: undefined },
     model: {
       apiKey: "openrouter-secret",
       baseUrl: "https://openrouter.ai/api/v1",
@@ -94,6 +95,28 @@ test("loadConfig accepts model, Langfuse, and Sentry overrides", () => {
     release: "agent-runtime@abc123",
     mode: "errors-only",
   });
+});
+
+test("loadConfig accepts explicit local-dev signed auth mode", () => {
+  const secret = "local-dev-secret-at-least-thirty-two-bytes";
+  const config = loadConfig({
+    ...validEnv,
+    INTENTIVE_AUTH_MODE: "local-dev",
+    INTENTIVE_DEV_AUTH_SECRET: secret,
+  });
+
+  assert.deepEqual(config.auth, { mode: "local-dev", localDevSecret: secret });
+});
+
+test("loadConfig rejects local-dev auth mode without the signing secret", () => {
+  assert.throws(
+    () => loadConfig({ ...validEnv, INTENTIVE_AUTH_MODE: "local-dev" }),
+    (error) => {
+      assert.equal(error instanceof AgentRuntimeConfigError, true);
+      assert.deepEqual(error.invalidKeys, ["INTENTIVE_DEV_AUTH_SECRET"]);
+      return true;
+    },
+  );
 });
 
 test("loadConfig parses reserved observability modes", () => {
