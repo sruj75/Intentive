@@ -81,9 +81,8 @@ pre-user operation per [`../../../docs/PRODUCTION.md` § Agent Runtime First Dep
 3. **Directional secrets must be newline-free.** A trailing newline in
    `INTERNAL_SECRET_TO_RUNTIME` / `INTERNAL_SECRET_FROM_RUNTIME` causes
    `401 auth_failed`. Verify with the byte-count check in PRODUCTION.md.
-4. **Health route drift.** Confirm the GCP internal backend health-check path
-   matches the deployed image's internal liveness route before enabling push
-   deploys (PRODUCTION.md flags `/healthz` vs `/health`).
+4. **Health route.** Confirm the GCP internal backend health-check path is
+   `GET /health` before enabling push deploys.
 5. Update [`CHANGELOG.md`](../CHANGELOG.md) if release behavior changed.
 6. Merge the PR to `main` and confirm the commit on `origin/main`:
 

@@ -102,6 +102,7 @@ Load balancer inventory:
 - Active managed certificate: `agent-runtime-cert`
 - Host rule: `runtime.heyintentive.com -> internal-paths`
 - URL map routes:
+  - `/health` -> `agent-runtime-internal-backend`
   - `/internal/*` -> `agent-runtime-internal-backend`
   - default -> `agent-runtime-ws-backend`
 - Backends:
@@ -109,22 +110,11 @@ Load balancer inventory:
   - `agent-runtime-internal-backend` -> instance group `agent-runtime-ig`, named port `runtime-internal:8081`
 - Health checks:
   - `agent-runtime-ws-tcp-hc`: TCP `8080`
-  - `agent-runtime-internal-http-hc`: currently HTTP `8081` path `/healthz` in production infrastructure
+  - `agent-runtime-internal-http-hc`: HTTP `8081` path `/health`
 
-Important health route note:
-
-- Current repo code after the health cleanup commits makes Agent Runtime internal liveness `GET /health`.
-- The production GCP health check was observed as `/healthz` on 2026-06-20.
-- Before deploying an Agent Runtime image that removes `/healthz`, update `agent-runtime-internal-http-hc` to `/health`, or keep a temporary alias until the health check has been migrated.
-
-Migration command:
+Health-check verification:
 
 ```bash
-gcloud compute health-checks update http agent-runtime-internal-http-hc \
-  --project agentic-accountability \
-  --port 8081 \
-  --request-path /health
-
 gcloud compute health-checks describe agent-runtime-internal-http-hc \
   --project agentic-accountability \
   --format='yaml(name,type,httpHealthCheck.port,httpHealthCheck.requestPath)'

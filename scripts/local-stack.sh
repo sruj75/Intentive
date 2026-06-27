@@ -17,6 +17,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+if [[ -n "${NVM_DIR:-}" && -s "$NVM_DIR/nvm.sh" ]]; then
+  # Conductor agents can inherit an older captured PATH; pin the repo's CI Node.
+  # shellcheck source=/dev/null
+  . "$NVM_DIR/nvm.sh"
+  nvm use 22 >/dev/null
+fi
+
 CP_DIR="services/control-plane"
 AR_DIR="services/agent-runtime"
 CP_PORT=8080
