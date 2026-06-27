@@ -32,6 +32,7 @@ test("valid env loads into a grouped, frozen config", () => {
   assert.equal(cfg.port, 9090);
   assert.equal(cfg.neon.role, "control_plane_app");
   assert.equal(cfg.neonAuth.audience, "intentive");
+  assert.deepEqual(cfg.auth, { mode: "neon", localDevSecret: undefined });
   assert.equal(cfg.runtimeInternal.baseUrl, "https://runtime.internal");
   assert.equal(cfg.runtimeInternal.secretToRuntime, "secret-to-runtime");
   assert.equal(cfg.internalInbound.secretFromRuntime, "secret-from-runtime");
@@ -77,6 +78,24 @@ test("EXPO_ACCESS_TOKEN is optional", () => {
   const { EXPO_ACCESS_TOKEN, ...withoutToken } = validEnv;
   void EXPO_ACCESS_TOKEN;
   assert.equal(loadConfig(withoutToken).expo.accessToken, undefined);
+});
+
+test("local-dev auth mode requires and exposes the local signing secret", () => {
+  const secret = "local-dev-secret-at-least-thirty-two-bytes";
+  const cfg = loadConfig({
+    ...validEnv,
+    INTENTIVE_AUTH_MODE: "local-dev",
+    INTENTIVE_DEV_AUTH_SECRET: secret,
+  });
+
+  assert.deepEqual(cfg.auth, { mode: "local-dev", localDevSecret: secret });
+});
+
+test("local-dev auth mode without a secret names only the missing key", () => {
+  const err = loadErr({ ...validEnv, INTENTIVE_AUTH_MODE: "local-dev" });
+
+  assert.ok(err instanceof ControlPlaneConfigError);
+  assert.deepEqual(err.invalidKeys, ["INTENTIVE_DEV_AUTH_SECRET"]);
 });
 
 test("SENTRY_DSN enables Sentry config with errors-only as the default mode", () => {
