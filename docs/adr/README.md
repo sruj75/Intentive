@@ -77,6 +77,10 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0020 | Local three-grant interlock authoritative over CP capture gate | accepted                                                                                         |
 | 0021 | Permission detection adapted from ScreenPipe                   | accepted                                                                                         |
 | 0022 | Session End Marker before ScreenPipe shutdown                  | accepted                                                                                         |
+| 0023 | Verify reliability and privacy as three guarantees             | accepted                                                                                         |
+| 0024 | In-app silent auto-update on launch and wake                   | accepted                                                                                         |
+| 0025 | Sentry errors-only observability                               | accepted                                                                                         |
+| 0026 | Neon Auth pins better-auth 1.4.18 with a scoped audit ignore   | accepted                                                                                         |
 
 ### Control Plane — `services/control-plane/docs/adr/`
 
