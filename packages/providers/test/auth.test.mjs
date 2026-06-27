@@ -4,7 +4,12 @@ import { createServer } from "node:http";
 
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
 
-import { asJwtVerificationFailure, createJwtVerifier, JwtVerificationError } from "../dist/auth.js";
+import {
+  asJwtVerificationFailure,
+  createJwtVerifier,
+  createLocalDevJwtVerifier,
+  JwtVerificationError,
+} from "../dist/auth.js";
 
 // --- Fake JWKS endpoint -----------------------------------------------------
 //
@@ -64,6 +69,21 @@ async function signToken(
     .sign(key.privateKey);
 }
 
+async function signLocalDevToken(
+  secret,
+  { sub = "user-123", iss = ISSUER, aud = AUDIENCE, expSeconds = 3600 } = {},
+) {
+  const now = Math.floor(Date.now() / 1000);
+  return new SignJWT({})
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(sub)
+    .setIssuer(iss)
+    .setAudience(aud)
+    .setIssuedAt(now)
+    .setExpirationTime(now + expSeconds)
+    .sign(new TextEncoder().encode(secret));
+}
+
 // --- Tracer bullet ----------------------------------------------------------
 
 test("verify resolves the user_id from a valid token's sub claim", async () => {
@@ -76,6 +96,30 @@ test("verify resolves the user_id from a valid token's sub claim", async () => {
   } finally {
     await jwks.close();
   }
+});
+
+test("local dev verifier resolves the user_id from a signed local token", async () => {
+  const secret = "local-dev-secret-at-least-thirty-two-bytes";
+  const verifier = createLocalDevJwtVerifier({ secret, issuer: ISSUER, audience: AUDIENCE });
+
+  const principal = await verifier.verify(await signLocalDevToken(secret, { sub: "dev-user" }));
+
+  assert.deepEqual(principal, { user_id: "dev-user" });
+  await verifier.probe();
+});
+
+test("local dev verifier rejects tokens signed with the wrong secret", async () => {
+  const verifier = createLocalDevJwtVerifier({
+    secret: "local-dev-secret-at-least-thirty-two-bytes",
+    issuer: ISSUER,
+    audience: AUDIENCE,
+  });
+
+  await expectReason(
+    verifier,
+    await signLocalDevToken("different-local-dev-secret-at-least-32-bytes"),
+    "invalid_signature",
+  );
 });
 
 test("probe resolves when the JWKS endpoint is reachable", async () => {
