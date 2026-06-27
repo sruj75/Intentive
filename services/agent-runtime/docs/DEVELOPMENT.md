@@ -17,10 +17,11 @@ For CI/verification see [`../../../docs/TESTING.md`](../../../docs/TESTING.md); 
 the production release path see [`docs/RELEASE.md`](RELEASE.md) and
 [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md).
 
-> **No new code for local dev.** Same config seam (`src/config/env.ts`) as
-> production; only the values differ — an isolated Neon dev branch, loopback URLs,
-> dummy internal secrets, and your own OpenRouter key. Client auth is the **real**
-> Neon Auth instance; there is no local JWT bypass, by design.
+> **No production behavior changes for local dev.** Same config seam
+> (`src/config/env.ts`) as production; local values point at an isolated Neon dev
+> branch, loopback URLs, dummy internal secrets, your own OpenRouter key, and
+> either real Neon Auth or the explicit `INTENTIVE_AUTH_MODE=local-dev` signed-token
+> mode documented in the full local stack runbook.
 
 ---
 
@@ -48,15 +49,16 @@ The local `.env` is git-ignored and pre-filled for the isolated Neon dev branch
 copy-on-write and **never reach production**. Committed template:
 [`.env.example`](../.env.example). What matters locally:
 
-| Var                                                           | Local value                               | Why                                                                                       |
-| ------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`                                          | **your real key** (the one thing to fill) | Required — the companion reply runs through OpenRouter (`RUNTIME_MODEL` default is free). |
-| `PORT` / `INTERNAL_PORT`                                      | `8787` / `8081`                           | Public WS / private internal HTTP. WS moves off 8080 so it doesn't collide with CP.       |
-| `PUBLIC_WS_URL`                                               | `ws://localhost:8787/ws`                  | What the Control Plane hands clients in `GET /agent`; must be loopback-reachable.         |
-| `NEON_DATABASE_URL`                                           | dev branch **direct (non-`-pooler`)**     | LangGraph's persistent connections/prepared statements conflict with PgBouncer pooling.   |
-| `CONTROL_PLANE_INTERNAL_BASE_URL`                             | `http://localhost:8080`                   | Where Post-Message-Back pushes to the Control Plane.                                      |
-| `INTERNAL_SECRET_FROM_CONTROL_PLANE` / `..._TO_CONTROL_PLANE` | dummy, **paired**                         | Must match the Control Plane's `.env` (see its runbook).                                  |
-| `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | the **real** Neon Auth instance           | Local client-JWT verification, same as production.                                        |
+| Var                                                           | Local value                               | Why                                                                                                          |
+| ------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `OPENROUTER_API_KEY`                                          | **your real key** (the one thing to fill) | Required — the companion reply runs through OpenRouter (`RUNTIME_MODEL` default is free).                    |
+| `PORT` / `INTERNAL_PORT`                                      | `8787` / `8081`                           | Public WS / private internal HTTP. WS moves off 8080 so it doesn't collide with CP.                          |
+| `PUBLIC_WS_URL`                                               | `ws://localhost:8787/ws`                  | What the Control Plane hands clients in `GET /agent`; must be loopback-reachable.                            |
+| `NEON_DATABASE_URL`                                           | dev branch connection string              | Runtime-owned schema. On this Mac, the local stack uses the Neon pooler host for more reliable local egress. |
+| `CONTROL_PLANE_INTERNAL_BASE_URL`                             | `http://localhost:8080`                   | Where Post-Message-Back pushes to the Control Plane.                                                         |
+| `INTERNAL_SECRET_FROM_CONTROL_PLANE` / `..._TO_CONTROL_PLANE` | dummy, **paired**                         | Must match the Control Plane's `.env` (see its runbook).                                                     |
+| `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | the **real** Neon Auth instance           | Local client-JWT verification, same as production.                                                           |
+| `INTENTIVE_AUTH_MODE` / `INTENTIVE_DEV_AUTH_SECRET`           | optional `local-dev` pair                 | Local signed JWTs for mocked-auth E2E; omit or set `neon` for real auth.                                     |
 
 ### Database setup
 

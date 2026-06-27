@@ -86,6 +86,16 @@ const verifier =
       });
 
 const registry = createAgentInstanceRepo(sql);
+const resilientRegistry = {
+  loadOrCreate: (input: Parameters<typeof registry.loadOrCreate>[0]) =>
+    retryTransientDb(() => registry.loadOrCreate(input)),
+  loadByAuthSubject: (authSubject: string) =>
+    retryTransientDb(() => registry.loadByAuthSubject(authSubject)),
+  loadByUserId: (userId: string) => retryTransientDb(() => registry.loadByUserId(userId)),
+  recordClientTzByAuthSubject: (authSubject: string, clientTz?: string) =>
+    retryTransientDb(() => registry.recordClientTzByAuthSubject(authSubject, clientTz)),
+  loadUserTz: (userId: string) => retryTransientDb(() => registry.loadUserTz(userId)),
+};
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const sensoryBuffer = createSensoryBufferReader(sql);
@@ -110,10 +120,10 @@ const postMessageBack = createPostMessageBack({
   logger: log,
 });
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
-await memoryStore.setup();
+await retryTransientDb(() => memoryStore.setup());
 const cronBackend = createCronBackend({
   repo: cronJobs,
-  loadUserTz: (userId) => registry.loadUserTz(userId),
+  loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
 });
 const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
 const fallbackFloorSource = createBundledFallbackSource();
@@ -137,10 +147,10 @@ const runtimeAdapter = createDeepAgentsAdapter({
   },
   logger: log,
 });
-await runtimeAdapter.setup();
+await retryTransientDb(() => runtimeAdapter.setup());
 const workingContext = createWorkingContext({
-  readUserProfile: (userId) => readUserProfile(memoryStore, userId, log),
-  readRecentPerception: (userId) => sensoryBuffer.readLatest(userId),
+  readUserProfile: (userId) => retryTransientDb(() => readUserProfile(memoryStore, userId, log)),
+  readRecentPerception: (userId) => retryTransientDb(() => sensoryBuffer.readLatest(userId)),
 });
 const turn = createTurn({
   sql,
@@ -162,7 +172,7 @@ const fireCron = createCronTurnHandler({
   cronJobs,
   cronRuns,
   floorResolver,
-  loadUserTz: (userId) => registry.loadUserTz(userId),
+  loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
   turn,
   logger: log,
 });
@@ -204,7 +214,7 @@ const heartbeatScheduler = createHeartbeatScheduler({
   logger: log,
 });
 const startSession = createStartSession({
-  registry,
+  registry: resilientRegistry,
   wsUrl: config.publicWsUrl,
 });
 const internalApp = createInternalApp({
@@ -218,8 +228,8 @@ const connectHandler = createConnectHandler({
   logger: log,
   sessions: {
     async loadSessionByAuthSubject({ authSubject, clientKind, clientTz }) {
-      await registry.recordClientTzByAuthSubject(authSubject, clientTz);
-      const agentInstance = await registry.loadByAuthSubject(authSubject);
+      await resilientRegistry.recordClientTzByAuthSubject(authSubject, clientTz);
+      const agentInstance = await resilientRegistry.loadByAuthSubject(authSubject);
       if (!agentInstance) {
         return null;
       }
@@ -269,6 +279,36 @@ async function drainLangfuseClient(client: LangfuseDrainClient): Promise<void> {
     return;
   }
   await client.flushAsync?.();
+}
+
+async function retryTransientDb<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === 5 || !isTransientDbError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+  }
+  throw lastError;
+}
+
+function isTransientDbError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  if (code === "ETIMEDOUT" || code === "EHOSTUNREACH") return true;
+  const nested = (error as { errors?: unknown }).errors;
+  if (Array.isArray(nested) && nested.some((item) => isTransientDbError(item))) return true;
+  return (
+    error.name === "NeonDbError" ||
+    error.message.includes("fetch failed") ||
+    error.message.includes("ETIMEDOUT") ||
+    error.message.includes("EHOSTUNREACH")
+  );
 }
 
 interface LangfuseDrainClient {

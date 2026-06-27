@@ -16,11 +16,11 @@ conventions see [`../../../docs/TESTING.md`](../../../docs/TESTING.md); for the
 production release path see [`docs/RELEASE.md`](RELEASE.md) and
 [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md).
 
-> **No new code for local dev.** The service reads exactly the same config seam
-> (`src/config/env.ts`) it reads in production. The only differences are the
-> values: an isolated Neon dev branch instead of the production branch, loopback
-> URLs, and dummy internal secrets. Auth is the **real** Neon Auth instance — there
-> is no local JWT bypass, by design (it would diverge the service from production).
+> **No production behavior changes for local dev.** The service reads the same
+> config seam (`src/config/env.ts`) it reads in production. The local values point
+> at an isolated Neon dev branch, loopback URLs, dummy internal secrets, and either
+> real Neon Auth or the explicit `INTENTIVE_AUTH_MODE=local-dev` signed-token mode
+> documented in the full local stack runbook.
 
 ---
 
@@ -53,6 +53,7 @@ it are copy-on-write and **never reach production**. The committed template is
 | `PORT`                                                        | `8080`                          | HTTP surface clients + the internal endpoints listen on.                  |
 | `NEON_DATABASE_URL`                                           | dev branch **pooled** string    | CP uses the Neon HTTP driver; pooled is fine.                             |
 | `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | the **real** Neon Auth instance | JWT verification. Not branched — same as production, safe to commit.      |
+| `INTENTIVE_AUTH_MODE` / `INTENTIVE_DEV_AUTH_SECRET`           | optional `local-dev` pair       | Local signed JWTs for mocked-auth E2E; omit or set `neon` for real auth.  |
 | `RUNTIME_INTERNAL_BASE_URL`                                   | `http://localhost:8081`         | Where `GET /agent` makes its Session Start call (Agent Runtime internal). |
 | `INTERNAL_SECRET_TO_RUNTIME` / `INTERNAL_SECRET_FROM_RUNTIME` | dummy strings, **paired**       | Must match the Agent Runtime's `.env` (see its runbook).                  |
 

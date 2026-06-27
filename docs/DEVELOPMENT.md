@@ -16,12 +16,13 @@ runbook:
 | Mobile Client  | [`apps/mobile/docs/DEVELOPMENT.md`](../apps/mobile/docs/DEVELOPMENT.md)                       |
 | Desktop Client | [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md)                     |
 
-> **This changes no production code.** Every deployable boots from the same config
-> seam it uses in production; only the values differ — an **isolated Neon dev
+> **This changes no production behavior.** Every deployable boots from the same config
+> seam it uses in production; local-only values differ — an **isolated Neon dev
 > branch** instead of production, loopback URLs, dummy internal secrets, and your
-> own OpenRouter key. **Auth is the real Neon Auth instance** (Google sign-in); there
-> is deliberately no local JWT bypass, because adding one would diverge the servers
-> from production. The real sign-in is what makes the journey faithful.
+> own OpenRouter key. Auth can run in either real Neon Auth mode or the explicit
+> `local-dev` signed-token mode. `local-dev` still verifies a real JWT signature
+> with the same issuer/audience/subject contract; it just uses a local HS256
+> signing secret instead of the Neon JWKS endpoint.
 
 ---
 
@@ -54,10 +55,27 @@ so nothing you do locally can affect production.
 1. **OpenRouter key.** Put a real key in `services/agent-runtime/.env`
    (`OPENROUTER_API_KEY=`). It is the one secret not pre-filled, and the only thing
    the launcher requires you to set. (A free `RUNTIME_MODEL` is the default.)
-2. **A booted iOS simulator + a Mobile dev build.** Follow
+2. **Local mocked auth, if you do not want Google sign-in.** In both
+   `services/control-plane/.env` and `services/agent-runtime/.env`, set the same
+   local-only values:
+
+   ```bash
+   INTENTIVE_AUTH_MODE=local-dev
+   INTENTIVE_DEV_AUTH_SECRET=<at-least-32-local-only-characters>
+   ```
+
+   Then mint a bearer token when you need one:
+
+   ```bash
+   scripts/local-dev-auth-token.mjs --user-id local-dev-user
+   ```
+
+   The token is accepted by both server deployables only in `local-dev` mode.
+
+3. **A booted iOS simulator + a Mobile dev build.** Follow
    [`apps/mobile/docs/DEVELOPMENT.md`](../apps/mobile/docs/DEVELOPMENT.md) once to
    install the dev client.
-3. _(Optional)_ **Desktop**, if you want to exercise capture →
+4. _(Optional)_ **Desktop**, if you want to exercise capture →
    [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md).
 
 The two services' `.env` files are pre-generated; if either is missing, copy from
@@ -101,8 +119,9 @@ scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
 With the stack up and the Mobile dev client pointed at `:8080`, walk it and confirm
 each step. This is the end-to-end product loop the local stack exists to evaluate:
 
-1. **Cold launch → Identity Gate.** Sign in with Google (real Neon Auth). → a real
-   User JWT now flows on every request.
+1. **Cold launch → Identity Gate.** Sign in with Google, or use the local signed
+   JWT path for server/backend E2E. → a server-valid User JWT now flows on every
+   request.
 2. **`GET /me` resolves gates.** Consent Primer → Sibling Invitation appear in order;
    completing them writes cross-client state (watch the Control Plane log).
 3. **Enter chat → `GET /agent`.** The Control Plane enforces the gates, runs Session
@@ -142,9 +161,9 @@ around; delete it from the Neon console / MCP if you want a clean slate.
 
 1. **OpenRouter key is required** — the launcher refuses to start until you replace
    the placeholder in the Agent Runtime `.env`.
-2. **Auth is real.** There is no offline/no-auth mode for the servers; the journey
-   needs a genuine Google sign-in. The Mobile dev auth provider walks the gate UI but
-   yields no server-valid JWT, so it cannot drive the live turn.
+2. **Auth is still verified.** `local-dev` is mocked identity, not no-auth. Both
+   services must share the same `INTENTIVE_DEV_AUTH_SECRET`, and the token must
+   have the configured issuer and audience.
 3. **`localhost` works on the simulator, not on a physical phone.** Use the Mac's LAN
    IP (and the same for `PUBLIC_WS_URL` if you test on-device).
 4. **Port discipline:** CP `8080`, Runtime WS `8787`, Runtime internal `8081`. If a
@@ -156,3 +175,16 @@ around; delete it from the Neon console / MCP if you want a clean slate.
 6. **Production is untouchable from here.** The stack only ever talks to the isolated
    `dev-local-smoke` branch; keep it that way — never repoint a `.env` at the
    production branch.
+
+## Backend E2E without Google sign-in
+
+With `scripts/local-stack.sh` running and both services set to
+`INTENTIVE_AUTH_MODE=local-dev`, run:
+
+```bash
+scripts/local-backend-e2e.mjs
+```
+
+It mints a short-lived local JWT, clears the two mobile gates, calls `GET /agent`,
+opens the Runtime WebSocket, sends one `user_message`, and waits for one
+`companion_message`.

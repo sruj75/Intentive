@@ -24,6 +24,10 @@ if [[ -n "${NVM_DIR:-}" && -s "$NVM_DIR/nvm.sh" ]]; then
   nvm use 24 >/dev/null
 fi
 
+# Neon exposes IPv6 and IPv4 addresses. Some local networks do not have usable
+# IPv6 egress, so prefer IPv4 for the two local Node services.
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
+
 CP_DIR="services/control-plane"
 AR_DIR="services/agent-runtime"
 CP_PORT=8080
@@ -92,8 +96,8 @@ wait_health() {
       exit 1
     fi
     tries=$((tries + 1))
-    if [[ $tries -gt 60 ]]; then
-      echo "✗ $name did not become healthy within ~30s. See $4" >&2
+    if [[ $tries -gt 240 ]]; then
+      echo "✗ $name did not become healthy within ~120s. See $4" >&2
       exit 1
     fi
     sleep 0.5

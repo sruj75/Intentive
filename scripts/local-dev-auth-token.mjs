@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
-import { SignJWT } from "jose";
-
 const root = resolve(import.meta.dirname, "..");
+const providerRequire = createRequire(resolve(root, "packages/providers/package.json"));
+const { SignJWT } = await import(providerRequire.resolve("jose"));
 const cpEnvPath = resolve(root, "services/control-plane/.env");
 const env = readEnvFile(cpEnvPath);
 
