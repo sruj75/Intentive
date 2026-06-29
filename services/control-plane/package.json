@@ -16,7 +16,7 @@
     "@intentive/providers": "workspace:*",
     "@neondatabase/serverless": "^1.1.0",
     "expo-server-sdk": "^6.1.0",
-    "hono": "^4.12.25",
+    "hono": "^4.12.27",
     "zod": "^3.23.0"
   },
   "devDependencies": {
