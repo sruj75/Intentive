@@ -23,7 +23,15 @@ import {
 
 const needsInviteSource: LaunchStateSource = {
   read: () =>
-    Promise.resolve({ signedIn: true, consent: "completed", siblingInvitation: "pending" }),
+    Promise.resolve({
+      signedIn: true,
+      consent: "completed",
+      onboarding: "completed",
+      siblingInvitation: "pending",
+      // Trial already done so skipping the sibling gate lands directly in chat —
+      // keeps this test about the sibling gate, not the trial that follows it.
+      trial: "completed",
+    }),
 };
 
 function Destination(): React.JSX.Element {

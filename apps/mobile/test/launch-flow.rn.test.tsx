@@ -1,9 +1,11 @@
 /**
  * RN harness-loop test: proves the reactive write path in the React runtime —
- * a gate screen's dev control writes its status into the shared store, and the
- * resolver re-evaluates to the next destination. (The router replacement itself is
- * verified by the simulator walk-through; here we assert the store↔resolver loop
- * that drives it.)
+ * each gate screen's action writes its status into the shared store, and the
+ * resolver re-evaluates to the next destination. A `GateSwitch` renders exactly
+ * the screen the resolver points at (mirroring the real root-layout replacement),
+ * so the whole signed-out → chat walk runs through one screen at a time. (The
+ * router replacement itself is verified by the simulator walk-through; here we
+ * assert the store↔resolver loop that drives it.)
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Text } from "react-native";
@@ -14,7 +16,9 @@ import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
 import { IdentityGate } from "../src/domains/auth/ui/identity-gate";
 import type { AuthAdapter } from "../src/domains/auth/types/auth";
 import { ConsentPrimer } from "../src/domains/onboarding/ui/consent-primer";
+import { OnboardingFunnel } from "../src/domains/onboarding/ui/onboarding-funnel";
 import { SiblingInvitation } from "../src/domains/onboarding/ui/sibling-invitation";
+import { FreeTrial } from "../src/domains/onboarding/ui/free-trial";
 import {
   LaunchStateProvider,
   createControlPlaneLaunchStateSource,
@@ -46,6 +50,28 @@ function Destination() {
   return <Text testID="dest">{resolveLaunchState(state)}</Text>;
 }
 
+// Renders exactly the screen the resolver points at — the store↔resolver loop's
+// single active screen, the same one the root layout would replace to.
+function GateSwitch() {
+  const { state } = useLaunchState();
+  switch (resolveLaunchState(state)) {
+    case "SIGNED_OUT":
+      return <IdentityGate />;
+    case "MISSING_CONSENT":
+      return <ConsentPrimer />;
+    case "MISSING_ONBOARDING":
+      return <OnboardingFunnel requestNotificationPermission={() => Promise.resolve("granted")} />;
+    case "SIBLING_INVITATION_PENDING":
+      return <SiblingInvitation />;
+    case "MISSING_TRIAL":
+      return <FreeTrial />;
+    case "READY_FOR_CHAT":
+      return <Text>chat surface</Text>;
+    default:
+      return null; // RESOLVING → splash
+  }
+}
+
 function renderWithSource(source: LaunchStateSource) {
   return render(
     <LaunchStateProvider source={source}>
@@ -60,9 +86,7 @@ function renderHarness(source: LaunchStateSource = walkSource) {
       <LaunchStateProvider source={source}>
         <AuthAdapterProvider adapter={signInOkAdapter}>
           <Destination />
-          <IdentityGate />
-          <ConsentPrimer />
-          <SiblingInvitation />
+          <GateSwitch />
         </AuthAdapterProvider>
       </LaunchStateProvider>
     </SafeAreaProvider>,
@@ -73,31 +97,57 @@ async function expectDestination(value: string) {
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent(value));
 }
 
-test("walking the gates (skip path) drives the resolver to chat", async () => {
+// Walk the collapsed onboarding funnel (name → source → permissions).
+async function walkOnboardingFunnel() {
+  await waitFor(() => expect(screen.getByText("What's your name?")).toBeTruthy());
+  fireEvent.changeText(screen.getByPlaceholderText("Enter your name"), "Ada");
+  fireEvent.press(screen.getByText("Continue"));
+
+  await waitFor(() => expect(screen.getByText("How did you find us?")).toBeTruthy());
+  fireEvent.press(screen.getByText("App Store"));
+  fireEvent.press(screen.getByText("Continue"));
+
+  await waitFor(() => expect(screen.getByText("Stay in the loop")).toBeTruthy());
+  fireEvent.press(screen.getByText("Continue"));
+}
+
+test("walking the gates (skip the Mac invite) drives the resolver to chat", async () => {
   renderHarness();
   await expectDestination("SIGNED_OUT");
 
   fireEvent.press(screen.getByText("Continue with Google"));
   await expectDestination("MISSING_CONSENT");
 
-  fireEvent.press(screen.getByText("Continue"));
+  fireEvent.press(screen.getByText("Agree & Continue"));
+  await expectDestination("MISSING_ONBOARDING");
+
+  await walkOnboardingFunnel();
   await expectDestination("SIBLING_INVITATION_PENDING");
 
   fireEvent.press(screen.getByText("Not now"));
+  await expectDestination("MISSING_TRIAL");
+
+  fireEvent.press(screen.getByText("Start free trial"));
   await expectDestination("READY_FOR_CHAT");
 });
 
-test("completing (not skipping) the sibling invitation also reaches chat", async () => {
+test("completing (not skipping) the Mac invite also reaches chat", async () => {
   renderHarness();
   await expectDestination("SIGNED_OUT");
 
   fireEvent.press(screen.getByText("Continue with Google"));
   await expectDestination("MISSING_CONSENT");
 
-  fireEvent.press(screen.getByText("Continue"));
+  fireEvent.press(screen.getByText("Agree & Continue"));
+  await expectDestination("MISSING_ONBOARDING");
+
+  await walkOnboardingFunnel();
   await expectDestination("SIBLING_INVITATION_PENDING");
 
   fireEvent.press(screen.getByText("Mark Mac connected (dev)"));
+  await expectDestination("MISSING_TRIAL");
+
+  fireEvent.press(screen.getByText("Start free trial"));
   await expectDestination("READY_FOR_CHAT");
 });
 
@@ -136,7 +186,8 @@ test("the real Control Plane source boots to signed-out when there is no session
 
 test("the real Control Plane source hydrates a signed-in user through to chat", async () => {
   // Real source → store → resolver, in the React runtime: a valid /me with no
-  // pending gate lands the user in chat.
+  // pending gate lands the user in chat (the funnel + trial pass through until
+  // the Control Plane can report them).
   const source = createControlPlaneLaunchStateSource({
     baseUrl: "https://cp.test",
     getUserJwt: () => Promise.resolve("jwt-123"),

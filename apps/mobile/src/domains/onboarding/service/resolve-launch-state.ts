@@ -12,8 +12,15 @@
  *   2. a gate we must check is
  *      still unknown (null)     → RESOLVING       (show splash)
  *   3. consent not done         → MISSING_CONSENT
- *   4. sibling invite pending   → SIBLING_INVITATION_PENDING
- *   5. otherwise                → READY_FOR_CHAT
+ *   4. onboarding funnel not done → MISSING_ONBOARDING
+ *   5. sibling invite pending   → SIBLING_INVITATION_PENDING
+ *   6. trial not done           → MISSING_TRIAL
+ *   7. otherwise                → READY_FOR_CHAT
+ *
+ * This order preserves the omi-modeled screenshot sequence (Data & Privacy →
+ * funnel → Set up Mac → Free Trial). The funnel (name → source → permissions)
+ * is one collapsed gate; the re-triggerable gates (consent, sibling, trial)
+ * stay distinct — see apps/mobile/docs/adr/0019-*.
  *
  * `completed` and `skipped` are equivalent for advancing past a gate; only
  * `pending` blocks. See apps/mobile/ARCHITECTURE.md (Launch State Resolver)
@@ -37,8 +44,14 @@ export function resolveLaunchState(state: LaunchState): LaunchDestination {
   if (state.consent === null) return "RESOLVING";
   if (!isDone(state.consent)) return "MISSING_CONSENT";
 
+  if (state.onboarding === null) return "RESOLVING";
+  if (!isDone(state.onboarding)) return "MISSING_ONBOARDING";
+
   if (state.siblingInvitation === null) return "RESOLVING";
   if (!isDone(state.siblingInvitation)) return "SIBLING_INVITATION_PENDING";
+
+  if (state.trial === null) return "RESOLVING";
+  if (!isDone(state.trial)) return "MISSING_TRIAL";
 
   return "READY_FOR_CHAT";
 }

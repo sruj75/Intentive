@@ -36,7 +36,13 @@ function SignInAgain() {
 
 function accountSurfaceTree({
   onSignOut = () => Promise.resolve(),
-  launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
+  launchState = {
+    signedIn: true,
+    consent: "completed",
+    onboarding: "completed",
+    siblingInvitation: "completed",
+    trial: "completed",
+  },
   launchStateSource,
   controlPlaneBaseUrl = "https://cp.test",
   runtimeConnectionState = "connected",
@@ -73,7 +79,13 @@ function accountSurfaceTree({
 
 function renderAccountSurface({
   onSignOut = () => Promise.resolve(),
-  launchState = { signedIn: true, consent: "completed", siblingInvitation: "completed" },
+  launchState = {
+    signedIn: true,
+    consent: "completed",
+    onboarding: "completed",
+    siblingInvitation: "completed",
+    trial: "completed",
+  },
   controlPlaneBaseUrl = "https://cp.test",
   runtimeConnectionState = "connected",
   accountState,
@@ -142,12 +154,16 @@ test("logout keeps completed gate progress as a fallback when re-login has no se
       .mockResolvedValueOnce({
         signedIn: true,
         consent: "completed",
+        onboarding: "completed",
         siblingInvitation: "skipped",
+        trial: "completed",
       })
       .mockResolvedValueOnce({
         signedIn: false,
         consent: null,
+        onboarding: null,
         siblingInvitation: null,
+        trial: null,
       }),
   };
 
@@ -169,12 +185,16 @@ test("signing in as a different account reconciles gates instead of inheriting p
       .mockResolvedValueOnce({
         signedIn: true,
         consent: "completed",
+        onboarding: "completed",
         siblingInvitation: "skipped",
+        trial: "completed",
       })
       .mockResolvedValueOnce({
         signedIn: true,
         consent: "pending",
+        onboarding: "pending",
         siblingInvitation: "pending",
+        trial: "pending",
       }),
   };
 
@@ -191,7 +211,13 @@ test("signing in as a different account reconciles gates instead of inheriting p
 
 test("manual Mac setup guidance does not revive a skipped launch gate", async () => {
   renderAccountSurface({
-    launchState: { signedIn: true, consent: "completed", siblingInvitation: "skipped" },
+    launchState: {
+      signedIn: true,
+      consent: "completed",
+      onboarding: "completed",
+      siblingInvitation: "skipped",
+      trial: "completed",
+    },
   });
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent("READY_FOR_CHAT"));
 

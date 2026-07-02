@@ -21,7 +21,7 @@ The interface that hydrates and reconciles **Launch State** from the durable sou
 _Avoid_: gate repo, me-client
 
 **Launch Destination**:
-The resolver's output — exactly one of `RESOLVING`, `SIGNED_OUT`, `MISSING_CONSENT`, `SIBLING_INVITATION_PENDING`, `READY_FOR_CHAT`. `RESOLVING` means state is not yet known and the root layout shows the splash — so the resolver owns the splash decision too, not the layout. The root layout redirects to the matching route zone.
+The resolver's output — exactly one of `RESOLVING`, `SIGNED_OUT`, `MISSING_CONSENT`, `MISSING_ONBOARDING`, `SIBLING_INVITATION_PENDING`, `MISSING_TRIAL`, `READY_FOR_CHAT`. `RESOLVING` means state is not yet known and the root layout shows the splash — so the resolver owns the splash decision too, not the layout. The root layout redirects to the matching route zone.
 _Avoid_: screen, page, next step
 
 **Launch Route**:
@@ -48,13 +48,29 @@ _Avoid_: session token, access token, runtime token
 The Mobile Client's errors-only Sentry seam. It captures unhandled runtime failures and explicitly reported **Runtime Adapter** / **Auth Adapter** failures through `src/providers/telemetry`, without performance tracing, replay, profiling, conversation bodies, or **Conversation History** payloads. Domains depend only on the `Telemetry` port; `@sentry/react-native` stays behind the provider.
 _Avoid_: analytics, session replay, tracing, observability SDK
 
+**Get Started**:
+The pre-auth landing — the first thing a cold, signed-out user sees, rendered as the first screen of the signed-out `/(gates)/identity` zone before the sign-in options. It is **not** a **Pre-Chat Gate** (there is no signed-in truth to project yet): it carries no **Launch State** field and steps forward locally to the **Identity Gate**, never across a gate boundary. Copy explains continuity, not features; the hero art is deferred (a blank themed panel in the scaffold).
+_Avoid_: welcome carousel, intro slides
+
 **Consent Primer**:
-The **Pre-Chat Gate** shown to a signed-in user whose relationship has not yet consented — a short, trust-setting explainer of memory, follow-ups, and user control. A single affirmative screen (no decline path; `Gate Status` has no `declined`): accepting writes `consent: "completed"` into **Launch State** optimistically via the store mutator. The screen calls no auth SDK, no consent service, and **never requests notification permission**. The durable `POST /consent` and cross-client suppression are the Control Plane's (#26); the Mobile screen is unchanged when they land. See [`adr/0013`](docs/adr/0013-mobile-consent-primer-writes-launch-state-directly.md).
-_Avoid_: consent screen, terms gate, privacy prompt, permission primer
+The **Pre-Chat Gate** shown to a signed-in user who has not yet accepted data & privacy terms — the **Data & Privacy** screen: what data Intentive collects and how it is processed, plus links to the Privacy Policy & Terms of Service. A single affirmative screen (no decline path; `Gate Status` has no `declined`): "Agree & Continue" is acceptance of the terms and writes `consent: "completed"` into **Launch State** optimistically via the store mutator. The screen calls no auth SDK, no consent service, and **never requests notification permission** — that is the separate **Grant Permissions** screen. The durable `POST /consent` and cross-client suppression are the Control Plane's (#26); the Mobile screen is unchanged when they land. See [`adr/0013`](docs/adr/0013-mobile-consent-primer-writes-launch-state-directly.md). The earlier "memory, follow-ups, and user control" framing was wrong; relationship/memory explanation lives in-chat (ADR-0006 as superseded), not here.
+_Avoid_: consent screen, permission primer
+
+**Onboarding**:
+The single collapsed **Pre-Chat Gate** for the one-time personalization funnel — name → **Acquisition Source** ("How did you find us?") → **Grant Permissions** — shown after the **Consent Primer**. These three steps never independently re-trigger, so they are one gate (`onboarding: "completed"`), not three: the funnel's screens step forward with local state _below_ the resolver's granularity (the resolver reports `MISSING_ONBOARDING` throughout), and only the last step writes the **Gate Status**. Modeled on the industry-norm "onboarding complete" flag. The entered name is intentionally not modeled in **Launch State** — persisting it is a later Control Plane concern. See [`adr/0019`](docs/adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md).
+_Avoid_: profile setup, signup wizard, onboarding carousel
+
+**Grant Permissions**:
+The last step of the **Onboarding** funnel — an omi-style, deliberately simple notification-permission ask (notifications only; no location prompt). Continue fires the OS permission prompt and then advances, always, whatever the user answers. The ask is _injected_ into the step (the `(onboarding)` route wires the real `expo-notifications` port), so the `onboarding` domain imports nothing notification-related. This moves the permission **prompt** earlier than "first chat entry"; registering the Expo Push Token still happens around first chat entry, and the port does not re-prompt once permission is decided.
+_Avoid_: permission primer, soft ask
 
 **Sibling Client Invitation**:
 The **Pre-Chat Gate** shown after the **Consent Primer** — a skippable, capability-honest invitation to set up the **Desktop Client** so the companion gets fuller context. It is static guidance only: an explainer of what connecting the Mac improves plus where to get it (no QR, deep link, email, or account pairing — pairing is the Control Plane's Device Registry, #27). Its only first-party action is **"Not now"**, which writes `siblingInvitation: "skipped"` into **Launch State** optimistically; the resolver advances to **Companion Chat**. The phone never claims the Mac connected — a real `completed` is server-observed (the Mac registers via #27 and `GET /me` reports it, #26); a `__DEV__`-only control exercises the completed path. No live detection in v1: a Mac that connects mid-session is picked up on the next state resolve (hydrate-on-mount, [`adr/0011`](docs/adr/0011-mobile-launch-state-as-in-memory-projection-of-cp-gate-truth.md)). A "required/blocking" variant is deferred — honest handling of "you need the Mac for this" is contextual in-chat (#41), not a launch block. See [`adr/0014`](docs/adr/0014-mobile-sibling-invitation-skippable-invite-screen.md).
 _Avoid_: macOS onboarding, desktop pairing wizard, relationship onboarding, device-linking screen
+
+**Free Trial**:
+The **Pre-Chat Gate** just before **Companion Chat** — a cosmetic trial-offer screen whose single action writes `trial: "completed"` and lets the resolver advance to chat. Its own gate (not folded into **Onboarding**) because the entitlement re-checks on expiry: a lapsed user sees it again, a subscriber never does. v1 is cosmetic only — the button just advances; StoreKit/billing, real entitlements, and a Control-Plane-reported trial state are deferred (`packages/api-contract`). See [`adr/0019`](docs/adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md).
+_Avoid_: paywall, upsell
 
 **Companion Chat**:
 The Mobile Client's single chat surface and the only chat UI in **Intentive** v1 — the **Companion** conversation rendered over **Conversation History** server-truth. Composed by `ui/companion-chat.tsx` (Intentive Chat Components over `@assistant-ui/react-native`, ADR 0009) and fed by the **Runtime Adapter**; it persists nothing locally.
@@ -101,10 +117,12 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - The **Launch State Resolver** reads **Launch State** and returns one **Launch Destination**.
 - The root layout maps that **Launch Destination** to one **Launch Route** (`route-for-destination.ts`) and replaces to it; `RESOLVING` maps to the splash, not a redirect.
 - A gate screen completing writes its **Gate Status** into **Launch State**; the root layout reactively redirects via the resolver. Gate screens never navigate forward themselves.
-- **Pre-Chat Gate** ordering (Identity → Consent → Sibling Invitation → Chat) lives only inside the resolver.
+- **Pre-Chat Gate** ordering (Identity → Consent → **Onboarding** → Sibling Invitation → **Free Trial** → Chat) lives only inside the resolver. **Get Started** precedes the Identity Gate inside the signed-out zone but is not a gate — it carries no **Launch State** field and steps forward locally.
 - The **Identity Gate** calls the **Auth Adapter**; on success it writes `signedIn` into **Launch State** (the seam #18 left) and never navigates forward itself.
 - The **Account Surface** shows signed-in identity only through the **Auth Adapter** or Control-Plane-owned account state. It never imports a concrete **Auth Provider** or auth SDK to read profile details.
-- The **Consent Primer** writes `consent: "completed"` into **Launch State** on accept (no service layer between screen and store); the resolver advances it to the next gate. Notification permission is never requested here and is never modeled as relationship consent.
+- The **Consent Primer** (the **Data & Privacy** screen) writes `consent: "completed"` into **Launch State** on accept (no service layer between screen and store); the resolver advances it to the next gate. Notification permission is never requested here — that is the separate **Grant Permissions** step.
+- The **Onboarding** funnel collapses name → **Acquisition Source** → **Grant Permissions** into one gate: its screens step forward with local state and write nothing until the last step writes `onboarding: "completed"`. The **Grant Permissions** step takes an injected notification-permission ask (wired by the `(onboarding)` route), so the `onboarding` domain never imports the `notifications` domain.
+- The **Free Trial** gate writes `trial: "completed"` on its single action; the resolver advances to **Companion Chat**. It is cosmetic in v1 — no billing — and stays its own gate because the entitlement re-checks on expiry.
 - The **Sibling Client Invitation** writes `siblingInvitation: "skipped"` on "Not now"; a real `completed` is server-observed (the Mac registers via #27, surfaced by `GET /me` #26), never claimed by the phone. The resolver treats `skipped` and `completed` alike — both advance to **Companion Chat**.
 - The **Auth Adapter** selects an **Auth Provider**; only the **Neon Auth** provider yields a **User JWT**. Verifying that **User JWT** is the Control Plane's job (#23), not the Mobile Client's.
 - **Telemetry** reports Mobile Client runtime/auth failures through an injected provider seam. It is additive to user-visible error state and never stores or sends **Conversation History** as telemetry context.
@@ -119,3 +137,7 @@ _Avoid_: read receipt, sent/delivered ticks, ack status
 - Logout starts in the **Account Surface**, calls the **Auth Adapter**'s `signOut()`, then marks **Launch State** signed out so the **Launch State Resolver** returns the signed-out path. The Account Surface never navigates to the Identity Gate directly.
 - Visible **Companion Chat** UI uses **Companion** language, not assistant, bot, or agent labels.
 - The **Runtime Adapter** reconciles each outbound `user_message` to its server-truth copy by `message_id` to drive **Delivery Status**; the same dedupe collapses any duplicated inbound message (including a re-triggered opening).
+
+## Flagged ambiguities
+
+- **Consent Primer** was originally defined as a memory/relationship trust explainer ("How Intentive remembers"). Resolved 2026-07-02: that framing was wrong — it is the **Data & Privacy** acceptance (what data is collected/processed + Privacy Policy & Terms of Service). Memory/relationship explanation moves in-chat (ADR-0006 as superseded). Scaffold uses omi's copy verbatim as a placeholder; true Intentive data-flow copy and real policy documents are a later polish dependency and must not ship to a real build.

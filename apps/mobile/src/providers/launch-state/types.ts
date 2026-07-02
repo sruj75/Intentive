@@ -25,11 +25,20 @@ export type GateStatus = "pending" | "completed" | "skipped";
  * is `null` while its answer is genuinely unknown — token not yet read, or the
  * Control Plane's `GET /me` not yet returned. A `null` on a gate the resolver
  * needs to check yields `RESOLVING` (splash).
+ *
+ * `onboarding` is the one-time personalization funnel (name → acquisition source
+ * → grant permissions), collapsed into a single gate because those steps never
+ * independently re-trigger — see apps/mobile/docs/adr/0019-*. `trial` is the Free
+ * Trial gate, its own gate because entitlement re-checks on expiry (lapsed users
+ * see it again, subscribers never do). The three re-triggerable gates —
+ * `consent`, `siblingInvitation`, `trial` — stay distinct; the funnel collapses.
  */
 export interface LaunchState {
   signedIn: boolean | null;
   consent: GateStatus | null;
+  onboarding: GateStatus | null;
   siblingInvitation: GateStatus | null;
+  trial: GateStatus | null;
 }
 
 /**
@@ -41,5 +50,7 @@ export type LaunchDestination =
   | "RESOLVING"
   | "SIGNED_OUT"
   | "MISSING_CONSENT"
+  | "MISSING_ONBOARDING"
   | "SIBLING_INVITATION_PENDING"
+  | "MISSING_TRIAL"
   | "READY_FOR_CHAT";

@@ -26,57 +26,89 @@ EAS cloud, and simulator builds need **no Apple credentials**.
 
 ## Agent runbook
 
-Run from the repo root unless a step says otherwise. This is the exact sequence,
-with the commands that are known to work. It uses `eas build --local` (a portable
-artifact, mirrors the cloud build). **For day-to-day iteration prefer the faster,
-cached `pnpm ios` loop — see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight).**
+Run from the repo root unless a step says otherwise. This runbook is **cache-aware**:
+it does the cheapest thing that leaves a dev client running on a booted simulator, so
+only the **first** build on a machine costs the full ~10–20 min — every build after
+reuses the on-disk cache, and JS/TS-only edits need no build at all.
+
+**Which path?** (see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight) for the why)
+
+- **Dev client already installed on a booted sim + no native change** → don't build;
+  jump to step 5 (start Metro + reload). Seconds.
+- **First build, or a native change to rebuild** → run the steps below; the build
+  itself is `pnpm ios` (step 3), the **cached** in-place build. A "native change" is a
+  new native dep, a changed/added config plugin, an `app.json` native key, an SDK
+  bump, or icons/splash. First run is cold (~10–20 min); cached and fast every run
+  after.
+
+The build step is **`pnpm ios`** (`expo run:ios`) on purpose: it compiles in place
+into `apps/mobile/ios/` and **keeps** Pods + Xcode DerivedData + the downloaded RN
+xcframeworks between runs, and also installs to the sim and starts Metro. Reach for
+`eas build --local` **only** when you need the portable `.tar.gz` — it can't cache
+(see [Portable artifact](#portable-artifact-eas-local-build) below).
 
 ```bash
 # 0. (one-time / when shared contracts change) build the workspace deps Metro needs
 pnpm --filter "@intentive/mobile^..." build
 
-# 1. generate the native iOS project from app.json (CNG — ios/ is git-ignored, see ADR-0017)
-cd apps/mobile
-npx expo prebuild -p ios           # idempotent; add --clean for a from-scratch regen
-
-# 2. produce the local simulator dev build  →  apps/mobile/build-<ts>.tar.gz
-eas build --platform ios --profile development --local --non-interactive
-
-# 3. boot a simulator (skip if one is already booted)
-xcrun simctl boot "iPhone 16"        # or any available device; UDID also works
+# 1. boot a simulator (skip if one is already booted)
+xcrun simctl boot "iPhone 16"             # or any available device; UDID also works
 open -a Simulator
 
-# 4. install the freshly built app onto the booted simulator
-APP_TGZ=$(ls -t build-*.tar.gz | head -1)
-rm -rf /tmp/intentive-app && mkdir -p /tmp/intentive-app
-tar -xzf "$APP_TGZ" -C /tmp/intentive-app
-xcrun simctl install booted /tmp/intentive-app/Intentive.app   # bundle id: com.heyintentive.expo
+# 2. generate the native iOS project from app.json (CNG — ios/ is git-ignored, see ADR-0017)
+cd apps/mobile
+npx expo prebuild -p ios                  # skip if ios/ exists & nothing native changed; --clean forces a regen
 
-# 5. start Metro (leave running; backgrounded by the agent)
-pnpm dev                                  # = expo start, serves http://localhost:8081
+# 3. CACHED in-place build + install on the booted sim + start Metro, all in one.
+#    Reuses ios/Pods, Xcode DerivedData, and the RN xcframeworks → seconds-to-minutes
+#    after the first cold build. bundle id: com.heyintentive.expo
+pnpm ios --device "iPhone 16"             # = expo run:ios; --device targets a booted sim by name or UDID
+
+# 4. confirm it rendered
+xcrun simctl io booted screenshot /tmp/intentive-sim.png
+
+# --- Dev client already installed and nothing native changed? Skip 0–4; just start
+#     Metro and point the client at it — JS/TS hot-reloads, no native build: ---
+
+# 5. start Metro (pnpm ios in step 3 already started it; run this only if it isn't up)
+pnpm --dir apps/mobile dev                # = expo start, serves http://localhost:8081
 
 # 6. launch the dev client and point it at Metro
 xcrun simctl launch booted com.heyintentive.expo
 xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
-
-# 7. confirm it rendered
-xcrun simctl io booted screenshot /tmp/intentive-sim.png
 ```
 
 A successful run shows `iOS Bundled <N>ms … (NNNN modules)` in the Metro log and the
-app rendering in the screenshot (behind the dev-menu sheet). Report the build
-artifact path and the screenshot.
+app rendering in the screenshot (behind the dev-menu sheet). Report the screenshot.
 
-> **Why prebuild (step 1)?** The native `ios/` project isn't committed — it's
-> generated from `app.json` + config plugins (Continuous Native Generation). Step 1
-> materializes it. `eas build --local` will also auto-prebuild when `ios/` is
-> absent, so on a machine that already has it you can skip step 1; running it is
-> just the deterministic choice. There is no `android/` — this is an iOS-only
+> **Why prebuild (step 2)?** The native `ios/` project isn't committed — it's
+> generated from `app.json` + config plugins (Continuous Native Generation). Step 2
+> materializes it, and `pnpm ios` builds it in place. Once `ios/` exists you can skip
+> step 2 unless something native changed. There is no `android/` — this is an iOS-only
 > product (see [ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
 
-> **Human shortcut:** `eas build:run -p ios` (after step 2) interactively picks a
-> simulator and installs the latest local build for you; then run steps 5–6. The
-> explicit `simctl` steps above are the deterministic path for agents.
+### Portable artifact (eas local build)
+
+Only when you need the portable `.tar.gz` (mirror the cloud build, or install it on a
+machine that didn't build it) — **not** for day-to-day iteration, because it can't
+cache (fresh temp dir every run, always ~10–20 min) and doesn't seed the `pnpm ios`
+cache (see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight)):
+
+```bash
+# build the portable artifact  →  apps/mobile/build-<ts>.tar.gz
+eas build --platform ios --profile development --local --non-interactive
+# (if `eas` isn't on PATH, use `npx eas-cli build …` — same flags)
+
+# extract + install onto the booted sim, then start Metro + launch with steps 5–6 above
+APP_TGZ=$(ls -t build-*.tar.gz | head -1)
+rm -rf /tmp/intentive-app && mkdir -p /tmp/intentive-app
+tar -xzf "$APP_TGZ" -C /tmp/intentive-app
+xcrun simctl install booted /tmp/intentive-app/Intentive.app   # bundle id: com.heyintentive.expo
+```
+
+> **Human shortcut:** `eas build:run -p ios` (after the build above) interactively
+> picks a simulator and installs the latest local build for you; then run steps 5–6.
+> The explicit `simctl` steps are the deterministic path for agents.
 
 ---
 
@@ -92,7 +124,7 @@ same rule as [`RELEASE.md`](RELEASE.md)). For everything else:
 - **Changed a shared `@intentive/*` package** → re-run step 0
   (`pnpm --filter "@intentive/mobile^..." build`), then reload Metro.
 - **Native change** → `npx expo prebuild -p ios --clean` to regenerate `ios/`, then
-  re-run the build from step 2. Never hand-edit `ios/` — it's regenerated and your
+  re-run the build from step 3 (`pnpm ios`). Never hand-edit `ios/` — it's regenerated and your
   change will be lost; put native config in `app.json` or a config plugin instead.
 
 ---
@@ -123,7 +155,7 @@ ios`). It compiles into `apps/mobile/ios/` and **keeps the outputs between runs*
 - It also installs to the simulator and starts Metro, like the runbook above.
 
 First `expo run:ios` ≈ the same cold cost; **every native build after that is
-seconds-to-minutes.** Steps 3–7 of the runbook still apply for inspecting the result.
+seconds-to-minutes.** `pnpm ios` **is** the runbook's build (step 3); step 4 (screenshot) still applies for inspecting the result.
 
 **The biggest cache is the dev client itself.** Once it's installed, JS/TS edits
 **never** trigger a native build — Metro hot-reloads them. You only pay a native
