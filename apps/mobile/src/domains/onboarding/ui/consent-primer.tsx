@@ -11,12 +11,6 @@
  * The durable POST /consent and cross-client suppression are the Control Plane's
  * (#26). This gate requests no notification permission and imports nothing
  * notification-related — that is the separate Grant Permissions step.
- *
- * TODO(polish): the body below is omi's copy verbatim, used as a scaffold
- * placeholder ONLY. It makes false data claims for Intentive (audio recordings,
- * Deepgram transcription, OpenAI analysis) and MUST be replaced with Intentive's
- * true data flow — and the `#` policy links wired to real docs — before this
- * ships to a real build. See apps/mobile/docs/adr/0020-*.
  */
 import { useMemo } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -24,6 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
 import { useLaunchState } from "../../../providers/launch-state";
+
+export const PRIVACY_POLICY_URL = "https://heyintentive.com/privacy";
+export const TERMS_OF_SERVICE_URL = "https://heyintentive.com/terms";
 
 const CONSENT_BODY =
   "By continuing, your conversations, recordings, and personal information will be " +
@@ -37,8 +34,8 @@ export function ConsentPrimer(): React.JSX.Element {
   const styles = useMemo(() => createStyles(theme.colors), [theme]);
   const insets = useSafeAreaInsets();
 
-  // TODO(polish): wire to the real Privacy Policy / Terms of Service documents.
-  const openPolicy = () => void Linking.openURL("#").catch(() => {});
+  const openPrivacy = () => void Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
+  const openTerms = () => void Linking.openURL(TERMS_OF_SERVICE_URL).catch(() => {});
 
   return (
     <View style={styles.screen}>
@@ -54,11 +51,11 @@ export function ConsentPrimer(): React.JSX.Element {
           <Text style={styles.message}>{CONSENT_BODY}</Text>
           <Text style={styles.fineprint}>
             Your data is protected and governed by our{" "}
-            <Text accessibilityRole="link" style={styles.link} onPress={openPolicy}>
+            <Text accessibilityRole="link" style={styles.link} onPress={openPrivacy}>
               Privacy Policy
             </Text>{" "}
             and{" "}
-            <Text accessibilityRole="link" style={styles.link} onPress={openPolicy}>
+            <Text accessibilityRole="link" style={styles.link} onPress={openTerms}>
               Terms of Service
             </Text>
             .

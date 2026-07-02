@@ -148,11 +148,13 @@ scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
 With the stack up and the Mobile dev client pointed at `:8080`, walk it and confirm
 each step. This is the end-to-end product loop the local stack exists to evaluate:
 
-1. **Cold launch → Identity Gate.** Sign in with Google, or use the local signed
+1. **Cold launch → Get Started → Identity Gate.** Sign in with Google, or use the local signed
    JWT path for server/backend E2E. → a server-valid User JWT now flows on every
    request.
-2. **`GET /me` resolves gates.** Consent Primer → Sibling Invitation appear in order;
-   completing them writes cross-client state (watch the Control Plane log).
+2. **`GET /me` resolves gates.** Consent Primer (Data & Privacy) → Onboarding funnel →
+   Sibling Invitation → Free Trial appear in resolver order; shared gates write
+   cross-client state on the Control Plane when completed (watch the Control Plane log).
+   Onboarding and Free Trial are client-resolved until the Control Plane contract extends.
 3. **Enter chat → `GET /agent`.** The Control Plane enforces the gates, runs Session
    Start against the Agent Runtime (`:8081`), and returns the WS URL + pass-through
    JWT. A `403` means a gate is unsatisfied; a `503` means the Runtime wasn't

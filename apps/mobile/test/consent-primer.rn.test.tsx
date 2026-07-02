@@ -8,15 +8,16 @@
  * the store's `setConsent` mutator directly — there is no consent service to
  * fake. Seeded signed-in + consent pending (with the funnel already done) so
  * consent is the active gate and accepting it advances to the next one.
- *
- * NOTE: the copy asserted here is omi's verbatim placeholder (see the screen's
- * TODO(polish)); it is not Intentive's true data flow.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { Linking, Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { ConsentPrimer } from "../src/domains/onboarding/ui/consent-primer";
+import {
+  ConsentPrimer,
+  PRIVACY_POLICY_URL,
+  TERMS_OF_SERVICE_URL,
+} from "../src/domains/onboarding/ui/consent-primer";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
 import {
   LaunchStateProvider,
@@ -60,6 +61,14 @@ async function expectDestination(value: string) {
   await waitFor(() => expect(screen.getByTestId("dest")).toHaveTextContent(value));
 }
 
+beforeEach(() => {
+  jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 test("renders the Data & Privacy disclosure, policy links, and Agree & Continue", async () => {
   renderPrimer();
   await expectDestination("MISSING_CONSENT");
@@ -68,6 +77,15 @@ test("renders the Data & Privacy disclosure, policy links, and Agree & Continue"
   expect(screen.getByText("Privacy Policy")).toBeTruthy();
   expect(screen.getByText("Terms of Service")).toBeTruthy();
   expect(screen.getByText("Agree & Continue")).toBeTruthy();
+});
+
+test("Privacy Policy opens /privacy and Terms of Service opens /terms", async () => {
+  renderPrimer();
+  await expectDestination("MISSING_CONSENT");
+  fireEvent.press(screen.getByText("Privacy Policy"));
+  fireEvent.press(screen.getByText("Terms of Service"));
+  expect(Linking.openURL).toHaveBeenCalledWith(PRIVACY_POLICY_URL);
+  expect(Linking.openURL).toHaveBeenCalledWith(TERMS_OF_SERVICE_URL);
 });
 
 test("accepting advances the resolver off MISSING_CONSENT", async () => {

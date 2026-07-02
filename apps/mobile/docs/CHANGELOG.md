@@ -11,6 +11,23 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Pre-chat onboarding funnel** — omi-modeled funnel minimum after the Consent Primer
+  ([ADR 0018](adr/0018-mobile-pre-chat-funnel-minimum.md), [ADR 0019](adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)):
+  - **Get Started** — pre-auth landing inside `/(gates)/identity` (not a gate; local
+    step to sign-in options via `auth/ui/get-started.tsx`).
+  - **Onboarding funnel** — collapsed `onboarding` gate with local step sequencing in
+    `onboarding/ui/onboarding-funnel.tsx` (name → acquisition source → grant permissions);
+    route zone `/(onboarding)/` wires the injected notification-permission ask.
+  - **Free Trial** — cosmetic offer gate at `/(gates)/trial` (`onboarding/ui/free-trial.tsx`).
+  - **Launch State** — `MISSING_ONBOARDING` and `MISSING_TRIAL` destinations;
+    `route-for-destination.ts` maps them to `/(onboarding)` and `/(gates)/trial`.
+    Stub scenarios `needs-onboarding` and `needs-trial`; mapper marks both `completed`
+    for real `GET /me` until Control Plane reports them.
+  - Tests: `get-started.rn.test.tsx`, `onboarding-funnel.rn.test.tsx`,
+    `name.rn.test.tsx`, `acquisition-source.rn.test.tsx`, `grant-permissions.rn.test.tsx`,
+    `free-trial.rn.test.tsx`; extended `launch-flow.rn.test.tsx`,
+    `resolve-launch-state.test.mjs`, `account-state-to-launch-state.test.mjs`.
+
 - **Errors-only Sentry telemetry** — `src/providers/telemetry/` is the Mobile Client's
   Sentry seam (`Telemetry` port, `initTelemetry`, `createSentryTelemetry`,
   `wrapRoot`). `app/_layout.tsx` initializes from `EXPO_PUBLIC_SENTRY_DSN` (blank
@@ -185,6 +202,26 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
     `moduleNameMapper`; devDependency `@babel/plugin-transform-modules-commonjs`.
 
 ### Changed
+
+- **Consent Primer copy + policy links** — replaced omi placeholder disclosure with
+  Intentive-accurate data-processing copy; Privacy Policy and Terms of Service open
+  `https://heyintentive.com/privacy` and `/terms`. Tests: `consent-primer.rn.test.tsx`.
+
+- **Consent Primer → Data & Privacy** ([ADR 0020](adr/0020-mobile-consent-primer-is-data-and-privacy-acceptance.md))
+  — Intentive-accurate data-processing disclosure with links to
+  `https://heyintentive.com/privacy` and `/terms`. Full legal pages on the marketing
+  site remain a pre-ship dependency ([`docs/BACKLOGS.md`](BACKLOGS.md)).
+
+- **Notification permission prompt** — the OS ask now fires in the Onboarding funnel's
+  Grant Permissions step (omi-style: ask on Continue, always advance); Expo Push Token
+  registration still happens around first chat entry and does not re-prompt once
+  permission is decided ([ADR 0018](adr/0018-mobile-pre-chat-funnel-minimum.md),
+  [ADR 0019](adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)).
+
+- **Pre-commit hook** (repo root) — `.husky/pre-commit` now runs `pnpm hooks:pre-commit`
+  (`tools/hooks/run-pre-commit.sh`): `check-staged.mjs` safety rails, then `lint-staged`.
+  `lint-staged` now includes `packages/*/src/**` and drops markdown from Prettier
+  staging (see [`tools/hooks/README.md`](../../../tools/hooks/README.md)).
 
 - **Chat composition layer** — `src/entrypoints/chat-entry.tsx` (`ChatEntry`) is the
   lint-safe cross-domain composition root: Runtime Adapter wiring, Account State

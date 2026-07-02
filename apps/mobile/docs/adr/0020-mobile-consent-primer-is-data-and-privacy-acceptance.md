@@ -12,7 +12,7 @@ ADR 0013's *mechanics* are unchanged: the gate writes `consent: "completed"` int
 
 **Consequences**
 
-- **Scaffold copy is omi's, verbatim, as a placeholder** — including claims that are false for Intentive today (audio recordings, Deepgram transcription, OpenAI analysis) and `#` policy links. This is marked `TODO(polish)` in `consent-primer.tsx` and **must not ship to a real build**: Intentive's true data-flow copy and real Privacy Policy / Terms of Service documents are a hard dependency before release.
+- **Scaffold copy is omi's, verbatim, as a placeholder** — including claims that are false for Intentive today (audio recordings, Deepgram transcription, OpenAI analysis) and `#` policy links. Superseded 2026-07-02: the screen now uses Intentive-accurate disclosure and links to `heyintentive.com/privacy` and `/terms`. Publishing the full legal pages on the marketing site remains a pre-ship dependency ([`docs/BACKLOGS.md`](../BACKLOGS.md)).
 - **CONTEXT.md is the source of truth for the redefinition.** The `Consent Primer` term now reads "the Data & Privacy screen…"; its `_Avoid_` list drops the old "terms gate / privacy prompt" phrasings and keeps "consent screen, permission primer". The "Flagged ambiguities" section records the 2026-07-02 resolution.
 - **The gate still requests no notification permission and imports nothing notification-related** — that is the separate **Grant Permissions** step in the onboarding funnel ([ADR 0019](0019-mobile-onboarding-funnel-collapses-to-one-gate.md)).
 - **Durable `POST /consent` and cross-client suppression remain the Control Plane's** (#26); the Mobile screen is unchanged when they land. No decline path exists (`GateStatus` has no `declined`); "Agree & Continue" is the only first-party action.

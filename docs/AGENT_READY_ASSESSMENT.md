@@ -135,7 +135,7 @@ No dimension below 40. Highest-impact remaining gaps:
 ### Feedback Loops — **76/100** (+4)
 
 - **CI:** 9 workflows; pnpm + Rust caches; blocking gate under 5 min
-- **Local:** Husky → lint-staged (Prettier + ESLint on staged app/service src)
+- **Local:** Husky → `pnpm hooks:pre-commit` (`tools/hooks/check-staged.mjs` safety rails, then lint-staged: Prettier + ESLint on staged `apps/`, `services/`, and `packages/` src)
 - **Security:** Dependabot + `desktop-audit.yml`; no CodeQL
 - **Extras:** `harness-health.yml` sticky PR comment for ready-for-review drift
 - **Gaps:** Sequential monolithic verify job; no fail-fast; Codecov does not fail CI
