@@ -179,12 +179,37 @@ lands (or stalls).
 ## Teardown
 
 ```bash
-scripts/local-stack.sh --down                       # stop both services, free their ports
+scripts/local-stack.sh --down     # clean sweep: free ports, reap stray launchers/tailers, delete the run dir
 ```
+
+`--down` is a **clean sweep**, not just a port free (idempotent, safe any time):
+it kills whatever holds `:8080/:8787/:8081`, **reaps orphaned launcher + `tail -f`
+processes** left by earlier stacks (see the note below), and deletes the
+`/tmp/intentive-local-stack` run dir.
 
 Then stop the clients via their own runbooks ("kill it" in the Mobile / Desktop
 docs). Nothing local persists except the Neon dev branch, which is meant to stick
 around; delete it from the Neon console / MCP if you want a clean slate.
+
+**Verify the sweep** (every line should report free/none):
+
+```bash
+for p in 8080 8787 8081; do lsof -ti tcp:$p >/dev/null 2>&1 && echo ":$p in use ✗" || echo ":$p free ✓"; done
+pgrep -fl "local-stack\.sh|intentive-local-stack" || echo "no stray launchers ✓"
+```
+
+> **Zombie launchers — why the reap step exists.** The launcher ends in a
+> foreground `tail -f` and cleans up through an `EXIT/INT/TERM` trap, so a clean
+> **Ctrl-C** tears everything down. But when a stack dies **uncleanly** — an
+> agent/session torn down, a Monitor timeout, or a `SIGKILL` that can't be
+> trapped — the node services die (their **ports free up**) while the **bash
+> launcher + its `tail -f` are orphaned** and survive indefinitely. Because they
+> hold no port, the old port-only teardown never caught them and they quietly
+> accumulate across sessions (we found **9** pairs stacked up once). They're
+> near-idle — a blocked `tail`, not a CPU spinner — so the cost is deadweight
+> (RAM, fds, process-table clutter), not battery. `--down` now reaps them by
+> matching the script path and run dir, so a backend stack leaves **nothing**
+> behind, the same guarantee the Mobile runbook's "kill it" gives.
 
 ---
 

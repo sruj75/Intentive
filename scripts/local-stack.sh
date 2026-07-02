@@ -51,15 +51,27 @@ free_ports() {
   done
 }
 
+# Reap orphaned launchers + log-tailers left by earlier runs killed uncleanly
+# (agent/session teardown or a SIGKILL never fires the EXIT trap). Their node
+# services are already gone — the ports are free — so free_ports misses them,
+# and the bash launcher + its `tail -f` linger forever as deadweight. Match on
+# the script path / run dir; never kill ourselves ($$).
+reap_strays() {
+  { pgrep -f "tail .*-f .*$RUN_DIR" 2>/dev/null || true; } | grep -vx "$$" | xargs kill -9 2>/dev/null || true
+  { pgrep -f "local-stack\.sh"      2>/dev/null || true; } | grep -vx "$$" | xargs kill -9 2>/dev/null || true
+}
+
 teardown() {
   echo
   echo "→ stopping local stack…"
   free_ports
-  echo "✓ stopped (ports $CP_PORT / $AR_PUBLIC_PORT / $AR_INTERNAL_PORT free)"
+  reap_strays
+  echo "✓ stopped (ports $CP_PORT / $AR_PUBLIC_PORT / $AR_INTERNAL_PORT free, strays reaped)"
 }
 
 if [[ "${1:-}" == "--down" || "${1:-}" == "--kill" ]]; then
   teardown
+  rm -rf "$RUN_DIR"
   exit 0
 fi
 
