@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+node tools/hooks/check-staged.mjs
+pnpm lint-staged

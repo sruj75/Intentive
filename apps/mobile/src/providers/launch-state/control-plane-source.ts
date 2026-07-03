@@ -39,7 +39,9 @@ export interface ControlPlaneLaunchStateSourceDeps {
 const SIGNED_OUT: LaunchState = {
   signedIn: false,
   consent: "pending",
+  onboarding: "pending",
   siblingInvitation: "pending",
+  trial: "pending",
 };
 
 export function createControlPlaneLaunchStateSource(

@@ -14,7 +14,9 @@ import { createStubLaunchStateSource } from "../dist/providers/launch-state/sour
 const EXPECTED = {
   "signed-out": "SIGNED_OUT",
   "needs-consent": "MISSING_CONSENT",
+  "needs-onboarding": "MISSING_ONBOARDING",
   "needs-invite": "SIBLING_INVITATION_PENDING",
+  "needs-trial": "MISSING_TRIAL",
   ready: "READY_FOR_CHAT",
 };
 

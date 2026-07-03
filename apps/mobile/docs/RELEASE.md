@@ -236,9 +236,11 @@ eas build:list --platform ios --limit 1
 
 **Push** only works on a **physical device** with a real build — never in the
 simulator, Expo Go, or a dev client (`getExpoPushTokenAsync` is gated on
-`Device.isDevice`). End-to-end: the Mobile Client registers an Expo Push Token with
-the Control Plane on first chat entry, and the Control Plane delivers through the
-Expo Push Service when **Post-Message-Back** fires.
+`Device.isDevice`). The OS notification permission prompt fires in the Onboarding
+funnel's Grant Permissions step; the Mobile Client registers an Expo Push Token with
+the Control Plane around first chat entry (without re-prompting once permission is
+decided), and the Control Plane delivers through the Expo Push Service when
+**Post-Message-Back** fires.
 
 ---
 

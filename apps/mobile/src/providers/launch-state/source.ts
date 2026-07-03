@@ -33,16 +33,63 @@ export interface LaunchStateSource {
  * re-read to recover. Pre-seeding `pending` guarantees the resolver always has a
  * concrete value as the user walks the gates forward.
  */
-export type StubScenario = "signed-out" | "needs-consent" | "needs-invite" | "ready";
+export type StubScenario =
+  | "signed-out"
+  | "needs-consent"
+  | "needs-onboarding"
+  | "needs-invite"
+  | "needs-trial"
+  | "ready";
 
 const completed: GateStatus = "completed";
 const pending: GateStatus = "pending";
 
+// Each scenario boots directly onto one gate, with every DOWNSTREAM gate left
+// `pending` so a developer entering at any point can walk the whole flow forward
+// (consent → funnel → sibling → trial → chat) and see each gate in turn.
 const SCENARIOS: Record<StubScenario, LaunchState> = {
-  "signed-out": { signedIn: false, consent: pending, siblingInvitation: pending },
-  "needs-consent": { signedIn: true, consent: pending, siblingInvitation: pending },
-  "needs-invite": { signedIn: true, consent: completed, siblingInvitation: pending },
-  ready: { signedIn: true, consent: completed, siblingInvitation: completed },
+  "signed-out": {
+    signedIn: false,
+    consent: pending,
+    onboarding: pending,
+    siblingInvitation: pending,
+    trial: pending,
+  },
+  "needs-consent": {
+    signedIn: true,
+    consent: pending,
+    onboarding: pending,
+    siblingInvitation: pending,
+    trial: pending,
+  },
+  "needs-onboarding": {
+    signedIn: true,
+    consent: completed,
+    onboarding: pending,
+    siblingInvitation: pending,
+    trial: pending,
+  },
+  "needs-invite": {
+    signedIn: true,
+    consent: completed,
+    onboarding: completed,
+    siblingInvitation: pending,
+    trial: pending,
+  },
+  "needs-trial": {
+    signedIn: true,
+    consent: completed,
+    onboarding: completed,
+    siblingInvitation: completed,
+    trial: pending,
+  },
+  ready: {
+    signedIn: true,
+    consent: completed,
+    onboarding: completed,
+    siblingInvitation: completed,
+    trial: completed,
+  },
 };
 
 /**

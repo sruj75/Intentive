@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 import { Stack, useRouter } from "expo-router";
 
+import { OnboardingFontsProvider } from "../src/design/onboarding-fonts";
 import { createAuthAdapter } from "../src/domains/auth/service/auth-adapter";
 import {
   NEON_ENABLED_PROVIDERS,
@@ -76,12 +77,17 @@ function RootNavigator(): React.JSX.Element {
 }
 
 function RootLayout(): React.JSX.Element {
+  // Start Manrope loading at boot (onboarding-scoped — chat stays SF Pro) but do
+  // not block Launch State hydration; onboarding surfaces gate locally. See
+  // src/design/onboarding-fonts.tsx and apps/mobile/docs/adr/0021-*.
   return (
-    <LaunchStateProvider source={launchStateSource}>
-      <AuthAdapterProvider adapter={authAdapter}>
-        <RootNavigator />
-      </AuthAdapterProvider>
-    </LaunchStateProvider>
+    <OnboardingFontsProvider>
+      <LaunchStateProvider source={launchStateSource}>
+        <AuthAdapterProvider adapter={authAdapter}>
+          <RootNavigator />
+        </AuthAdapterProvider>
+      </LaunchStateProvider>
+    </OnboardingFontsProvider>
   );
 }
 

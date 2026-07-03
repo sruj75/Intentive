@@ -27,7 +27,13 @@ test("no session → signed-out projection, and no request is made", async () =>
   });
 
   const state = await source.read();
-  assert.deepEqual(state, { signedIn: false, consent: "pending", siblingInvitation: "pending" });
+  assert.deepEqual(state, {
+    signedIn: false,
+    consent: "pending",
+    onboarding: "pending",
+    siblingInvitation: "pending",
+    trial: "pending",
+  });
   assert.equal(called, false, "must not call the Control Plane without a session");
 });
 
@@ -45,7 +51,13 @@ test("a valid /me response is parsed and mapped to LaunchState", async () => {
   });
 
   const state = await source.read();
-  assert.deepEqual(state, { signedIn: true, consent: "pending", siblingInvitation: "pending" });
+  assert.deepEqual(state, {
+    signedIn: true,
+    consent: "pending",
+    onboarding: "completed",
+    siblingInvitation: "pending",
+    trial: "completed",
+  });
 });
 
 test("the bearer token is presented to ${base}/me", async () => {

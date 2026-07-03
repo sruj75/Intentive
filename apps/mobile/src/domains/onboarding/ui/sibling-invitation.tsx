@@ -15,82 +15,66 @@
  * claiming the companion already has Mac context. A "required/blocking" variant
  * is deferred to in-chat contextual prompts (#41). See ADR 0014.
  */
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
+import {
+  OnboardingAction,
+  OnboardingBody,
+  OnboardingInfoRow,
+  OnboardingScreen,
+  OnboardingTitle,
+} from "../../../design/onboarding";
 import { useLaunchState } from "../../../providers/launch-state";
 
 export function SiblingInvitation(): React.JSX.Element {
   const { setSiblingInvitation } = useLaunchState();
 
   return (
-    <View style={styles.screen}>
-      <Text style={styles.title}>Set up Intentive on your Mac</Text>
-      <Text style={styles.subtitle}>
+    <OnboardingScreen
+      backdrop="mac"
+      backdropLabel="Intentive Mac setup for fuller companion context"
+      contentStyle={styles.content}
+      progress={{ current: 5, total: 6 }}
+      sheetMaxHeightRatio={0.66}
+    >
+      <OnboardingTitle>Set up Intentive on your Mac</OnboardingTitle>
+      <OnboardingBody>
         Intentive on your Mac gives your companion fuller context — it&apos;s optional, and chat
         works on your phone without it.
-      </Text>
+      </OnboardingBody>
 
       <View style={styles.points}>
-        <Benefit
-          heading="Fuller context"
+        <OnboardingInfoRow
+          markerGlyph={{ set: "fa6-solid", name: "laptop" }}
+          title="Fuller context"
           body="When Intentive runs on your Mac, it can see how you work, so your companion picks up on more."
         />
-        <Benefit
-          heading="Better follow-ups"
+        <OnboardingInfoRow
+          markerGlyph={{ set: "fa6-solid", name: "bell" }}
+          title="Better follow-ups"
           body="With that context, check-ins and nudges land closer to what actually matters."
         />
       </View>
 
-      <Text style={styles.guidance}>Download Intentive for Mac at intentive.app.</Text>
+      <OnboardingBody style={styles.guidance}>
+        Download Intentive for Mac at intentive.app.
+      </OnboardingBody>
 
-      <Pressable
-        accessibilityRole="button"
-        style={styles.button}
-        onPress={() => setSiblingInvitation("skipped")}
-      >
-        <Text style={styles.buttonText}>Not now</Text>
-      </Pressable>
+      <OnboardingAction label="Not now" onPress={() => setSiblingInvitation("skipped")} />
 
       {__DEV__ ? (
-        <Pressable
-          accessibilityRole="button"
-          style={styles.devButton}
+        <OnboardingAction
+          variant="secondary"
+          label="Mark Mac connected (dev)"
           onPress={() => setSiblingInvitation("completed")}
-        >
-          <Text style={styles.devButtonText}>Mark Mac connected (dev)</Text>
-        </Pressable>
+        />
       ) : null}
-    </View>
-  );
-}
-
-function Benefit({ heading, body }: { heading: string; body: string }): React.JSX.Element {
-  return (
-    <View style={styles.point}>
-      <Text style={styles.pointHeading}>{heading}</Text>
-      <Text style={styles.pointBody}>{body}</Text>
-    </View>
+    </OnboardingScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
-  title: { fontSize: 24, fontWeight: "600", textAlign: "center" },
-  subtitle: { fontSize: 15, opacity: 0.6, textAlign: "center", marginBottom: 8 },
-  points: { alignSelf: "stretch", gap: 16, marginBottom: 8 },
-  point: { gap: 2 },
-  pointHeading: { fontSize: 16, fontWeight: "600" },
-  pointBody: { fontSize: 15, opacity: 0.7 },
-  guidance: { fontSize: 14, opacity: 0.6, textAlign: "center", marginBottom: 8 },
-  button: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: "#1f6feb",
-  },
-  buttonText: { color: "white", fontSize: 16, fontWeight: "600" },
-  devButton: { paddingVertical: 12, paddingHorizontal: 24 },
-  devButtonText: { color: "#1f6feb", fontSize: 14, fontWeight: "600" },
+  content: { gap: 15 },
+  points: { alignSelf: "stretch", gap: 9 },
+  guidance: { fontSize: 13, lineHeight: 19, textAlign: "center" },
 });

@@ -56,7 +56,7 @@ How Intentive's four deployables and shared packages connect to the journeys use
 
 ## 1. Cold launch → first chat (Mobile)
 
-**User story:** Opens Intentive for the first time, signs in with Google, accepts consent, optionally skips Mac setup, enters Companion Chat, receives the runtime-generated opening message.
+**User story:** Opens Intentive for the first time, sees Get Started, signs in with Google, accepts Data & Privacy, completes the onboarding funnel (name, acquisition source, notification permission), optionally skips Mac setup, accepts the free-trial offer, enters Companion Chat, receives the runtime-generated opening message.
 
 ### Flow
 
@@ -69,20 +69,23 @@ sequenceDiagram
 
   U->>M: Launch app
   M->>CP: GET /me (no JWT)
-  CP-->>M: 401 → Identity Gate
-  U->>M: Google sign-in (Neon Auth)
+  CP-->>M: 401 → Get Started + Identity Gate
+  U->>M: Get Started → Google sign-in (Neon Auth)
   M->>CP: GET /me (JWT)
   CP-->>M: next_gate: consent_primer
-  U->>M: Consent Primer → Accept
+  U->>M: Consent Primer (Data & Privacy) → Agree & Continue
   M->>CP: POST /consent
   M->>CP: GET /me
   CP-->>M: next_gate: sibling_client_invitation
+  Note over M: Onboarding funnel (client-resolved until CP contract extends)
+  U->>M: Name → Acquisition source → Grant Permissions (OS prompt)
   U->>M: Skip Mac setup (or view guidance)
   M->>CP: POST /sibling-invitation/skip
   M->>CP: GET /me
   CP-->>M: next_gate: null
+  Note over M: Free Trial gate (client-resolved until CP entitlement lands)
+  U->>M: Free Trial → Continue
   U->>M: Enter chat (first time)
-  M->>M: Request notification permission
   M->>CP: POST /devices/register (expo_push_token)
   M->>CP: GET /agent
   CP->>RT: POST /internal/sessions/start
@@ -94,14 +97,20 @@ sequenceDiagram
   U->>M: Sees Companion's first message
 ```
 
-### Gate sequence (Control Plane truth)
+### Gate sequence
 
-Order is fixed in `services/control-plane/src/domains/gates/service/compute-next-gate.ts`:
+**Mobile Launch State Resolver** (client-owned ordering; see `apps/mobile/docs/adr/0019-*`):
+
+`SIGNED_OUT` → `MISSING_CONSENT` → `MISSING_ONBOARDING` → `SIBLING_INVITATION_PENDING` → `MISSING_TRIAL` → `READY_FOR_CHAT`
+
+**Control Plane `next_gate`** (cross-client durable gates in `services/control-plane/src/domains/gates/service/compute-next-gate.ts`):
 
 1. **Identity Gate** — satisfied by JWT on `GET /me` (not returned as `next_gate`)
 2. **Consent Primer** — `POST /consent` (cross-client)
 3. **Sibling Client Invitation** — `POST /sibling-invitation/skip` or observed Desktop device (cross-client)
 4. **Capture Permission Setup** — Desktop only; Mobile never sees it
+
+**Onboarding** (name → acquisition source → grant permissions) and **Free Trial** are client-resolved Pre-Chat Gates today. The Mobile mapper marks both `completed` for every real `GET /me` response until `packages/api-contract` and Control Plane gate sequencing extend; stub `LaunchStateSource` dev scenarios exercise the screens locally.
 
 ### Code map
 
@@ -109,11 +118,14 @@ Order is fixed in `services/control-plane/src/domains/gates/service/compute-next
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Launch routing          | `app/_layout.tsx` → `resolveLaunchState` (`src/domains/onboarding/service/resolve-launch-state.ts`) → `route-for-destination.ts` | —                                                                                     | —                                                                                |
 | Account / gate read     | `createControlPlaneLaunchStateSource` (`src/providers/launch-state/`) maps `GET /me` → `LaunchState`                             | `identity/ui/get-me.ts` → `resolveAccount` composes `next_gate`, `has_desktop_client` | —                                                                                |
+| Get Started             | `src/domains/auth/ui/get-started.tsx` (first view inside `/(gates)/identity`; not a gate)                                          | —                                                                                     | —                                                                                |
 | Identity Gate           | `src/domains/auth/ui/` + Neon Auth via `Auth Adapter`                                                                            | JWT verify: `src/http/auth.ts` + `packages/providers/` JWKS                           | —                                                                                |
-| Consent Primer          | `app/(gates)/consent.tsx` → `onboarding/ui/`                                                                                     | `gates/ui/post-consent.ts` → `control_plane.user_gates`                               | —                                                                                |
+| Consent Primer          | `app/(gates)/consent.tsx` → `onboarding/ui/consent-primer.tsx` (Data & Privacy)                                                  | `gates/ui/post-consent.ts` → `control_plane.user_gates`                               | —                                                                                |
+| Onboarding funnel       | `app/(onboarding)/index.tsx` → `onboarding/ui/onboarding-funnel.tsx` (name → source → grant permissions)                         | — (client-resolved until CP contract extends)                                         | —                                                                                |
 | Sibling invitation      | `app/(gates)/invite.tsx`                                                                                                         | `gates/ui/post-sibling-invitation-skip.ts`                                            | —                                                                                |
-| Notification permission | `src/domains/notifications/` (first chat entry only)                                                                             | —                                                                                     | —                                                                                |
-| Device + push token     | `notifications/` → `POST /devices/register`                                                                                      | `devices/ui/post-device-register.ts` → `control_plane.devices`                        | —                                                                                |
+| Free Trial              | `app/(gates)/trial.tsx` → `onboarding/ui/free-trial.tsx`                                                                           | — (client-resolved until CP entitlement lands)                                        | —                                                                                |
+| Notification permission | `onboarding/ui/grant-permissions.tsx` (injected ask via `(onboarding)` route)                                                    | —                                                                                     | —                                                                                |
+| Device + push token     | `notifications/` → `POST /devices/register` (around first chat entry; no re-prompt once decided)                                | `devices/ui/post-device-register.ts` → `control_plane.devices`                        | —                                                                                |
 | Routing                 | `chat/service/routing-client.ts` → `GET /agent`                                                                                  | `routing/ui/get-agent.ts` → `agents.ensureAgentInstance` → Session Start              | `internal/` receives `POST /internal/sessions/start`                             |
 | Chat surface            | `src/entrypoints/chat-entry.tsx` → `CompanionChat` + Runtime Adapter                                                             | —                                                                                     | `gateway/` handshake, `sessions/` per-user queue                                 |
 | Opening message         | Runtime Adapter merges `hello_ok` snapshot                                                                                       | —                                                                                     | Session Start bundles **Conversation Start Trigger**; `runtime/` runs first turn |
@@ -139,7 +151,7 @@ Launch → GET /me → next_gate: null → route to (chat)/
 
 | Concern           | Mobile Client                                                                                                           | Control Plane              | Agent Runtime                                                    |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------- |
-| Skip gates        | `resolveLaunchState` → `READY_FOR_CHAT` when consent + sibling done                                                     | `computeNextGate` → `null` | —                                                                |
+| Skip gates        | `resolveLaunchState` → `READY_FOR_CHAT` when consent + onboarding + sibling + trial are satisfied                     | `computeNextGate` → `null` (shared gates only; onboarding/trial are client-resolved today) | —                                                                |
 | History hydration | `runtime/runtime-adapter.ts` + `service/conversation-reducer.ts` + `service/message-store.ts` (in-memory only; no disk) | —                          | `conversation/` + `hello_ok` / `session_snapshot` in `protocol/` |
 | Reconnect         | Runtime Adapter: generation tokens, queue until `hello_ok`, merge backfill                                              | —                          | `gateway/runtime/connection-registry.ts`, `sessions/` ordering   |
 | Agent State UI    | `service/chat-presentation.ts` (`Available` / `Thinking` / `Following up` / `Paused`)                                   | —                          | `via_post_message_back` flag on messages                         |
@@ -335,7 +347,7 @@ sequenceDiagram
 | Push handoff              | Control Plane push client in `delivery-port.ts`     | `notifications/ui/post-internal-notifications-push.ts`      | —                                                                    |
 | Token storage             | —                                                   | `devices/repo/devices.ts`                                   | `POST /devices/register`                                             |
 | Receipt cleanup           | —                                                   | `POST /internal/notifications/check-receipts` (maintenance) | —                                                                    |
-| Permission + registration | —                                                   | —                                                           | `domains/notifications/` (first chat entry)                          |
+| Permission + registration | —                                                   | —                                                           | Grant Permissions in onboarding funnel; `POST /devices/register` around first chat entry |
 | Continuity cue            | —                                                   | —                                                           | `chat-presentation.ts` (`Following up` from `via_post_message_back`) |
 
 ---

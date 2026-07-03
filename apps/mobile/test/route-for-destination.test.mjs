@@ -18,7 +18,9 @@ test("RESOLVING stays on the splash (no replacement)", () => {
 const ROUTE_ZONES = {
   SIGNED_OUT: "/(gates)/identity",
   MISSING_CONSENT: "/(gates)/consent",
+  MISSING_ONBOARDING: "/(onboarding)",
   SIBLING_INVITATION_PENDING: "/(gates)/invite",
+  MISSING_TRIAL: "/(gates)/trial",
   READY_FOR_CHAT: "/(chat)",
 };
 

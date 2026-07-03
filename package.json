@@ -34,6 +34,8 @@
     "test": "turbo run test",
     "coverage": "pnpm --dir apps/desktop test:coverage",
     "prepare": "husky",
+    "hooks:pre-commit": "sh tools/hooks/run-pre-commit.sh",
+    "hooks:staged-check": "node tools/hooks/check-staged.mjs",
     "dev": "turbo run dev",
     "clean": "turbo run clean && rm -rf node_modules"
   },
@@ -52,8 +54,8 @@
     "pnpm": ">=11.5.2"
   },
   "lint-staged": {
-    "*.{json,md,yml,yaml}": "prettier --write",
+    "*.{json,yml,yaml}": "prettier --write",
     "*.{ts,tsx,js,mjs,cjs}": "prettier --write",
-    "{apps,services}/*/src/**/*.{ts,tsx,js,mjs,cjs}": "eslint --fix"
+    "{apps,services,packages}/*/src/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}": "eslint --fix"
   }
 }

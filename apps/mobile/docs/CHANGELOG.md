@@ -11,6 +11,23 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Added
 
+- **Pre-chat onboarding funnel** — omi-modeled funnel minimum after the Consent Primer
+  ([ADR 0018](adr/0018-mobile-pre-chat-funnel-minimum.md), [ADR 0019](adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)):
+  - **Get Started** — pre-auth landing inside `/(gates)/identity` (not a gate; local
+    step to sign-in options via `auth/ui/get-started.tsx`).
+  - **Onboarding funnel** — collapsed `onboarding` gate with local step sequencing in
+    `onboarding/ui/onboarding-funnel.tsx` (name → acquisition source → grant permissions);
+    route zone `/(onboarding)/` wires the injected notification-permission ask.
+  - **Free Trial** — cosmetic offer gate at `/(gates)/trial` (`onboarding/ui/free-trial.tsx`).
+  - **Launch State** — `MISSING_ONBOARDING` and `MISSING_TRIAL` destinations;
+    `route-for-destination.ts` maps them to `/(onboarding)` and `/(gates)/trial`.
+    Stub scenarios `needs-onboarding` and `needs-trial`; mapper marks both `completed`
+    for real `GET /me` until Control Plane reports them.
+  - Tests: `get-started.rn.test.tsx`, `onboarding-funnel.rn.test.tsx`,
+    `name.rn.test.tsx`, `acquisition-source.rn.test.tsx`, `grant-permissions.rn.test.tsx`,
+    `free-trial.rn.test.tsx`; extended `launch-flow.rn.test.tsx`,
+    `resolve-launch-state.test.mjs`, `account-state-to-launch-state.test.mjs`.
+
 - **Errors-only Sentry telemetry** — `src/providers/telemetry/` is the Mobile Client's
   Sentry seam (`Telemetry` port, `initTelemetry`, `createSentryTelemetry`,
   `wrapRoot`). `app/_layout.tsx` initializes from `EXPO_PUBLIC_SENTRY_DSN` (blank
@@ -185,6 +202,48 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
     `moduleNameMapper`; devDependency `@babel/plugin-transform-modules-commonjs`.
 
 ### Changed
+
+- **Onboarding production-polish pass** ([ADR 0021](adr/0021-mobile-onboarding-visual-subsystem.md))
+  — onboarding is now a sanctioned always-dark visual sub-system, reconciled with
+  [`DESIGN.md`](DESIGN.md) instead of silently contradicting it:
+  - **Manrope brand typeface** (onboarding-scoped; chat stays SF Pro) — loaded in
+    `app/_layout.tsx` via `@expo-google-fonts/manrope` + `expo-font`, gated behind
+    first render. New deps: `expo-font`, `@expo/vector-icons`, `@expo-google-fonts/manrope`.
+  - **Uniform monochrome brand glyphs** — `@expo/vector-icons` FontAwesome6 (`fa6-brand`
+    logos + `fa6-solid` marks), single muted tint. Retired the color-PNG `ONBOARDING_ICONS`
+    set and `assets/onboarding/icons/*`; SF Symbols still own system chrome elsewhere.
+  - **Free Trial → full-screen paywall** — no longer the bottom-sheet shell:
+    milestone timeline (Today/Day 5/Day 7), pricing copy, primary CTA, and store-style
+    links (View all plans / Promo code / Restore purchases / Terms). Billing still
+    deferred — the CTA advances the gate; secondaries are `TODO(polish)` no-ops.
+    Removed the unused `trial` backdrop (`assets/onboarding/trial.png`).
+  - **Centralized tokens** — new `src/design/onboarding-tokens.ts` (warm near-black
+    `#141316` canvas, surfaces, AA-verified muted ink, sage accent, 16/20 radii,
+    `fontFamily(weight)` Manrope map) replaces the scattered `#050505`/40px literals
+    across `src/design/onboarding.tsx` and the funnel/gate screens. Subtle
+    reduce-motion-aware entrance reveal on the paywall.
+  - Docs: `DESIGN.md` gains an "Onboarding visual sub-system" section; tests:
+    updated `free-trial.rn.test.tsx` for the paywall structure.
+
+- **Consent Primer copy + policy links** — replaced omi placeholder disclosure with
+  Intentive-accurate data-processing copy; Privacy Policy and Terms of Service open
+  `https://heyintentive.com/privacy` and `/terms`. Tests: `consent-primer.rn.test.tsx`.
+
+- **Consent Primer → Data & Privacy** ([ADR 0020](adr/0020-mobile-consent-primer-is-data-and-privacy-acceptance.md))
+  — Intentive-accurate data-processing disclosure with links to
+  `https://heyintentive.com/privacy` and `/terms`. Full legal pages on the marketing
+  site remain a pre-ship dependency ([`docs/BACKLOGS.md`](BACKLOGS.md)).
+
+- **Notification permission prompt** — the OS ask now fires in the Onboarding funnel's
+  Grant Permissions step (omi-style: ask on Continue, always advance); Expo Push Token
+  registration still happens around first chat entry and does not re-prompt once
+  permission is decided ([ADR 0018](adr/0018-mobile-pre-chat-funnel-minimum.md),
+  [ADR 0019](adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)).
+
+- **Pre-commit hook** (repo root) — `.husky/pre-commit` now runs `pnpm hooks:pre-commit`
+  (`tools/hooks/run-pre-commit.sh`): `check-staged.mjs` safety rails, then `lint-staged`.
+  `lint-staged` now includes `packages/*/src/**` and drops markdown from Prettier
+  staging (see [`tools/hooks/README.md`](../../../tools/hooks/README.md)).
 
 - **Chat composition layer** — `src/entrypoints/chat-entry.tsx` (`ChatEntry`) is the
   lint-safe cross-domain composition root: Runtime Adapter wiring, Account State

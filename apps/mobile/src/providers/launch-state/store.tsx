@@ -28,7 +28,13 @@ import {
 import type { GateStatus, LaunchState } from "./types";
 import type { LaunchStateSource } from "./source";
 
-const UNKNOWN: LaunchState = { signedIn: null, consent: null, siblingInvitation: null };
+const UNKNOWN: LaunchState = {
+  signedIn: null,
+  consent: null,
+  onboarding: null,
+  siblingInvitation: null,
+  trial: null,
+};
 
 // Hydration-failure signed-out fallback. `null` gates are safe here: the user
 // can only leave this state by signing in, and `markSignedIn` heals any unknown
@@ -37,7 +43,9 @@ const UNKNOWN: LaunchState = { signedIn: null, consent: null, siblingInvitation:
 const HYDRATION_FAILURE_FALLBACK: LaunchState = {
   signedIn: false,
   consent: null,
+  onboarding: null,
   siblingInvitation: null,
+  trial: null,
 };
 
 /**
@@ -49,7 +57,9 @@ function withSignedIn(state: LaunchState): LaunchState {
   return {
     signedIn: true,
     consent: state.consent ?? "pending",
+    onboarding: state.onboarding ?? "pending",
     siblingInvitation: state.siblingInvitation ?? "pending",
+    trial: state.trial ?? "pending",
   };
 }
 
@@ -57,7 +67,9 @@ function withSignedInFallback(current: LaunchState, fallback: LaunchState): Laun
   return {
     signedIn: true,
     consent: current.consent ?? fallback.consent,
+    onboarding: current.onboarding ?? fallback.onboarding,
     siblingInvitation: current.siblingInvitation ?? fallback.siblingInvitation,
+    trial: current.trial ?? fallback.trial,
   };
 }
 
@@ -69,8 +81,12 @@ export interface LaunchStateStore {
   markSignedOut: () => void;
   /** Consent Primer answered (optimistic). */
   setConsent: (status: GateStatus) => void;
+  /** Onboarding funnel (name → source → permissions) completed (optimistic). */
+  setOnboarding: (status: GateStatus) => void;
   /** Sibling Client Invitation answered — `completed` or `skipped` (optimistic). */
   setSiblingInvitation: (status: GateStatus) => void;
+  /** Free Trial gate answered (optimistic). */
+  setTrial: (status: GateStatus) => void;
 }
 
 const LaunchStateContext = createContext<LaunchStateStore | null>(null);
@@ -113,7 +129,13 @@ export function LaunchStateProvider({
         const fallback = withSignedIn(state);
         const generation = readGenerationRef.current + 1;
         readGenerationRef.current = generation;
-        setState({ signedIn: true, consent: null, siblingInvitation: null });
+        setState({
+          signedIn: true,
+          consent: null,
+          onboarding: null,
+          siblingInvitation: null,
+          trial: null,
+        });
 
         void source
           .read()
@@ -136,7 +158,9 @@ export function LaunchStateProvider({
         setState((s) => ({ ...s, signedIn: false }));
       },
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
+      setOnboarding: (status) => setState((s) => ({ ...s, onboarding: status })),
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
+      setTrial: (status) => setState((s) => ({ ...s, trial: status })),
     }),
     [source, state],
   );

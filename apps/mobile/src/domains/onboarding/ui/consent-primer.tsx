@@ -1,78 +1,74 @@
 /**
- * Consent Primer — the signed-in-but-not-consented gate (#20). A single
- * affirmative explainer of memory, follow-ups, and user control; accepting
- * writes `consent: "completed"` into Launch State via the store's `setConsent`
- * mutator (the seam #18 left), and the resolver/root layout owns the Launch Route —
- * this gate never navigates itself.
+ * Consent Primer — the signed-in-but-not-consented gate: the **Data & Privacy**
+ * surface. It states what data Intentive collects and how it is processed, links
+ * to the Privacy Policy & Terms of Service, and its single affirmative action
+ * ("Agree & Continue") is acceptance — writing `consent: "completed"` into
+ * Launch State via the store's `setConsent` mutator (the seam #18 left). The
+ * resolver/root layout owns the Launch Route; this gate never navigates itself.
  *
  * No consent service sits between the gate and the store: consent has no
  * external system to hide, so a wrapper would be a shallow module (ADR 0013).
  * The durable POST /consent and cross-client suppression are the Control Plane's
- * (#26). Copy stays capability-honest — the "control" line promises no review/
- * clear button (that is the Account Surface's, #46). This gate requests no
- * notification permission and imports nothing notification-related.
+ * (#26). This gate requests no notification permission and imports nothing
+ * notification-related — that is the separate Grant Permissions step.
  */
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text } from "react-native";
 
+import {
+  OnboardingAction,
+  OnboardingBody,
+  OnboardingFinePrint,
+  OnboardingScreen,
+  OnboardingTitle,
+} from "../../../design/onboarding";
+import { fontFamily, onboardingColors } from "../../../design/onboarding-tokens";
 import { useLaunchState } from "../../../providers/launch-state";
+
+export const PRIVACY_POLICY_URL = "https://heyintentive.com/privacy";
+export const TERMS_OF_SERVICE_URL = "https://heyintentive.com/terms";
+
+const CONSENT_BODY =
+  "By continuing, your conversations, recordings, and personal information will be " +
+  "securely stored on our servers. Your audio recordings and transcripts are processed " +
+  "by third-party AI services — Deepgram for transcription and OpenAI for analysis — to " +
+  "provide you with AI-powered insights and enable all app features.";
 
 export function ConsentPrimer(): React.JSX.Element {
   const { setConsent } = useLaunchState();
 
+  const openPrivacy = () => void Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
+  const openTerms = () => void Linking.openURL(TERMS_OF_SERVICE_URL).catch(() => {});
+
   return (
-    <View style={styles.screen}>
-      <Text style={styles.title}>How Intentive remembers</Text>
-      <Text style={styles.subtitle}>
-        Your companion works by keeping context over time. Here&apos;s what that means.
-      </Text>
-
-      <View style={styles.points}>
-        <TrustPoint
-          heading="Memory"
-          body="It remembers your conversations so you don't start over each time."
-        />
-        <TrustPoint
-          heading="Follow-ups"
-          body="It may check in or follow up on things you're working through."
-        />
-        <TrustPoint heading="Your control" body="You're always in control of what it keeps." />
-      </View>
-
-      <Pressable
-        accessibilityRole="button"
-        style={styles.button}
-        onPress={() => setConsent("completed")}
-      >
-        <Text style={styles.buttonText}>Continue</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function TrustPoint({ heading, body }: { heading: string; body: string }): React.JSX.Element {
-  return (
-    <View style={styles.point}>
-      <Text style={styles.pointHeading}>{heading}</Text>
-      <Text style={styles.pointBody}>{body}</Text>
-    </View>
+    <OnboardingScreen
+      backdrop="privacy"
+      backdropLabel="Intentive privacy review before companion setup"
+      progress={{ current: 1, total: 6 }}
+      sheetMaxHeightRatio={0.62}
+    >
+      <OnboardingTitle>Data &amp; Privacy</OnboardingTitle>
+      <OnboardingBody>{CONSENT_BODY}</OnboardingBody>
+      <OnboardingFinePrint style={styles.finePrint}>
+        Your data is protected and governed by our{" "}
+        <Text accessibilityRole="link" style={styles.link} onPress={openPrivacy}>
+          Privacy Policy
+        </Text>{" "}
+        and{" "}
+        <Text accessibilityRole="link" style={styles.link} onPress={openTerms}>
+          Terms of Service
+        </Text>
+        .
+      </OnboardingFinePrint>
+      <OnboardingAction label="Agree & Continue" onPress={() => setConsent("completed")} />
+    </OnboardingScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
-  title: { fontSize: 24, fontWeight: "600", textAlign: "center" },
-  subtitle: { fontSize: 15, opacity: 0.6, textAlign: "center", marginBottom: 8 },
-  points: { alignSelf: "stretch", gap: 16, marginBottom: 8 },
-  point: { gap: 2 },
-  pointHeading: { fontSize: 16, fontWeight: "600" },
-  pointBody: { fontSize: 15, opacity: 0.7 },
-  button: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: "#1f6feb",
+  finePrint: { textAlign: "left" },
+  link: {
+    color: onboardingColors.accent,
+    fontFamily: fontFamily(700),
+    textDecorationLine: "underline",
   },
-  buttonText: { color: "white", fontSize: 16, fontWeight: "600" },
 });

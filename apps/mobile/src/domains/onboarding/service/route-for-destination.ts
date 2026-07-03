@@ -24,7 +24,9 @@ export type LaunchRoute = { kind: "splash" } | { kind: "replace"; zone: string }
 const ROUTE_ZONE_FOR: Record<Exclude<LaunchDestination, "RESOLVING">, string> = {
   SIGNED_OUT: "/(gates)/identity",
   MISSING_CONSENT: "/(gates)/consent",
+  MISSING_ONBOARDING: "/(onboarding)",
   SIBLING_INVITATION_PENDING: "/(gates)/invite",
+  MISSING_TRIAL: "/(gates)/trial",
   READY_FOR_CHAT: "/(chat)",
 };
 
