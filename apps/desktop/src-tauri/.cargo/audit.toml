@@ -20,4 +20,12 @@ ignore = [
   #     (`cargo tree -i rsa` returns nothing for any target), so it is never compiled.
   # Revisit immediately if a MySQL feature is ever enabled, or once rsa ships a fix.
   "RUSTSEC-2023-0071",
+  # RUSTSEC-2026-0194 / RUSTSEC-2026-0195 — quick-xml CPU and namespace
+  # allocation DoS in <0.41.0. The vulnerable lockfile entry is pulled only
+  # through Tauri's plist stack (`tauri` -> `plist 1.9.0` -> `quick-xml 0.39.4`).
+  # `plist 1.9.0` is the latest release and requires `quick-xml = ^0.39.2`, so
+  # Cargo cannot select the patched quick-xml 0.41 line yet. Revisit as soon as
+  # plist or Tauri releases a compatible patched dependency path.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]
