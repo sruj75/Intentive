@@ -12,7 +12,6 @@
  * (#26). This gate requests no notification permission and imports nothing
  * notification-related — that is the separate Grant Permissions step.
  */
-import { useMemo } from "react";
 import { Linking, StyleSheet, Text } from "react-native";
 
 import {
@@ -22,7 +21,7 @@ import {
   OnboardingScreen,
   OnboardingTitle,
 } from "../../../design/onboarding";
-import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
+import { fontFamily, onboardingColors } from "../../../design/onboarding-tokens";
 import { useLaunchState } from "../../../providers/launch-state";
 
 export const PRIVACY_POLICY_URL = "https://heyintentive.com/privacy";
@@ -36,8 +35,6 @@ const CONSENT_BODY =
 
 export function ConsentPrimer(): React.JSX.Element {
   const { setConsent } = useLaunchState();
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme]);
 
   const openPrivacy = () => void Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
   const openTerms = () => void Linking.openURL(TERMS_OF_SERVICE_URL).catch(() => {});
@@ -67,9 +64,11 @@ export function ConsentPrimer(): React.JSX.Element {
   );
 }
 
-function createStyles(colors: MobileThemeColors) {
-  return StyleSheet.create({
-    finePrint: { textAlign: "left" },
-    link: { color: colors.action, fontWeight: "700", textDecorationLine: "underline" },
-  });
-}
+const styles = StyleSheet.create({
+  finePrint: { textAlign: "left" },
+  link: {
+    color: onboardingColors.accent,
+    fontFamily: fontFamily(700),
+    textDecorationLine: "underline",
+  },
+});

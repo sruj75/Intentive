@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const maxStagedFileBytes = 500 * 1024;
+/** Monorepo lockfiles are expected to exceed the generic staged-file cap. */
+const sizeCheckExemptFiles = new Set(["pnpm-lock.yaml"]);
 const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]);
 
 const repoRoot = git(["rev-parse", "--show-toplevel"]).trim();
@@ -33,7 +35,7 @@ for (const file of stagedFiles) {
   if (!blob) continue;
 
   const size = Number(git(["cat-file", "-s", blob]));
-  if (size > maxStagedFileBytes) {
+  if (!sizeCheckExemptFiles.has(file) && size > maxStagedFileBytes) {
     violations.push(
       `${file} is ${formatBytes(size)}; keep committed files <= ${formatBytes(maxStagedFileBytes)}`,
     );

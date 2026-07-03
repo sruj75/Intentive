@@ -12,7 +12,6 @@ import { useState } from "react";
 import { StyleSheet } from "react-native";
 
 import {
-  ONBOARDING_ICONS,
   OnboardingAction,
   OnboardingChoiceList,
   OnboardingScreen,
@@ -21,19 +20,26 @@ import {
   type OnboardingChoice,
 } from "../../../design/onboarding";
 
+// One uniform, muted, monochrome glyph language: FA6 brand marks for the
+// platforms, FA6 solid marks for the generic sources — mirroring OMI. No
+// color-PNG logos and no SF Symbols in the list (see apps/mobile/docs/adr/0021-*).
 const SOURCES = [
-  { id: "tiktok", label: "TikTok", icon: "sf:music.note" },
-  { id: "youtube", label: "YouTube", icon: ONBOARDING_ICONS.youtube, iconTintColor: null },
-  { id: "instagram", label: "Instagram", icon: ONBOARDING_ICONS.instagram, iconTintColor: null },
-  { id: "x-twitter", label: "X (Twitter)", icon: ONBOARDING_ICONS.x },
-  { id: "reddit", label: "Reddit", icon: "sf:bubble.left.and.bubble.right.fill" },
-  { id: "linkedin", label: "LinkedIn", icon: ONBOARDING_ICONS.linkedin, iconTintColor: null },
-  { id: "friend", label: "Friend / word of mouth", icon: "sf:person.2.fill" },
-  { id: "coworker", label: "Coworker", icon: "sf:briefcase.fill" },
-  { id: "event", label: "Event", icon: "sf:calendar" },
-  { id: "app-store", label: "App Store", icon: "sf:apple.logo" },
-  { id: "google", label: "Google Search", icon: ONBOARDING_ICONS.google, iconTintColor: null },
-  { id: "other", label: "Other", icon: "sf:ellipsis" },
+  { id: "tiktok", label: "TikTok", glyph: { set: "fa6-brand", name: "tiktok" } },
+  { id: "youtube", label: "YouTube", glyph: { set: "fa6-brand", name: "youtube" } },
+  { id: "instagram", label: "Instagram", glyph: { set: "fa6-brand", name: "instagram" } },
+  { id: "x-twitter", label: "X (Twitter)", glyph: { set: "fa6-brand", name: "x-twitter" } },
+  { id: "reddit", label: "Reddit", glyph: { set: "fa6-brand", name: "reddit" } },
+  { id: "linkedin", label: "LinkedIn", glyph: { set: "fa6-brand", name: "linkedin" } },
+  {
+    id: "friend",
+    label: "Friend / word of mouth",
+    glyph: { set: "fa6-solid", name: "user-group" },
+  },
+  { id: "coworker", label: "Coworker", glyph: { set: "fa6-solid", name: "briefcase" } },
+  { id: "event", label: "Event", glyph: { set: "fa6-solid", name: "calendar-day" } },
+  { id: "app-store", label: "App Store", glyph: { set: "fa6-brand", name: "apple" } },
+  { id: "google", label: "Google Search", glyph: { set: "fa6-brand", name: "google" } },
+  { id: "other", label: "Other", glyph: { set: "fa6-solid", name: "ellipsis" } },
 ] as const satisfies readonly OnboardingChoice[];
 
 export function AcquisitionSourceStep({

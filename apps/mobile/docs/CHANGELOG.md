@@ -203,6 +203,28 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 ### Changed
 
+- **Onboarding production-polish pass** ([ADR 0021](adr/0021-mobile-onboarding-visual-subsystem.md))
+  — onboarding is now a sanctioned always-dark visual sub-system, reconciled with
+  [`DESIGN.md`](DESIGN.md) instead of silently contradicting it:
+  - **Manrope brand typeface** (onboarding-scoped; chat stays SF Pro) — loaded in
+    `app/_layout.tsx` via `@expo-google-fonts/manrope` + `expo-font`, gated behind
+    first render. New deps: `expo-font`, `@expo/vector-icons`, `@expo-google-fonts/manrope`.
+  - **Uniform monochrome brand glyphs** — `@expo/vector-icons` FontAwesome6 (`fa6-brand`
+    logos + `fa6-solid` marks), single muted tint. Retired the color-PNG `ONBOARDING_ICONS`
+    set and `assets/onboarding/icons/*`; SF Symbols still own system chrome elsewhere.
+  - **Free Trial → full-screen paywall** — no longer the bottom-sheet shell:
+    milestone timeline (Today/Day 5/Day 7), pricing copy, primary CTA, and store-style
+    links (View all plans / Promo code / Restore purchases / Terms). Billing still
+    deferred — the CTA advances the gate; secondaries are `TODO(polish)` no-ops.
+    Removed the unused `trial` backdrop (`assets/onboarding/trial.png`).
+  - **Centralized tokens** — new `src/design/onboarding-tokens.ts` (warm near-black
+    `#141316` canvas, surfaces, AA-verified muted ink, sage accent, 16/20 radii,
+    `fontFamily(weight)` Manrope map) replaces the scattered `#050505`/40px literals
+    across `src/design/onboarding.tsx` and the funnel/gate screens. Subtle
+    reduce-motion-aware entrance reveal on the paywall.
+  - Docs: `DESIGN.md` gains an "Onboarding visual sub-system" section; tests:
+    updated `free-trial.rn.test.tsx` for the paywall structure.
+
 - **Consent Primer copy + policy links** — replaced omi placeholder disclosure with
   Intentive-accurate data-processing copy; Privacy Policy and Terms of Service open
   `https://heyintentive.com/privacy` and `/terms`. Tests: `consent-primer.rn.test.tsx`.

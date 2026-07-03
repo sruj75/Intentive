@@ -269,7 +269,7 @@ Dark mode is **warm near-black**, not pure OLED black. Surfaces step up in light
 
 ## Typography
 
-Typography follows **Apple Human Interface Guidelines**: system fonts (SF Pro on iOS), dynamic type–friendly sizes, and comfortable line lengths for long reading in chat.
+Typography follows **Apple Human Interface Guidelines**: system fonts (SF Pro on iOS), dynamic type–friendly sizes, and comfortable line lengths for long reading in chat. (The pre-chat **onboarding sub-system** is the one scoped exception — it uses the Manrope brand typeface; see [Onboarding visual sub-system](#onboarding-visual-sub-system).)
 
 | Level       | Token                   | Role                                                       |
 | ----------- | ----------------------- | ---------------------------------------------------------- |
@@ -387,10 +387,40 @@ Follow **Expo Router native UI** patterns:
 
 - **SF Symbols** via `expo-image` with `source="sf:symbol.name"` — not `@expo/vector-icons` for system chrome
 - Symbol weight matches text weight; prefer semantic names (`pause.circle`, `arrow.clockwise`)
+- Exception: the **onboarding sub-system** uses FontAwesome6 monochrome glyphs (`@expo/vector-icons`) for brand marks (platform logos have no SF Symbol); see [Onboarding visual sub-system](#onboarding-visual-sub-system)
 
 ### Lists & settings (deferred / minimal)
 
 When lists appear later in v1 (e.g., the Account Surface), use native row patterns: leading icon, title, optional subtitle, chevron. No dense task board. Dividers: `border-subtle`.
+
+## Onboarding visual sub-system
+
+The pre-chat onboarding funnel (Get Started → Identity → Consent Primer → name →
+acquisition source → grant permissions → Sibling Invitation → Free Trial) is a
+deliberate, **always-dark** visual sub-system — not the scheme-following chat
+surface. It intentionally deviates from several chat rules above; those deviations
+are sanctioned and scoped to onboarding only. Rationale of record:
+[ADR 0021](adr/0021-mobile-onboarding-visual-subsystem.md). Everything outside
+onboarding still follows the chat rules in this document.
+
+| Concern       | Chat surface (rules above)             | Onboarding sub-system                                                                 |
+| ------------- | -------------------------------------- | ------------------------------------------------------------------------------------- |
+| Appearance    | Follows system light/dark              | **Always dark** (warm near-black `#141316` — never pure black), never a scheme flip   |
+| Typeface      | System **SF Pro** (Apple HIG)          | **Manrope** (warm humanist sans), weights 400–800; emphasis by weight + accent, no italic/serif |
+| Brand icons   | **SF Symbols** for system chrome       | **FontAwesome6** monochrome glyphs (`@expo/vector-icons`) for brand marks + generic source glyphs |
+| Accent        | `colors.action` (scheme-dependent)     | Sage `#6B9E8A` (DESIGN dark value) used directly — light-mode navy would misread on dark |
+| Free Trial    | —                                      | **Full-screen paywall** (no backdrop, milestone timeline, pricing, store-style links) — *not* the bottom-sheet shell |
+| Radii         | Cards/sheets `rounded.lg` (16)         | Cards `rounded.lg/xl` (16/20); **pill** reserved for buttons and choice selectors     |
+
+**Tokens live in `src/design/onboarding-tokens.ts`** (palette, radii, and the
+`fontFamily(weight)` Manrope map), not in `theme.ts` — forcing an always-dark
+palette into the scheme-reactive theme would corrupt the chat surface. Onboarding
+screens read those tokens; they never hard-code color literals or `fontWeight` on
+a Manrope `Text` (a custom font renders its weight only when addressed by family
+name). The shared shell + sub-components live in `src/design/onboarding.tsx`.
+
+**AA contrast** is maintained on the dark canvas: `inkMuted` (body) and
+`inkSubtle` (fine print) are chosen ≥ 4.5:1 over `#141316`.
 
 ## Implementation Notes (Expo)
 

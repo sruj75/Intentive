@@ -1,7 +1,10 @@
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
 import { Image, type ImageProps } from "expo-image";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
@@ -17,16 +20,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useMobileTheme, type MobileThemeColors } from "./theme";
+import { fontFamily, onboardingColors, onboardingRadii } from "./onboarding-tokens";
 
-export type OnboardingBackdrop =
-  | "welcome"
-  | "privacy"
-  | "name"
-  | "source"
-  | "permissions"
-  | "mac"
-  | "trial";
+export type OnboardingBackdrop = "welcome" | "privacy" | "name" | "source" | "permissions" | "mac";
 
 export type OnboardingIconSource = ImageProps["source"];
 
@@ -37,17 +33,43 @@ const ONBOARDING_BACKDROPS: Record<OnboardingBackdrop, OnboardingIconSource> = {
   source: require("../../assets/onboarding/source.png") as OnboardingIconSource,
   permissions: require("../../assets/onboarding/permissions.png") as OnboardingIconSource,
   mac: require("../../assets/onboarding/mac.png") as OnboardingIconSource,
-  trial: require("../../assets/onboarding/trial.png") as OnboardingIconSource,
 };
 
-export const ONBOARDING_ICONS = {
-  apple: require("../../assets/onboarding/icons/apple.png") as OnboardingIconSource,
-  google: require("../../assets/onboarding/icons/google.png") as OnboardingIconSource,
-  instagram: require("../../assets/onboarding/icons/instagram.png") as OnboardingIconSource,
-  linkedin: require("../../assets/onboarding/icons/linkedin.png") as OnboardingIconSource,
-  x: require("../../assets/onboarding/icons/x.png") as OnboardingIconSource,
-  youtube: require("../../assets/onboarding/icons/youtube.png") as OnboardingIconSource,
-};
+/**
+ * A muted monochrome brand glyph, drawn from FontAwesome6 via `@expo/vector-icons`
+ * — one uniform icon language across onboarding (brand marks + system glyphs),
+ * replacing the mixed color-PNG / SF-Symbol set. `set` picks the FA6 sub-family:
+ * `fa6-brand` for logos (TikTok, YouTube…), `fa6-solid` for generic marks. See
+ * apps/mobile/docs/adr/0021-*. System chrome elsewhere still uses SF Symbols.
+ */
+export type OnboardingGlyphSet = "fa6-brand" | "fa6-solid";
+
+export interface OnboardingGlyph {
+  readonly set: OnboardingGlyphSet;
+  readonly name: string;
+}
+
+export function OnboardingGlyphIcon({
+  glyph,
+  size,
+  color,
+}: {
+  readonly glyph: OnboardingGlyph;
+  readonly size: number;
+  readonly color: string;
+}): React.JSX.Element {
+  // FontAwesome6 selects its sub-family from boolean props; `brand`/`solid` map
+  // straight onto our descriptor so a caller never touches the vendor API.
+  return (
+    <FontAwesome6
+      name={glyph.name}
+      size={size}
+      color={color}
+      brand={glyph.set === "fa6-brand"}
+      solid={glyph.set === "fa6-solid"}
+    />
+  );
+}
 
 export interface OnboardingProgress {
   readonly current: number;
@@ -71,7 +93,8 @@ export interface OnboardingScreenProps {
  * Presentation shell for the pre-chat onboarding system. It owns the Omi-style
  * visual decisions once: full-screen imagery, top controls, bottom sheet
  * geometry, safe areas, keyboard avoidance, and scroll containment. Gate
- * semantics stay in the caller.
+ * semantics stay in the caller. The Free Trial gate is the one surface that
+ * intentionally does NOT use this shell (it is full-bleed dark, no backdrop).
  */
 export function OnboardingScreen({
   backdrop,
@@ -85,8 +108,6 @@ export function OnboardingScreen({
   scroll = true,
   contentStyle,
 }: OnboardingScreenProps): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const sheetMaxHeight = Math.round(height * sheetMaxHeightRatio);
@@ -169,9 +190,6 @@ export function OnboardingProgressDots({
 }: {
   readonly progress: OnboardingProgress;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
-
   return (
     <View
       accessibilityLabel={`Step ${progress.current} of ${progress.total}`}
@@ -198,8 +216,7 @@ export interface OnboardingActionProps {
   readonly accessibilityLabel?: string;
   readonly busy?: boolean;
   readonly disabled?: boolean;
-  readonly leadingIcon?: OnboardingIconSource;
-  readonly leadingIconTintColor?: string;
+  readonly leadingGlyph?: OnboardingGlyph;
   readonly leading?: string;
   readonly testID?: string;
   readonly variant?: "primary" | "secondary" | "accent";
@@ -211,14 +228,11 @@ export function OnboardingAction({
   accessibilityLabel,
   busy = false,
   disabled = false,
-  leadingIcon,
-  leadingIconTintColor,
+  leadingGlyph,
   leading,
   testID,
   variant = "primary",
 }: OnboardingActionProps): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
   const isDisabled = disabled || busy;
   const buttonStyle =
     variant === "accent"
@@ -232,6 +246,12 @@ export function OnboardingAction({
       : variant === "secondary"
         ? styles.actionSecondaryText
         : styles.actionPrimaryText;
+  const glyphColor =
+    variant === "accent"
+      ? onboardingColors.accentInk
+      : variant === "secondary"
+        ? onboardingColors.ink
+        : onboardingColors.inkInverse;
 
   return (
     <Pressable
@@ -244,16 +264,13 @@ export function OnboardingAction({
       onPress={onPress}
     >
       {busy ? (
-        <ActivityIndicator color={variant === "accent" ? "white" : "#090909"} />
+        <ActivityIndicator
+          color={variant === "accent" ? onboardingColors.accentInk : onboardingColors.inkInverse}
+        />
       ) : (
         <>
-          {leadingIcon ? (
-            <Image
-              contentFit="contain"
-              source={leadingIcon}
-              style={styles.actionIcon}
-              tintColor={leadingIconTintColor}
-            />
+          {leadingGlyph ? (
+            <OnboardingGlyphIcon glyph={leadingGlyph} size={20} color={glyphColor} />
           ) : null}
           {leading ? <Text style={[styles.actionLeading, textStyle]}>{leading}</Text> : null}
           <Text numberOfLines={1} style={[styles.actionText, textStyle]}>
@@ -269,8 +286,7 @@ export interface OnboardingChoice {
   readonly id: string;
   readonly label: string;
   readonly detail?: string;
-  readonly icon?: OnboardingIconSource;
-  readonly iconTintColor?: string | null;
+  readonly glyph?: OnboardingGlyph;
   readonly leading?: string;
 }
 
@@ -287,9 +303,6 @@ export function OnboardingChoiceList({
   readonly maxHeight?: number;
   readonly scrollTestID?: string;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
-
   const list = (
     <View style={styles.choiceList}>
       {choices.map((choice) => {
@@ -302,21 +315,16 @@ export function OnboardingChoiceList({
             style={[styles.choice, selected ? styles.choiceSelected : null]}
             onPress={() => onSelect(choice.id)}
           >
-            {choice.icon ? (
-              <View style={[styles.choiceGlyph, selected ? styles.choiceGlyphSelected : null]}>
-                <Image
-                  contentFit="contain"
-                  source={choice.icon}
-                  style={styles.choiceIcon}
-                  tintColor={
-                    choice.iconTintColor === null
-                      ? undefined
-                      : (choice.iconTintColor ?? (selected ? "#050505" : "white"))
-                  }
+            {choice.glyph ? (
+              <View style={styles.choiceGlyph}>
+                <OnboardingGlyphIcon
+                  glyph={choice.glyph}
+                  size={18}
+                  color={selected ? onboardingColors.glyphSelected : onboardingColors.glyph}
                 />
               </View>
             ) : choice.leading ? (
-              <View style={[styles.choiceGlyph, selected ? styles.choiceGlyphSelected : null]}>
+              <View style={styles.choiceGlyph}>
                 <Text
                   style={[styles.choiceGlyphText, selected ? styles.choiceGlyphTextSelected : null]}
                 >
@@ -371,9 +379,6 @@ export function OnboardingPermissionRow({
   readonly checked?: boolean;
   readonly onPress?: () => void;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
-
   return (
     <Pressable
       accessibilityLabel={title}
@@ -394,13 +399,10 @@ export function OnboardingPermissionRow({
 }
 
 export function OnboardingTextInput({ style, ...props }: TextInputProps): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
-
   return (
     <TextInput
-      placeholderTextColor="#8A8A8A"
-      selectionColor={theme.colors.action}
+      placeholderTextColor={onboardingColors.placeholder}
+      selectionColor={onboardingColors.accent}
       style={[styles.input, style]}
       {...props}
     />
@@ -414,8 +416,6 @@ export function OnboardingTitle({
   readonly children: ReactNode;
   readonly style?: StyleProp<TextStyle>;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
   return <Text style={[styles.title, style]}>{children}</Text>;
 }
 
@@ -426,8 +426,6 @@ export function OnboardingBody({
   readonly children: ReactNode;
   readonly style?: StyleProp<TextStyle>;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
   return <Text style={[styles.body, style]}>{children}</Text>;
 }
 
@@ -438,8 +436,6 @@ export function OnboardingFinePrint({
   readonly children: ReactNode;
   readonly style?: StyleProp<TextStyle>;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
   return <Text style={[styles.finePrint, style]}>{children}</Text>;
 }
 
@@ -450,8 +446,6 @@ export function OnboardingSection({
   readonly children: ReactNode;
   readonly style?: StyleProp<ViewStyle>;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
   return <View style={[styles.section, style]}>{children}</View>;
 }
 
@@ -459,17 +453,20 @@ export function OnboardingInfoRow({
   title,
   body,
   marker,
+  markerGlyph,
 }: {
   readonly title: string;
   readonly body: string;
   readonly marker?: string;
+  readonly markerGlyph?: OnboardingGlyph;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
-
   return (
     <View style={styles.infoRow}>
-      {marker ? (
+      {markerGlyph ? (
+        <View style={styles.infoMarker}>
+          <OnboardingGlyphIcon glyph={markerGlyph} size={13} color={onboardingColors.accent} />
+        </View>
+      ) : marker ? (
         <View style={styles.infoMarker}>
           <Text style={styles.infoMarkerText}>{marker}</Text>
         </View>
@@ -482,345 +479,405 @@ export function OnboardingInfoRow({
   );
 }
 
-function createStyles(colors: MobileThemeColors) {
-  return StyleSheet.create({
-    screen: {
-      backgroundColor: "#050505",
-      flex: 1,
-      overflow: "hidden",
-    },
-    backdropScrim: {
-      bottom: 0,
-      left: 0,
-      position: "absolute",
-      right: 0,
-      top: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.18)",
-    },
-    bottomScrim: {
-      bottom: 0,
-      height: "46%",
-      left: 0,
-      position: "absolute",
-      right: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.42)",
-    },
-    topBar: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      left: 0,
-      paddingHorizontal: 18,
-      position: "absolute",
-      right: 0,
-      top: 0,
-      zIndex: 2,
-    },
-    backButton: {
-      alignItems: "center",
-      backgroundColor: "rgba(0, 0, 0, 0.34)",
-      borderRadius: 18,
-      height: 36,
-      justifyContent: "center",
-      width: 36,
-    },
-    backButtonPlaceholder: {
-      height: 36,
-      width: 36,
-    },
-    backButtonText: {
-      color: "white",
-      fontSize: 30,
-      fontWeight: "500",
-      lineHeight: 30,
-      marginTop: -2,
-    },
-    progress: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: 7,
-      justifyContent: "center",
-      minHeight: 36,
-    },
-    progressDot: {
-      backgroundColor: "rgba(255, 255, 255, 0.42)",
-      borderRadius: 4,
-      height: 7,
-      width: 7,
-    },
-    progressDotActive: {
-      backgroundColor: colors.action,
-      width: 16,
-    },
-    stage: {
-      flex: 1,
-      justifyContent: "flex-end",
-    },
-    sheet: {
-      alignSelf: "stretch",
-      backgroundColor: "#050505",
-      borderTopLeftRadius: 40,
-      borderTopRightRadius: 40,
-      borderCurve: "continuous",
-      boxShadow: "0 -16px 44px rgba(0, 0, 0, 0.38)",
-      paddingHorizontal: 32,
-      paddingTop: 26,
-    },
-    scrollContent: {
-      flexGrow: 1,
-    },
-    sheetContent: {
-      gap: 18,
-    },
-    footer: {
-      gap: 10,
-      paddingTop: 2,
-    },
-    title: {
-      color: "white",
-      fontSize: 28,
-      fontWeight: "800",
-      letterSpacing: 0,
-      lineHeight: 34,
-    },
-    body: {
-      color: "rgba(255, 255, 255, 0.82)",
-      fontSize: 15,
-      lineHeight: 22,
-    },
-    finePrint: {
-      color: "rgba(255, 255, 255, 0.56)",
-      fontSize: 11,
-      lineHeight: 16,
-      textAlign: "center",
-    },
-    action: {
-      alignItems: "center",
-      alignSelf: "stretch",
-      borderRadius: 999,
-      borderCurve: "continuous",
-      flexDirection: "row",
-      gap: 8,
-      justifyContent: "center",
-      height: 56,
-      paddingHorizontal: 24,
-      paddingVertical: 0,
-    },
-    actionPrimary: {
-      backgroundColor: "white",
-    },
-    actionSecondary: {
-      backgroundColor: "#1D1D1D",
-      borderColor: "rgba(255, 255, 255, 0.12)",
-      borderWidth: 1,
-    },
-    actionAccent: {
-      backgroundColor: colors.action,
-    },
-    actionDisabled: {
-      opacity: 0.45,
-    },
-    actionText: {
-      fontSize: 18,
-      fontWeight: "600",
-    },
-    actionIcon: {
-      height: 22,
-      width: 22,
-    },
-    actionLeading: {
-      fontSize: 20,
-      fontWeight: "700",
-      minWidth: 22,
-      textAlign: "center",
-    },
-    actionPrimaryText: {
-      color: "#070707",
-    },
-    actionSecondaryText: {
-      color: "white",
-    },
-    actionAccentText: {
-      color: "white",
-    },
-    choiceList: {
-      gap: 10,
-    },
-    scrollableChoiceFrame: {
-      overflow: "hidden",
-      position: "relative",
-    },
-    scrollableChoiceContent: {
-      paddingBottom: 20,
-    },
-    choiceScrollFade: {
-      backgroundColor: "rgba(5, 5, 5, 0.82)",
-      bottom: 0,
-      height: 22,
-      left: 0,
-      position: "absolute",
-      right: 0,
-    },
-    choice: {
-      alignItems: "center",
-      backgroundColor: "#1D1D1D",
-      borderColor: "rgba(255, 255, 255, 0.28)",
-      borderRadius: 40,
-      borderCurve: "continuous",
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: 14,
-      minHeight: 50,
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-    },
-    choiceSelected: {
-      backgroundColor: "white",
-      borderColor: "white",
-    },
-    choiceGlyph: {
-      alignItems: "center",
-      borderRadius: 10,
-      height: 20,
-      justifyContent: "center",
-      width: 20,
-    },
-    choiceGlyphSelected: {
-      backgroundColor: "rgba(0, 0, 0, 0.08)",
-    },
-    choiceGlyphText: {
-      color: "white",
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    choiceGlyphTextSelected: {
-      color: "#050505",
-    },
-    choiceCopy: {
-      flex: 1,
-      gap: 2,
-    },
-    choiceLabel: {
-      color: "white",
-      fontSize: 15,
-      fontWeight: "500",
-    },
-    choiceLabelSelected: {
-      color: "#050505",
-    },
-    choiceDetail: {
-      color: "rgba(255, 255, 255, 0.58)",
-      fontSize: 12,
-      lineHeight: 16,
-    },
-    choiceDetailSelected: {
-      color: "rgba(0, 0, 0, 0.58)",
-    },
-    choiceIcon: {
-      height: 18,
-      width: 18,
-    },
-    permissionRow: {
-      alignItems: "center",
-      backgroundColor: "#1D1D1D",
-      borderColor: "rgba(255, 255, 255, 0.12)",
-      borderRadius: 16,
-      borderCurve: "continuous",
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: 16,
-      minHeight: 72,
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-    },
-    permissionCopy: {
-      flex: 1,
-      gap: 4,
-    },
-    permissionTitle: {
-      color: "white",
-      fontSize: 16,
-      fontWeight: "600",
-    },
-    permissionBody: {
-      color: "rgba(255, 255, 255, 0.62)",
-      fontSize: 12,
-      lineHeight: 16,
-    },
-    permissionCheck: {
-      alignItems: "center",
-      borderColor: "rgba(255, 255, 255, 0.52)",
-      borderRadius: 5,
-      borderCurve: "continuous",
-      borderWidth: 2,
-      height: 22,
-      justifyContent: "center",
-      width: 22,
-    },
-    permissionCheckActive: {
-      backgroundColor: "white",
-      borderColor: "white",
-    },
-    permissionCheckText: {
-      color: "#050505",
-      fontSize: 14,
-      fontWeight: "900",
-      lineHeight: 17,
-    },
-    input: {
-      backgroundColor: "#1D1D1D",
-      borderColor: "rgba(255, 255, 255, 0.12)",
-      borderRadius: 16,
-      borderCurve: "continuous",
-      borderWidth: 1,
-      color: "white",
-      fontSize: 18,
-      fontWeight: "500",
-      minHeight: 64,
-      paddingHorizontal: 24,
-      paddingVertical: 20,
-      textAlign: "center",
-    },
-    section: {
-      gap: 11,
-    },
-    infoRow: {
-      backgroundColor: "#1D1D1D",
-      borderColor: "rgba(255, 255, 255, 0.1)",
-      borderRadius: 18,
-      borderCurve: "continuous",
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
-    },
-    infoMarker: {
-      alignItems: "center",
-      backgroundColor: "rgba(255, 255, 255, 0.09)",
-      borderRadius: 13,
-      height: 26,
-      justifyContent: "center",
-      width: 26,
-    },
-    infoMarkerText: {
-      color: "white",
-      fontSize: 12,
-      fontWeight: "800",
-    },
-    infoCopy: {
-      flex: 1,
-      gap: 3,
-    },
-    infoTitle: {
-      color: "white",
-      fontSize: 14,
-      fontWeight: "700",
-    },
-    infoBody: {
-      color: "rgba(255, 255, 255, 0.62)",
-      fontSize: 12,
-      lineHeight: 16,
-    },
-  });
+/**
+ * Subtle staggered entrance (fade + rise) for onboarding content. Honors the
+ * OS "Reduce Motion" setting — when reduced, content appears immediately with no
+ * transform. Uses RN `Animated` (Reanimated is not a dependency); the native
+ * driver keeps it off the JS thread.
+ */
+export function OnboardingReveal({
+  children,
+  index = 0,
+  style,
+}: {
+  readonly children: ReactNode;
+  readonly index?: number;
+  readonly style?: StyleProp<ViewStyle>;
+}): React.JSX.Element {
+  const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => active && setReduceMotion(enabled))
+      .catch(() => active && setReduceMotion(false));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion === null) return;
+    if (reduceMotion) {
+      progress.setValue(1);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 360,
+      delay: 90 + index * 80,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [reduceMotion, index, progress]);
+
+  // Until we know the reduce-motion preference, render at rest (no flash of a
+  // transformed frame that would then need to un-transform).
+  if (reduceMotion === null) {
+    return <View style={style}>{children}</View>;
+  }
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: progress,
+          transform: [
+            {
+              translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
+            },
+          ],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: onboardingColors.canvas,
+    flex: 1,
+    overflow: "hidden",
+  },
+  backdropScrim: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    backgroundColor: onboardingColors.scrimSoft,
+  },
+  bottomScrim: {
+    bottom: 0,
+    height: "46%",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    backgroundColor: onboardingColors.scrimStrong,
+  },
+  topBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    left: 0,
+    paddingHorizontal: 18,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 2,
+  },
+  backButton: {
+    alignItems: "center",
+    backgroundColor: onboardingColors.control,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  backButtonPlaceholder: {
+    height: 36,
+    width: 36,
+  },
+  backButtonText: {
+    color: onboardingColors.ink,
+    fontFamily: fontFamily(500),
+    fontSize: 30,
+    lineHeight: 30,
+    marginTop: -2,
+  },
+  progress: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 7,
+    justifyContent: "center",
+    minHeight: 36,
+  },
+  progressDot: {
+    backgroundColor: onboardingColors.dotIdle,
+    borderRadius: 4,
+    height: 7,
+    width: 7,
+  },
+  progressDotActive: {
+    backgroundColor: onboardingColors.accent,
+    width: 16,
+  },
+  stage: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    alignSelf: "stretch",
+    backgroundColor: onboardingColors.sheet,
+    borderTopLeftRadius: onboardingRadii.sheet,
+    borderTopRightRadius: onboardingRadii.sheet,
+    borderCurve: "continuous",
+    boxShadow: "0 -16px 44px rgba(0, 0, 0, 0.38)",
+    paddingHorizontal: 32,
+    paddingTop: 26,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  sheetContent: {
+    gap: 18,
+  },
+  footer: {
+    gap: 10,
+    paddingTop: 2,
+  },
+  title: {
+    color: onboardingColors.ink,
+    fontFamily: fontFamily(800),
+    fontSize: 28,
+    letterSpacing: -0.3,
+    lineHeight: 34,
+  },
+  body: {
+    color: onboardingColors.inkMuted,
+    fontFamily: fontFamily(400),
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  finePrint: {
+    color: onboardingColors.inkSubtle,
+    fontFamily: fontFamily(500),
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: "center",
+  },
+  action: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    borderRadius: onboardingRadii.pill,
+    borderCurve: "continuous",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    height: 56,
+    paddingHorizontal: 24,
+    paddingVertical: 0,
+  },
+  actionPrimary: {
+    backgroundColor: onboardingColors.surfaceSelected,
+  },
+  actionSecondary: {
+    backgroundColor: onboardingColors.surface,
+    borderColor: onboardingColors.borderStrong,
+    borderWidth: 1,
+  },
+  actionAccent: {
+    backgroundColor: onboardingColors.accent,
+  },
+  actionDisabled: {
+    opacity: 0.45,
+  },
+  actionText: {
+    fontFamily: fontFamily(700),
+    fontSize: 18,
+  },
+  actionLeading: {
+    fontFamily: fontFamily(700),
+    fontSize: 20,
+    minWidth: 22,
+    textAlign: "center",
+  },
+  actionPrimaryText: {
+    color: onboardingColors.inkInverse,
+  },
+  actionSecondaryText: {
+    color: onboardingColors.ink,
+  },
+  actionAccentText: {
+    color: onboardingColors.accentInk,
+  },
+  choiceList: {
+    gap: 10,
+  },
+  scrollableChoiceFrame: {
+    overflow: "hidden",
+    position: "relative",
+  },
+  scrollableChoiceContent: {
+    paddingBottom: 20,
+  },
+  choiceScrollFade: {
+    backgroundColor: onboardingColors.listFade,
+    bottom: 0,
+    height: 22,
+    left: 0,
+    position: "absolute",
+    right: 0,
+  },
+  choice: {
+    alignItems: "center",
+    backgroundColor: onboardingColors.surface,
+    borderColor: onboardingColors.borderStrong,
+    borderRadius: onboardingRadii.pill,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 14,
+    minHeight: 50,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  choiceSelected: {
+    backgroundColor: onboardingColors.surfaceSelected,
+    borderColor: onboardingColors.surfaceSelected,
+  },
+  choiceGlyph: {
+    alignItems: "center",
+    height: 20,
+    justifyContent: "center",
+    width: 20,
+  },
+  choiceGlyphText: {
+    color: onboardingColors.glyph,
+    fontFamily: fontFamily(700),
+    fontSize: 15,
+  },
+  choiceGlyphTextSelected: {
+    color: onboardingColors.glyphSelected,
+  },
+  choiceCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  choiceLabel: {
+    color: onboardingColors.ink,
+    fontFamily: fontFamily(600),
+    fontSize: 15,
+  },
+  choiceLabelSelected: {
+    color: onboardingColors.inkInverse,
+  },
+  choiceDetail: {
+    color: onboardingColors.inkSubtle,
+    fontFamily: fontFamily(500),
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  choiceDetailSelected: {
+    color: onboardingColors.inkInverseMuted,
+  },
+  permissionRow: {
+    alignItems: "center",
+    backgroundColor: onboardingColors.surface,
+    borderColor: onboardingColors.border,
+    borderRadius: onboardingRadii.card,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 16,
+    minHeight: 72,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  permissionCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  permissionTitle: {
+    color: onboardingColors.ink,
+    fontFamily: fontFamily(700),
+    fontSize: 16,
+  },
+  permissionBody: {
+    color: onboardingColors.inkMuted,
+    fontFamily: fontFamily(500),
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  permissionCheck: {
+    alignItems: "center",
+    borderColor: onboardingColors.borderStrong,
+    borderRadius: 6,
+    borderCurve: "continuous",
+    borderWidth: 2,
+    height: 22,
+    justifyContent: "center",
+    width: 22,
+  },
+  permissionCheckActive: {
+    backgroundColor: onboardingColors.accent,
+    borderColor: onboardingColors.accent,
+  },
+  permissionCheckText: {
+    color: onboardingColors.accentInk,
+    fontFamily: fontFamily(800),
+    fontSize: 14,
+    lineHeight: 17,
+  },
+  input: {
+    backgroundColor: onboardingColors.surface,
+    borderColor: onboardingColors.border,
+    borderRadius: onboardingRadii.field,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    color: onboardingColors.ink,
+    fontFamily: fontFamily(600),
+    fontSize: 18,
+    minHeight: 64,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    textAlign: "center",
+  },
+  section: {
+    gap: 11,
+  },
+  infoRow: {
+    backgroundColor: onboardingColors.surface,
+    borderColor: onboardingColors.border,
+    borderRadius: onboardingRadii.card,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  infoMarker: {
+    alignItems: "center",
+    backgroundColor: "rgba(107, 158, 138, 0.16)",
+    borderRadius: 13,
+    height: 26,
+    justifyContent: "center",
+    width: 26,
+  },
+  infoMarkerText: {
+    color: onboardingColors.accent,
+    fontFamily: fontFamily(800),
+    fontSize: 12,
+  },
+  infoCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  infoTitle: {
+    color: onboardingColors.ink,
+    fontFamily: fontFamily(700),
+    fontSize: 14,
+  },
+  infoBody: {
+    color: onboardingColors.inkMuted,
+    fontFamily: fontFamily(500),
+    fontSize: 12,
+    lineHeight: 16,
+  },
+});

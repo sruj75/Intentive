@@ -6,6 +6,14 @@
  * whenever the destination changes. Gate screens never navigate themselves.
  */
 import { useEffect } from "react";
+import {
+  Manrope_400Regular,
+  Manrope_500Medium,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
+  Manrope_800ExtraBold,
+  useFonts,
+} from "@expo-google-fonts/manrope";
 import { Stack, useRouter } from "expo-router";
 
 import { createAuthAdapter } from "../src/domains/auth/service/auth-adapter";
@@ -75,7 +83,21 @@ function RootNavigator(): React.JSX.Element {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
-function RootLayout(): React.JSX.Element {
+function RootLayout(): React.JSX.Element | null {
+  // Load the onboarding brand typeface (Manrope; onboarding-scoped — chat stays
+  // SF Pro). Gate the first render until the weights register so onboarding text
+  // never flashes in the system font, then swaps. A load *error* is non-fatal:
+  // fall through and let text degrade to the platform font rather than trapping
+  // the whole app behind a font. See apps/mobile/docs/adr/0021-*.
+  const [fontsLoaded, fontError] = useFonts({
+    Manrope_400Regular,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+  });
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <LaunchStateProvider source={launchStateSource}>
       <AuthAdapterProvider adapter={authAdapter}>

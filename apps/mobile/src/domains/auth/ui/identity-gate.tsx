@@ -8,17 +8,15 @@
  * and `error` surface a recoverable notice — never a fake success. The dev
  * sign-in button renders only under `__DEV__` and never ships (ADR 0012).
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { StyleSheet, Text } from "react-native";
 
 import {
   OnboardingAction,
   OnboardingFinePrint,
-  ONBOARDING_ICONS,
   OnboardingScreen,
   OnboardingTitle,
 } from "../../../design/onboarding";
-import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
 import { useLaunchState } from "../../../providers/launch-state";
 import type { AuthProviderId } from "../types/auth";
 import { useAuthAdapter } from "./auth-context";
@@ -31,8 +29,6 @@ export function IdentityGate(): React.JSX.Element {
   const { markSignedIn } = useLaunchState();
   const [busy, setBusy] = useState<AuthProviderId | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme]);
 
   async function signInWith(provider: AuthProviderId): Promise<void> {
     setBusy(provider);
@@ -73,14 +69,14 @@ export function IdentityGate(): React.JSX.Element {
 
       <OnboardingAction
         label="Sign in with Apple"
-        leadingIcon={ONBOARDING_ICONS.apple}
+        leadingGlyph={{ set: "fa6-brand", name: "apple" }}
         busy={busy === "apple"}
         disabled={busy !== null}
         onPress={() => void signInWith("apple")}
       />
       <OnboardingAction
         label="Sign in with Google"
-        leadingIcon={ONBOARDING_ICONS.google}
+        leadingGlyph={{ set: "fa6-brand", name: "google" }}
         busy={busy === "google"}
         disabled={busy !== null}
         onPress={() => void signInWith("google")}
@@ -110,14 +106,14 @@ export function IdentityGate(): React.JSX.Element {
   );
 }
 
-function createStyles(colors: MobileThemeColors) {
-  return StyleSheet.create({
-    content: { gap: 16 },
-    notice: { color: colors.danger, fontSize: 14, marginTop: 4, textAlign: "center" },
-    title: {
-      fontSize: 32,
-      lineHeight: 38,
-      textAlign: "center",
-    },
-  });
-}
+const styles = StyleSheet.create({
+  content: { gap: 16 },
+  // Warm ember error, legible on the always-dark onboarding surface (matches the
+  // dark-appearance `error` token in DESIGN.md).
+  notice: { color: "#E86A52", fontSize: 14, marginTop: 4, textAlign: "center" },
+  title: {
+    fontSize: 32,
+    lineHeight: 38,
+    textAlign: "center",
+  },
+});

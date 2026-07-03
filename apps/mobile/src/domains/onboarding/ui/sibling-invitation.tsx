@@ -45,12 +45,12 @@ export function SiblingInvitation(): React.JSX.Element {
 
       <View style={styles.points}>
         <OnboardingInfoRow
-          marker="M"
+          markerGlyph={{ set: "fa6-solid", name: "laptop" }}
           title="Fuller context"
           body="When Intentive runs on your Mac, it can see how you work, so your companion picks up on more."
         />
         <OnboardingInfoRow
-          marker="F"
+          markerGlyph={{ set: "fa6-solid", name: "bell" }}
           title="Better follow-ups"
           body="With that context, check-ins and nudges land closer to what actually matters."
         />
