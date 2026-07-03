@@ -31,7 +31,7 @@ test("heartbeat scheduler tick enqueues due users with floor and batch limit", a
 });
 
 test("heartbeat scheduler start contains tick failures inside the poll loop", async () => {
-  const errors = [];
+  const warnings = [];
   const scheduler = createHeartbeatScheduler({
     pollIntervalMs: 1_000,
     scheduleRepo: {
@@ -40,7 +40,7 @@ test("heartbeat scheduler start contains tick failures inside the poll loop", as
       },
     },
     enqueueHeartbeat: () => true,
-    logger: recordingLogger({ errors }),
+    logger: recordingLogger({ warnings }),
   });
 
   try {
@@ -51,8 +51,63 @@ test("heartbeat scheduler start contains tick failures inside the poll loop", as
     scheduler.stop();
   }
 
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].event, "heartbeat.tick");
+  assert.equal(warnings[0].attrs.status, "failed");
+});
+
+test("heartbeat scheduler escalates only after consecutive tick failures", async () => {
+  const warnings = [];
+  const errors = [];
+  const scheduler = createHeartbeatScheduler({
+    pollIntervalMs: 1,
+    escalateAfterConsecutiveFailures: 3,
+    scheduleRepo: {
+      selectDue: async () => {
+        throw new TypeError("fetch failed");
+      },
+    },
+    enqueueHeartbeat: () => true,
+    logger: recordingLogger({ errors, warnings }),
+  });
+
+  scheduler.start();
+  await waitFor(() => errors.length === 1);
+  scheduler.stop();
+
+  assert.equal(warnings.length, 2);
   assert.equal(errors.length, 1);
+  assert.equal(warnings[0].event, "heartbeat.tick");
+  assert.equal(warnings[0].attrs.error_type, "TypeError");
   assert.equal(errors[0].event, "heartbeat.tick");
+});
+
+test("heartbeat scheduler success resets consecutive failure escalation", async () => {
+  const warnings = [];
+  const errors = [];
+  const results = [{ type: "reject" }, { type: "reject" }, { type: "resolve" }, { type: "reject" }];
+  const scheduler = createHeartbeatScheduler({
+    pollIntervalMs: 1,
+    escalateAfterConsecutiveFailures: 3,
+    scheduleRepo: {
+      selectDue: async () => {
+        const result = results.shift();
+        if (result?.type === "reject") {
+          throw new TypeError("fetch failed");
+        }
+        return [];
+      },
+    },
+    enqueueHeartbeat: () => true,
+    logger: recordingLogger({ errors, warnings }),
+  });
+
+  scheduler.start();
+  await waitFor(() => warnings.length === 3);
+  scheduler.stop();
+
+  assert.equal(errors.length, 0);
+  assert.equal(warnings.length, 3);
 });
 
 test("heartbeat scheduler measures scheduler_lag_ms against the expected poll cadence", async () => {
@@ -85,11 +140,19 @@ test("heartbeat scheduler measures scheduler_lag_ms against the expected poll ca
   assert.equal(infos[1].attrs.scheduler_lag_ms, 15);
 });
 
-function recordingLogger({ errors, infos } = {}) {
+async function waitFor(predicate) {
+  const deadline = Date.now() + 1_000;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.ok(predicate(), "condition was not met before timeout");
+}
+
+function recordingLogger({ errors, infos, warnings } = {}) {
   return {
     info: (event, attrs) => infos?.push({ event, attrs }),
-    warn: () => {},
+    warn: (event, attrs) => warnings?.push({ event, attrs }),
     error: (event, error, attrs) => errors?.push({ event, error, attrs }),
-    child: () => recordingLogger({ errors, infos }),
+    child: () => recordingLogger({ errors, infos, warnings }),
   };
 }
