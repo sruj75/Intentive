@@ -24,6 +24,7 @@ import {
   OnboardingReveal,
   type OnboardingGlyph,
 } from "../../../design/onboarding";
+import { useOnboardingFontsReady } from "../../../design/onboarding-fonts";
 import { fontFamily, onboardingColors, onboardingRadii } from "../../../design/onboarding-tokens";
 import { useLaunchState } from "../../../providers/launch-state";
 import { TERMS_OF_SERVICE_URL } from "./consent-primer";
@@ -56,10 +57,15 @@ const MILESTONES: readonly Milestone[] = [
 ];
 
 export function FreeTrial(): React.JSX.Element {
+  const fontsReady = useOnboardingFontsReady();
   const { setTrial } = useLaunchState();
   const insets = useSafeAreaInsets();
 
   const openTerms = () => void Linking.openURL(TERMS_OF_SERVICE_URL).catch(() => {});
+
+  if (!fontsReady) {
+    return <View style={styles.screen} testID="onboarding-font-gate" />;
+  }
 
   return (
     <View style={styles.screen} testID="free-trial-paywall">

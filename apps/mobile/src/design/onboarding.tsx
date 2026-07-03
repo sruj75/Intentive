@@ -21,6 +21,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fontFamily, onboardingColors, onboardingRadii } from "./onboarding-tokens";
+import { useOnboardingFontsReady } from "./onboarding-fonts";
 
 export type OnboardingBackdrop = "welcome" | "privacy" | "name" | "source" | "permissions" | "mac";
 
@@ -108,9 +109,16 @@ export function OnboardingScreen({
   scroll = true,
   contentStyle,
 }: OnboardingScreenProps): React.JSX.Element {
+  const fontsReady = useOnboardingFontsReady();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const sheetMaxHeight = Math.round(height * sheetMaxHeightRatio);
+
+  // Hold the warm canvas until Manrope registers so onboarding copy never flashes
+  // system font → brand typeface. Launch-state hydration is not blocked for this.
+  if (!fontsReady) {
+    return <View style={styles.screen} testID="onboarding-font-gate" />;
+  }
 
   const content = (
     <View style={[styles.sheetContent, contentStyle]}>
