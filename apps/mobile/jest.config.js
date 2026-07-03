@@ -25,6 +25,13 @@ const [pnpmPattern, ...restPatterns] = expoPreset.transformIgnorePatterns;
 module.exports = {
   preset: "jest-expo",
   testMatch: ["**/test/**/*.rn.test.tsx"],
+  // These are full React-Native render + gate-walk tests (many `waitFor`s per
+  // test). They finish in well under a second locally, but on shared CI runners
+  // they contend with the parallel Rust build and can breach Jest's 5s default
+  // (the launch-flow gate walk was observed timing out at 5000ms in CI while
+  // passing in ~0.5s locally). A generous ceiling absorbs that load without
+  // masking a real hang — a genuinely stuck test still fails, just later.
+  testTimeout: 30_000,
   transformIgnorePatterns: [
     // Whitelist our own workspace packages alongside the ESM-only vendor ones:
     // `@intentive/*` ship built ESM `dist/`, which jest must transform like app

@@ -16,15 +16,18 @@ export function createHeartbeatScheduler(params: {
   readonly pollIntervalMs?: number;
   readonly floorMs?: number;
   readonly batchLimit?: number;
+  readonly escalateAfterConsecutiveFailures?: number;
   readonly logger?: Logger;
 }): HeartbeatScheduler {
   const clock = params.clock ?? (() => new Date());
   const pollIntervalMs = params.pollIntervalMs ?? 60_000;
   const floorMs = params.floorMs ?? 60 * 60_000;
   const batchLimit = params.batchLimit ?? 50;
+  const escalateAfter = params.escalateAfterConsecutiveFailures ?? 3;
   const logger = params.logger ?? createNoopLogger();
   let timer: NodeJS.Timeout | null = null;
   let stopped = true;
+  let consecutiveFailures = 0;
   // The wall-clock time the next poll was scheduled to fire, used to measure
   // scheduler lag (event-loop drift). null before the first, immediate poll.
   let expectedTickAt: number | null = null;
@@ -48,8 +51,17 @@ export function createHeartbeatScheduler(params: {
   async function loop(): Promise<void> {
     try {
       await tick();
+      consecutiveFailures = 0;
     } catch (error) {
-      logger.error("heartbeat.tick", error, { status: "failed" });
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= escalateAfter) {
+        logger.error("heartbeat.tick", error, { status: "failed" });
+      } else {
+        logger.warn("heartbeat.tick", {
+          status: "failed",
+          error_type: error instanceof Error ? error.name : typeof error,
+        });
+      }
     } finally {
       if (!stopped) {
         expectedTickAt = clock().getTime() + pollIntervalMs;
