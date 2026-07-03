@@ -12,6 +12,7 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Text } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { SiblingInvitation } from "../src/domains/onboarding/ui/sibling-invitation";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
@@ -34,6 +35,11 @@ const needsInviteSource: LaunchStateSource = {
     }),
 };
 
+const safeAreaMetrics = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 47, right: 0, bottom: 34, left: 0 },
+};
+
 function Destination(): React.JSX.Element {
   const { state } = useLaunchState();
   return <Text testID="dest">{resolveLaunchState(state)}</Text>;
@@ -41,10 +47,12 @@ function Destination(): React.JSX.Element {
 
 function renderInvitation() {
   return render(
-    <LaunchStateProvider source={needsInviteSource}>
-      <Destination />
-      <SiblingInvitation />
-    </LaunchStateProvider>,
+    <SafeAreaProvider initialMetrics={safeAreaMetrics}>
+      <LaunchStateProvider source={needsInviteSource}>
+        <Destination />
+        <SiblingInvitation />
+      </LaunchStateProvider>
+    </SafeAreaProvider>,
   );
 }
 
@@ -55,6 +63,8 @@ async function expectDestination(value: string) {
 test("renders capability-honest Mac-setup guidance and a Not now action", async () => {
   renderInvitation();
   await expectDestination("SIBLING_INVITATION_PENDING");
+  expect(screen.getByTestId("onboarding-bottom-sheet")).toBeTruthy();
+  expect(screen.getByTestId("onboarding-progress")).toHaveProp("accessibilityLabel", "Step 5 of 6");
   // What connecting the Mac improves — stated as future/conditional, never as
   // an already-connected capability.
   expect(screen.getByText(/when Intentive runs on your Mac/i)).toBeTruthy();

@@ -13,9 +13,15 @@
  * notification-related — that is the separate Grant Permissions step.
  */
 import { useMemo } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Linking, StyleSheet, Text } from "react-native";
 
+import {
+  OnboardingAction,
+  OnboardingBody,
+  OnboardingFinePrint,
+  OnboardingScreen,
+  OnboardingTitle,
+} from "../../../design/onboarding";
 import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
 import { useLaunchState } from "../../../providers/launch-state";
 
@@ -32,65 +38,38 @@ export function ConsentPrimer(): React.JSX.Element {
   const { setConsent } = useLaunchState();
   const theme = useMobileTheme();
   const styles = useMemo(() => createStyles(theme.colors), [theme]);
-  const insets = useSafeAreaInsets();
 
   const openPrivacy = () => void Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
   const openTerms = () => void Linking.openURL(TERMS_OF_SERVICE_URL).catch(() => {});
 
   return (
-    <View style={styles.screen}>
-      <ScrollView
-        alwaysBounceVertical={false}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 24 },
-        ]}
-      >
-        <View style={styles.body}>
-          <Text style={styles.title}>Data &amp; Privacy</Text>
-          <Text style={styles.message}>{CONSENT_BODY}</Text>
-          <Text style={styles.fineprint}>
-            Your data is protected and governed by our{" "}
-            <Text accessibilityRole="link" style={styles.link} onPress={openPrivacy}>
-              Privacy Policy
-            </Text>{" "}
-            and{" "}
-            <Text accessibilityRole="link" style={styles.link} onPress={openTerms}>
-              Terms of Service
-            </Text>
-            .
-          </Text>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          style={styles.button}
-          onPress={() => setConsent("completed")}
-        >
-          <Text style={styles.buttonText}>Agree &amp; Continue</Text>
-        </Pressable>
-      </ScrollView>
-    </View>
+    <OnboardingScreen
+      backdrop="privacy"
+      backdropLabel="Intentive privacy review before companion setup"
+      progress={{ current: 1, total: 6 }}
+      sheetMaxHeightRatio={0.62}
+    >
+      <OnboardingTitle>Data &amp; Privacy</OnboardingTitle>
+      <OnboardingBody>{CONSENT_BODY}</OnboardingBody>
+      <OnboardingFinePrint style={styles.finePrint}>
+        Your data is protected and governed by our{" "}
+        <Text accessibilityRole="link" style={styles.link} onPress={openPrivacy}>
+          Privacy Policy
+        </Text>{" "}
+        and{" "}
+        <Text accessibilityRole="link" style={styles.link} onPress={openTerms}>
+          Terms of Service
+        </Text>
+        .
+      </OnboardingFinePrint>
+      <OnboardingAction label="Agree & Continue" onPress={() => setConsent("completed")} />
+    </OnboardingScreen>
   );
 }
 
 function createStyles(colors: MobileThemeColors) {
   return StyleSheet.create({
-    screen: { flex: 1, backgroundColor: colors.canvas },
-    content: { flexGrow: 1, justifyContent: "flex-end", gap: 24, paddingHorizontal: 24 },
-    body: { gap: 16 },
-    title: { color: colors.ink, fontSize: 28, fontWeight: "700" },
-    message: { color: colors.ink, fontSize: 15, lineHeight: 22 },
-    fineprint: { color: colors.inkMuted, fontSize: 13, lineHeight: 18 },
-    link: { color: colors.action, textDecorationLine: "underline" },
-    button: {
-      alignItems: "center",
-      alignSelf: "stretch",
-      backgroundColor: colors.action,
-      borderRadius: 28,
-      paddingHorizontal: 24,
-      paddingVertical: 16,
-    },
-    buttonText: { color: "white", fontSize: 16, fontWeight: "600" },
+    finePrint: { textAlign: "left" },
+    link: { color: colors.action, fontWeight: "700", textDecorationLine: "underline" },
   });
 }

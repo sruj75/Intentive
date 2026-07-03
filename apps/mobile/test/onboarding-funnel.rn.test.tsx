@@ -62,18 +62,19 @@ test("walking name → source → permissions completes the one onboarding gate"
   await expectDestination("MISSING_ONBOARDING");
 
   // Step 1: name.
-  expect(screen.getByText("What's your name?")).toBeTruthy();
+  expect(screen.getByText("Want to go by something else?")).toBeTruthy();
+  expect(screen.getByTestId("onboarding-bottom-sheet")).toBeTruthy();
   fireEvent.changeText(screen.getByPlaceholderText("Enter your name"), "Ada");
   fireEvent.press(screen.getByText("Continue"));
 
   // Step 2: acquisition source — still the same gate.
   await waitFor(() => expect(screen.getByText("How did you find us?")).toBeTruthy());
   await expectDestination("MISSING_ONBOARDING");
-  fireEvent.press(screen.getByText("Web search"));
+  fireEvent.press(screen.getByText("Google Search"));
   fireEvent.press(screen.getByText("Continue"));
 
   // Step 3: grant permissions — completing it finishes the gate.
-  await waitFor(() => expect(screen.getByText("Stay in the loop")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Grant permissions")).toBeTruthy());
   fireEvent.press(screen.getByText("Continue"));
 
   await expectDestination("SIBLING_INVITATION_PENDING");

@@ -8,96 +8,91 @@
  * TODO(polish): send the chosen source to an acquisition-analytics sink; for the
  * scaffold the selection advances the funnel without being recorded anywhere.
  */
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useState } from "react";
+import { StyleSheet } from "react-native";
 
-import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
+import {
+  ONBOARDING_ICONS,
+  OnboardingAction,
+  OnboardingChoiceList,
+  OnboardingScreen,
+  OnboardingTextInput,
+  OnboardingTitle,
+  type OnboardingChoice,
+} from "../../../design/onboarding";
 
 const SOURCES = [
-  "App Store",
-  "Friend or family",
-  "Social media",
-  "Web search",
-  "News or article",
-  "Other",
-] as const;
+  { id: "tiktok", label: "TikTok", icon: "sf:music.note" },
+  { id: "youtube", label: "YouTube", icon: ONBOARDING_ICONS.youtube, iconTintColor: null },
+  { id: "instagram", label: "Instagram", icon: ONBOARDING_ICONS.instagram, iconTintColor: null },
+  { id: "x-twitter", label: "X (Twitter)", icon: ONBOARDING_ICONS.x },
+  { id: "reddit", label: "Reddit", icon: "sf:bubble.left.and.bubble.right.fill" },
+  { id: "linkedin", label: "LinkedIn", icon: ONBOARDING_ICONS.linkedin, iconTintColor: null },
+  { id: "friend", label: "Friend / word of mouth", icon: "sf:person.2.fill" },
+  { id: "coworker", label: "Coworker", icon: "sf:briefcase.fill" },
+  { id: "event", label: "Event", icon: "sf:calendar" },
+  { id: "app-store", label: "App Store", icon: "sf:apple.logo" },
+  { id: "google", label: "Google Search", icon: ONBOARDING_ICONS.google, iconTintColor: null },
+  { id: "other", label: "Other", icon: "sf:ellipsis" },
+] as const satisfies readonly OnboardingChoice[];
 
-export function AcquisitionSourceStep({ onNext }: { onNext: () => void }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme]);
-  const insets = useSafeAreaInsets();
+export function AcquisitionSourceStep({
+  onNext,
+  onBack,
+}: {
+  onNext: () => void;
+  onBack?: () => void;
+}): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null);
+  const [otherSource, setOtherSource] = useState("");
+  const canContinue = selected !== null && (selected !== "other" || otherSource.trim().length > 0);
+
+  function onSelectSource(source: string): void {
+    setSelected((current) => (current === source ? null : source));
+    if (source !== "other") {
+      setOtherSource("");
+    }
+  }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView
-        alwaysBounceVertical={false}
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
-        ]}
-      >
-        <Text style={styles.title}>How did you find us?</Text>
-        <View style={styles.options}>
-          {SOURCES.map((source) => {
-            const isSelected = selected === source;
-            return (
-              <Pressable
-                key={source}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected }}
-                style={[styles.option, isSelected ? styles.optionSelected : null]}
-                onPress={() => setSelected(source)}
-              >
-                <Text style={[styles.optionText, isSelected ? styles.optionTextSelected : null]}>
-                  {source}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: selected === null }}
-          disabled={selected === null}
-          style={[styles.button, selected === null ? styles.buttonDisabled : null]}
-          onPress={onNext}
-        >
-          <Text style={styles.buttonText}>Continue</Text>
-        </Pressable>
-      </ScrollView>
-    </View>
+    <OnboardingScreen
+      backdrop="source"
+      backdropLabel="Person discovering Intentive in daily work"
+      contentStyle={styles.content}
+      progress={{ current: 3, total: 6 }}
+      onBack={onBack}
+      scroll={false}
+      sheetMaxHeightRatio={0.66}
+    >
+      <OnboardingTitle style={styles.title}>How did you find us?</OnboardingTitle>
+      <OnboardingChoiceList
+        choices={SOURCES}
+        maxHeight={250}
+        scrollTestID="acquisition-source-scroll"
+        selectedId={selected}
+        onSelect={onSelectSource}
+      />
+      {selected === "other" ? (
+        <OnboardingTextInput
+          accessibilityLabel="Other source"
+          autoCapitalize="sentences"
+          placeholder="Please specify"
+          returnKeyType="done"
+          value={otherSource}
+          onChangeText={setOtherSource}
+          onSubmitEditing={() => canContinue && onNext()}
+        />
+      ) : null}
+      <OnboardingAction label="Continue" disabled={!canContinue} onPress={onNext} />
+    </OnboardingScreen>
   );
 }
 
-function createStyles(colors: MobileThemeColors) {
-  return StyleSheet.create({
-    screen: { flex: 1, backgroundColor: colors.canvas },
-    content: { flexGrow: 1, justifyContent: "flex-end", gap: 24, paddingHorizontal: 24 },
-    title: { color: colors.ink, fontSize: 28, fontWeight: "700" },
-    options: { gap: 10 },
-    option: {
-      backgroundColor: colors.surfaceMuted,
-      borderColor: colors.line,
-      borderRadius: 16,
-      borderWidth: 1,
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-    },
-    optionSelected: { backgroundColor: colors.actionMuted, borderColor: colors.action },
-    optionText: { color: colors.ink, fontSize: 16, fontWeight: "500" },
-    optionTextSelected: { color: colors.action, fontWeight: "600" },
-    button: {
-      alignItems: "center",
-      alignSelf: "stretch",
-      backgroundColor: colors.action,
-      borderRadius: 28,
-      paddingHorizontal: 24,
-      paddingVertical: 16,
-    },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { color: "white", fontSize: 16, fontWeight: "600" },
-  });
-}
+const styles = StyleSheet.create({
+  content: { gap: 12 },
+  title: {
+    fontSize: 28,
+    lineHeight: 34,
+    textAlign: "center",
+  },
+});

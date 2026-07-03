@@ -10,11 +10,15 @@
  * a composition point, not layer-linted — wires the real `expo-notifications`
  * port; tests inject a fake. This step requests notifications only (no location).
  */
-import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useState } from "react";
+import { StyleSheet, View } from "react-native";
 
-import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
+import {
+  OnboardingAction,
+  OnboardingPermissionRow,
+  OnboardingScreen,
+  OnboardingTitle,
+} from "../../../design/onboarding";
 
 /** Minimal shape of the injected ask — declared locally to avoid a cross-domain
  * import of the notifications port. The outcome is ignored: Continue always advances. */
@@ -23,14 +27,15 @@ export type RequestNotificationPermission = () => Promise<unknown>;
 export function GrantPermissionsStep({
   requestNotificationPermission,
   onNext,
+  onBack,
 }: {
   requestNotificationPermission: RequestNotificationPermission;
   onNext: () => void;
+  onBack?: () => void;
 }): React.JSX.Element {
-  const theme = useMobileTheme();
-  const styles = useMemo(() => createStyles(theme.colors), [theme]);
-  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
+  const [notificationsChecked, setNotificationsChecked] = useState(false);
+  const [followUpsChecked, setFollowUpsChecked] = useState(false);
 
   async function onContinue(): Promise<void> {
     setBusy(true);
@@ -45,51 +50,51 @@ export function GrantPermissionsStep({
   }
 
   return (
-    <View
-      style={[styles.screen, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}
+    <OnboardingScreen
+      backdrop="permissions"
+      backdropLabel="Intentive permission setup for timely companion follow-ups"
+      progress={{ current: 4, total: 6 }}
+      onBack={onBack}
+      scroll={false}
+      sheetMaxHeightRatio={0.54}
     >
-      <View style={styles.body}>
-        <Text style={styles.title}>Stay in the loop</Text>
-        <Text style={styles.subtitle}>
-          Turn on notifications so your companion can reach you with check-ins and follow-ups when
-          something matters.
-        </Text>
+      <View style={styles.header}>
+        <OnboardingTitle style={styles.title}>Grant permissions</OnboardingTitle>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ busy, disabled: busy }}
+      <View style={styles.permissions}>
+        <OnboardingPermissionRow
+          checked={notificationsChecked}
+          title="Notifications"
+          body="Enable check-ins and follow-ups without opening the app."
+          onPress={() => setNotificationsChecked((checked) => !checked)}
+        />
+        <OnboardingPermissionRow
+          checked={followUpsChecked}
+          title="Companion follow-ups"
+          body="Let Intentive surface important reminders at the right time."
+          onPress={() => setFollowUpsChecked((checked) => !checked)}
+        />
+      </View>
+
+      {/* The scaffold only has a notification permission port today. Continue
+          asks for that permission and advances regardless of the OS answer. */}
+      <OnboardingAction
+        label="Continue"
+        busy={busy}
         disabled={busy}
-        style={[styles.button, busy ? styles.buttonDisabled : null]}
         onPress={() => void onContinue()}
-      >
-        <Text style={styles.buttonText}>Continue</Text>
-      </Pressable>
-    </View>
+      />
+    </OnboardingScreen>
   );
 }
 
-function createStyles(colors: MobileThemeColors) {
-  return StyleSheet.create({
-    screen: {
-      flex: 1,
-      backgroundColor: colors.canvas,
-      justifyContent: "flex-end",
-      gap: 32,
-      paddingHorizontal: 24,
-    },
-    body: { gap: 12 },
-    title: { color: colors.ink, fontSize: 28, fontWeight: "700", textAlign: "center" },
-    subtitle: { color: colors.inkMuted, fontSize: 15, lineHeight: 22, textAlign: "center" },
-    button: {
-      alignItems: "center",
-      alignSelf: "stretch",
-      backgroundColor: colors.action,
-      borderRadius: 28,
-      paddingHorizontal: 24,
-      paddingVertical: 16,
-    },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { color: "white", fontSize: 16, fontWeight: "600" },
-  });
-}
+const styles = StyleSheet.create({
+  header: { paddingTop: 6 },
+  permissions: { gap: 16 },
+  title: {
+    fontSize: 32,
+    lineHeight: 38,
+    textAlign: "center",
+  },
+});

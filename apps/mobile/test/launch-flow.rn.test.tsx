@@ -99,7 +99,7 @@ async function expectDestination(value: string) {
 
 // Walk the collapsed onboarding funnel (name → source → permissions).
 async function walkOnboardingFunnel() {
-  await waitFor(() => expect(screen.getByText("What's your name?")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Want to go by something else?")).toBeTruthy());
   fireEvent.changeText(screen.getByPlaceholderText("Enter your name"), "Ada");
   fireEvent.press(screen.getByText("Continue"));
 
@@ -107,7 +107,7 @@ async function walkOnboardingFunnel() {
   fireEvent.press(screen.getByText("App Store"));
   fireEvent.press(screen.getByText("Continue"));
 
-  await waitFor(() => expect(screen.getByText("Stay in the loop")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Grant permissions")).toBeTruthy());
   fireEvent.press(screen.getByText("Continue"));
 }
 
@@ -115,7 +115,7 @@ test("walking the gates (skip the Mac invite) drives the resolver to chat", asyn
   renderHarness();
   await expectDestination("SIGNED_OUT");
 
-  fireEvent.press(screen.getByText("Continue with Google"));
+  fireEvent.press(screen.getByText("Sign in with Google"));
   await expectDestination("MISSING_CONSENT");
 
   fireEvent.press(screen.getByText("Agree & Continue"));
@@ -135,7 +135,7 @@ test("completing (not skipping) the Mac invite also reaches chat", async () => {
   renderHarness();
   await expectDestination("SIGNED_OUT");
 
-  fireEvent.press(screen.getByText("Continue with Google"));
+  fireEvent.press(screen.getByText("Sign in with Google"));
   await expectDestination("MISSING_CONSENT");
 
   fireEvent.press(screen.getByText("Agree & Continue"));
@@ -164,7 +164,7 @@ test("signing in after a failed hydration still walks forward (never stranded on
     renderHarness(failingSource);
     await expectDestination("SIGNED_OUT");
 
-    fireEvent.press(screen.getByText("Continue with Google"));
+    fireEvent.press(screen.getByText("Sign in with Google"));
     await expectDestination("MISSING_CONSENT");
   } finally {
     warn.mockRestore();

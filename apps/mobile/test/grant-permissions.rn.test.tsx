@@ -31,10 +31,26 @@ test("Continue fires the permission ask and then advances", async () => {
   const onNext = jest.fn();
   renderStep({ requestNotificationPermission, onNext });
 
+  expect(screen.getByRole("checkbox", { name: "Notifications" })).toBeTruthy();
+  expect(screen.getByText("Companion follow-ups")).toBeTruthy();
+
   fireEvent.press(screen.getByText("Continue"));
 
   await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
   expect(requestNotificationPermission).toHaveBeenCalledTimes(1);
+});
+
+test("permission tiles can be checked before continuing", () => {
+  renderStep({
+    requestNotificationPermission: jest.fn(() => Promise.resolve()),
+    onNext: jest.fn(),
+  });
+
+  const notifications = screen.getByRole("checkbox", { name: "Notifications" });
+  expect(notifications.props.accessibilityState).toMatchObject({ checked: false });
+
+  fireEvent.press(notifications);
+  expect(notifications.props.accessibilityState).toMatchObject({ checked: true });
 });
 
 test("advances even when the permission ask rejects", async () => {

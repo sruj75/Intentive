@@ -8,8 +8,7 @@
  * network or the Neon SDK.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { StyleSheet, Text } from "react-native";
-import * as ReactNative from "react-native";
+import { Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
@@ -70,45 +69,28 @@ async function expectDestination(value: string) {
 test("renders continuity-framed copy and the sign-in options", async () => {
   renderGate(fakeAdapter(() => Promise.resolve({ status: "cancelled" })));
   await expectDestination("SIGNED_OUT");
-  expect(screen.getByText("Continue with Google")).toBeTruthy();
-  expect(screen.getByText("Continue with Apple")).toBeTruthy();
-  // Copy explains continuity, not features.
-  expect(screen.getByText(/remembers you/i)).toBeTruthy();
-});
-
-test("uses dark appearance tokens", async () => {
-  jest.spyOn(ReactNative, "useColorScheme").mockReturnValue("dark");
-
-  renderGate(fakeAdapter(() => Promise.resolve({ status: "cancelled" })));
-  await expectDestination("SIGNED_OUT");
-
-  expect(screen.getByText("Intentive")).toHaveStyle({ color: "#EEEBE6" });
-  expect(screen.getByText(/remembers you/i)).toHaveStyle({ color: "#9C989F" });
-});
-
-test("uses manual safe-area padding without automatic ScrollView insets", async () => {
-  renderGate(fakeAdapter(() => Promise.resolve({ status: "cancelled" })));
-  await expectDestination("SIGNED_OUT");
-
-  const scroll = screen.getByTestId("intentive-identity-scroll");
-  const contentStyle = StyleSheet.flatten(scroll.props.contentContainerStyle);
-
-  expect(scroll).toHaveProp("contentInsetAdjustmentBehavior", "never");
-  expect(contentStyle.paddingTop).toBe(119);
-  expect(contentStyle.paddingBottom).toBe(74);
+  expect(screen.getByTestId("onboarding-backdrop")).toHaveProp(
+    "accessibilityLabel",
+    "Intentive companion setup with phone and desktop context",
+  );
+  expect(screen.getByTestId("onboarding-bottom-sheet")).toBeTruthy();
+  expect(screen.getByText("Speak. Transcribe. Summarize.")).toBeTruthy();
+  expect(screen.getByText("Sign in with Google")).toBeTruthy();
+  expect(screen.getByText("Sign in with Apple")).toBeTruthy();
+  expect(screen.getByText(/remember context/i)).toBeTruthy();
 });
 
 test("successful sign-in advances the resolver off SIGNED_OUT", async () => {
   renderGate(fakeAdapter(() => Promise.resolve({ status: "signed-in" })));
   await expectDestination("SIGNED_OUT");
-  fireEvent.press(screen.getByText("Continue with Google"));
+  fireEvent.press(screen.getByText("Sign in with Google"));
   await expectDestination("MISSING_CONSENT");
 });
 
 test("cancelled sign-in is silent and stays on the gate", async () => {
   renderGate(fakeAdapter(() => Promise.resolve({ status: "cancelled" })));
   await expectDestination("SIGNED_OUT");
-  fireEvent.press(screen.getByText("Continue with Google"));
+  fireEvent.press(screen.getByText("Sign in with Google"));
   await waitFor(() => expect(screen.queryByTestId("auth-notice")).toBeNull());
   await expectDestination("SIGNED_OUT");
 });
@@ -116,7 +98,7 @@ test("cancelled sign-in is silent and stays on the gate", async () => {
 test("a recoverable error keeps the gate and shows a retry notice", async () => {
   renderGate(fakeAdapter(() => Promise.resolve({ status: "error", message: "boom" })));
   await expectDestination("SIGNED_OUT");
-  fireEvent.press(screen.getByText("Continue with Google"));
+  fireEvent.press(screen.getByText("Sign in with Google"));
   await waitFor(() => expect(screen.getByTestId("auth-notice")).toHaveTextContent(/try again/i));
   await expectDestination("SIGNED_OUT");
 });
@@ -124,7 +106,7 @@ test("a recoverable error keeps the gate and shows a retry notice", async () => 
 test("a thrown sign-in is handled as recoverable, not an unhandled rejection", async () => {
   renderGate(fakeAdapter(() => Promise.reject(new Error("network down"))));
   await expectDestination("SIGNED_OUT");
-  fireEvent.press(screen.getByText("Continue with Google"));
+  fireEvent.press(screen.getByText("Sign in with Google"));
   await waitFor(() => expect(screen.getByTestId("auth-notice")).toHaveTextContent(/try again/i));
   await expectDestination("SIGNED_OUT");
 });
@@ -132,7 +114,7 @@ test("a thrown sign-in is handled as recoverable, not an unhandled rejection", a
 test("an unconfigured provider is surfaced honestly, not as a fake success", async () => {
   renderGate(fakeAdapter(() => Promise.resolve({ status: "not-configured" })));
   await expectDestination("SIGNED_OUT");
-  fireEvent.press(screen.getByText("Continue with Apple"));
+  fireEvent.press(screen.getByText("Sign in with Apple"));
   await waitFor(() =>
     expect(screen.getByTestId("auth-notice")).toHaveTextContent(/isn't available yet/i),
   );

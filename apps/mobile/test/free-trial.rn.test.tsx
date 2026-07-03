@@ -57,7 +57,11 @@ async function expectDestination(value: string) {
 test("renders the trial offer with a single start action", async () => {
   renderTrial();
   await expectDestination("MISSING_TRIAL");
-  expect(screen.getByText("Try Intentive free")).toBeTruthy();
+  expect(screen.getByTestId("onboarding-bottom-sheet")).toBeTruthy();
+  expect(screen.getByTestId("onboarding-progress")).toHaveProp("accessibilityLabel", "Step 6 of 6");
+  expect(screen.getByText("Enjoy your first week, it's free!")).toBeTruthy();
+  expect(screen.getByText("Today")).toBeTruthy();
+  expect(screen.getByText("Day 7")).toBeTruthy();
   expect(screen.getByText("Start free trial")).toBeTruthy();
 });
 

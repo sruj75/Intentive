@@ -36,11 +36,17 @@ export function OnboardingFunnel({
     case "name":
       return <NameStep onNext={() => setStep("source")} />;
     case "source":
-      return <AcquisitionSourceStep onNext={() => setStep("permissions")} />;
+      return (
+        <AcquisitionSourceStep
+          onBack={() => setStep("name")}
+          onNext={() => setStep("permissions")}
+        />
+      );
     case "permissions":
       return (
         <GrantPermissionsStep
           requestNotificationPermission={requestNotificationPermission}
+          onBack={() => setStep("source")}
           onNext={() => setOnboarding("completed")}
         />
       );

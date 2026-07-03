@@ -24,6 +24,9 @@ function renderStep(onNext: () => void) {
 test("asks how the user found us and starts with Continue disabled", () => {
   renderStep(jest.fn());
   expect(screen.getByText("How did you find us?")).toBeTruthy();
+  expect(screen.getByTestId("acquisition-source-scroll")).toBeTruthy();
+  expect(screen.getByText("TikTok")).toBeTruthy();
+  expect(screen.getByText("Google Search")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
 });
 
@@ -34,7 +37,20 @@ test("picking an option enables Continue and advances the funnel", () => {
   fireEvent.press(screen.getByText("Continue"));
   expect(onNext).not.toHaveBeenCalled();
 
-  fireEvent.press(screen.getByText("App Store"));
+  fireEvent.press(screen.getByText("TikTok"));
+  fireEvent.press(screen.getByText("Continue"));
+  expect(onNext).toHaveBeenCalledTimes(1);
+});
+
+test("Other reveals a text field before Continue can advance", () => {
+  const onNext = jest.fn();
+  renderStep(onNext);
+
+  fireEvent.press(screen.getByText("Other"));
+  expect(screen.getByPlaceholderText("Please specify")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+
+  fireEvent.changeText(screen.getByPlaceholderText("Please specify"), "Newsletter");
   fireEvent.press(screen.getByText("Continue"));
   expect(onNext).toHaveBeenCalledTimes(1);
 });

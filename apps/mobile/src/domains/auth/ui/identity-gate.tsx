@@ -9,9 +9,15 @@
  * sign-in button renders only under `__DEV__` and never ships (ADR 0012).
  */
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, Text } from "react-native";
 
+import {
+  OnboardingAction,
+  OnboardingFinePrint,
+  ONBOARDING_ICONS,
+  OnboardingScreen,
+  OnboardingTitle,
+} from "../../../design/onboarding";
 import { useMobileTheme, type MobileThemeColors } from "../../../design/theme";
 import { useLaunchState } from "../../../providers/launch-state";
 import type { AuthProviderId } from "../types/auth";
@@ -27,7 +33,6 @@ export function IdentityGate(): React.JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const theme = useMobileTheme();
   const styles = useMemo(() => createStyles(theme.colors), [theme]);
-  const insets = useSafeAreaInsets();
 
   async function signInWith(provider: AuthProviderId): Promise<void> {
     setBusy(provider);
@@ -58,120 +63,61 @@ export function IdentityGate(): React.JSX.Element {
   }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView
-        alwaysBounceVertical={false}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: insets.bottom + 40, paddingTop: insets.top + 72 },
-        ]}
-        contentInsetAdjustmentBehavior="never"
-        testID="intentive-identity-scroll"
-      >
-        <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.title}>
-          Intentive
-        </Text>
-        <Text style={styles.subtitle}>
-          Sign in so your companion remembers you — your context and conversations stay with you
-          across iPhone and Mac.
-        </Text>
-
-        <SignInButton
-          styles={styles}
-          label="Continue with Google"
-          busy={busy === "google"}
-          disabled={busy !== null}
-          onPress={() => void signInWith("google")}
-        />
-        <SignInButton
-          styles={styles}
-          label="Continue with Apple"
-          busy={busy === "apple"}
-          disabled={busy !== null}
-          onPress={() => void signInWith("apple")}
-        />
-
-        {__DEV__ ? (
-          <SignInButton
-            styles={styles}
-            label="Continue as dev"
-            busy={busy === "dev"}
-            disabled={busy !== null}
-            onPress={() => void signInWith("dev")}
-          />
-        ) : null}
-
-        {notice ? (
-          <Text testID="auth-notice" style={styles.notice}>
-            {notice}
-          </Text>
-        ) : null}
-      </ScrollView>
-    </View>
-  );
-}
-
-function SignInButton({
-  label,
-  busy,
-  disabled,
-  onPress,
-  styles,
-}: {
-  label: string;
-  busy: boolean;
-  disabled: boolean;
-  onPress: () => void;
-  styles: ReturnType<typeof createStyles>;
-}): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled, busy }}
-      disabled={disabled}
-      style={[styles.button, disabled ? styles.buttonDisabled : null]}
-      onPress={onPress}
+    <OnboardingScreen
+      backdrop="welcome"
+      backdropLabel="Intentive companion setup with phone and desktop context"
+      contentStyle={styles.content}
+      sheetMaxHeightRatio={0.52}
     >
-      {busy ? <ActivityIndicator color="white" /> : <Text style={styles.buttonText}>{label}</Text>}
-    </Pressable>
+      <OnboardingTitle style={styles.title}>Speak. Transcribe. Summarize.</OnboardingTitle>
+
+      <OnboardingAction
+        label="Sign in with Apple"
+        leadingIcon={ONBOARDING_ICONS.apple}
+        busy={busy === "apple"}
+        disabled={busy !== null}
+        onPress={() => void signInWith("apple")}
+      />
+      <OnboardingAction
+        label="Sign in with Google"
+        leadingIcon={ONBOARDING_ICONS.google}
+        busy={busy === "google"}
+        disabled={busy !== null}
+        onPress={() => void signInWith("google")}
+      />
+
+      {__DEV__ ? (
+        <OnboardingAction
+          variant="secondary"
+          label="Continue as dev"
+          busy={busy === "dev"}
+          disabled={busy !== null}
+          onPress={() => void signInWith("dev")}
+        />
+      ) : null}
+
+      <OnboardingFinePrint>
+        By continuing, you agree to use Intentive as a companion that can remember context across
+        your signed-in devices.
+      </OnboardingFinePrint>
+
+      {notice ? (
+        <Text testID="auth-notice" style={styles.notice}>
+          {notice}
+        </Text>
+      ) : null}
+    </OnboardingScreen>
   );
 }
 
 function createStyles(colors: MobileThemeColors) {
   return StyleSheet.create({
-    screen: {
-      flex: 1,
-      backgroundColor: colors.canvas,
-    },
-    content: {
-      alignItems: "center",
-      flexGrow: 1,
-      gap: 12,
-      justifyContent: "center",
-      paddingHorizontal: 24,
-    },
+    content: { gap: 16 },
+    notice: { color: colors.danger, fontSize: 14, marginTop: 4, textAlign: "center" },
     title: {
-      color: colors.ink,
-      fontSize: 28,
-      fontWeight: "700",
-      maxWidth: "100%",
-    },
-    subtitle: {
-      color: colors.inkMuted,
-      fontSize: 15,
-      marginBottom: 12,
+      fontSize: 32,
+      lineHeight: 38,
       textAlign: "center",
     },
-    button: {
-      alignSelf: "stretch",
-      alignItems: "center",
-      backgroundColor: colors.action,
-      borderRadius: 12,
-      paddingHorizontal: 24,
-      paddingVertical: 14,
-    },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { color: "white", fontSize: 16, fontWeight: "600" },
-    notice: { color: colors.danger, fontSize: 14, marginTop: 8, textAlign: "center" },
   });
 }

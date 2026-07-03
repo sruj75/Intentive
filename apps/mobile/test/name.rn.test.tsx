@@ -24,7 +24,9 @@ function renderStep(onNext: () => void) {
 
 test("asks for a name and starts with Continue disabled", () => {
   renderStep(jest.fn());
-  expect(screen.getByText("What's your name?")).toBeTruthy();
+  expect(screen.getByTestId("onboarding-bottom-sheet")).toBeTruthy();
+  expect(screen.getByTestId("onboarding-progress")).toHaveProp("accessibilityLabel", "Step 2 of 6");
+  expect(screen.getByText("Want to go by something else?")).toBeTruthy();
   const button = screen.getByRole("button", { name: "Continue" });
   expect(button).toBeDisabled();
 });
