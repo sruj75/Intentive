@@ -42,6 +42,20 @@ test("picking an option enables Continue and advances the funnel", () => {
   expect(onNext).toHaveBeenCalledTimes(1);
 });
 
+test("re-tapping the selected option keeps the radio selection (never clears it)", () => {
+  const onNext = jest.fn();
+  renderStep(onNext);
+
+  // radio semantics: a second tap on the chosen row must not strand the user on
+  // a disabled Continue. Selection can change, but never clear to nothing.
+  fireEvent.press(screen.getByText("TikTok"));
+  fireEvent.press(screen.getByText("TikTok"));
+  expect(screen.getByRole("button", { name: "Continue" })).not.toBeDisabled();
+
+  fireEvent.press(screen.getByText("Continue"));
+  expect(onNext).toHaveBeenCalledTimes(1);
+});
+
 test("Other reveals a text field before Continue can advance", () => {
   const onNext = jest.fn();
   renderStep(onNext);

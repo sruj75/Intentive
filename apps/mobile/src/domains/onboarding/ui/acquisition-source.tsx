@@ -54,7 +54,9 @@ export function AcquisitionSourceStep({
   const canContinue = selected !== null && (selected !== "other" || otherSource.trim().length > 0);
 
   function onSelectSource(source: string): void {
-    setSelected((current) => (current === source ? null : source));
+    // radio semantics: tapping a row selects it; re-tapping the chosen row is a
+    // no-op, never a clear. Clearing would strand the user on a disabled Continue.
+    setSelected(source);
     if (source !== "other") {
       setOtherSource("");
     }

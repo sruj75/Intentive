@@ -89,6 +89,11 @@ if grep -q "REPLACE_WITH_YOUR_KEY" "$AR_DIR/.env"; then
 fi
 
 mkdir -p "$RUN_DIR"
+# An unclean prior exit (SIGKILL / agent teardown never fires the EXIT trap)
+# leaves the old launcher + its `tail -f` orphaned; their node services are gone
+# so free_ports misses them. Reap before starting so a fresh run doesn't stack a
+# second tailer on top of the deadweight.
+reap_strays
 free_ports
 trap teardown EXIT INT TERM
 
