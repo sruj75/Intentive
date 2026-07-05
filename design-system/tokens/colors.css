@@ -1,0 +1,45 @@
+/* ============================================================
+   APEX — Color tokens
+   Sampled directly from the reference screens (mobile dashboard,
+   desktop dashboard, AI chat). Warm neutral grays, near-black text,
+   a single terracotta-orange accent used sparingly for energy /
+   progress / CTAs. No secondary brand hue appears anywhere.
+   ============================================================ */
+
+:root {
+  /* ---- Base palette ---- */
+  --apex-black: #17171A;
+  --apex-charcoal: #2A2A28;   /* dark surfaces: sidebar, chat header chip, distance card */
+  --apex-gray-700: #55534E;
+  --apex-gray-500: #8A8880;
+  --apex-gray-300: #C7C5BE;
+  --apex-gray-100: #E7E5E0;   /* muted card fill */
+  --apex-gray-50:  #F0EEE9;   /* app background */
+  --apex-white: #FFFFFF;
+
+  --apex-orange-700: #B8492E;
+  --apex-orange:      #DE6644;  /* primary accent */
+  --apex-orange-300: #F0A588;
+  --apex-orange-100: #FBE4DA;
+
+  /* ---- Semantic aliases ---- */
+  --bg-app: var(--apex-gray-50);
+  --bg-surface: var(--apex-white);
+  --bg-surface-muted: var(--apex-gray-100);
+  --bg-surface-dark: var(--apex-charcoal);
+
+  --text-primary: var(--apex-black);
+  --text-secondary: var(--apex-gray-500);
+  --text-on-dark: var(--apex-white);
+  --text-on-accent: var(--apex-white);
+
+  --accent: var(--apex-orange);
+  --accent-strong: var(--apex-orange-700);
+  --accent-soft: var(--apex-orange-100);
+
+  --border-subtle: var(--apex-gray-300);
+  --border-on-dark: rgba(255,255,255,0.14);
+
+  --track-fill: var(--apex-black);
+  --track-bg: var(--apex-gray-100);
+}

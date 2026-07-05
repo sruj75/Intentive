@@ -1,0 +1,19 @@
+/* ============================================================
+   APEX — Spacing scale
+   4px base unit. Cards use generous internal padding (20–28px);
+   gaps between grouped stat cards run 12–16px.
+   ============================================================ */
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+}

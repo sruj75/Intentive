@@ -1,0 +1,28 @@
+/* ============================================================
+   APEX — Elevation
+   Shadows are soft, low-contrast, and warm-tinted (never pure
+   black). Two distinct systems:
+   1. Ambient drop shadows for floating cards (diffuse, subtle).
+   2. Neumorphic dual shadows for the "pillowy" pressable circles
+      (quick-action buttons, floating goal pill) — a light source
+      from the top-left gives a soft raised look.
+   The orange accent gets its own bloom for emphasis.
+   ============================================================ */
+
+:root {
+  --shadow-card: 0 2px 4px rgba(23,23,20,0.03), 0 12px 32px rgba(23,23,20,0.06);
+  --shadow-raised: 0 6px 14px rgba(23,23,20,0.05), 0 30px 60px rgba(23,23,20,0.10);
+  --shadow-dark-surface: 0 18px 48px rgba(23,23,20,0.28);
+
+  /* Pillowy raised circle (quick actions, goal pill) */
+  --shadow-neumorph: 8px 8px 20px rgba(180,176,168,0.55), -8px -8px 20px rgba(255,255,255,0.95);
+  --shadow-neumorph-sm: 4px 4px 10px rgba(180,176,168,0.5), -4px -4px 10px rgba(255,255,255,0.9);
+  /* Groove for the progress track */
+  --shadow-inset-groove: inset 3px 3px 8px rgba(180,176,168,0.45), inset -3px -3px 8px rgba(255,255,255,0.7);
+  /* White fill pill lifted out of the groove */
+  --shadow-fill-pill: 2px 3px 8px rgba(150,146,138,0.35);
+
+  /* Orange accent bloom */
+  --shadow-accent-glow: 0 0 0 6px rgba(222,102,68,0.12), 0 10px 26px rgba(222,102,68,0.42);
+  --glow-accent-radial: radial-gradient(circle at center, rgba(222,102,68,0.30), rgba(222,102,68,0.0) 70%); /* @kind other */
+}

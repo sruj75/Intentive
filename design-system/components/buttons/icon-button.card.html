@@ -1,0 +1,31 @@
+<!-- @dsCard group="Components" viewport="700x220" name="Icon Button" subtitle="Circular quick-action + FAB" -->
+<html>
+<head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--bg-app);font-family:var(--font-body);}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { IconButton } = window.ApexDesignSystem_659910;
+function App(){
+  return (
+    <div style={{display:'flex', gap:20, alignItems:'center', padding:28}}>
+      <IconButton icon="dumbbell" label="Workout" />
+      <IconButton icon="coffee" label="Meal" />
+      <IconButton icon="droplet" label="Water" />
+      <IconButton icon="watch" label="Sync" />
+      <IconButton icon="heart" label="Mood" />
+      <IconButton icon="zap" label="Energy" variant="accent" size="l" />
+      <IconButton icon="chevron-right" label="Next" variant="dark" size="s" />
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

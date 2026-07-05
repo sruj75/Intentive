@@ -1,0 +1,15 @@
+/* ============================================================
+   APEX — Corner radii
+   Everything is rounded — cards use a large soft radius, pills
+   and icon buttons go fully round. No sharp corners appear
+   anywhere in the reference screens.
+   ============================================================ */
+
+:root {
+  --radius-s: 12px;    /* small chips */
+  --radius-m: 20px;    /* stat cards */
+  --radius-l: 28px;    /* hero cards, phone-scale panels */
+  --radius-xl: 36px;   /* app shell / big containers */
+  --radius-pill: 999px; /* buttons, segmented control, nav bar */
+  --radius-circle: 50%; /* icon buttons, avatar rings */
+}
