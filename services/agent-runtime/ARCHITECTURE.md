@@ -10,7 +10,7 @@ DeepAgents is the brain. The Intentive Runtime shell is the product boundary aro
 
 ```text
 Mobile Client                 Desktop Client
-  user_message                  context_snapshot/session_end_marker
+  user_message                  perception_event/session_end_marker
   connect (+ client_tz)         connect (+ client_tz)
        \                              /
         \-------- WebSocket Protocol-/
@@ -110,13 +110,19 @@ OpenClaw/Hermes patterns are the local reference source for shell behavior. Star
 : Thin **Interactive Turn** execution builder over `turn.ts` — stable main thread, companion-message append, persisted-then-delivered reply, and rethrow-on-failure policy; the spine writes the **Runtime Turn** anchor.
 
 `src/domains/runtime/service/monitoring-turn.ts`
-: Thin **Monitoring Turn** execution builder over `turn.ts` — stable main thread, `heartbeat` / `context_snapshot` triggers, silent-by-default egress via `post_message_back`; the spine writes the **Runtime Turn** anchor.
+: Thin **Monitoring Turn** execution builder over `turn.ts` — stable main thread, `heartbeat` / `perception_event` triggers, silent-by-default egress via `post_message_back`; the spine writes the **Runtime Turn** anchor.
 
 `src/domains/runtime/repo/runtime-turns.ts`
 : Durable `runtime_turns` insert queries for observability/eval anchoring.
 
 `src/domains/sessions/repo/sensory-buffer.ts`
-: Repo-owned **Sensory Buffer** read projection — latest `context_snapshot` or `session_end_marker` from `runtime_events`, rendered for prompt injection (`createSensoryBufferReader`).
+: Repo-owned **Sensory Buffer** read projection — latest `perception_event` or `session_end_marker` from `runtime_events`, rendered for prompt injection (`createSensoryBufferReader`).
+
+`src/domains/perception/repo/perception-records.ts`
+: Repo-owned searchable projection of `perception_event` rows for Screen Memory lookup (`perception_records`).
+
+`src/domains/perception/service/search-screen-context.ts`
+: Service-owned DeepAgents tool surface for older Screen Memory lookup (`search_screen_context`).
 
 `migrations/`
 : Runtime-owned Neon schema migrations (`agent_runtime.*`). See `migrations/README.md`.
@@ -127,6 +133,7 @@ Domain layout (lazy — folders appear with each vertical slice, ADR-0002):
 src/domains/
   gateway/{types,config,repo,service,runtime,ui}/
   sessions/{types,config,repo,service,runtime,ui}/
+  perception/{types,repo,service}/
   conversation/{types,config,repo,service,runtime,ui}/
   protocol/{types,config,repo,service,runtime,ui}/
   runtime/{types,config,repo,service,runtime,ui}/
@@ -144,6 +151,7 @@ Domain responsibilities:
 
 - `gateway`: WebSocket server, handshake-first connect flow, JWT verification, socket lifecycle, post-connect routing for `history_backfill_request`. Protocol-version compatibility is enforced at build time by the single shared `packages/protocol` import (monorepo "one protocol version" rule), **not** negotiated per connection; `client_version` on `connect` is informational, and the `protocol_unsupported` error code is reserved/unused in v1.
 - `sessions`: Agent Instance lookup, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, queue-serialized Conversation History reads, **Interactive Turn** dispatch via injected `runTurn`, and optional `onPerceptionArrived` for newly inserted perception events), **Sensory Buffer** read projection over `runtime_events`, connected-client presence. Exposes the `BoundSession`, `PerUserChannel`, and `PerceptionArrivedSink` types as its public `types/` contract.
+- `perception`: searchable `perception_records` projection and `search_screen_context` tool for older Screen Memory summaries. The ledger remains the ingress/idempotency truth; this projection is for lookup.
 - `conversation`: durable `conversation_messages` transcript, `append` writes, and `readSnapshot` Session Snapshot projection (reconnect + backfill reads). Separate from `sessions` by knowledge, not storage family (ADR-0008).
 - `protocol`: `packages/protocol` event parsing, inbound-to-command mapping, outbound event construction.
 - `runtime`: DeepAgents adapter, **Turn Execution** spine (`turn` + `working-context`; ADR-0031 owns floor resolution and the single `runtime_turns` anchor per turn), **Interactive Turn** lifecycle (`turn-runner`), **Monitoring Turn** builder (`monitoring-turn`), durable **Runtime Turn** insert queries (`runtime-turns` repo), trace/run IDs. Agent Instance lazy hydration remains ADR-0018 follow-up.
@@ -208,7 +216,7 @@ Client boundary:
 
 - Mobile, Desktop, and future Android connect directly to the Runtime over WebSocket after receiving Routing from the Control Plane.
 - Mobile sends `user_message` and renders Conversation History.
-- Desktop is capture-only and sends `context_snapshot` plus `session_end_marker`.
+- Desktop sends Screen Memory `perception_event` and `session_end_marker`, and can also send floating-bar or voice `user_message` into the same Conversation History as Mobile.
 - Client-specific behavior is represented by Protocol events and `client_kind`, not by channel adapters.
 
 Control Plane boundary:
@@ -260,12 +268,12 @@ Observability (ADR-0030):
 - `main.ts` calls `bootstrapObservability` once; domain code uses `observability.createLogger` and must not import `@sentry/node` or instantiate Langfuse tracing directly.
 - Log connection lifecycle, handshake failures, event enqueue/dequeue, Runtime turns, DeepAgents invocations, VFS access, Cron fires, Heartbeat ticks, and Post-Message-Back handoffs.
 - Record trace/run IDs at Runtime turn boundaries.
-- Redact auth tokens, conversation bodies, memory contents, and Context Snapshot content by default (allowlisted log attrs only).
+- Redact auth tokens, conversation bodies, memory contents, and Perception Event content by default (allowlisted log attrs only).
 
 Reliability:
 
 - Persist events before processing when side effects matter.
-- Make inbound `message_id` and `snapshot_id` idempotent.
+- Make inbound `message_id` and `event_id` idempotent.
 - Reconnect recovery is snapshot-first; live stream is at-most-once in v1.
 - Scheduler loops must not block the WebSocket gateway event loop.
 

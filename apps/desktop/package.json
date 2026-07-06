@@ -1,0 +1,10 @@
+{
+  "name": "@intentive/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "xcrun swift build -c debug --package-path macos/Desktop",
+    "typecheck": "xcrun swift build -c debug --package-path macos/Desktop",
+    "test": "bash macos/test.sh"
+  }
+}

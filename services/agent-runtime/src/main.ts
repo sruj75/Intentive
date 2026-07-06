@@ -38,6 +38,11 @@ import { createHeartbeatScheduleRepo } from "./domains/heartbeat/repo/heartbeat-
 import { createHeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
 import { createInternalApp } from "./domains/internal/ui/app.js";
 import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
+import {
+  createPerceptionRecordsRepo,
+  toPerceptionRecord,
+} from "./domains/perception/repo/perception-records.js";
+import { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 import { createMonitoringTurn } from "./domains/runtime/service/monitoring-turn.js";
@@ -108,6 +113,7 @@ const resilientRegistry = {
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const sensoryBuffer = createSensoryBufferReader(sql);
+const perceptionRecords = createPerceptionRecordsRepo(sql);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
 const cronJobs = createCronJobsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
@@ -149,7 +155,13 @@ const runtimeAdapter = createDeepAgentsAdapter({
   // A fresh handler per turn (not one shared instance) keeps each turn's trace
   // isolated; langfuse's handler holds the active trace on mutable state.
   createCallbackHandler: langfuseConfig ? observability.createCallbackHandler : null,
-  createTools: (input) => [createPostMessageBackTool({ postMessageBack, userId: input.userId })],
+  createTools: (input) => [
+    createPostMessageBackTool({ postMessageBack, userId: input.userId }),
+    createSearchScreenContextTool({
+      search: (searchInput) => retryTransientDb(() => perceptionRecords.search(searchInput)),
+      userId: input.userId,
+    }),
+  ],
   openRouter: {
     apiKey: config.model.apiKey,
     baseUrl: config.model.baseUrl,
@@ -194,19 +206,24 @@ channel = createPerUserChannel({
   sql: resilientSql,
   ledger,
   conversation,
-  // A `user_message` is transactionally projected into Conversation History
-  // (its user-authored half) with the Agent Runtime event ledger row. The companion
-  // half is filled by its producer (#36), which calls `conversation.append`
-  // directly. This mapping is the `sessions` → `conversation` seam and must
-  // stay one line (ADR-0008 / ADR-0009).
+  // `user_message` projects into Conversation History; `perception_event`
+  // projects into the searchable perception store. Both happen in the same
+  // transaction as the event-ledger row.
   project: (session, event) => {
+    const queries: Promise<unknown[]>[] = [];
     const entry = toConversationEntry(session.userId, event);
-    return entry ? [conversation.appendQuery(entry)] : [];
+    if (entry) {
+      queries.push(conversation.appendQuery(entry));
+    }
+    if (event.type === "perception_event") {
+      queries.push(perceptionRecords.appendQuery(toPerceptionRecord(session.userId, event)));
+    }
+    return queries;
   },
   runTurn,
   onPerceptionArrived: (session) => {
     channel.enqueueBestEffort(session.userId, () =>
-      monitoringTurn(session.userId, "context_snapshot"),
+      monitoringTurn(session.userId, "perception_event"),
     );
   },
   logger: log,
@@ -252,7 +269,7 @@ const connectHandler = createConnectHandler({
 const internalServer = serve({ fetch: internalApp.fetch, port: config.internalInbound.port });
 
 // The Per-User Channel is the single serialization point: state-mutating ingress
-// (`user_message`, `context_snapshot`, `session_end_marker`) and History Backfill
+// (`user_message`, `perception_event`, `session_end_marker`) and History Backfill
 // reads both pass through it, so reads observe earlier accepted writes in order.
 const routePostConnectEvent = createPostConnectRouter({ channel });
 

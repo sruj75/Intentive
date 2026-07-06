@@ -8,9 +8,11 @@ import {
   createConversationRepo,
   createEventLedger,
   createPerUserChannel,
+  createPerceptionRecordsRepo,
   createRuntimeTurnsRepo,
   createTurnRunner,
   toConversationEntry,
+  toPerceptionRecord,
 } from "../dist/index.js";
 import {
   applyMigrationFile,
@@ -30,12 +32,14 @@ const runtimeTurnsBundleVersionMigration = path.join(
   migrationsDir,
   "0004_runtime_turns_bundle_version.sql",
 );
+const perceptionRecordsMigration = path.join(migrationsDir, "0010_perception_records.sql");
 
 let branchId;
 let sql;
 let ledger;
 let conversation;
 let runtimeTurns;
+let perceptionRecords;
 
 before(async () => {
   if (skip) return;
@@ -46,10 +50,12 @@ before(async () => {
   await applyMigrationFile(branch.connectionUri, conversationMigration);
   await applyMigrationFile(branch.connectionUri, runtimeTurnsMigration);
   await applyMigrationFile(branch.connectionUri, runtimeTurnsBundleVersionMigration);
+  await applyMigrationFile(branch.connectionUri, perceptionRecordsMigration);
   sql = await connect(branch.connectionUri);
   ledger = createEventLedger(sql);
   conversation = createConversationRepo(sql);
   runtimeTurns = createRuntimeTurnsRepo(sql);
+  perceptionRecords = createPerceptionRecordsRepo(sql);
 });
 
 after(async () => {
@@ -125,7 +131,7 @@ test(
 );
 
 test(
-  "runtime ingress records non-projecting events without transcript rows",
+  "runtime ingress records perception events without transcript rows and projects searchable records",
   { skip },
   async () => {
     const session = boundSession(randomUUID());
@@ -133,20 +139,10 @@ test(
       sql,
       ledger,
       conversation,
-      project: (seenSession, event) => {
-        const entry = toConversationEntry(seenSession.userId, event);
-        return entry ? [conversation.appendQuery(entry)] : [];
-      },
+      project: projectIngress,
     });
 
-    await channel.accept(session, {
-      type: "context_snapshot",
-      snapshot_id: "snapshot_1",
-      captured_at: "2026-06-09T00:00:00.000Z",
-      period_start: "2026-06-08T23:55:00.000Z",
-      period_end: "2026-06-09T00:00:00.000Z",
-      summary: "screen summary",
-    });
+    await channel.accept(session, perceptionEvent("perception_1", "screen summary"));
 
     assert.deepEqual(await conversation.readSnapshot(session.userId), {
       messages: [],
@@ -159,6 +155,15 @@ test(
     WHERE user_id = ${session.userId}
   `;
     assert.equal(count, 1);
+
+    const records = await perceptionRecords.search({
+      userId: session.userId,
+      query: "screen",
+    });
+    assert.deepEqual(
+      records.map((record) => [record.eventId, record.summary]),
+      [["perception_1", "screen summary"]],
+    );
   },
 );
 
@@ -260,14 +265,7 @@ test(
     });
 
     await assert.doesNotReject(channel.accept(session, userMessage("message_1")));
-    await channel.accept(session, {
-      type: "context_snapshot",
-      snapshot_id: "snapshot_1",
-      captured_at: "2026-06-09T00:00:00.000Z",
-      period_start: "2026-06-08T23:55:00.000Z",
-      period_end: "2026-06-09T00:00:00.000Z",
-      summary: "screen summary",
-    });
+    await channel.accept(session, perceptionEvent("perception_1", "screen summary"));
 
     assert.deepEqual(
       (await conversation.readSnapshot(session.userId)).messages.map((message) => [
@@ -314,6 +312,18 @@ function projectConversation(seenSession, event) {
   return entry ? [conversation.appendQuery(entry)] : [];
 }
 
+function projectIngress(seenSession, event) {
+  const queries = [];
+  const entry = toConversationEntry(seenSession.userId, event);
+  if (entry) {
+    queries.push(conversation.appendQuery(entry));
+  }
+  if (event.type === "perception_event") {
+    queries.push(perceptionRecords.appendQuery(toPerceptionRecord(seenSession.userId, event)));
+  }
+  return queries;
+}
+
 function boundSession(userId) {
   return {
     userId,
@@ -329,6 +339,24 @@ function userMessage(messageId) {
     message_id: messageId,
     body: "hello",
     sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+function perceptionEvent(eventId, summary) {
+  return {
+    type: "perception_event",
+    event_id: eventId,
+    source_client: "desktop",
+    captured_at: "2026-06-09T00:00:00.000Z",
+    period_start: "2026-06-08T23:55:00.000Z",
+    period_end: "2026-06-09T00:00:00.000Z",
+    artifact_type: "searchable_screen_record",
+    summary,
+    signals: { app: "Code" },
+    sensitivity_label: "normal",
+    retention_class: "screen_memory_30d",
+    confidence: 0.91,
+    local_record_ref: `screen-memory://${eventId}`,
   };
 }
 

@@ -10,8 +10,14 @@ coverage/
 .cache/
 .expo/
 target/
+.build/
 pnpm-lock.yaml
 
 apps/mobile/ios/Pods/
-apps/desktop/src-tauri/gen/
-apps/desktop/src-tauri/target/
+
+# Imported/generated design-system snapshot artifacts.
+design-system/_adherence.oxlintrc.json
+design-system/_ds_bundle.js
+design-system/_ds_manifest.json
+design-system/assets/icons.js
+design-system/components/**/*.d.ts

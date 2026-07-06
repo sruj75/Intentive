@@ -4,12 +4,12 @@ How Intentive's four deployables and shared packages connect to the journeys use
 
 ## Deployables at a glance
 
-| Deployable         | Path                      | What the user experiences                                                                 | Where it runs                               |
-| ------------------ | ------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------- |
-| **Mobile Client**  | `apps/mobile/`            | Sign-in, Pre-Chat Gates, **Companion Chat**, push notifications, Account Surface          | iOS (Expo) → TestFlight / App Store         |
-| **Desktop Client** | `apps/desktop/`           | Menu-bar capture agent, macOS permission setup, on-device summarization, context delivery | macOS Tauri (Apple Silicon) → signed `.dmg` |
-| **Control Plane**  | `services/control-plane/` | Invisible authority: identity, gate state, device registry, Routing, push fan-out         | Cloud Run (`us-west1`)                      |
-| **Agent Runtime**  | `services/agent-runtime/` | The **Companion**: chat, memory, proactive follow-ups, context from Mac                   | GCE VM (`runtime.heyintentive.com`)         |
+| Deployable         | Path                      | What the user experiences                                                         | Where it runs                       |
+| ------------------ | ------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
+| **Mobile Client**  | `apps/mobile/`            | Sign-in, Pre-Chat Gates, **Companion Chat**, push notifications, Account Surface  | iOS (Expo) → TestFlight / App Store |
+| **Desktop Client** | `apps/desktop/`           | Capture, Screen Memory, floating-bar chat, push-to-talk, desktop effects          | macOS SwiftPM → signed `.dmg`       |
+| **Control Plane**  | `services/control-plane/` | Invisible authority: identity, gate state, device registry, Routing, push fan-out | Cloud Run (`us-west1`)              |
+| **Agent Runtime**  | `services/agent-runtime/` | The **Companion**: chat, memory, proactive follow-ups, context from Mac           | GCE VM (`runtime.heyintentive.com`) |
 
 **Shared contracts** (`packages/`): `protocol/` (WebSocket), `api-contract/` (Control Plane HTTP), `domain-types/`, `boundary/`, `providers/` (auth, telemetry). Clients never import server source; servers never redefine wire shapes locally.
 
@@ -118,14 +118,14 @@ sequenceDiagram
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Launch routing          | `app/_layout.tsx` → `resolveLaunchState` (`src/domains/onboarding/service/resolve-launch-state.ts`) → `route-for-destination.ts` | —                                                                                     | —                                                                                |
 | Account / gate read     | `createControlPlaneLaunchStateSource` (`src/providers/launch-state/`) maps `GET /me` → `LaunchState`                             | `identity/ui/get-me.ts` → `resolveAccount` composes `next_gate`, `has_desktop_client` | —                                                                                |
-| Get Started             | `src/domains/auth/ui/get-started.tsx` (first view inside `/(gates)/identity`; not a gate)                                          | —                                                                                     | —                                                                                |
+| Get Started             | `src/domains/auth/ui/get-started.tsx` (first view inside `/(gates)/identity`; not a gate)                                        | —                                                                                     | —                                                                                |
 | Identity Gate           | `src/domains/auth/ui/` + Neon Auth via `Auth Adapter`                                                                            | JWT verify: `src/http/auth.ts` + `packages/providers/` JWKS                           | —                                                                                |
 | Consent Primer          | `app/(gates)/consent.tsx` → `onboarding/ui/consent-primer.tsx` (Data & Privacy)                                                  | `gates/ui/post-consent.ts` → `control_plane.user_gates`                               | —                                                                                |
 | Onboarding funnel       | `app/(onboarding)/index.tsx` → `onboarding/ui/onboarding-funnel.tsx` (name → source → grant permissions)                         | — (client-resolved until CP contract extends)                                         | —                                                                                |
 | Sibling invitation      | `app/(gates)/invite.tsx`                                                                                                         | `gates/ui/post-sibling-invitation-skip.ts`                                            | —                                                                                |
-| Free Trial              | `app/(gates)/trial.tsx` → `onboarding/ui/free-trial.tsx`                                                                           | — (client-resolved until CP entitlement lands)                                        | —                                                                                |
+| Free Trial              | `app/(gates)/trial.tsx` → `onboarding/ui/free-trial.tsx`                                                                         | — (client-resolved until CP entitlement lands)                                        | —                                                                                |
 | Notification permission | `onboarding/ui/grant-permissions.tsx` (injected ask via `(onboarding)` route)                                                    | —                                                                                     | —                                                                                |
-| Device + push token     | `notifications/` → `POST /devices/register` (around first chat entry; no re-prompt once decided)                                | `devices/ui/post-device-register.ts` → `control_plane.devices`                        | —                                                                                |
+| Device + push token     | `notifications/` → `POST /devices/register` (around first chat entry; no re-prompt once decided)                                 | `devices/ui/post-device-register.ts` → `control_plane.devices`                        | —                                                                                |
 | Routing                 | `chat/service/routing-client.ts` → `GET /agent`                                                                                  | `routing/ui/get-agent.ts` → `agents.ensureAgentInstance` → Session Start              | `internal/` receives `POST /internal/sessions/start`                             |
 | Chat surface            | `src/entrypoints/chat-entry.tsx` → `CompanionChat` + Runtime Adapter                                                             | —                                                                                     | `gateway/` handshake, `sessions/` per-user queue                                 |
 | Opening message         | Runtime Adapter merges `hello_ok` snapshot                                                                                       | —                                                                                     | Session Start bundles **Conversation Start Trigger**; `runtime/` runs first turn |
@@ -149,12 +149,12 @@ Launch → GET /me → next_gate: null → route to (chat)/
 
 ### Code map
 
-| Concern           | Mobile Client                                                                                                           | Control Plane              | Agent Runtime                                                    |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------- |
-| Skip gates        | `resolveLaunchState` → `READY_FOR_CHAT` when consent + onboarding + sibling + trial are satisfied                     | `computeNextGate` → `null` (shared gates only; onboarding/trial are client-resolved today) | —                                                                |
-| History hydration | `runtime/runtime-adapter.ts` + `service/conversation-reducer.ts` + `service/message-store.ts` (in-memory only; no disk) | —                          | `conversation/` + `hello_ok` / `session_snapshot` in `protocol/` |
-| Reconnect         | Runtime Adapter: generation tokens, queue until `hello_ok`, merge backfill                                              | —                          | `gateway/runtime/connection-registry.ts`, `sessions/` ordering   |
-| Agent State UI    | `service/chat-presentation.ts` (`Available` / `Thinking` / `Following up` / `Paused`)                                   | —                          | `via_post_message_back` flag on messages                         |
+| Concern           | Mobile Client                                                                                                           | Control Plane                                                                              | Agent Runtime                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| Skip gates        | `resolveLaunchState` → `READY_FOR_CHAT` when consent + onboarding + sibling + trial are satisfied                       | `computeNextGate` → `null` (shared gates only; onboarding/trial are client-resolved today) | —                                                                |
+| History hydration | `runtime/runtime-adapter.ts` + `service/conversation-reducer.ts` + `service/message-store.ts` (in-memory only; no disk) | —                                                                                          | `conversation/` + `hello_ok` / `session_snapshot` in `protocol/` |
+| Reconnect         | Runtime Adapter: generation tokens, queue until `hello_ok`, merge backfill                                              | —                                                                                          | `gateway/runtime/connection-registry.ts`, `sessions/` ordering   |
+| Agent State UI    | `service/chat-presentation.ts` (`Available` / `Thinking` / `Following up` / `Paused`)                                   | —                                                                                          | `via_post_message_back` flag on messages                         |
 
 ---
 
@@ -169,7 +169,8 @@ sequenceDiagram
   participant U as User
   participant D as Desktop Client
   participant CP as Control Plane
-  participant SP as ScreenPipe
+  participant SM as Screen Memory
+  participant CC as Desktop Context Compiler
   participant RT as Agent Runtime
 
   U->>D: Launch (menu bar)
@@ -184,39 +185,38 @@ sequenceDiagram
   D->>CP: GET /agent
   CP->>RT: POST /internal/sessions/start
   D->>RT: WSS connect (client_kind: desktop)
-  D->>SP: Spawn ScreenPipe child
-  loop Every 10 min (Context Heartbeat)
-    D->>SP: Query activity window
-    D->>D: Summarize (LLM Provider on-device)
-    D->>D: Write Snapshot Store (SQLite)
-    D->>RT: context_snapshot (Protocol)
+  loop Context-change gated cadence
+    D->>SM: Write local screen record
+    SM->>CC: OCR + metadata
+    CC->>CC: Compact + redact + label sensitivity
+    CC->>RT: perception_event (Protocol)
   end
+  U->>D: Send floating-bar chat or PTT transcript
+  D->>RT: user_message
   U->>D: Stop capture
   D->>RT: session_end_marker
-  D->>SP: Stop ScreenPipe
 ```
 
 ### Gate sequence (Desktop)
 
-Same Control Plane sequencer; Desktop additionally requires **Capture Permission Setup** until `X-Capture-Permission-Granted: true` on `GET /me`. Live three-grant readiness is enforced locally in Rust (interlock authority); Control Plane gate is the coarser policy nudge (Screen Recording signal only).
+Same Control Plane sequencer; Desktop additionally requires **Capture Permission Setup** until `X-Capture-Permission-Granted: true` on `GET /me`. Live readiness is enforced locally in the SwiftPM app; Control Plane remains the coarser policy nudge.
 
 ### Code map
 
-| Step               | Desktop Client                                                                  | Control Plane                                | Agent Runtime                                              |
-| ------------------ | ------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------- |
-| Sign-in UI         | `src/domains/auth/` (Neon Auth); token handed to Rust, not Routing              | —                                            | —                                                          |
-| Permission wizard  | `src/domains/onboarding/ui/CapturePermissionSetup.tsx`                          | `GET /me` with device signal headers         | —                                                          |
-| Gate reads         | Rust `routing/` uses Control Plane HTTP after login token set                   | Same `identity` + `gates` composer as Mobile | —                                                          |
-| Routing + WSS      | `src-tauri/src/domains/routing/runtime/` (`WsSession`)                          | `GET /agent`                                 | `gateway/`                                                 |
-| Capture lifecycle  | `capture/runtime/coordinator/`, `screenpipe_supervisor/`                        | —                                            | —                                                          |
-| Permission monitor | `capture/runtime/permission_monitor/`, `providers/permissions/`                 | —                                            | —                                                          |
-| Summarization      | `summarization/service/` (Apple Intelligence → Ollama tiers)                    | —                                            | —                                                          |
-| Local persistence  | `snapshots/repo/` (`SnapshotStore`, `intentive.db`)                             | —                                            | —                                                          |
-| Context delivery   | `snapshots/runtime/heartbeat/` → `WsSessionAgentSink` in `lib.rs`               | —                                            | `protocol/` ingress → **Sensory Buffer** → Monitoring Turn |
-| Menu bar UX        | `menubar/ui/`, `menubar/service/`                                               | —                                            | —                                                          |
-| Session end        | Heartbeat `stop()` emits `session_end_marker` before ScreenPipe stop (ADR-0022) | —                                            | `sessions/` event ledger                                   |
+| Step              | Desktop Client                                | Control Plane                                | Agent Runtime                                                   |
+| ----------------- | --------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------- |
+| Sign-in UI        | Auth Adapter + hosted/dev provider            | —                                            | —                                                               |
+| Permission wizard | Capture Permission Setup                      | `GET /me` with device signal headers         | —                                                               |
+| Gate reads        | Control Plane client after login              | Same `identity` + `gates` composer as Mobile | —                                                               |
+| Routing + WSS     | Runtime Bridge                                | `GET /agent`                                 | `gateway/`                                                      |
+| Capture lifecycle | Desktop Capture Layer                         | —                                            | —                                                               |
+| Local persistence | Screen Memory                                 | —                                            | —                                                               |
+| Context delivery  | Desktop Context Compiler → `perception_event` | —                                            | `sessions/` ledger → `perception_records` → Sensory Buffer/tool |
+| Chat + voice      | Floating Bar / PTT → `user_message`           | —                                            | Conversation History + Interactive Turn                         |
+| Effect Runner     | Notification / floating-bar nudge on PMB      | —                                            | Post-Message-Back delivery                                      |
+| Session end       | Capture stop emits `session_end_marker`       | —                                            | `sessions/` event ledger                                        |
 
-**Desktop has no chat UI in v1.** WebSocket carries `context_snapshot`, `session_end_marker`, and delivery acks only.
+**Desktop joins the one conversation.** Floating-bar chat and PTT send `user_message`; Screen Memory sends `perception_event` and stays out of Conversation History.
 
 ---
 
@@ -226,14 +226,14 @@ Same Control Plane sequencer; Desktop additionally requires **Capture Permission
 
 ### What transfers vs what doesn't
 
-| State                | Cross-client?         | Mechanism                                                                   |
-| -------------------- | --------------------- | --------------------------------------------------------------------------- |
-| Identity (sign-in)   | Yes                   | Neon Auth JWT; same `user_id`                                               |
-| Consent Primer       | Yes                   | `control_plane.user_gates` via `POST /consent`                              |
-| Sibling invitation   | Yes                   | Skip record **or** observed Desktop in Device Registry clears Mobile prompt |
-| Capture permission   | **No** (device-local) | Mac wizard + live grant probes; `capture_permission_setup` gate             |
-| Conversation History | Yes                   | One **Agent Instance** per User in Runtime                                  |
-| Context Snapshots    | N/A on phone          | Desktop-only production                                                     |
+| State                    | Cross-client?         | Mechanism                                                                   |
+| ------------------------ | --------------------- | --------------------------------------------------------------------------- |
+| Identity (sign-in)       | Yes                   | Neon Auth JWT; same `user_id`                                               |
+| Consent Primer           | Yes                   | `control_plane.user_gates` via `POST /consent`                              |
+| Sibling invitation       | Yes                   | Skip record **or** observed Desktop in Device Registry clears Mobile prompt |
+| Capture permission       | **No** (device-local) | Mac wizard + live grant probes; `capture_permission_setup` gate             |
+| Conversation History     | Yes                   | One **Agent Instance** per User in Runtime                                  |
+| Screen Memory perception | N/A on phone          | Desktop-only production via `perception_event`                              |
 
 ### Code map
 
@@ -283,24 +283,27 @@ User types → Runtime Adapter sends user_message (message_id, idempotency_key)
 ### Flow
 
 ```text
-Context Heartbeat (10 min) → ScreenPipe window → on-device summary
-                          → Snapshot Store insert (local-truth)
-                          → context_snapshot on WSS
-                          → Runtime event ledger → Sensory Buffer (latest perception)
-                          → optional Monitoring Turn (silent unless Post-Message-Back)
+Desktop Capture Layer → Screen Memory insert (local truth)
+                      → Desktop Context Compiler
+                      → perception_event on WSS
+                      → Runtime event ledger + perception_records
+                      → Sensory Buffer / search_screen_context
+                      → optional Monitoring Turn (silent unless Post-Message-Back)
 ```
 
 Stop capture → `session_end_marker` → Sensory Buffer updated → agent can reason about liveness.
 
 ### Code map
 
-| Step                | Desktop                        | Agent Runtime                                                                                           |
-| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Heartbeat tick      | `snapshots/runtime/heartbeat/` | —                                                                                                       |
-| Protocol emit       | `lib.rs` `WsSessionAgentSink`  | `gateway/` → `sessions/`                                                                                |
-| Persist event       | —                              | `runtime_events` ledger (ADR-0007)                                                                      |
-| Latest context read | —                              | `sessions/repo/sensory-buffer.ts`                                                                       |
-| Agent use           | —                              | `runtime/service/monitoring-turn.ts`, `bundles/service/assemble-system-prompt.ts` (`RECENT_PERCEPTION`) |
+| Step                | Desktop                  | Agent Runtime                                                                                           |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Local record        | Screen Memory            | —                                                                                                       |
+| Compile             | Desktop Context Compiler | —                                                                                                       |
+| Protocol emit       | Runtime Bridge           | `gateway/` → `sessions/`                                                                                |
+| Persist event       | —                        | `runtime_events` ledger + `perception_records`                                                          |
+| Latest context read | —                        | `sessions/repo/sensory-buffer.ts`                                                                       |
+| Search older screen | —                        | `perception/service/search-screen-context.ts`                                                           |
+| Agent use           | —                        | `runtime/service/monitoring-turn.ts`, `bundles/service/assemble-system-prompt.ts` (`RECENT_PERCEPTION`) |
 
 ---
 
@@ -339,16 +342,16 @@ sequenceDiagram
 
 ### Code map
 
-| Concern                   | Agent Runtime                                       | Control Plane                                               | Mobile                                                               |
-| ------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
-| Cron                      | `domains/cron/` (poll loop, `/crons/` VFS cards)    | —                                                           | —                                                                    |
-| Heartbeat                 | `domains/heartbeat/` (computed schedule, silent OK) | —                                                           | —                                                                    |
-| Post-Message-Back         | `delivery/service/post-message-back.ts`             | —                                                           | —                                                                    |
-| Push handoff              | Control Plane push client in `delivery-port.ts`     | `notifications/ui/post-internal-notifications-push.ts`      | —                                                                    |
-| Token storage             | —                                                   | `devices/repo/devices.ts`                                   | `POST /devices/register`                                             |
-| Receipt cleanup           | —                                                   | `POST /internal/notifications/check-receipts` (maintenance) | —                                                                    |
+| Concern                   | Agent Runtime                                       | Control Plane                                               | Mobile                                                                                   |
+| ------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Cron                      | `domains/cron/` (poll loop, `/crons/` VFS cards)    | —                                                           | —                                                                                        |
+| Heartbeat                 | `domains/heartbeat/` (computed schedule, silent OK) | —                                                           | —                                                                                        |
+| Post-Message-Back         | `delivery/service/post-message-back.ts`             | —                                                           | —                                                                                        |
+| Push handoff              | Control Plane push client in `delivery-port.ts`     | `notifications/ui/post-internal-notifications-push.ts`      | —                                                                                        |
+| Token storage             | —                                                   | `devices/repo/devices.ts`                                   | `POST /devices/register`                                                                 |
+| Receipt cleanup           | —                                                   | `POST /internal/notifications/check-receipts` (maintenance) | —                                                                                        |
 | Permission + registration | —                                                   | —                                                           | Grant Permissions in onboarding funnel; `POST /devices/register` around first chat entry |
-| Continuity cue            | —                                                   | —                                                           | `chat-presentation.ts` (`Following up` from `via_post_message_back`) |
+| Continuity cue            | —                                                   | —                                                           | `chat-presentation.ts` (`Following up` from `via_post_message_back`)                     |
 
 ---
 
@@ -366,7 +369,7 @@ sequenceDiagram
 | Sign out                    | `Auth Adapter.signOut` + `markSignedOut()` on Launch State   | —                         |
 | Mac guidance (non-blocking) | `chat-presentation.ts` banner when `!has_desktop_client`     | Device registry           |
 
-Desktop Settings (`src/domains/account/ui/AccountSettingsSurface.tsx`) shows coarse **Connection Mood** from Rust (`routing/types/connection_mood`) — no JWT or `ws_url` in the webview.
+Desktop UI shows coarse connection state only; JWT and `ws_url` stay inside the Runtime Bridge seam.
 
 ---
 
@@ -374,13 +377,12 @@ Desktop Settings (`src/domains/account/ui/AccountSettingsSurface.tsx`) shows coa
 
 Business domains per deployable (each follows `types → config → repo → service → runtime → ui`):
 
-| Deployable     | Domains                                                                                                                        |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Mobile         | `auth`, `onboarding`, `chat`, `notifications`, `account`                                                                       |
-| Desktop (TS)   | `auth`, `onboarding`, `account`                                                                                                |
-| Desktop (Rust) | `capture`, `routing`, `snapshots`, `summarization`, `menubar`                                                                  |
-| Control Plane  | `identity`, `devices`, `gates`, `agents`, `routing`, `notifications`                                                           |
-| Agent Runtime  | `gateway`, `sessions`, `conversation`, `protocol`, `runtime`, `delivery`, `cron`, `heartbeat`, `memory`, `bundles`, `internal` |
+| Deployable    | Domains                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Mobile        | `auth`, `onboarding`, `chat`, `notifications`, `account`                                                                       |
+| Desktop       | Runtime Bridge, Screen Memory, Desktop Context Compiler, Floating Bar, Voice, Effect Runner, Auth, Control Plane client        |
+| Control Plane | `identity`, `devices`, `gates`, `agents`, `routing`, `notifications`                                                           |
+| Agent Runtime | `gateway`, `sessions`, `conversation`, `protocol`, `runtime`, `delivery`, `cron`, `heartbeat`, `memory`, `bundles`, `internal` |
 
 ---
 
@@ -410,7 +412,7 @@ Business domains per deployable (each follows `types → config → repo → ser
 | ------------------------------------------------- | ------------------------------- |
 | `connect` (+ `client_kind`, optional `client_tz`) | `hello_ok` (reconnect snapshot) |
 | `user_message` (Mobile)                           | `companion_message`             |
-| `context_snapshot` (Desktop)                      | `session_snapshot`              |
+| `perception_event` (Desktop)                      | `session_snapshot`              |
 | `session_end_marker` (Desktop)                    | `history_backfill_response`     |
 | `presence_update`, `delivery_ack`                 | `runtime_error`                 |
 | `history_backfill_request`                        |                                 |

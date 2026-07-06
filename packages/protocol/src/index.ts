@@ -57,17 +57,48 @@ export const delivery_ack = z
   .strict();
 export type DeliveryAck = z.infer<typeof delivery_ack>;
 
-export const context_snapshot = z
+export const perceptionArtifactType = z.enum([
+  "searchable_screen_record",
+  "focus_signal",
+  "activity_summary",
+]);
+export type PerceptionArtifactType = z.infer<typeof perceptionArtifactType>;
+
+export const perceptionSensitivityLabel = z.enum(["normal", "sensitive", "secret_detected"]);
+export type PerceptionSensitivityLabel = z.infer<typeof perceptionSensitivityLabel>;
+
+export const perceptionEmbeddingRef = z
   .object({
-    type: z.literal("context_snapshot"),
-    snapshot_id: z.string(),
+    model_id: z.string().min(1),
+    dim: z.number().int().positive(),
+    vector: z.array(z.number()),
+  })
+  .strict()
+  .refine((embedding) => embedding.vector.length === embedding.dim, {
+    message: "embedding_ref.vector length must match dim",
+    path: ["vector"],
+  });
+export type PerceptionEmbeddingRef = z.infer<typeof perceptionEmbeddingRef>;
+
+export const perception_event = z
+  .object({
+    type: z.literal("perception_event"),
+    event_id: z.string().min(1),
+    source_client: ClientKind,
     captured_at: z.string().datetime(),
     period_start: z.string().datetime(),
     period_end: z.string().datetime(),
+    artifact_type: perceptionArtifactType,
     summary: z.string(),
+    signals: z.record(z.unknown()),
+    embedding_ref: perceptionEmbeddingRef.optional(),
+    sensitivity_label: perceptionSensitivityLabel,
+    retention_class: z.string().min(1),
+    confidence: z.number().min(0).max(1),
+    local_record_ref: z.string().min(1),
   })
   .strict();
-export type ContextSnapshot = z.infer<typeof context_snapshot>;
+export type PerceptionEvent = z.infer<typeof perception_event>;
 
 export const session_end_marker = z
   .object({
@@ -97,7 +128,7 @@ export const clientToRuntimeEvent = z.discriminatedUnion("type", [
   user_message,
   presence_update,
   delivery_ack,
-  context_snapshot,
+  perception_event,
   session_end_marker,
   history_backfill_request,
 ]);

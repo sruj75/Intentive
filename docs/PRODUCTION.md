@@ -1,9 +1,10 @@
 # Deployables Production Handoff
 
-This is the one-stop production context for agents operating the two server deployables:
+This is the one-stop production context for agents operating deployable production state:
 
 - **Control Plane**: `services/control-plane/`, Cloud Run.
 - **Agent Runtime**: `services/agent-runtime/`, one always-alive GCE VM behind a global HTTPS load balancer.
+- **Desktop Client**: `apps/desktop/`, SwiftPM macOS app distributed as a signed DMG.
 
 Use this with the owning deployable docs:
 
@@ -11,6 +12,8 @@ Use this with the owning deployable docs:
 - [services/control-plane/ARCHITECTURE.md](../services/control-plane/ARCHITECTURE.md)
 - [services/agent-runtime/README.md](../services/agent-runtime/README.md)
 - [services/agent-runtime/ARCHITECTURE.md](../services/agent-runtime/ARCHITECTURE.md)
+- [apps/desktop/README.md](../apps/desktop/README.md)
+- [apps/desktop/ARCHITECTURE.md](../apps/desktop/ARCHITECTURE.md)
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 ## Current Production State
@@ -93,6 +96,35 @@ Runtime Secret Manager values:
 - Directional shared secrets are reused with Control Plane:
   - `INTERNAL_SECRET_TO_RUNTIME`
   - `INTERNAL_SECRET_FROM_RUNTIME`
+
+### Desktop Client
+
+- Package: `apps/desktop/macos/Desktop`
+- Product name: `Intentive`
+- Bundle identifier: `com.intentive.desktop`
+- Local gates:
+
+```bash
+pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop test
+pnpm harness --scope apps/desktop
+```
+
+- Release workflow: `.github/workflows/desktop-release.yml`
+- Release trigger: tag `desktop-v*`
+- Release artifact: `Intentive-<version>.dmg`
+- Update metadata: generated `appcast.xml` uploaded to the GitHub Release
+- Required release secrets for signed/notarized artifacts:
+  - `APPLE_DEVELOPER_ID_CERT`
+  - `APPLE_DEVELOPER_ID_CERT_PASSWORD`
+  - `KEYCHAIN_PASSWORD`
+  - `APPLE_SIGNING_IDENTITY`
+  - `APPLE_ID`
+  - `APPLE_APP_SPECIFIC_PASSWORD`
+  - `APPLE_TEAM_ID`
+  - `SPARKLE_EDDSA_SIGNATURE`
+
+Unsigned workflow-dispatch artifacts are allowed only for internal smoke. Public release candidates must be Developer ID signed, notarized, stapled, and verified on a clean Mac.
 
 Load balancer inventory:
 

@@ -62,7 +62,7 @@ Mobile (iOS sim) ──HTTP──> Control Plane :8080 ──HTTP /internal/sess
    │  GET /me, /agent, /consent, /devices/register                                        ▲
    └──────────────────── WS ws://localhost:8787/ws ─────────────────────────────> Agent Runtime :8787 (public WS)
                                                                                           │
-Desktop (Mac, optional) ──HTTP /agent──> CP ; ──WS──> Agent Runtime (context_snapshot)    │
+Desktop (Mac, optional) ──HTTP /agent──> CP ; ──WS──> Agent Runtime (perception_event/user_message) │
 Agent Runtime ──HTTP /internal/notifications/push──> Control Plane ──> Expo Push ──> Mobile
 ```
 
@@ -104,7 +104,7 @@ so nothing you do locally can affect production.
 3. **A booted iOS simulator + a Mobile dev build.** Follow
    [`apps/mobile/docs/DEVELOPMENT.md`](../apps/mobile/docs/DEVELOPMENT.md) once to
    install the dev client.
-4. _(Optional)_ **Desktop**, if you want to exercise capture →
+4. _(Optional)_ **Desktop**, if you want to exercise capture, Screen Memory, or floating-bar chat →
    [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md).
 
 The two services' `.env` files are pre-generated; if either is missing, copy from
@@ -128,7 +128,7 @@ scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
 ```
 
 > The script owns the **two server deployables** — the always-on backend half. The
-> clients are launched from their own runbooks (simulator / Tauri) and pointed at
+> clients are launched from their own runbooks (simulator / SwiftPM macOS app) and pointed at
 > `:8080`, because each needs its own device/sim toolchain.
 
 ### Then point the clients at the local Control Plane
@@ -164,7 +164,7 @@ each step. This is the end-to-end product loop the local stack exists to evaluat
 5. **`user_message` → companion reply.** Send a message; a reply streams back. This
    is the money shot — it proves WS gateway + Neon + OpenRouter + the turn spine end
    to end.
-6. _(Optional, Desktop)_ **Capture → `context_snapshot`.** With capture readiness
+6. _(Optional, Desktop)_ **Screen Memory → `perception_event`.** With capture readiness
    granted, the desktop heartbeat emits snapshots over its own WS session.
 7. _(Optional, proactive)_ **Cron / Heartbeat → Post-Message-Back.** The Runtime's
    poll loops can drive a proactive message; delivery to a real device additionally

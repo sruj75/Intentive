@@ -66,6 +66,17 @@ export {
   readUserProfile,
   userMemoryNamespace,
 } from "./domains/memory/repo/memory-backend.js";
+export {
+  createPerceptionRecordsRepo,
+  toPerceptionRecord,
+} from "./domains/perception/repo/perception-records.js";
+export { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
+export type {
+  PerceptionRecord,
+  PerceptionRecordsRepo,
+  ScreenContextSearchInput,
+  ScreenContextSearchResult,
+} from "./domains/perception/types/perception.js";
 export { computeNextFireAt, parseSchedule, resolveTz } from "./domains/cron/config/schedule.js";
 export { createCronBackend } from "./domains/cron/repo/cron-backend.js";
 export { createCronJobsRepo } from "./domains/cron/repo/cron-jobs.js";

@@ -1,6 +1,6 @@
 import type {
   ClientKind,
-  ContextSnapshot,
+  PerceptionEvent,
   SessionEndMarker,
   SessionSnapshot,
   UserMessage,
@@ -10,7 +10,7 @@ import type { PinnedProcedureFloor, TurnTrigger } from "../../bundles/types/floo
 
 export type RuntimeEventKind = Extract<
   TurnTrigger,
-  "user_message" | "context_snapshot" | "session_end_marker"
+  "user_message" | "perception_event" | "session_end_marker"
 >;
 
 export interface BoundSession {
@@ -20,11 +20,11 @@ export interface BoundSession {
   readonly pinnedFloor: PinnedProcedureFloor;
 }
 
-export type RuntimeIngressEvent = UserMessage | ContextSnapshot | SessionEndMarker;
+export type RuntimeIngressEvent = UserMessage | PerceptionEvent | SessionEndMarker;
 
 export type PerceptionArrivedSink = (
   session: BoundSession,
-  event: ContextSnapshot | SessionEndMarker,
+  event: PerceptionEvent | SessionEndMarker,
 ) => void;
 
 export interface LedgerRecord {
@@ -63,7 +63,7 @@ export function isRuntimeIngressEvent(event: {
 }): event is RuntimeIngressEvent {
   return (
     event.type === "user_message" ||
-    event.type === "context_snapshot" ||
+    event.type === "perception_event" ||
     event.type === "session_end_marker"
   );
 }

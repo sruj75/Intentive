@@ -11,12 +11,12 @@ Two ideas govern everything below:
 
 Intentive is a proactive companion across phone and Mac. The monorepo holds four deployables, shared wire contracts in `packages/`, and mechanical linters that enforce the layer rule. Each deployable owns its deploy pipeline; the monorepo unifies code, contracts, docs, and CI — not deployment.
 
-| Path                      | What it is                                                  | Deploys to                                             |
-| ------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
-| `apps/mobile/`            | **Mobile Client** — iOS Expo app, the chat surface          | EAS Build → TestFlight → App Store                     |
-| `apps/desktop/`           | **Desktop Client** — macOS Tauri app, capture-only          | GitHub Actions → signed `.dmg` → landing page download |
-| `services/control-plane/` | **Control Plane** — stateless server, identity + routing    | GitHub Actions → Cloud Run                             |
-| `services/agent-runtime/` | **Agent Runtime** — always-alive multi-tenant agent service | GitHub Actions → GCE VM (Container-Optimized OS)       |
+| Path                      | What it is                                                                                        | Deploys to                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `apps/mobile/`            | **Mobile Client** — iOS Expo app, the chat surface                                                | EAS Build → TestFlight → App Store                     |
+| `apps/desktop/`           | **Desktop Client** — macOS SwiftPM app: capture, Screen Memory, floating-bar chat, voice, effects | GitHub Actions → signed `.dmg` → landing page download |
+| `services/control-plane/` | **Control Plane** — stateless server, identity + routing                                          | GitHub Actions → Cloud Run                             |
+| `services/agent-runtime/` | **Agent Runtime** — always-alive multi-tenant agent service                                       | GitHub Actions → GCE VM (Container-Optimized OS)       |
 
 ```text
                      ┌──────────────────────────┐
@@ -71,7 +71,7 @@ Deployable-local contracts (read the owning file before changing that tree):
    types ──► config ──► repo ──► service ──► runtime ──► ui
 ```
 
-- **types** — shape definitions (Zod, TS types, Rust structs). No behavior.
+- **types** — shape definitions (Zod, TS types, Swift structs). No behavior.
 - **config** — environment-resolved settings.
 - **repo** — durable storage access. Only layer that touches the database directly.
 - **service** — domain logic and orchestration. **No I/O of its own.**
@@ -81,7 +81,7 @@ Deployable-local contracts (read the owning file before changing that tree):
 **Business domains** — vertical product slices inside one deployable (not deployables, not technical layers). Each follows the layer rule; full domain lists live in deployable `ARCHITECTURE.md` files:
 
 - **Mobile** (`apps/mobile/src/domains/`): `auth`, `onboarding`, `chat`, `notifications`, `account`
-- **Desktop** (`apps/desktop/src/domains/` + `src-tauri/src/domains/`): `auth`, `onboarding`, `capture`, `routing`, `summarization`, `snapshots`, `menubar`, `account`
+- **Desktop** (`apps/desktop/macos/Desktop/Sources/` during the SwiftPM renovation): Desktop Capture Layer, Screen Memory, Desktop Context Compiler, Runtime Bridge, Floating Bar, Voice, Effect Runner, Account
 - **Control Plane** (`services/control-plane/src/domains/`): `identity`, `devices`, `gates`, `agents`, `routing`, `notifications`
 - **Agent Runtime** (`services/agent-runtime/src/domains/`): `gateway`, `sessions`, `conversation`, `protocol`, `runtime`, `delivery`, `cron`, `heartbeat`, `memory`, `bundles`, `internal`
 
@@ -100,7 +100,7 @@ Rule: **shared knowledge lives in `packages/`, not duplicated across deployables
 ```text
 intentive/
 ├── apps/mobile/          # Expo; app/ = navigation, src/domains/ = capability
-├── apps/desktop/         # Tauri; src/domains/ (TS) + src-tauri/src/domains/ (Rust)
+├── apps/desktop/         # macOS SwiftPM app; docs/ + macos/Desktop/Sources/
 ├── services/control-plane/   # src/config/, src/domains/, migrations/
 ├── services/agent-runtime/   # src/config/, src/domains/
 ├── packages/{protocol,api-contract,domain-types,boundary,providers}/
@@ -136,13 +136,13 @@ Hard invariants:
 - **Conversation History is server-truth** — no on-device chat persistence in Mobile v1.
 - **Post-Message-Back is the only notification trigger** — regular replies never push. Push delivery and device push tokens live in Control Plane (Expo Push Service in v1).
 - **Pre-Chat Gates are Control-Plane-owned** — Cross-Client (Identity, Consent, Sibling Invitation skip) vs Device-Local (Capture Permission Setup).
-- **Desktop is capture-only in v1** — chat lives on Mobile (and future Android).
+- **Desktop joins the one Companion conversation** — floating-bar chat and voice use the same Protocol and Conversation History as Mobile; Screen Memory perception remains separate from chat history.
 - **Cross-deployable code through `packages/` only** — no `apps/mobile/**` importing `services/**` or sibling apps.
 - **Cross-cutting through Providers only** — auth, telemetry, feature flags, and connector clients enter domains through explicit `providers/` interfaces.
 
 Mechanical checks (`tools/linters/`, run in CI):
 
-1. **Layer-direction lint** — TS via `eslint-plugin-intentive-architecture`; Rust via `tools/linters/rust-architecture/` (`pnpm lint:architecture:rust`).
+1. **Layer-direction lint** — TS via `eslint-plugin-intentive-architecture`; Desktop Swift boundaries are guarded by module seams plus SwiftPM tests.
 2. **Cross-deployable import lint**
 3. **Provider-only cross-cutting lint**
 4. **CONTEXT.md vocabulary lint** — forbidden terms from `_Avoid_` lists
@@ -154,7 +154,7 @@ Lint error messages include remediation instructions for agents.
 
 **Client ↔ Control Plane (public HTTPS, JWT):** `GET /me`, `GET /agent`, `POST /consent`, `POST /sibling-invitation/skip`, `POST /devices/register` (schemas in `packages/api-contract/`).
 
-**Client ↔ Agent Runtime (public WSS, Protocol):** direct data path after Routing. Mobile sends `user_message`; Desktop sends `context_snapshot` and `session_end_marker`.
+**Client ↔ Agent Runtime (public WSS, Protocol):** direct data path after Routing. Mobile and Desktop can send `user_message`; Desktop sends `perception_event` and `session_end_marker` for Screen Memory perception.
 
 **Control Plane ↔ Agent Runtime (private HTTP, directional shared secrets):**
 

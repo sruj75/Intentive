@@ -27,9 +27,9 @@ test("parses an Agent Runtime domain path", () => {
   );
 });
 
-test("parses a Desktop Tauri (Rust) domain path", () => {
+test("parses a Desktop domain path", () => {
   assert.deepEqual(
-    parseDomainPath("/x/apps/desktop/src-tauri/src/domains/capture/repo/sqlite.rs"),
+    parseDomainPath("/x/apps/desktop/macos/Desktop/Sources/domains/capture/repo/store.swift"),
     { kind: "apps", deployable: "desktop", domain: "capture", layer: "repo" },
   );
 });
@@ -280,9 +280,9 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
       code: "// Expo Router owns replace() behavior here.\nexport const owner = true;",
     },
     {
-      name: "Tauri framework reference is allowed",
+      name: "Desktop implementation reference is allowed",
       filename: DESKTOP_ONBOARDING_SOURCE,
-      code: "// Tauri invoke() calls a Rust command by name.\nexport const owner = true;",
+      code: "// SwiftPM target membership lives in Package.swift.\nexport const owner = true;",
     },
   ],
   invalid: [
@@ -320,13 +320,13 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
       ],
     },
     {
-      name: "Desktop framework-as-product alias is forbidden",
+      name: "Desktop stale product alias is forbidden",
       filename: DESKTOP_ONBOARDING_SOURCE,
-      code: "// The Tauri app has no chat UI.\nexport const owner = true;",
+      code: "// The capture-only app has no chat UI.\nexport const owner = true;",
       errors: [
         {
           message:
-            'Vocabulary drift: "Tauri app" belongs to Desktop Client vocabulary. Use "Desktop Client". Owner: apps/desktop/CONTEXT.md.',
+            'Vocabulary drift: "capture-only app" belongs to Desktop Client vocabulary. Use "Desktop Capture Layer". Owner: apps/desktop/CONTEXT.md.',
         },
       ],
     },

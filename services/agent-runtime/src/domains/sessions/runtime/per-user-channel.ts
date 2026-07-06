@@ -106,8 +106,10 @@ function ingressAttrs(
   if (event.type === "user_message") {
     attrs.message_id = event.message_id;
   }
-  if (event.type === "context_snapshot") {
-    attrs.snapshot_id = event.snapshot_id;
+  if (event.type === "perception_event") {
+    attrs.event_id = event.event_id;
+    attrs.artifact_type = event.artifact_type;
+    attrs.sensitivity_label = event.sensitivity_label;
   }
   if (event.type === "session_end_marker") {
     attrs.reason = event.reason;
@@ -117,8 +119,8 @@ function ingressAttrs(
 
 function isPerceptionEvent(
   event: RuntimeIngressEvent,
-): event is Extract<RuntimeIngressEvent, { type: "context_snapshot" | "session_end_marker" }> {
-  return event.type === "context_snapshot" || event.type === "session_end_marker";
+): event is Extract<RuntimeIngressEvent, { type: "perception_event" | "session_end_marker" }> {
+  return event.type === "perception_event" || event.type === "session_end_marker";
 }
 
 function insertedLedgerRow(results: unknown[]): boolean {
@@ -143,8 +145,8 @@ function dedupKeyFor(event: RuntimeIngressEvent, newDedupKey: () => string): str
   switch (event.type) {
     case "user_message":
       return event.message_id;
-    case "context_snapshot":
-      return event.snapshot_id;
+    case "perception_event":
+      return event.event_id;
     case "session_end_marker":
       return newDedupKey();
   }

@@ -8,44 +8,20 @@ permissions:
   contents: read
 
 jobs:
-  desktop-js:
-    name: Desktop JS coverage
-    runs-on: ubuntu-latest
+  desktop-swift:
+    name: Desktop Swift coverage
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - name: Test with coverage
+        run: xcrun swift test --package-path apps/desktop/macos/Desktop --enable-code-coverage
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate coverage
-        run: pnpm coverage
-
-      - name: Upload coverage artifact
+      - name: Archive coverage data
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-js-coverage
-          path: coverage/apps/desktop/lcov.info
-          if-no-files-found: error
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
-        with:
-          files: coverage/apps/desktop/lcov.info
-          flags: desktop-js
-          token: ${{ secrets.CODECOV_TOKEN }}
-          # The hard regression gate is vitest's coverage.thresholds, which fails
-          # the "Generate coverage" step before this. Keep upload errors
-          # non-fatal: there is no CODECOV_TOKEN secret and Codecov rejects
-          # tokenless uploads, so a true here would fail CI on every run.
-          fail_ci_if_error: false
+          name: desktop-swift-coverage
+          path: apps/desktop/macos/Desktop/.build/**/*.profdata
+          if-no-files-found: warn

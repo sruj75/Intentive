@@ -18,7 +18,7 @@ const unsupportedPostConnectEvent: RuntimeError = {
  * - `history_backfill_request` is a **read** — `channel.readSnapshot` returns a
  *   `history_backfill_response`. It serializes behind pending per-User work but
  *   never touches the arrival ledger/write path (ADR-0006).
- * - a Runtime Ingress event (`user_message` / `context_snapshot` /
+ * - a Runtime Ingress event (`user_message` / `perception_event` /
  *   `session_end_marker`) is a **write** — `channel.accept` commits the ledger
  *   marker + projection in one transaction and replies with nothing.
  * - anything else is rejected with an explicit `runtime_error`; there is no

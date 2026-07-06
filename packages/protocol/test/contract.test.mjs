@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 import * as protocol from "../dist/index.js";
+
+const fixturesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 test("connect accepts canonical fields only", () => {
   const result = protocol.connect.safeParse({
@@ -153,6 +158,37 @@ test("history_backfill_request is a member of clientToRuntimeEvent", () => {
   assert.equal(result.success, true);
 });
 
+test("perception_event validates the committed wire fixture", () => {
+  const fixture = readJsonFixture("perception-event.json");
+  const result = protocol.clientToRuntimeEvent.safeParse(fixture);
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.type, "perception_event");
+  assert.equal(result.data.artifact_type, "searchable_screen_record");
+});
+
+test("perception_event rejects stale context_snapshot fields and bad embedding dimensions", () => {
+  const staleSnapshot = protocol.clientToRuntimeEvent.safeParse({
+    type: "context_snapshot",
+    snapshot_id: "snapshot_1",
+    captured_at: "2026-07-05T10:00:00.000Z",
+    period_start: "2026-07-05T09:59:00.000Z",
+    period_end: "2026-07-05T10:00:00.000Z",
+    summary: "old shape",
+  });
+  assert.equal(staleSnapshot.success, false);
+
+  const badEmbedding = protocol.perception_event.safeParse({
+    ...readJsonFixture("perception-event.json"),
+    embedding_ref: {
+      model_id: "local-test-embedding",
+      dim: 4,
+      vector: [0.1, 0.2, 0.3],
+    },
+  });
+  assert.equal(badEmbedding.success, false);
+});
+
 test("history_backfill_response reuses the session_snapshot shape under a type tag", () => {
   const valid = protocol.runtimeToClientEvent.safeParse({
     type: "history_backfill_response",
@@ -177,6 +213,17 @@ test("history_backfill_response reuses the session_snapshot shape under a type t
   assert.equal(missingSnapshot.success, false);
 });
 
+test("runtime->client fixtures validate against the outbound union", () => {
+  assert.equal(
+    protocol.runtimeToClientEvent.safeParse(readJsonFixture("hello-ok.json")).success,
+    true,
+  );
+  assert.equal(
+    protocol.runtimeToClientEvent.safeParse(readJsonFixture("companion-message.json")).success,
+    true,
+  );
+});
+
 test("wire event objects are strict", () => {
   const result = protocol.user_message.safeParse({
     type: "user_message",
@@ -197,6 +244,7 @@ test("legacy alias exports are removed", () => {
     "PresenceUpdateEvent",
     "DeliveryAckEvent",
     "ContextSnapshotEvent",
+    "PerceptionEventEvent",
     "SessionEndMarkerEvent",
     "CompanionMessageEvent",
     "InboundEvent",
@@ -207,3 +255,7 @@ test("legacy alias exports are removed", () => {
     assert.equal(name in protocol, false, `${name} should not be exported`);
   }
 });
+
+function readJsonFixture(name) {
+  return JSON.parse(readFileSync(path.join(fixturesDir, name), "utf8"));
+}

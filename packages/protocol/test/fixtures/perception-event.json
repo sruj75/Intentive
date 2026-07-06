@@ -1,0 +1,24 @@
+{
+  "type": "perception_event",
+  "event_id": "perception_2026-07-05T10-00-00Z_001",
+  "source_client": "desktop",
+  "captured_at": "2026-07-05T10:00:00.000Z",
+  "period_start": "2026-07-05T09:59:15.000Z",
+  "period_end": "2026-07-05T10:00:00.000Z",
+  "artifact_type": "searchable_screen_record",
+  "summary": "User is reviewing the desktop renovation plan and comparing protocol requirements.",
+  "signals": {
+    "app": "Code",
+    "window_title_redacted": true,
+    "ocr_word_count": 184
+  },
+  "embedding_ref": {
+    "model_id": "local-test-embedding",
+    "dim": 3,
+    "vector": [0.12, -0.4, 0.88]
+  },
+  "sensitivity_label": "normal",
+  "retention_class": "screen_memory_30d",
+  "confidence": 0.92,
+  "local_record_ref": "screen-memory://records/2026-07-05/001"
+}

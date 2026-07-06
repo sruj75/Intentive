@@ -46,7 +46,7 @@ xcuserdata/
 local/
 scripts/
 !scripts/
-!scripts/prepare-agent-runtime.sh
+!scripts/build-app-bundle.sh
 
 # Swift compiler diagnostics cache
 *.dia
@@ -58,12 +58,6 @@ scripts/
 **/python_reference/
 Desktop/Sources/Resources/ffmpeg
 Desktop/Sources/Resources/node
-
-# Local Rust helper build output
-codex-proxy/target/
-local-asr-helper/target/
-local-asr-helper/Cargo.lock
-local-backend/target/
 
 # Generated browser snapshots (contain PII)
 *-snapshot.md
@@ -99,6 +93,6 @@ demo/out/
 # Claude project instructions (user-local, contains absolute paths)
 CLAUDE.md
 
-# Captured dev auth session (omi-auth-dump.sh) — contains real tokens, never commit
+# Captured dev auth sessions contain real tokens, never commit
 tmp/desktop-auth.json
 tmp/

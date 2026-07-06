@@ -49,7 +49,7 @@ test("accept commits the ledger marker before projection queries in one transact
   assert.deepEqual(transactions[0], [ledgerQuery, projectionQuery]);
 });
 
-test("accept derives stable dedup keys for messages and snapshots and mints them for end markers", async () => {
+test("accept derives stable dedup keys for messages and perception events and mints them for end markers", async () => {
   const records = [];
   const keys = ["end_1", "end_2"];
   const channel = createPerUserChannel({
@@ -66,14 +66,7 @@ test("accept derives stable dedup keys for messages and snapshots and mints them
   });
 
   await channel.accept(session, userMessage("message_1"));
-  await channel.accept(session, {
-    type: "context_snapshot",
-    snapshot_id: "snapshot_1",
-    captured_at: "2026-06-09T00:00:00.000Z",
-    period_start: "2026-06-08T23:55:00.000Z",
-    period_end: "2026-06-09T00:00:00.000Z",
-    summary: "screen summary",
-  });
+  await channel.accept(session, perceptionEvent("perception_1"));
   await channel.accept(session, {
     type: "session_end_marker",
     ended_at: "2026-06-09T00:01:00.000Z",
@@ -89,7 +82,7 @@ test("accept derives stable dedup keys for messages and snapshots and mints them
     records.map((record) => [record.kind, record.dedupKey]),
     [
       ["user_message", "message_1"],
-      ["context_snapshot", "snapshot_1"],
+      ["perception_event", "perception_1"],
       ["session_end_marker", "end_1"],
       ["session_end_marker", "end_2"],
     ],
@@ -213,14 +206,7 @@ test("runTurn is called once for a new user message and not for duplicates or no
   const message = userMessage("message_1");
   await channel.accept(session, message);
   await channel.accept(session, message);
-  await channel.accept(session, {
-    type: "context_snapshot",
-    snapshot_id: "snapshot_1",
-    captured_at: "2026-06-09T00:00:00.000Z",
-    period_start: "2026-06-08T23:55:00.000Z",
-    period_end: "2026-06-09T00:00:00.000Z",
-    summary: "screen summary",
-  });
+  await channel.accept(session, perceptionEvent("perception_1"));
 
   assert.deepEqual(turnEvents, [message]);
 });
@@ -249,16 +235,9 @@ test("onPerceptionArrived fires once for new perception events only", async () =
     },
   });
 
-  const snapshot = {
-    type: "context_snapshot",
-    snapshot_id: "snapshot_1",
-    captured_at: "2026-06-09T00:00:00.000Z",
-    period_start: "2026-06-08T23:55:00.000Z",
-    period_end: "2026-06-09T00:00:00.000Z",
-    summary: "screen summary",
-  };
-  await channel.accept(session, snapshot);
-  await channel.accept(session, snapshot);
+  const perception = perceptionEvent("perception_1");
+  await channel.accept(session, perception);
+  await channel.accept(session, perception);
   await channel.accept(session, {
     type: "session_end_marker",
     ended_at: "2026-06-09T00:01:00.000Z",
@@ -267,7 +246,7 @@ test("onPerceptionArrived fires once for new perception events only", async () =
   await channel.accept(session, userMessage("message_1"));
 
   assert.deepEqual(perceptions, [
-    [session.userId, "context_snapshot"],
+    [session.userId, "perception_event"],
     [session.userId, "session_end_marker"],
   ]);
   assert.deepEqual(turnEvents, ["user_message"]);
@@ -283,6 +262,24 @@ function userMessage(messageId) {
     message_id: messageId,
     body: "hello",
     sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+function perceptionEvent(eventId) {
+  return {
+    type: "perception_event",
+    event_id: eventId,
+    source_client: "desktop",
+    captured_at: "2026-06-09T00:00:00.000Z",
+    period_start: "2026-06-08T23:55:00.000Z",
+    period_end: "2026-06-09T00:00:00.000Z",
+    artifact_type: "searchable_screen_record",
+    summary: "screen summary",
+    signals: { app: "Code" },
+    sensitivity_label: "normal",
+    retention_class: "screen_memory_30d",
+    confidence: 0.9,
+    local_record_ref: `screen-memory://${eventId}`,
   };
 }
 

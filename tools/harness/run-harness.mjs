@@ -15,11 +15,6 @@ const rootChecks = [
   { label: "Agent docs integrity tests", command: "pnpm", args: ["docs:agents:test"] },
   { label: "Architecture lint plugin tests", command: "pnpm", args: ["lint:architecture:test"] },
   {
-    label: "Architecture lint (Rust layer + structure)",
-    command: "pnpm",
-    args: ["lint:architecture:rust"],
-  },
-  {
     label: "Impact radius sensor fixture tests",
     command: "pnpm",
     args: ["sensor:impact-radius:test"],
