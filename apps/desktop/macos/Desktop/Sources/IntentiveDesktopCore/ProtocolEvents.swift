@@ -294,12 +294,14 @@ public struct UserMessage: Codable, Equatable, Sendable {
 
 public struct ConnectEvent: Codable, Equatable, Sendable {
   public let type: String
+  public var authToken: String
   public var clientKind: ClientKind
   public var clientVersion: String
   public var clientTz: String?
 
-  public init(clientVersion: String, clientTz: String?) {
+  public init(authToken: String, clientVersion: String, clientTz: String?) {
     self.type = "connect"
+    self.authToken = authToken
     self.clientKind = .desktop
     self.clientVersion = clientVersion
     self.clientTz = clientTz
@@ -307,6 +309,7 @@ public struct ConnectEvent: Codable, Equatable, Sendable {
 
   enum CodingKeys: String, CodingKey {
     case type
+    case authToken = "auth_token"
     case clientKind = "client_kind"
     case clientVersion = "client_version"
     case clientTz = "client_tz"
@@ -316,42 +319,123 @@ public struct ConnectEvent: Codable, Equatable, Sendable {
 public struct PresenceUpdate: Codable, Equatable, Sendable {
   public let type: String
   public var foreground: Bool
-  public var sentAt: String
 
-  public init(foreground: Bool, sentAt: String) {
+  public init(foreground: Bool) {
     self.type = "presence_update"
     self.foreground = foreground
-    self.sentAt = sentAt
   }
 
-  enum CodingKeys: String, CodingKey {
+  enum CodingKeys: String, CodingKey, CaseIterable {
     case type
     case foreground
-    case sentAt = "sent_at"
   }
 }
 
 public struct DeliveryAck: Codable, Equatable, Sendable {
   public let type: String
   public var messageId: String
-  public var receivedAt: String
 
-  public init(messageId: String, receivedAt: String) {
+  public init(messageId: String) {
     self.type = "delivery_ack"
     self.messageId = messageId
-    self.receivedAt = receivedAt
   }
 
-  enum CodingKeys: String, CodingKey {
+  enum CodingKeys: String, CodingKey, CaseIterable {
     case type
     case messageId = "message_id"
-    case receivedAt = "received_at"
+  }
+}
+
+public enum SessionEndReason: String, Codable, Equatable, Sendable {
+  case userToggle = "user_toggle"
+  case quit
+  case crash
+}
+
+public struct SessionEndMarker: Codable, Equatable, Sendable {
+  public let type: String
+  public var endedAt: String
+  public var reason: SessionEndReason
+
+  public init(endedAt: String, reason: SessionEndReason) {
+    self.type = "session_end_marker"
+    self.endedAt = endedAt
+    self.reason = reason
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case endedAt = "ended_at"
+    case reason
+  }
+}
+
+public struct HistoryBackfillRequest: Codable, Equatable, Sendable {
+  public let type: String
+  public var beforeCursor: String
+  public var limit: Int?
+
+  public init(beforeCursor: String, limit: Int? = nil) {
+    self.type = "history_backfill_request"
+    self.beforeCursor = beforeCursor
+    self.limit = limit
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case beforeCursor = "before_cursor"
+    case limit
+  }
+}
+
+public struct HistoryBackfillResponse: Codable, Equatable, Sendable {
+  public let type: String
+  public var sessionSnapshot: SessionSnapshot
+
+  public init(sessionSnapshot: SessionSnapshot) {
+    self.type = "history_backfill_response"
+    self.sessionSnapshot = sessionSnapshot
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case sessionSnapshot = "session_snapshot"
+  }
+}
+
+public enum RuntimeErrorCode: String, Codable, Equatable, Sendable {
+  case protocolUnsupported = "protocol_unsupported"
+  case authFailed = "auth_failed"
+  case invalidConnect = "invalid_connect"
+  case serviceUnavailable = "service_unavailable"
+}
+
+public struct RuntimeError: Codable, Equatable, Sendable {
+  public let type: String
+  public var code: RuntimeErrorCode
+  public var message: String
+  public var details: JSONValue?
+
+  public init(code: RuntimeErrorCode, message: String, details: JSONValue? = nil) {
+    self.type = "runtime_error"
+    self.code = code
+    self.message = message
+    self.details = details
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case code
+    case message
+    case details
   }
 }
 
 public enum RuntimeToClientEvent: Equatable, Sendable {
   case helloOk(HelloOk)
+  case historyBackfillResponse(HistoryBackfillResponse)
   case companionMessage(CompanionMessage)
+  case runtimeError(RuntimeError)
 }
 
 public struct ProtocolEventCodec {
@@ -382,6 +466,13 @@ public struct ProtocolEventCodec {
         allowed: Set(HelloOk.CodingKeys.allCases.map(\.stringValue))
       )
       return .helloOk(try decoder.decode(HelloOk.self, from: data))
+    case "history_backfill_response":
+      try validateAllowedKeys(
+        data: data,
+        type: type,
+        allowed: Set(HistoryBackfillResponse.CodingKeys.allCases.map(\.stringValue))
+      )
+      return .historyBackfillResponse(try decoder.decode(HistoryBackfillResponse.self, from: data))
     case "companion_message":
       try validateAllowedKeys(
         data: data,
@@ -389,6 +480,13 @@ public struct ProtocolEventCodec {
         allowed: Set(CompanionMessage.CodingKeys.allCases.map(\.stringValue))
       )
       return .companionMessage(try decoder.decode(CompanionMessage.self, from: data))
+    case "runtime_error":
+      try validateAllowedKeys(
+        data: data,
+        type: type,
+        allowed: Set(RuntimeError.CodingKeys.allCases.map(\.stringValue))
+      )
+      return .runtimeError(try decoder.decode(RuntimeError.self, from: data))
     default:
       throw ProtocolEventError.unsupportedType(type)
     }

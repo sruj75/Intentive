@@ -32,17 +32,17 @@ enum SpatialOverlayDogfoodFixture: String, CaseIterable {
       return appKitRect(topLeftRect: CGRect(x: 1_124, y: 1_296, width: 92, height: 54))
     case .claudeAddInferredFromCancel:
       return appKitRect(
-        topLeftRect: CloudConnectorFormAutomation.inferredClaudeAddButtonFrameFromCancel(
+        topLeftRect: SpatialOverlayDogfoodAutomation.inferredAddButtonFrameFromCancel(
           CGRect(x: 1_006, y: 1_296, width: 106, height: 54)
         )
       )
     case .claudeAddHeuristic:
-      let point = CloudConnectorFormAutomation.claudeAddGuidanceAnchor(in: windowFrame)
+      let point = SpatialOverlayDogfoodAutomation.addGuidanceAnchor(in: windowFrame)
       return CGRect(x: point.x - 46, y: point.y - 27, width: 92, height: 54)
     case .claudeConnectExplicit:
       return appKitRect(topLeftRect: CGRect(x: 1_225, y: 641, width: 132, height: 54))
     case .claudeConnectHeuristic:
-      let point = CloudConnectorFormAutomation.claudeConnectGuidanceAnchor(in: windowFrame)
+      let point = SpatialOverlayDogfoodAutomation.connectGuidanceAnchor(in: windowFrame)
       return CGRect(x: point.x - 66, y: point.y - 27, width: 132, height: 54)
     }
   }
@@ -65,24 +65,24 @@ enum SpatialOverlayDogfoodFixture: String, CaseIterable {
   var candidates: [SpatialOverlayAnchorCandidate] {
     switch self {
     case .claudeAddExplicit:
-      return CloudConnectorFormAutomation.claudeAddGuidanceCandidates(
+      return SpatialOverlayDogfoodAutomation.addGuidanceCandidates(
         windowFrame: windowFrame,
         explicitTargetFrames: [targetRect]
       )
     case .claudeAddInferredFromCancel:
       return [inferredAddCandidate]
     case .claudeAddHeuristic:
-      return CloudConnectorFormAutomation.claudeAddGuidanceCandidates(
+      return SpatialOverlayDogfoodAutomation.addGuidanceCandidates(
         windowFrame: windowFrame,
         explicitTargetFrames: []
       )
     case .claudeConnectExplicit:
-      return CloudConnectorFormAutomation.claudeConnectGuidanceCandidates(
+      return SpatialOverlayDogfoodAutomation.connectGuidanceCandidates(
         windowFrame: windowFrame,
         explicitTargetFrames: [targetRect]
       )
     case .claudeConnectHeuristic:
-      return CloudConnectorFormAutomation.claudeConnectGuidanceCandidates(
+      return SpatialOverlayDogfoodAutomation.connectGuidanceCandidates(
         windowFrame: windowFrame,
         explicitTargetFrames: []
       )
@@ -103,7 +103,11 @@ enum SpatialOverlayDogfoodFixture: String, CaseIterable {
   }
 
   private var inferredAddCandidate: SpatialOverlayAnchorCandidate {
-    let screen = SpatialOverlayScreen(id: "claude-window", frame: windowFrame, visibleFrame: windowFrame)
+    let screen = SpatialOverlayScreen(
+      id: "claude-window",
+      frame: windowFrame,
+      visibleFrame: windowFrame
+    )
     let window = SpatialOverlayWindow(
       id: "claude-window",
       frame: windowFrame,
@@ -125,6 +129,144 @@ enum SpatialOverlayDogfoodFixture: String, CaseIterable {
       confidence: 0.82,
       allowedUses: [.displayGuidance]
     )
+  }
+}
+
+enum SpatialOverlayDogfoodAutomation {
+  static func inferredAddButtonFrameFromCancel(_ cancelFrame: CGRect) -> CGRect {
+    let width = min(max(cancelFrame.width * 0.82, 72), 96)
+    return CGRect(
+      x: cancelFrame.maxX + 12,
+      y: cancelFrame.minY,
+      width: width,
+      height: cancelFrame.height
+    )
+  }
+
+  static func addGuidanceAnchor(in windowFrame: CGRect) -> CGPoint {
+    CGPoint(x: windowFrame.minX + 1_170, y: windowFrame.minY + 273)
+  }
+
+  static func connectGuidanceAnchor(in windowFrame: CGRect) -> CGPoint {
+    CGPoint(x: windowFrame.minX + 1_291, y: windowFrame.minY + 412)
+  }
+
+  static func addGuidanceCandidates(
+    windowFrame: CGRect,
+    explicitTargetFrames: [CGRect]
+  ) -> [SpatialOverlayAnchorCandidate] {
+    let heuristicRect = CGRect(
+      x: addGuidanceAnchor(in: windowFrame).x - 46,
+      y: addGuidanceAnchor(in: windowFrame).y - 27,
+      width: 92,
+      height: 54
+    )
+    return guidanceCandidates(
+      actionID: "add",
+      actionLabel: "Add",
+      windowFrame: windowFrame,
+      explicitTargetFrames: explicitTargetFrames,
+      heuristicTargetFrame: heuristicRect
+    )
+  }
+
+  static func connectGuidanceCandidates(
+    windowFrame: CGRect,
+    explicitTargetFrames: [CGRect]
+  ) -> [SpatialOverlayAnchorCandidate] {
+    let heuristicRect = CGRect(
+      x: connectGuidanceAnchor(in: windowFrame).x - 66,
+      y: connectGuidanceAnchor(in: windowFrame).y - 27,
+      width: 132,
+      height: 54
+    )
+    return guidanceCandidates(
+      actionID: "connect",
+      actionLabel: "Connect",
+      windowFrame: windowFrame,
+      explicitTargetFrames: explicitTargetFrames,
+      heuristicTargetFrame: heuristicRect
+    )
+  }
+
+  private static func guidanceCandidates(
+    actionID: String,
+    actionLabel: String,
+    windowFrame: CGRect,
+    explicitTargetFrames: [CGRect],
+    heuristicTargetFrame: CGRect
+  ) -> [SpatialOverlayAnchorCandidate] {
+    let screen = SpatialOverlayScreen(
+      id: "dogfood-window",
+      frame: windowFrame,
+      visibleFrame: windowFrame
+    )
+    let window = SpatialOverlayWindow(
+      id: "dogfood-window",
+      frame: windowFrame,
+      screenID: screen.id
+    )
+    let targetFrames = explicitTargetFrames.isEmpty ? [heuristicTargetFrame] : explicitTargetFrames
+    let source: SpatialOverlayTargetSource =
+      explicitTargetFrames.isEmpty ? .layoutHeuristic : .accessibility
+    let confidence = explicitTargetFrames.isEmpty ? 0.78 : 0.95
+    let uses: Set<SpatialOverlayAnchorUse> =
+      explicitTargetFrames.isEmpty ? [.displayGuidance] : [.displayGuidance, .performClick]
+    let candidateKind = explicitTargetFrames.isEmpty ? "heuristic" : "explicit"
+
+    return targetFrames.enumerated().map { index, targetFrame in
+      SpatialOverlayAnchorCandidate(
+        id: "dogfood-\(actionID)-\(candidateKind)-\(index)",
+        targetRect: targetFrame,
+        screen: screen,
+        window: window,
+        evidence: [
+          SpatialOverlayTargetEvidence(
+            source: source,
+            confidence: confidence,
+            label: "\(actionLabel) button",
+            diagnostics: ["display-guidance-only"]
+          )
+        ],
+        confidence: confidence,
+        allowedUses: uses
+      )
+    }
+  }
+}
+
+enum SpatialOverlayGuidancePlacement {
+  static func placementResult(
+    windowFrame: CGRect,
+    candidates: [SpatialOverlayAnchorCandidate]
+  ) -> SpatialOverlayPlacementResult? {
+    let screen = SpatialOverlayScreen(
+      id: "dogfood-window",
+      frame: windowFrame,
+      visibleFrame: windowFrame
+    )
+    let snapshot = SpatialOverlayDesktopSnapshot(screens: [screen], candidates: candidates)
+    let resolver = SpatialOverlayAnchorResolver()
+    let resolution = resolver.resolve(
+      SpatialOverlayAnchorSpec(
+        id: "display.guidance",
+        use: .displayGuidance,
+        minimumConfidence: 0.5
+      ),
+      in: snapshot
+    )
+    guard case .success(let anchor) = resolution else { return nil }
+
+    let placement = SpatialOverlayPlacementSolver.place(
+      target: anchor.candidate,
+      spec: SpatialOverlayPlacementSpec(
+        overlaySize: CGSize(width: 330, height: 118),
+        preferredEdges: [.above, .below, .trailing, .leading],
+        canCoverTarget: false
+      )
+    )
+    guard case .success(let result) = placement else { return nil }
+    return result
   }
 }
 

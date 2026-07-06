@@ -107,13 +107,15 @@ Runtime Secret Manager values:
 ```bash
 pnpm --dir apps/desktop typecheck
 pnpm --dir apps/desktop test
+pnpm --dir apps/desktop release:smoke
 pnpm harness --scope apps/desktop
 ```
 
 - Release workflow: `.github/workflows/desktop-release.yml`
 - Release trigger: tag `desktop-v*`
 - Release artifact: `Intentive-<version>.dmg`
-- Update metadata: generated `appcast.xml` uploaded to the GitHub Release
+- Bundle metadata: `CFBundleShortVersionString` comes from the tag/package version; `CFBundleVersion` comes from the GitHub run number unless the version contains `+<build>`.
+- Update metadata: generated `appcast.xml` uploaded to the GitHub Release. The app bundle points Sparkle at the latest release's `appcast.xml`.
 - Required release secrets for signed/notarized artifacts:
   - `APPLE_DEVELOPER_ID_CERT`
   - `APPLE_DEVELOPER_ID_CERT_PASSWORD`
@@ -122,9 +124,11 @@ pnpm harness --scope apps/desktop
   - `APPLE_ID`
   - `APPLE_APP_SPECIFIC_PASSWORD`
   - `APPLE_TEAM_ID`
+  - `SPARKLE_PUBLIC_ED_KEY`
   - `SPARKLE_EDDSA_SIGNATURE`
 
 Unsigned workflow-dispatch artifacts are allowed only for internal smoke. Public release candidates must be Developer ID signed, notarized, stapled, and verified on a clean Mac.
+Tag-triggered `desktop-v*` releases fail before building artifacts if any required signing, notarization, or Sparkle signing secret is missing.
 
 Load balancer inventory:
 

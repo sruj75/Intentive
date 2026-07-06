@@ -103,7 +103,7 @@ class AudioCaptureService: @unchecked Sendable {
     private var silentMicDetectedFired: Bool = false
     private let silentMicWindowThreshold: Int = 2  // windows of ~1s each
 
-    /// Target sample rate for DeepGram
+    /// Target sample rate for local transcription and Runtime voice turns.
     private let targetSampleRate: Double = 16000
 
     // Resampling
@@ -119,7 +119,7 @@ class AudioCaptureService: @unchecked Sendable {
 
     // Device change handling
     private var isReconfiguring = false
-    private let listenerQueue = DispatchQueue(label: "com.omi.audiocapture.listener")
+    private let listenerQueue = DispatchQueue(label: "com.intentive.audiocapture.listener")
 
     // Silent-mic watchdog state — tracks peak amplitude within a ~1 second window
     // so we can detect a Bluetooth mic that's alive-but-silent (A2DP profile conflict).
@@ -128,7 +128,7 @@ class AudioCaptureService: @unchecked Sendable {
 
     /// Dedicated queue for CoreAudio device operations (start/stop/reconfigure)
     /// to avoid blocking the main thread on AudioDeviceStart/Stop calls.
-    private let audioQueue = DispatchQueue(label: "com.omi.audiocapture.device")
+    private let audioQueue = DispatchQueue(label: "com.intentive.audiocapture.device")
 
     // MARK: - Public Methods
 
@@ -494,7 +494,7 @@ class AudioCaptureService: @unchecked Sendable {
             return
         }
 
-        // Convert Float32 samples to Int16 (linear16 PCM for DeepGram)
+        // Convert Float32 samples to Int16 linear PCM for speech processing.
         guard let channelData = outputBuffer.floatChannelData?[0] else { return }
 
         let processedFrameLength = Int(outputBuffer.frameLength)

@@ -38,7 +38,51 @@ jobs:
           else
             VERSION="$(node -p "require('./apps/desktop/package.json').version")"
           fi
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
+          if [[ "$VERSION" == *"+"* ]]; then
+            BUILD_NUMBER="${VERSION##*+}"
+            VERSION="${VERSION%%+*}"
+          fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Validate public release signing configuration
+        env:
+          APPLE_DEVELOPER_ID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_EDDSA_SIGNATURE: ${{ secrets.SPARKLE_EDDSA_SIGNATURE }}
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "Workflow-dispatch smoke builds may be unsigned."
+            exit 0
+          fi
+
+          missing=()
+          for secret_name in \
+            APPLE_DEVELOPER_ID_CERT \
+            APPLE_DEVELOPER_ID_CERT_PASSWORD \
+            KEYCHAIN_PASSWORD \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD \
+            APPLE_TEAM_ID \
+            SPARKLE_PUBLIC_ED_KEY \
+            SPARKLE_EDDSA_SIGNATURE; do
+            if [[ -z "${!secret_name:-}" ]]; then
+              missing+=("$secret_name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required public release secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
 
       - name: Verify Desktop
         run: |
@@ -46,8 +90,17 @@ jobs:
           pnpm --dir apps/desktop test
 
       - name: Build app bundle
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
-          CONFIGURATION=release INTENTIVE_APP_NAME=Intentive apps/desktop/macos/scripts/build-app-bundle.sh
+          CONFIGURATION=release \
+            INTENTIVE_APP_NAME=Intentive \
+            INTENTIVE_APP_VERSION="$VERSION" \
+            INTENTIVE_APP_BUILD="$BUILD_NUMBER" \
+            INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
+            INTENTIVE_SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" \
+            INTENTIVE_SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
+            apps/desktop/macos/scripts/build-app-bundle.sh
           echo "APP_BUNDLE=apps/desktop/macos/Desktop/.build/release/Intentive.app" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
@@ -113,6 +166,8 @@ jobs:
           SPARKLE_EDDSA_SIGNATURE: ${{ secrets.SPARKLE_EDDSA_SIGNATURE }}
         run: |
           DMG="Intentive-$VERSION.dmg"
+          DMG_PATH="dist/$DMG"
+          DMG_BYTES="$(stat -f%z "$DMG_PATH")"
           SIGNATURE="${SPARKLE_EDDSA_SIGNATURE:-unsigned-local-build}"
           cat > dist/appcast.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
@@ -121,12 +176,14 @@ jobs:
               <title>Intentive Desktop Updates</title>
               <item>
                 <title>Intentive $VERSION</title>
-                <sparkle:version>$VERSION</sparkle:version>
+                <sparkle:version>$BUILD_NUMBER</sparkle:version>
                 <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
                 <pubDate>$(date -u +"%a, %d %b %Y %H:%M:%S %z")</pubDate>
                 <enclosure
                   url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$DMG"
                   sparkle:edSignature="$SIGNATURE"
+                  length="$DMG_BYTES"
                   type="application/octet-stream" />
               </item>
             </channel>

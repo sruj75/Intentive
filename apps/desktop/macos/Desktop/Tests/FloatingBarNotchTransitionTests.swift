@@ -1,6 +1,6 @@
 import CoreGraphics
 import XCTest
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 final class FloatingBarNotchTransitionTests: XCTestCase {
     func testHiddenFrameStartsAtNotchTopCenter() {

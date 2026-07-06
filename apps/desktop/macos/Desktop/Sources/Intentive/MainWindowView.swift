@@ -1,4 +1,5 @@
 import IntentiveDesktopCore
+import IntentiveDesktopNativeAdapters
 import SwiftUI
 
 private enum DesktopSection: String, CaseIterable, Identifiable {
@@ -30,16 +31,47 @@ private final class DesktopViewModel: ObservableObject {
   @Published var input = ""
   @Published var status: String
   @Published var effectLog: [String] = []
+  @Published var captureRunning = false
+  @Published var compilerSettings: CompilerSettings
+  @Published var excludedAppsText: String
+  @Published var screenRecordingPermissionGranted: Bool
+  @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
 
   let messageStore = MessageStore()
   let screenMemory: ScreenMemoryStore
-  private lazy var runtime = PreviewRuntimeClient(messageStore: messageStore)
-  private lazy var compiler = ContextCompiler()
+  private let settingsStore: any ScreenMemorySettingsStore
+  private let permissionGateway: any ScreenRecordingPermissionGateway
+  private let notificationSink = UserNotificationDesktopSink()
+  private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
+  private let runtimeSocket = URLSessionRuntimeSocket()
+  private var runtimeRestoreAttempted = false
+  private lazy var runtime = RuntimeAdapter(
+    socket: runtimeSocket,
+    messageStore: messageStore,
+    clientVersion: DesktopRuntimeConfiguration.clientVersion
+  )
+  private lazy var runtimeSession = DesktopRuntimeSessionCoordinator(
+    auth: DesktopRuntimeConfiguration.authProvider(),
+    controlPlane: DesktopRuntimeConfiguration.controlPlaneClient(),
+    device: ClientDeviceService(deviceId: DesktopRuntimeConfiguration.deviceFingerprint),
+    runtime: runtime,
+    capturePermissionGranted: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
+  )
+  private lazy var floatingBarController = FloatingBarController(runtimeClient: runtime, messageStore: messageStore)
+  private lazy var floatingBarPresenter = IntentiveFloatingBarPresenter(controller: floatingBarController)
+  private lazy var compiler = ContextCompiler(settings: compilerSettings)
   private lazy var publisher = PerceptionPublisher(runtimeClient: runtime)
+  private lazy var captureSource = NativeScreenCaptureSource()
   private lazy var capture = CaptureCoordinator(
     compiler: compiler,
     screenMemory: screenMemory,
     publisher: publisher
+  )
+  private lazy var captureLoop = ScreenMemoryCaptureLoop(
+    coordinator: capture,
+    source: captureSource,
+    settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
+    permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
   )
 
   var messages: [ChatMessage] {
@@ -50,7 +82,17 @@ private final class DesktopViewModel: ObservableObject {
     screenMemory.search(query, limit: 24)
   }
 
-  init() {
+  init(
+    settingsStore: any ScreenMemorySettingsStore = UserDefaultsScreenMemorySettingsStore(),
+    permissionGateway: any ScreenRecordingPermissionGateway = NativeScreenRecordingPermissionGateway()
+  ) {
+    self.settingsStore = settingsStore
+    self.permissionGateway = permissionGateway
+    let settings = settingsStore.load()
+    compilerSettings = settings
+    excludedAppsText = Self.renderExcludedApps(settings.excludedApps)
+    screenRecordingPermissionGranted = permissionGateway.hasScreenRecordingPermission()
+
     do {
       screenMemory = try SQLiteScreenMemoryStore(databaseURL: SQLiteScreenMemoryStore.applicationSupportURL())
       status = "Local Screen Memory ready"
@@ -58,23 +100,76 @@ private final class DesktopViewModel: ObservableObject {
       screenMemory = InMemoryScreenMemoryStore()
       status = "Screen Memory fallback: \(error.localizedDescription)"
     }
-    seed()
+    configureRuntimeSocketCallbacks()
   }
 
-  func captureSample() {
+  func restoreRuntimeSessionIfNeeded() async {
+    guard !runtimeRestoreAttempted else { return }
+    runtimeRestoreAttempted = true
+    await restoreRuntimeSession()
+  }
+
+  func restoreRuntimeSession() async {
+    status = "Restoring Runtime session..."
+    let state = await runtimeSession.restoreAndConnect()
+    applyRuntimeState(state)
+  }
+
+  func signInAndConnectRuntime() async {
+    status = "Connecting Runtime..."
+    let state = await runtimeSession.signInAndConnect()
+    applyRuntimeState(state)
+  }
+
+  func captureCurrentScreen() async {
+    guard compilerSettings.captureEnabled else {
+      status = "Screen Memory is off"
+      return
+    }
+    guard refreshScreenRecordingPermissionForCapture() else { return }
+
+    status = "Capturing active window..."
     do {
-      let frame = CapturedFrame(
-        id: UUID().uuidString,
-        capturedAt: Date().protocolTimestamp,
-        appName: "Code",
-        windowTitle: "Intentive Desktop",
-        ocrText: "Implementing the Intentive desktop runtime bridge and Screen Memory compiler."
-      )
-      let events = try capture.accept(frame: frame)
+      let events = try await capture.captureOnce(from: captureSource)
       status = "Published \(events.count) perception event(s)"
       objectWillChange.send()
     } catch {
       status = "Capture failed: \(error.localizedDescription)"
+    }
+  }
+
+  func toggleCapture() {
+    if captureLoop.state.isRunning {
+      captureLoop.stop()
+      captureRunning = false
+      status = "Capture stopped"
+      return
+    }
+
+    guard compilerSettings.captureEnabled else {
+      captureRunning = false
+      status = "Screen Memory is off"
+      return
+    }
+    guard refreshScreenRecordingPermissionForCapture() else { return }
+
+    captureRunning = true
+    status = "Capture running"
+    _ = captureLoop.start { [weak self] event in
+      guard let self else { return }
+      switch event {
+      case .captured(let eventCount):
+        status =
+          eventCount == 0
+          ? "Capture running. Current app skipped"
+          : "Capture running. Published \(eventCount) perception event(s)"
+      case .skipped(let reason):
+        status = "Capture paused: \(reason)"
+      case .failed(let message):
+        status = "Capture warning: \(message)"
+      }
+      captureRunning = captureLoop.state.isRunning
+      objectWillChange.send()
     }
   }
 
@@ -84,77 +179,273 @@ private final class DesktopViewModel: ObservableObject {
     do {
       _ = try runtime.sendUserMessage(body)
       input = ""
-      status = "Message queued to Runtime Bridge"
+      status =
+        runtime.status == .connected
+        ? "Message sent to Runtime Bridge"
+        : "Message queued until Runtime connects"
       objectWillChange.send()
     } catch {
       status = "Send failed: \(error.localizedDescription)"
     }
   }
 
+  func openFloatingBar() {
+    floatingBarPresenter.show()
+    status = "Floating bar open"
+  }
+
   func triggerEffect() {
-    let notifications = RecordingNotificationSink()
-    let overlay = RecordingOverlaySink()
-    let runner = EffectRunner(notifications: notifications, overlay: overlay, runtimeClient: runtime)
     let message = CompanionMessage(
       messageId: "pmb-\(UUID().uuidString)",
       body: "Take a quick reset before the next desktop phase.",
       emittedAt: Date().protocolTimestamp,
       viaPostMessageBack: true
     )
+    deliverEffect(message, runtimeClient: runtime, statusMessage: "Effect Runner delivered a local nudge")
+  }
+
+  func setCaptureEnabled(_ enabled: Bool) {
+    var settings = compilerSettings
+    settings.captureEnabled = enabled
+    applyCompilerSettings(settings)
+
+    if enabled {
+      status = "Screen Memory is on"
+    } else {
+      if captureLoop.state.isRunning {
+        captureLoop.stop()
+      }
+      captureRunning = false
+      status = "Screen Memory is off"
+    }
+  }
+
+  func updateExcludedAppsText(_ text: String) {
+    excludedAppsText = text
+    var settings = compilerSettings
+    settings.excludedApps = Self.parseExcludedApps(text)
+    applyCompilerSettings(settings)
+  }
+
+  private func applyCompilerSettings(_ settings: CompilerSettings) {
+    compilerSettings = settings
+    capture.updateCompilerSettings(settings)
+    do {
+      try settingsStore.save(settings)
+    } catch {
+      status = "Settings save failed: \(error.localizedDescription)"
+    }
+  }
+
+  func requestScreenRecordingPermission() {
+    let requested = permissionGateway.requestScreenRecordingPermission()
+    screenRecordingPermissionGranted = requested || permissionGateway.hasScreenRecordingPermission()
+    status =
+      screenRecordingPermissionGranted
+      ? "Screen Recording permission granted"
+      : "Screen Recording permission required"
+  }
+
+  func openScreenRecordingSettings() {
+    permissionGateway.openScreenRecordingSettings()
+    status = "Opened Screen Recording settings"
+  }
+
+  func refreshScreenRecordingPermission() {
+    let granted = permissionGateway.hasScreenRecordingPermission()
+    screenRecordingPermissionGranted = granted
+    if !granted, captureLoop.state.isRunning {
+      captureLoop.stop()
+      captureRunning = false
+    }
+    status = granted ? "Screen Recording permission granted" : "Screen Recording permission required"
+  }
+
+  private func refreshScreenRecordingPermissionForCapture() -> Bool {
+    let granted = permissionGateway.hasScreenRecordingPermission()
+    screenRecordingPermissionGranted = granted
+    if !granted {
+      captureRunning = false
+      status = "Screen Recording permission required"
+    }
+    return granted
+  }
+
+  private func configureRuntimeSocketCallbacks() {
+    _ = runtime
+    runtime.onCompanionMessage = { [weak self] companion in
+      Task { @MainActor [weak self] in
+        self?.handleRuntimeCompanionMessage(companion)
+      }
+    }
+    runtimeSocket.onMessage = { [weak self] data in
+      Task { @MainActor [weak self] in
+        self?.handleRuntimeSocketMessage(data)
+      }
+    }
+    runtimeSocket.onClose = { [weak self] error in
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        let reason = error?.localizedDescription ?? "Runtime connection closed"
+        runtimeSession.markRuntimeClosed(reason: reason)
+        applyRuntimeState(runtimeSession.state)
+      }
+    }
+  }
+
+  private func handleRuntimeCompanionMessage(_ message: CompanionMessage) {
+    guard message.viaPostMessageBack else { return }
+    deliverEffect(
+      message,
+      runtimeClient: alreadyAcknowledgedRuntimeClient,
+      statusMessage: "Effect Runner delivered Runtime nudge"
+    )
+  }
+
+  private func handleRuntimeSocketMessage(_ data: Data) {
+    do {
+      try runtime.handleSocketEvent(data)
+      if runtime.status == .connected {
+        runtimeSession.markRuntimeConnected()
+      }
+      applyRuntimeState(runtimeSession.state)
+      floatingBarPresenter.refreshMessages()
+      objectWillChange.send()
+    } catch {
+      status = "Runtime event failed: \(error.localizedDescription)"
+    }
+  }
+
+  private func deliverEffect(
+    _ message: CompanionMessage,
+    runtimeClient: RuntimeChatClient,
+    statusMessage: String
+  ) {
+    let runner = EffectRunner(
+      notifications: notificationSink,
+      overlay: FloatingBarOverlaySink(presenter: floatingBarPresenter),
+      runtimeClient: runtimeClient
+    )
     do {
       try runner.handle(message)
-      effectLog.append(contentsOf: notifications.delivered.map { "\($0.title): \($0.body)" })
-      status = "Effect Runner delivered a local nudge"
+      effectLog.append("Intentive: \(message.body)")
+      status = statusMessage
+      objectWillChange.send()
     } catch {
       status = "Effect failed: \(error.localizedDescription)"
     }
   }
 
-  private func seed() {
-    screenMemory.add(
-      ScreenMemoryRecord(
-        id: "seed-1",
-        capturedAt: Date().protocolTimestamp,
-        appName: "Safari",
-        windowTitle: "Intentive plan",
-        summary: "Reviewing the Screen Memory and Runtime Bridge renovation plan.",
-        ocrText: "Screen Memory Runtime Bridge Effect Runner"
-      )
+  private func applyRuntimeState(_ state: DesktopRuntimeSessionState) {
+    runtimeState = state
+    status = Self.renderRuntimeState(state)
+    objectWillChange.send()
+  }
+
+  private static func renderRuntimeState(_ state: DesktopRuntimeSessionState) -> String {
+    switch state {
+    case .signedOut:
+      return "Sign in required"
+    case .checkingAccount:
+      return "Checking account"
+    case .registeringDevice:
+      return "Registering desktop"
+    case .routing:
+      return "Fetching Runtime route"
+    case .connecting:
+      return "Runtime connecting"
+    case .connected:
+      return "Runtime connected"
+    case .gate(let gate):
+      return gate == .capturePermissionSetup ? "Screen Recording permission required" : "Gate required: \(gate.rawValue)"
+    case .retry(let retryAfterSeconds):
+      if let retryAfterSeconds {
+        return "Runtime unavailable. Retry after \(Int(retryAfterSeconds))s"
+      }
+      return "Runtime unavailable. Retry shortly"
+    case .failed(let message):
+      return "Runtime failed: \(message)"
+    }
+  }
+
+  private static func parseExcludedApps(_ text: String) -> Set<String> {
+    Set(
+      text.components(separatedBy: CharacterSet(charactersIn: ",;\n"))
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
     )
+  }
+
+  private static func renderExcludedApps(_ apps: Set<String>) -> String {
+    apps.sorted().joined(separator: ", ")
   }
 }
 
-private final class PreviewRuntimeClient: RuntimeChatClient {
-  private let messageStore: MessageStore
-  private(set) var perceptionEvents: [PerceptionEvent] = []
-  private(set) var acknowledgements: [String] = []
-
-  init(messageStore: MessageStore) {
-    self.messageStore = messageStore
+private enum DesktopRuntimeConfiguration {
+  static var clientVersion: String {
+    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "desktop-dev"
   }
 
-  @discardableResult
-  func sendUserMessage(_ body: String) throws -> ChatMessage {
-    let sentAt = Date().protocolTimestamp
-    let user = UserMessage(messageId: "desktop-preview-\(UUID().uuidString)", body: body, sentAt: sentAt)
-    let rendered = messageStore.appendPending(user)
-    messageStore.confirmUserMessage(user.messageId)
-    messageStore.appendCompanion(
-      CompanionMessage(
-        messageId: "companion-preview-\(UUID().uuidString)",
-        body: "Received on the shared Companion thread: \(body)",
-        emittedAt: Date().protocolTimestamp
-      )
+  static var deviceFingerprint: String {
+    let key = "intentive.desktop.deviceFingerprint"
+    if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+      return existing
+    }
+    let generated = "mac-\(UUID().uuidString)"
+    UserDefaults.standard.set(generated, forKey: key)
+    return generated
+  }
+
+  static func controlPlaneClient() -> ControlPlaneClient {
+    ControlPlaneClient(baseURL: controlPlaneBaseURL)
+  }
+
+  @MainActor
+  static func authProvider() -> AuthAdapter {
+    if let token = environment("INTENTIVE_DESKTOP_USER_JWT") {
+      return DevAuthProvider(token: token)
+    }
+    return NeonAuthProvider(
+      hostedAuthURL: hostedAuthURL,
+      callbackScheme: callbackScheme,
+      tokenStore: KeychainTokenStore(),
+      authSession: ASWebAuthenticationHostedAuthSession(),
+      tokenExchangeURL: hostedAuthTokenExchangeURL
     )
-    return rendered
   }
 
-  func sendPerceptionEvent(_ event: PerceptionEvent) throws {
-    perceptionEvents.append(event)
+  private static var controlPlaneBaseURL: URL {
+    if let value = environment("INTENTIVE_CONTROL_PLANE_URL"), let url = URL(string: value) {
+      return url
+    }
+    return URL(string: "http://localhost:8080")!
   }
 
-  func acknowledge(messageId: String) throws {
-    acknowledgements.append(messageId)
+  private static var hostedAuthURL: URL? {
+    guard let value = environment("INTENTIVE_HOSTED_AUTH_URL") ?? environment("INTENTIVE_NEON_AUTH_URL") else {
+      return nil
+    }
+    return URL(string: value)
+  }
+
+  private static var hostedAuthTokenExchangeURL: URL? {
+    guard let value = environment("INTENTIVE_AUTH_TOKEN_EXCHANGE_URL") else {
+      return nil
+    }
+    return URL(string: value)
+  }
+
+  private static var callbackScheme: String {
+    environment("INTENTIVE_AUTH_CALLBACK_SCHEME") ?? "intentive-desktop"
+  }
+
+  private static func environment(_ key: String) -> String? {
+    guard let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !value.isEmpty
+    else {
+      return nil
+    }
+    return value
   }
 }
 
@@ -185,6 +476,9 @@ struct MainWindowView: View {
       model.selected = .screenMemory
       searchFocused = true
     }
+    .task {
+      await model.restoreRuntimeSessionIfNeeded()
+    }
   }
 
   private var topBar: some View {
@@ -196,10 +490,19 @@ struct MainWindowView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
       Button {
-        model.captureSample()
+        Task {
+          await model.signInAndConnectRuntime()
+        }
       } label: {
-        Label("Capture", systemImage: "camera.viewfinder")
+        Label("Connect Runtime", systemImage: "bolt.horizontal.circle")
       }
+      .keyboardShortcut("r", modifiers: [.command])
+      Button {
+        model.toggleCapture()
+      } label: {
+        Label(model.captureRunning ? "Stop Capture" : "Start Capture", systemImage: model.captureRunning ? "stop.circle" : "camera.viewfinder")
+      }
+      .disabled(!model.compilerSettings.captureEnabled || !model.screenRecordingPermissionGranted)
       .keyboardShortcut("n", modifiers: [.command])
     }
     .padding(.horizontal, 18)
@@ -210,7 +513,13 @@ struct MainWindowView: View {
   private var content: some View {
     switch model.selected {
     case .home:
-      HomeView(capture: model.captureSample)
+      HomeView(
+        capture: model.toggleCapture,
+        openFloatingBar: model.openFloatingBar,
+        captureRunning: model.captureRunning,
+        captureEnabled: model.compilerSettings.captureEnabled,
+        screenRecordingPermissionGranted: model.screenRecordingPermissionGranted
+      )
     case .screenMemory:
       ScreenMemoryView(model: model, searchFocused: $searchFocused)
     case .chat:
@@ -220,13 +529,17 @@ struct MainWindowView: View {
     case .effects:
       EffectsView(model: model)
     case .settings:
-      SettingsView()
+      SettingsView(model: model)
     }
   }
 }
 
 private struct HomeView: View {
   let capture: () -> Void
+  let openFloatingBar: () -> Void
+  let captureRunning: Bool
+  let captureEnabled: Bool
+  let screenRecordingPermissionGranted: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -238,9 +551,10 @@ private struct HomeView: View {
         .frame(maxWidth: 660, alignment: .leading)
       HStack {
         Button(action: capture) {
-          Label("Capture Sample", systemImage: "camera.viewfinder")
+          Label(captureRunning ? "Stop Capture" : "Start Capture", systemImage: captureRunning ? "stop.circle" : "camera.viewfinder")
         }
-        Button {} label: {
+        .disabled(!captureEnabled || !screenRecordingPermissionGranted)
+        Button(action: openFloatingBar) {
           Label("Open Floating Bar", systemImage: "text.bubble")
         }
       }
@@ -256,6 +570,7 @@ private struct ScreenMemoryView: View {
   var searchFocused: FocusState<Bool>.Binding
 
   var body: some View {
+    let results = model.searchResults
     VStack(alignment: .leading, spacing: 14) {
       HStack {
         Image(systemName: "magnifyingglass")
@@ -267,20 +582,30 @@ private struct ScreenMemoryView: View {
       .padding(10)
       .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
 
-      List(model.searchResults, id: \.record.id) { result in
-        VStack(alignment: .leading, spacing: 4) {
-          HStack {
-            Text(result.record.appName)
-              .font(.headline)
-            Spacer()
-            Text(result.record.capturedAt)
-              .font(.caption)
+      if results.isEmpty {
+        ContentUnavailableView(
+          model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "No Screen Memory yet"
+            : "No matching records",
+          systemImage: "clock.arrow.circlepath"
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        List(results, id: \.record.id) { result in
+          VStack(alignment: .leading, spacing: 4) {
+            HStack {
+              Text(result.record.appName)
+                .font(.headline)
+              Spacer()
+              Text(result.record.capturedAt)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Text(result.record.summary)
               .foregroundStyle(.secondary)
           }
-          Text(result.record.summary)
-            .foregroundStyle(.secondary)
+          .padding(.vertical, 6)
         }
-        .padding(.vertical, 6)
       }
     }
     .padding(18)
@@ -292,6 +617,14 @@ private struct FloatingChatView: View {
 
   var body: some View {
     VStack(spacing: 12) {
+      HStack {
+        Spacer()
+        Button(action: model.openFloatingBar) {
+          Label("Open Floating Bar", systemImage: "text.bubble")
+        }
+      }
+      .padding([.horizontal, .top])
+
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 10) {
           ForEach(model.messages) { message in
@@ -365,12 +698,55 @@ private struct EffectsView: View {
 }
 
 private struct SettingsView: View {
+  @ObservedObject var model: DesktopViewModel
+
   var body: some View {
     Form {
-      Toggle("Capture enabled", isOn: .constant(true))
-      Toggle("Voice replies", isOn: .constant(false))
-      Text("Provider API keys are not stored on this Mac.")
-        .foregroundStyle(.secondary)
+      Section("General") {
+        Toggle(
+          "Screen Memory",
+          isOn: Binding(
+            get: { model.compilerSettings.captureEnabled },
+            set: model.setCaptureEnabled
+          )
+        )
+      }
+
+      Section("Privacy") {
+        HStack {
+          Label("Screen Recording", systemImage: "rectangle.on.rectangle")
+          Spacer()
+          Label(
+            model.screenRecordingPermissionGranted ? "Granted" : "Required",
+            systemImage: model.screenRecordingPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+          )
+          .foregroundStyle(model.screenRecordingPermissionGranted ? .green : .orange)
+        }
+
+        HStack {
+          Button(action: model.requestScreenRecordingPermission) {
+            Label("Request Access", systemImage: "hand.raised")
+          }
+          Button(action: model.openScreenRecordingSettings) {
+            Label("Open System Settings", systemImage: "gearshape")
+          }
+          Button(action: model.refreshScreenRecordingPermission) {
+            Label("Refresh", systemImage: "arrow.clockwise")
+          }
+        }
+
+        TextField(
+          "Excluded apps",
+          text: Binding(
+            get: { model.excludedAppsText },
+            set: model.updateExcludedAppsText
+          )
+        )
+      }
+
+      Section("About") {
+        Text("Intentive Desktop")
+      }
     }
     .padding(24)
   }

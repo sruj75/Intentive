@@ -22,8 +22,8 @@ enum SpatialOverlayExclusionKind: String {
   case menuBar
   case dock
   case notch
-  case omiFloatingBar
-  case omiAgentPills
+  case intentiveFloatingBar
+  case intentiveNudges
   case target
   case browserToolbar
   case targetWindowChrome
@@ -35,6 +35,13 @@ enum SpatialOverlayAttachmentEdge: CaseIterable, Equatable {
   case below
   case leading
   case trailing
+}
+
+enum GlowEdge {
+  case top
+  case bottom
+  case left
+  case right
 }
 
 struct SpatialOverlayScreen: Equatable {

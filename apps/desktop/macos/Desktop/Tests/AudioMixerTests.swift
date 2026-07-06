@@ -1,5 +1,5 @@
 import XCTest
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 final class AudioMixerTests: XCTestCase {
 

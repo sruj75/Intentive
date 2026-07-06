@@ -28,6 +28,7 @@ apps/desktop/
     Desktop/Sources/Intentive/
     Desktop/Tests/
     scripts/build-app-bundle.sh
+    scripts/verify-app-bundle.sh
     run.sh
     test.sh
 ```
@@ -62,3 +63,5 @@ The monorepo gate for this deployable is:
 ```bash
 pnpm harness --scope apps/desktop
 ```
+
+The harness includes a debug bundle smoke that assembles `Intentive.app` and verifies the production bundle contract: app identity, auth callback URL scheme, privacy strings, Sparkle metadata, app icon, executable, and the SwiftPM native-assets bundle used by local VAD.

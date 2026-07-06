@@ -1,5 +1,16 @@
 import Foundation
 
+public enum FloatingBarSubmissionError: Error, Equatable, LocalizedError {
+  case emptyMessage
+
+  public var errorDescription: String? {
+    switch self {
+    case .emptyMessage:
+      return "Enter a message before sending."
+    }
+  }
+}
+
 public final class FloatingBarController {
   private let runtimeClient: RuntimeChatClient
   private let messageStore: MessageStore
@@ -15,40 +26,59 @@ public final class FloatingBarController {
 
   @discardableResult
   public func submit(_ body: String) throws -> ChatMessage {
-    try runtimeClient.sendUserMessage(body)
+    let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      throw FloatingBarSubmissionError.emptyMessage
+    }
+    return try runtimeClient.sendUserMessage(trimmed)
   }
 }
 
 public protocol AudioCaptureService {
-  func capturePushToTalkAudio() async throws -> [Float]
+  func capturePushToTalkAudio() async throws -> Data
 }
 
 public protocol VoiceActivityGate {
-  func containsSpeech(_ samples: [Float]) -> Bool
+  func containsSpeech(_ pcm16k: Data) -> Bool
 }
 
 public protocol LocalTranscriptionService {
-  func transcribe(_ samples: [Float]) async throws -> String
+  func transcribe(_ pcm16k: Data) async throws -> String
 }
 
 public struct EnergyVoiceActivityGate: VoiceActivityGate {
-  public var threshold: Float
+  public var rmsThreshold: Int
 
   public init(threshold: Float = 0.01) {
-    self.threshold = threshold
+    rmsThreshold = Int(threshold * 32_768)
   }
 
-  public func containsSpeech(_ samples: [Float]) -> Bool {
-    let energy = samples.reduce(Float.zero) { $0 + abs($1) }
-    return energy / Float(max(samples.count, 1)) > threshold
+  public init(rmsThreshold: Int) {
+    self.rmsThreshold = rmsThreshold
+  }
+
+  public func containsSpeech(_ pcm16k: Data) -> Bool {
+    PushToTalkTurnGate.audioEnergy(pcm16k: pcm16k).rms > rmsThreshold
+  }
+}
+
+public struct PushToTalkVoiceActivityGate: VoiceActivityGate {
+  private let vad: PushToTalkVADPredictor?
+
+  public init(vad: PushToTalkVADPredictor? = nil) {
+    self.vad = vad
+  }
+
+  public func containsSpeech(_ pcm16k: Data) -> Bool {
+    PushToTalkTurnGate.turnHasSpeech(pcm16k: pcm16k, vad: vad)
   }
 }
 
 public struct DeterministicLocalTranscriptionService: LocalTranscriptionService {
   public init() {}
 
-  public func transcribe(_ samples: [Float]) async throws -> String {
-    guard !samples.isEmpty else { return "" }
+  public func transcribe(_ pcm16k: Data) async throws -> String {
+    guard !pcm16k.isEmpty else { return "" }
     return "Captured voice message"
   }
 }
@@ -61,7 +91,7 @@ public final class PushToTalkManager {
 
   public init(
     audioCapture: AudioCaptureService,
-    voiceGate: VoiceActivityGate = EnergyVoiceActivityGate(),
+    voiceGate: VoiceActivityGate = PushToTalkVoiceActivityGate(),
     transcription: LocalTranscriptionService = DeterministicLocalTranscriptionService(),
     runtimeClient: RuntimeChatClient
   ) {
@@ -73,9 +103,9 @@ public final class PushToTalkManager {
 
   @discardableResult
   public func captureAndSend() async throws -> ChatMessage? {
-    let samples = try await audioCapture.capturePushToTalkAudio()
-    guard voiceGate.containsSpeech(samples) else { return nil }
-    let transcript = try await transcription.transcribe(samples)
+    let pcm16k = try await audioCapture.capturePushToTalkAudio()
+    guard voiceGate.containsSpeech(pcm16k) else { return nil }
+    let transcript = try await transcription.transcribe(pcm16k)
     guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return try runtimeClient.sendUserMessage(transcript)
   }
@@ -171,6 +201,15 @@ public final class CaptureCoordinator {
     return events
   }
 
+  public func updateCompilerSettings(_ settings: CompilerSettings) {
+    compiler.update(settings: settings)
+  }
+
+  public func captureOnce(from source: DesktopCaptureSource) async throws -> [PerceptionEvent] {
+    let frame = try await source.captureFrame()
+    return try accept(frame: frame.withoutRawFrameBytes())
+  }
+
   private func stringSignal(_ value: JSONValue?) -> String? {
     guard case .string(let text) = value else { return nil }
     return text
@@ -180,7 +219,139 @@ public final class CaptureCoordinator {
 public struct EmptyAudioCaptureService: AudioCaptureService {
   public init() {}
 
-  public func capturePushToTalkAudio() async throws -> [Float] {
-    []
+  public func capturePushToTalkAudio() async throws -> Data {
+    Data()
+  }
+}
+
+public struct ScreenMemoryCaptureLoopState: Equatable, Sendable {
+  public var isRunning: Bool
+  public var capturedFrameCount: Int
+  public var publishedEventCount: Int
+  public var skippedCaptureCount: Int
+  public var failedCaptureCount: Int
+  public var lastCapturedAt: String?
+  public var lastError: String?
+  public var lastSkipReason: String?
+
+  public init(
+    isRunning: Bool = false,
+    capturedFrameCount: Int = 0,
+    publishedEventCount: Int = 0,
+    skippedCaptureCount: Int = 0,
+    failedCaptureCount: Int = 0,
+    lastCapturedAt: String? = nil,
+    lastError: String? = nil,
+    lastSkipReason: String? = nil
+  ) {
+    self.isRunning = isRunning
+    self.capturedFrameCount = capturedFrameCount
+    self.publishedEventCount = publishedEventCount
+    self.skippedCaptureCount = skippedCaptureCount
+    self.failedCaptureCount = failedCaptureCount
+    self.lastCapturedAt = lastCapturedAt
+    self.lastError = lastError
+    self.lastSkipReason = lastSkipReason
+  }
+}
+
+public enum ScreenMemoryCaptureLoopEvent: Equatable, Sendable {
+  case captured(eventCount: Int)
+  case skipped(String)
+  case failed(String)
+}
+
+@MainActor
+public final class ScreenMemoryCaptureLoop {
+  public nonisolated static let defaultIntervalSeconds: TimeInterval = 3
+
+  private let coordinator: CaptureCoordinator
+  private let source: DesktopCaptureSource
+  private let settingsProvider: () -> CompilerSettings
+  private let permissionProvider: () -> Bool
+  private let intervalSeconds: TimeInterval
+  private var task: Task<Void, Never>?
+
+  public private(set) var state: ScreenMemoryCaptureLoopState
+
+  public init(
+    coordinator: CaptureCoordinator,
+    source: DesktopCaptureSource,
+    settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
+    permissionProvider: @escaping () -> Bool = { true },
+    intervalSeconds: TimeInterval = ScreenMemoryCaptureLoop.defaultIntervalSeconds,
+    initialState: ScreenMemoryCaptureLoopState = ScreenMemoryCaptureLoopState()
+  ) {
+    self.coordinator = coordinator
+    self.source = source
+    self.settingsProvider = settingsProvider
+    self.permissionProvider = permissionProvider
+    self.intervalSeconds = max(0.2, intervalSeconds)
+    state = initialState
+  }
+
+  deinit {
+    task?.cancel()
+  }
+
+  @discardableResult
+  public func start(onEvent: ((ScreenMemoryCaptureLoopEvent) -> Void)? = nil) -> Bool {
+    guard task == nil else { return false }
+
+    state.isRunning = true
+    task = Task { [weak self] in
+      guard let self else { return }
+      while !Task.isCancelled {
+        let event = await self.captureTick()
+        onEvent?(event)
+        do {
+          try await Task.sleep(nanoseconds: self.intervalNanoseconds)
+        } catch {
+          break
+        }
+      }
+    }
+    return true
+  }
+
+  public func stop() {
+    task?.cancel()
+    task = nil
+    state.isRunning = false
+  }
+
+  public func captureTick() async -> ScreenMemoryCaptureLoopEvent {
+    guard settingsProvider().captureEnabled else {
+      state.skippedCaptureCount += 1
+      state.lastSkipReason = "capture disabled"
+      state.lastError = nil
+      return .skipped("capture disabled")
+    }
+
+    guard permissionProvider() else {
+      state.skippedCaptureCount += 1
+      state.lastSkipReason = "screen recording permission required"
+      state.lastError = nil
+      return .skipped("screen recording permission required")
+    }
+
+    do {
+      let events = try await coordinator.captureOnce(from: source)
+      state.capturedFrameCount += 1
+      state.publishedEventCount += events.count
+      state.lastCapturedAt = events.first?.capturedAt
+      state.lastError = nil
+      state.lastSkipReason = nil
+      return .captured(eventCount: events.count)
+    } catch {
+      state.failedCaptureCount += 1
+      state.lastError = error.localizedDescription
+      state.lastSkipReason = nil
+      return .failed(error.localizedDescription)
+    }
+  }
+
+  private var intervalNanoseconds: UInt64 {
+    UInt64(intervalSeconds * 1_000_000_000)
   }
 }

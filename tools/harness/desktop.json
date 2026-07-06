@@ -21,6 +21,11 @@
       "label": "Desktop Swift tests",
       "command": "pnpm",
       "args": ["--dir", "apps/desktop", "test"]
+    },
+    {
+      "label": "Desktop release bundle smoke",
+      "command": "pnpm",
+      "args": ["--dir", "apps/desktop", "release:smoke"]
     }
   ],
   "sensors": [

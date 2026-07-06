@@ -78,7 +78,7 @@ final class ScreenCaptureService: Sendable {
   /// Check whether macOS TCC says this app has Screen Recording permission.
   ///
   /// Do not spawn `/usr/sbin/screencapture` here. That helper process can fail
-  /// for reasons unrelated to this app's TCC grant, which made Omi show a red
+  /// for reasons unrelated to this app's TCC grant, which can show a red
   /// "Screen Recording disabled" state while System Settings correctly showed
   /// the app as allowed.
   static func checkPermission(forceActualTestIfPreflightDenied: Bool = false) -> Bool {
@@ -282,7 +282,7 @@ final class ScreenCaptureService: Sendable {
   /// This removes the TCC entry entirely — user must re-grant in System Settings.
   /// Only use as a last resort when soft recovery has already failed.
   static func resetScreenCapturePermission() -> Bool {
-    let bundleId = Bundle.main.bundleIdentifier ?? "com.omi.computer-macos"
+    let bundleId = Bundle.main.bundleIdentifier ?? "com.intentive.desktop"
     log("Resetting screen capture permission for \(bundleId) via tccutil (hard reset)...")
 
     let process = Process()
@@ -542,7 +542,7 @@ final class ScreenCaptureService: Sendable {
     // Among windows with the largest area, prefer the frontmost (first in the
     // array) so we capture the window the user is looking at instead of the
     // backmost equal-sized window (which is often the first one opened).
-    // Fixes: https://github.com/BasedHardware/omi/issues/6552
+    // Keep the frontmost equal-sized window instead of an older backmost match.
     let maxArea = appWindows.map(\.area).max()!
     let frontmost = appWindows.first(where: { $0.area == maxArea })!
 
@@ -899,7 +899,7 @@ final class ScreenCaptureService: Sendable {
 
   /// Capture window using screencapture CLI
   private func captureWithScreencapture(windowID: CGWindowID) -> Data? {
-    let tempPath = NSTemporaryDirectory() + "omi_capture_\(UUID().uuidString).jpg"
+    let tempPath = NSTemporaryDirectory() + "intentive_capture_\(UUID().uuidString).jpg"
 
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")

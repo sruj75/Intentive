@@ -53,7 +53,7 @@ class SystemAudioCaptureService: @unchecked Sendable {
     private var onAudioChunk: AudioChunkHandler?
     private var onAudioLevel: AudioLevelHandler?
 
-    /// Target sample rate for DeepGram
+    /// Target sample rate for local transcription and Runtime voice turns.
     private let targetSampleRate: Double = 16000
 
     // Resampling
@@ -67,7 +67,7 @@ class SystemAudioCaptureService: @unchecked Sendable {
 
     /// Dedicated queue for CoreAudio device operations (start/stop)
     /// to avoid blocking the main thread on AudioDeviceStart/Stop calls.
-    private let audioQueue = DispatchQueue(label: "com.omi.systemaudiocapture.device")
+    private let audioQueue = DispatchQueue(label: "com.intentive.systemaudiocapture.device")
 
     // MARK: - Permission Checking
 
@@ -128,7 +128,7 @@ class SystemAudioCaptureService: @unchecked Sendable {
         // 1. Create tap description for all system audio
         let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         tapDescription.uuid = tapUUID
-        tapDescription.name = "OMI System Audio Tap"
+        tapDescription.name = "Intentive System Audio Tap"
         tapDescription.muteBehavior = .unmuted  // Don't mute playback
 
         // 2. Create the process tap
@@ -149,8 +149,8 @@ class SystemAudioCaptureService: @unchecked Sendable {
         // CoreAudio expects a CFNumber here ("non-zero value indicates that drift compensation
         // is enabled" — see <CoreAudio/AudioHardware.h>), not a CFBoolean.
         let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey as String: "OMI System Audio Tap Device",
-            kAudioAggregateDeviceUIDKey as String: "omi.systemaudio.\(tapUUID.uuidString)",
+            kAudioAggregateDeviceNameKey as String: "Intentive System Audio Tap Device",
+            kAudioAggregateDeviceUIDKey as String: "intentive.systemaudio.\(tapUUID.uuidString)",
             kAudioAggregateDeviceIsPrivateKey as String: true,
             kAudioAggregateDeviceTapListKey as String: [
                 [
@@ -367,7 +367,7 @@ class SystemAudioCaptureService: @unchecked Sendable {
             return
         }
 
-        // Convert Float32 to Int16 (linear16 PCM for DeepGram)
+        // Convert Float32 to Int16 linear PCM for local speech processing.
         guard let channelData = outputBuffer.floatChannelData?[0] else { return }
 
         let processedFrameLength = Int(outputBuffer.frameLength)

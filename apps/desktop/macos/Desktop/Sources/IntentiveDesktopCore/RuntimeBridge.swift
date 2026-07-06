@@ -191,6 +191,7 @@ public final class RuntimeAdapter: RuntimeChatClient {
   public private(set) var status: RuntimeConnectionStatus = .disconnected
   public private(set) var connectionGeneration: Int = 0
   public let messageStore: MessageStore
+  public var onCompanionMessage: ((CompanionMessage) -> Void)?
 
   private let socket: RuntimeSocket
   private let clientVersion: String
@@ -214,7 +215,7 @@ public final class RuntimeAdapter: RuntimeChatClient {
     connectionGeneration += 1
     status = .connecting
     try socket.connect(url: routing.webSocketURL, jwt: routing.runtimeJWT)
-    let connect = ConnectEvent(clientVersion: clientVersion, clientTz: timeZone.identifier)
+    let connect = ConnectEvent(authToken: routing.runtimeJWT, clientVersion: clientVersion, clientTz: timeZone.identifier)
     try socket.send(ProtocolEventCodec.encode(connect))
   }
 
@@ -235,9 +236,14 @@ public final class RuntimeAdapter: RuntimeChatClient {
       status = .connected
       messageStore.replaceServerWindow(hello.sessionSnapshot)
       try flushOutboundQueue()
+    case .historyBackfillResponse(let response):
+      messageStore.prependServerPage(response.sessionSnapshot)
     case .companionMessage(let companion):
       messageStore.appendCompanion(companion)
       try acknowledge(messageId: companion.messageId)
+      onCompanionMessage?(companion)
+    case .runtimeError(let error):
+      status = .failed(error.message)
     }
   }
 
@@ -266,7 +272,7 @@ public final class RuntimeAdapter: RuntimeChatClient {
   public func sendPresence(foreground: Bool) throws {
     try sendOrQueue(
       ProtocolEventCodec.encode(
-        PresenceUpdate(foreground: foreground, sentAt: now().protocolTimestamp)
+        PresenceUpdate(foreground: foreground)
       )
     )
   }
@@ -274,7 +280,26 @@ public final class RuntimeAdapter: RuntimeChatClient {
   public func acknowledge(messageId: String) throws {
     try sendOrQueue(
       ProtocolEventCodec.encode(
-        DeliveryAck(messageId: messageId, receivedAt: now().protocolTimestamp)
+        DeliveryAck(messageId: messageId)
+      )
+    )
+  }
+
+  @discardableResult
+  public func requestHistoryBackfill(limit: Int? = nil) throws -> Bool {
+    guard let beforeCursor = messageStore.beforeCursor else { return false }
+    try sendOrQueue(
+      ProtocolEventCodec.encode(
+        HistoryBackfillRequest(beforeCursor: beforeCursor, limit: limit)
+      )
+    )
+    return true
+  }
+
+  public func sendSessionEnd(reason: SessionEndReason) throws {
+    try sendOrQueue(
+      ProtocolEventCodec.encode(
+        SessionEndMarker(endedAt: now().protocolTimestamp, reason: reason)
       )
     )
   }

@@ -98,6 +98,48 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertNil(artifacts.first?.embedding)
   }
 
+  func testCompilerSkipsExcludedAppsCaseInsensitively() throws {
+    let compiler = ContextCompiler(
+      settings: CompilerSettings(excludedApps: ["Safari", "1Password"])
+    )
+
+    let artifacts = try compiler.compile(
+      frame: CapturedFrame(
+        id: "excluded",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "safari",
+        windowTitle: "Private workspace",
+        ocrText: "local-only private content"
+      )
+    )
+
+    XCTAssertTrue(artifacts.isEmpty)
+  }
+
+  func testUserDefaultsScreenMemorySettingsStorePersistsSettings() throws {
+    let suiteName = "ScreenMemorySettingsStoreTests-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let store = UserDefaultsScreenMemorySettingsStore(defaults: defaults, key: "settings")
+    let settings = CompilerSettings(
+      captureEnabled: false,
+      excludedApps: ["Safari", "1Password"],
+      contextChangeDebounceSeconds: 3,
+      sameContextMinimumSeconds: 60,
+      messagingFallbackSeconds: 15
+    )
+
+    try store.save(settings)
+
+    let loaded = store.load()
+    XCTAssertFalse(loaded.captureEnabled)
+    XCTAssertEqual(loaded.excludedApps, ["Safari", "1Password"])
+    XCTAssertEqual(loaded.contextChangeDebounceSeconds, 3)
+    XCTAssertEqual(loaded.sameContextMinimumSeconds, 60)
+    XCTAssertEqual(loaded.messagingFallbackSeconds, 15)
+  }
+
   func testPerceptionPublisherRejectsRawFrameBytes() throws {
     let runtime = RecordingRuntimeClient()
     let publisher = PerceptionPublisher(runtimeClient: runtime)
@@ -169,11 +211,244 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(try store.searchRecords("durable compiler", limit: 10).first?.record.id, "screen-frame-sqlite")
   }
 
+  func testCaptureCoordinatorCapturesFromSourceAndStripsRawFrameBytes() async throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let coordinator = CaptureCoordinator(
+      compiler: ContextCompiler(),
+      screenMemory: store,
+      publisher: PerceptionPublisher(runtimeClient: runtime)
+    )
+    let source = FixedDesktopCaptureSource(
+      frame: CapturedFrame(
+        id: "native-frame",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Safari",
+        windowTitle: "Intentive plan",
+        ocrText: "Screen Memory capture source",
+        rawFrameBytes: Data([1, 2, 3])
+      )
+    )
+
+    let events = try await coordinator.captureOnce(from: source)
+
+    XCTAssertEqual(events.count, 1)
+    XCTAssertEqual(runtime.perceptionEvents.first?.eventId, "screen-native-frame")
+    XCTAssertEqual(store.search("capture source", limit: 10).first?.record.id, "screen-native-frame")
+    XCTAssertFalse(try ProtocolEventCodec.encode(events[0]).contains("raw_frame".data(using: .utf8)!))
+  }
+
   private func temporaryDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("ScreenMemoryCompilerTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent("screen-memory.sqlite")
+  }
+}
+
+@MainActor
+final class ScreenMemoryCaptureLoopTests: XCTestCase {
+  func testCaptureTickStoresAndPublishesSourceFrame() async throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: store,
+        publisher: PerceptionPublisher(runtimeClient: runtime)
+      ),
+      source: FixedDesktopCaptureSource(
+        frame: CapturedFrame(
+          id: "loop-frame",
+          capturedAt: "2026-07-05T10:00:00.000Z",
+          appName: "Code",
+          windowTitle: "Intentive",
+          ocrText: "Screen Memory running capture loop"
+        )
+      )
+    )
+
+    let event = await loop.captureTick()
+
+    XCTAssertEqual(event, .captured(eventCount: 1))
+    XCTAssertEqual(loop.state.capturedFrameCount, 1)
+    XCTAssertEqual(loop.state.publishedEventCount, 1)
+    XCTAssertEqual(loop.state.failedCaptureCount, 0)
+    XCTAssertEqual(runtime.perceptionEvents.count, 1)
+    XCTAssertEqual(store.search("running loop", limit: 10).first?.record.id, "screen-loop-frame")
+  }
+
+  func testCaptureLoopRecordsFailureAndContinuesOnNextTick() async throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let source = FailsOnceDesktopCaptureSource(
+      frame: CapturedFrame(
+        id: "recovered-frame",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Safari",
+        windowTitle: "Intentive plan",
+        ocrText: "capture recovered"
+      )
+    )
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: store,
+        publisher: PerceptionPublisher(runtimeClient: runtime)
+      ),
+      source: source
+    )
+
+    let first = await loop.captureTick()
+    let second = await loop.captureTick()
+
+    XCTAssertEqual(first, .failed("transient capture failure"))
+    XCTAssertEqual(second, .captured(eventCount: 1))
+    XCTAssertEqual(loop.state.failedCaptureCount, 1)
+    XCTAssertEqual(loop.state.capturedFrameCount, 1)
+    XCTAssertNil(loop.state.lastError)
+    XCTAssertEqual(runtime.perceptionEvents.first?.eventId, "screen-recovered-frame")
+  }
+
+  func testStartStopAreIdempotent() {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: store,
+        publisher: PerceptionPublisher(runtimeClient: runtime)
+      ),
+      source: FixedDesktopCaptureSource(
+        frame: CapturedFrame(
+          id: "loop-start",
+          capturedAt: "2026-07-05T10:00:00.000Z",
+          appName: "Code",
+          windowTitle: "Intentive",
+          ocrText: "loop start"
+        )
+      ),
+      intervalSeconds: 30
+    )
+
+    XCTAssertTrue(loop.start())
+    XCTAssertFalse(loop.start())
+    XCTAssertTrue(loop.state.isRunning)
+
+    loop.stop()
+
+    XCTAssertFalse(loop.state.isRunning)
+  }
+
+  func testCaptureLoopSkipsWithoutReadingSourceWhenDisabled() async throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let source = CountingDesktopCaptureSource(
+      frame: CapturedFrame(
+        id: "disabled-frame",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Code",
+        windowTitle: "Intentive",
+        ocrText: "disabled capture"
+      )
+    )
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(settings: CompilerSettings(captureEnabled: false)),
+        screenMemory: store,
+        publisher: PerceptionPublisher(runtimeClient: runtime)
+      ),
+      source: source,
+      settingsProvider: { CompilerSettings(captureEnabled: false) }
+    )
+
+    let event = await loop.captureTick()
+
+    XCTAssertEqual(event, .skipped("capture disabled"))
+    XCTAssertEqual(loop.state.skippedCaptureCount, 1)
+    XCTAssertEqual(loop.state.capturedFrameCount, 0)
+    XCTAssertEqual(source.captureCount, 0)
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+    XCTAssertTrue(store.search("disabled capture", limit: 10).isEmpty)
+  }
+
+  func testCaptureLoopSkipsWithoutReadingSourceWhenPermissionIsMissing() async throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let source = CountingDesktopCaptureSource(
+      frame: CapturedFrame(
+        id: "permission-frame",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Code",
+        windowTitle: "Intentive",
+        ocrText: "permission capture"
+      )
+    )
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: store,
+        publisher: PerceptionPublisher(runtimeClient: runtime)
+      ),
+      source: source,
+      permissionProvider: { false }
+    )
+
+    let event = await loop.captureTick()
+
+    XCTAssertEqual(event, .skipped("screen recording permission required"))
+    XCTAssertEqual(loop.state.skippedCaptureCount, 1)
+    XCTAssertEqual(loop.state.capturedFrameCount, 0)
+    XCTAssertEqual(source.captureCount, 0)
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+    XCTAssertTrue(store.search("permission capture", limit: 10).isEmpty)
+  }
+}
+
+private struct FixedDesktopCaptureSource: DesktopCaptureSource {
+  var frame: CapturedFrame
+
+  func captureFrame() async throws -> CapturedFrame {
+    frame
+  }
+}
+
+private enum DesktopCaptureTestError: Error, LocalizedError {
+  case transient
+
+  var errorDescription: String? {
+    "transient capture failure"
+  }
+}
+
+private final class FailsOnceDesktopCaptureSource: DesktopCaptureSource {
+  private var hasFailed = false
+  var frame: CapturedFrame
+
+  init(frame: CapturedFrame) {
+    self.frame = frame
+  }
+
+  func captureFrame() async throws -> CapturedFrame {
+    if !hasFailed {
+      hasFailed = true
+      throw DesktopCaptureTestError.transient
+    }
+    return frame
+  }
+}
+
+private final class CountingDesktopCaptureSource: DesktopCaptureSource {
+  private(set) var captureCount = 0
+  var frame: CapturedFrame
+
+  init(frame: CapturedFrame) {
+    self.frame = frame
+  }
+
+  func captureFrame() async throws -> CapturedFrame {
+    captureCount += 1
+    return frame
   }
 }
 

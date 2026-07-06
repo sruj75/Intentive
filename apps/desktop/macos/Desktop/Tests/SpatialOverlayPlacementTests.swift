@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 final class SpatialOverlayPlacementTests: XCTestCase {
   private let screen = SpatialOverlayScreen(
@@ -137,7 +137,7 @@ final class SpatialOverlayPlacementTests: XCTestCase {
   func testHardExclusionRejectsCandidate() {
     let exclusion = SpatialOverlayExclusionZone(
       rect: CGRect(x: 520, y: 440, width: 400, height: 160),
-      kind: .omiFloatingBar
+      kind: .intentiveFloatingBar
     )
     let blockedScreen = SpatialOverlayScreen(
       id: "main",

@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 final class SpatialOverlayDogfoodHarnessTests: XCTestCase {
   @MainActor
@@ -8,7 +8,7 @@ final class SpatialOverlayDogfoodHarnessTests: XCTestCase {
     let fixture = SpatialOverlayDogfoodFixture.claudeAddExplicit
     let addButton = fixture.targetRect
 
-    let placement = try XCTUnwrap(CloudConnectorGuidanceOverlay.placementResult(
+    let placement = try XCTUnwrap(SpatialOverlayGuidancePlacement.placementResult(
       windowFrame: fixture.windowFrame,
       candidates: fixture.candidates
     ))
@@ -21,7 +21,7 @@ final class SpatialOverlayDogfoodHarnessTests: XCTestCase {
   func testClaudeAddGuidanceFixtureFallsBackWithoutCoveringEstimatedButton() throws {
     let fixture = SpatialOverlayDogfoodFixture.claudeAddHeuristic
 
-    let placement = try XCTUnwrap(CloudConnectorGuidanceOverlay.placementResult(
+    let placement = try XCTUnwrap(SpatialOverlayGuidancePlacement.placementResult(
       windowFrame: fixture.windowFrame,
       candidates: fixture.candidates
     ))
@@ -35,7 +35,7 @@ final class SpatialOverlayDogfoodHarnessTests: XCTestCase {
   func testClaudeAddGuidanceFixtureCanInferAddButtonFromCancel() throws {
     let fixture = SpatialOverlayDogfoodFixture.claudeAddInferredFromCancel
 
-    let placement = try XCTUnwrap(CloudConnectorGuidanceOverlay.placementResult(
+    let placement = try XCTUnwrap(SpatialOverlayGuidancePlacement.placementResult(
       windowFrame: fixture.windowFrame,
       candidates: fixture.candidates
     ))
@@ -46,7 +46,7 @@ final class SpatialOverlayDogfoodHarnessTests: XCTestCase {
 
   func testClaudeAddButtonInferenceUsesCancelFooterGeometry() {
     let cancel = CGRect(x: 1_006, y: 1_296, width: 106, height: 54)
-    let add = CloudConnectorFormAutomation.inferredClaudeAddButtonFrameFromCancel(cancel)
+    let add = SpatialOverlayDogfoodAutomation.inferredAddButtonFrameFromCancel(cancel)
 
     XCTAssertEqual(add.minX, cancel.maxX + 12, accuracy: 0.1)
     XCTAssertEqual(add.midY, cancel.midY, accuracy: 0.1)

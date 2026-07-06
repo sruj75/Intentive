@@ -23,9 +23,24 @@ public struct CapturedFrame: Equatable, Sendable {
     self.ocrText = ocrText
     self.rawFrameBytes = rawFrameBytes
   }
+
+  public func withoutRawFrameBytes() -> CapturedFrame {
+    CapturedFrame(
+      id: id,
+      capturedAt: capturedAt,
+      appName: appName,
+      windowTitle: windowTitle,
+      ocrText: ocrText,
+      rawFrameBytes: nil
+    )
+  }
 }
 
-public struct CompilerSettings: Equatable, Sendable {
+public protocol DesktopCaptureSource {
+  func captureFrame() async throws -> CapturedFrame
+}
+
+public struct CompilerSettings: Codable, Equatable, Sendable {
   public var captureEnabled: Bool
   public var excludedApps: Set<String>
   public var contextChangeDebounceSeconds: Double
@@ -44,6 +59,18 @@ public struct CompilerSettings: Equatable, Sendable {
     self.contextChangeDebounceSeconds = contextChangeDebounceSeconds
     self.sameContextMinimumSeconds = sameContextMinimumSeconds
     self.messagingFallbackSeconds = messagingFallbackSeconds
+  }
+
+  public func isExcluded(appName: String) -> Bool {
+    normalizedExcludedApps.contains(Self.normalizedAppName(appName))
+  }
+
+  public var normalizedExcludedApps: Set<String> {
+    Set(excludedApps.map(Self.normalizedAppName).filter { !$0.isEmpty })
+  }
+
+  public static func normalizedAppName(_ appName: String) -> String {
+    appName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
   }
 }
 
@@ -212,7 +239,7 @@ public struct ActivitySummaryAnalyzer {
 }
 
 public final class ContextCompiler {
-  private let settings: CompilerSettings
+  private var settings: CompilerSettings
   private let retentionPolicy: ScreenMemoryRetentionPolicy
   private let screenAnalyzer: SearchableScreenRecordAnalyzer
   private let focusAnalyzer: FocusSignalAnalyzer
@@ -230,8 +257,16 @@ public final class ContextCompiler {
     self.focusAnalyzer = focusAnalyzer
   }
 
+  public var currentSettings: CompilerSettings {
+    settings
+  }
+
+  public func update(settings: CompilerSettings) {
+    self.settings = settings
+  }
+
   public func compile(frame: CapturedFrame) throws -> [CompiledPerceptionArtifact] {
-    guard settings.captureEnabled, !settings.excludedApps.contains(frame.appName),
+    guard settings.captureEnabled, !settings.isExcluded(appName: frame.appName),
       retentionPolicy.allows(appName: frame.appName)
     else {
       return []

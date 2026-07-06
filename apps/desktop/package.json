@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "xcrun swift build -c debug --package-path macos/Desktop",
+    "release:smoke": "bash macos/scripts/verify-app-bundle.sh",
     "typecheck": "xcrun swift build -c debug --package-path macos/Desktop",
     "test": "bash macos/test.sh"
   }

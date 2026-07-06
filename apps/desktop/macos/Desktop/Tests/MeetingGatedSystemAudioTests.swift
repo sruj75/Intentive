@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Omi_Computer
+@testable import IntentiveDesktopCore
 
 // MARK: - ConferencingApps
 
@@ -19,7 +19,7 @@ final class ConferencingAppsTests: XCTestCase {
         XCTAssertTrue(
             ConferencingApps.isCallWindow(ownerName: "Safari", title: "https://meet.google.com/abc-defg"))
         XCTAssertFalse(
-            ConferencingApps.isCallWindow(ownerName: "Google Chrome", title: "GitHub - omi"))
+            ConferencingApps.isCallWindow(ownerName: "Google Chrome", title: "GitHub - Intentive"))
         XCTAssertFalse(ConferencingApps.isCallWindow(ownerName: "Google Chrome", title: nil))
     }
 
@@ -34,8 +34,8 @@ final class ConferencingAppsTests: XCTestCase {
         XCTAssertTrue(ConferencingApps.isNativeCallApp(bundleID: "US.Zoom.XOS"))
         XCTAssertTrue(ConferencingApps.isNativeCallApp(bundleID: "com.microsoft.teams2"))
         XCTAssertTrue(ConferencingApps.isNativeCallApp(bundleID: "com.apple.facetime"))
-        // Omi itself (which is always using the mic while recording) must not count as a meeting.
-        XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.omi.omi-mtg-sysaudio"))
+        // Intentive itself is always using the mic while recording; it must not count as a meeting.
+        XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.intentive.desktop"))
         XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.google.Chrome"))
     }
 
@@ -46,7 +46,7 @@ final class ConferencingAppsTests: XCTestCase {
         XCTAssertTrue(ConferencingApps.isBrowserBundleID("company.thebrowser.Browser"))  // Arc
         XCTAssertTrue(ConferencingApps.isBrowserBundleID("com.apple.WebKit.GPU"))
         // Not browsers.
-        XCTAssertFalse(ConferencingApps.isBrowserBundleID("com.omi.omi-mtg-sysaudio"))
+        XCTAssertFalse(ConferencingApps.isBrowserBundleID("com.intentive.desktop"))
         XCTAssertFalse(ConferencingApps.isBrowserBundleID("us.zoom.xos"))
     }
 }
@@ -131,11 +131,11 @@ final class MeetingDetectorTests: XCTestCase {
     }
 }
 
-// MARK: - AssistantSettings.systemAudioCaptureMode
+// MARK: - SystemAudioCaptureSettings.mode
 
 @MainActor
 final class SystemAudioCaptureModeSettingsTests: XCTestCase {
-    private let key = "systemAudioCaptureMode"
+    private let key = SystemAudioCaptureSettings.key
 
     override func setUp() {
         super.setUp()
@@ -148,20 +148,20 @@ final class SystemAudioCaptureModeSettingsTests: XCTestCase {
     }
 
     func testDefaultsToOnlyDuringMeetings() {
-        XCTAssertEqual(AssistantSettings.shared.systemAudioCaptureMode, .onlyDuringMeetings)
+        XCTAssertEqual(SystemAudioCaptureSettings.shared.mode, .onlyDuringMeetings)
     }
 
     func testPersistsAndReadsBack() {
-        AssistantSettings.shared.systemAudioCaptureMode = .onlyDuringMeetings
+        SystemAudioCaptureSettings.shared.mode = .onlyDuringMeetings
         XCTAssertEqual(UserDefaults.standard.string(forKey: key), "onlyDuringMeetings")
-        XCTAssertEqual(AssistantSettings.shared.systemAudioCaptureMode, .onlyDuringMeetings)
+        XCTAssertEqual(SystemAudioCaptureSettings.shared.mode, .onlyDuringMeetings)
 
-        AssistantSettings.shared.systemAudioCaptureMode = .never
-        XCTAssertEqual(AssistantSettings.shared.systemAudioCaptureMode, .never)
+        SystemAudioCaptureSettings.shared.mode = .never
+        XCTAssertEqual(SystemAudioCaptureSettings.shared.mode, .never)
     }
 
     func testUnknownRawValueFallsBackToDefault() {
         UserDefaults.standard.set("garbage", forKey: key)
-        XCTAssertEqual(AssistantSettings.shared.systemAudioCaptureMode, .onlyDuringMeetings)
+        XCTAssertEqual(SystemAudioCaptureSettings.shared.mode, .onlyDuringMeetings)
     }
 }

@@ -1,17 +1,17 @@
 import Foundation
 import XCTest
 
-@testable import Omi_Computer
+@testable import IntentiveDesktopCore
 
 @MainActor
 final class PushToTalkSpeechGateTests: XCTestCase {
-  func testHubSpeechGateRejectsSilence() {
+  func testTurnGateRejectsSilence() {
     let audio = pcm16k(seconds: 1.0) { _ in 0 }
 
-    XCTAssertFalse(PushToTalkManager.hubTurnHasSpeech(pcm16k: audio))
+    XCTAssertFalse(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
   }
 
-  func testHubSpeechGateRejectsBroadbandNoise() {
+  func testTurnGateRejectsBroadbandNoise() {
     var state: UInt64 = 0x1234abcd
     let audio = pcm16k(seconds: 1.0) { _ in
       state = state &* 6364136223846793005 &+ 1442695040888963407
@@ -19,31 +19,31 @@ final class PushToTalkSpeechGateTests: XCTestCase {
       return Int16(max(-12000, min(12000, Int(normalized * 12000))))
     }
 
-    XCTAssertFalse(PushToTalkManager.hubTurnHasSpeech(pcm16k: audio))
+    XCTAssertFalse(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
   }
 
-  func testHubSpeechGateRejectsTooShortVoicedAudio() {
+  func testTurnGateRejectsTooShortVoicedAudio() {
     let audio = sinePCM16k(seconds: 0.12, frequency: 220, amplitude: 3500)
 
-    XCTAssertFalse(PushToTalkManager.hubTurnHasSpeech(pcm16k: audio))
+    XCTAssertFalse(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
   }
 
-  func testHubSpeechGateAcceptsSustainedVoicedAudio() {
+  func testTurnGateAcceptsSustainedVoicedAudio() {
     let audio = sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)
 
-    XCTAssertTrue(PushToTalkManager.hubTurnHasSpeech(pcm16k: audio))
+    XCTAssertTrue(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
   }
 
   func testSpeechLikeProfileRejectsNoiseEvenWhenRmsIsHigh() {
     let voicedTone = sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)
-    let voiced = PushToTalkManager.speechLikeAudioSeconds(pcm16k: voicedTone)
+    let voiced = PushToTalkTurnGate.speechLikeAudioSeconds(pcm16k: voicedTone)
 
     var state: UInt64 = 0xbeef
     let noise = pcm16k(seconds: 0.7) { _ in
       state = state &* 2862933555777941757 &+ 3037000493
       return Int16(Int(state % 24001) - 12000)
     }
-    let noisy = PushToTalkManager.speechLikeAudioSeconds(pcm16k: noise)
+    let noisy = PushToTalkTurnGate.speechLikeAudioSeconds(pcm16k: noise)
 
     XCTAssertGreaterThanOrEqual(voiced.speechLike, 0.16)
     XCTAssertLessThan(noisy.speechLike, 0.16)

@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 final class SpatialOverlayGeometryTests: XCTestCase {
   func testTopLeftFrameNormalizesToAppKitCoordinates() {

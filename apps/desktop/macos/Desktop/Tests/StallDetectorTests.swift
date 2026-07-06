@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 /// Covers `StallDetector` in isolation, driving it with direct
 /// timestamps so promotion/reset behaviour is fully deterministic.

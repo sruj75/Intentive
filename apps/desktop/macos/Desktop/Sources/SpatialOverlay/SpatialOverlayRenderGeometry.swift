@@ -4,7 +4,7 @@ import CoreGraphics
 /// panel** — the bubble rect, the pointer (arrow) rect, and the rendered arrow apex.
 ///
 /// This is the single source of truth shared by the SwiftUI view that draws the
-/// overlay (`CloudConnectorGuidanceView`) and the dogfood tests. The whole point is
+/// overlay view and the dogfood tests. The whole point is
 /// that the pixel the user sees (`globalRenderedArrowTip`) is provably the same point
 /// the solver intended (`SpatialOverlayPlacementResult.globalArrowTip`). Before this
 /// module the apex math lived only inside the private SwiftUI view and was never
