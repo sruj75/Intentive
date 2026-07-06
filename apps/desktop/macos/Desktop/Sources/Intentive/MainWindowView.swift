@@ -38,13 +38,14 @@ private final class DesktopViewModel: ObservableObject {
   @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
 
   let messageStore = MessageStore()
-  let screenMemory: ScreenMemoryStore
+  let screenMemory: SwitchableScreenMemoryStore
   private let settingsStore: any ScreenMemorySettingsStore
   private let permissionGateway: any ScreenRecordingPermissionGateway
   private let notificationSink = UserNotificationDesktopSink()
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
   private var runtimeRestoreAttempted = false
+  private var screenMemoryProfileUserID = DesktopLocalProfile.anonymousUserID
   private lazy var runtime = RuntimeAdapter(
     socket: runtimeSocket,
     messageStore: messageStore,
@@ -93,13 +94,9 @@ private final class DesktopViewModel: ObservableObject {
     excludedAppsText = Self.renderExcludedApps(settings.excludedApps)
     screenRecordingPermissionGranted = permissionGateway.hasScreenRecordingPermission()
 
-    do {
-      screenMemory = try SQLiteScreenMemoryStore(databaseURL: SQLiteScreenMemoryStore.applicationSupportURL())
-      status = "Local Screen Memory ready"
-    } catch {
-      screenMemory = InMemoryScreenMemoryStore()
-      status = "Screen Memory fallback: \(error.localizedDescription)"
-    }
+    let initialScreenMemory = Self.makeScreenMemoryStore(userID: nil)
+    screenMemory = SwitchableScreenMemoryStore(initialScreenMemory.store)
+    status = initialScreenMemory.status
     configureRuntimeSocketCallbacks()
   }
 
@@ -338,8 +335,22 @@ private final class DesktopViewModel: ObservableObject {
 
   private func applyRuntimeState(_ state: DesktopRuntimeSessionState) {
     runtimeState = state
-    status = Self.renderRuntimeState(state)
+    let storageStatus = reconfigureScreenMemoryForAuthenticatedUserIfNeeded()
+    status = [Self.renderRuntimeState(state), storageStatus]
+      .compactMap { $0 }
+      .joined(separator: " · ")
     objectWillChange.send()
+  }
+
+  private func reconfigureScreenMemoryForAuthenticatedUserIfNeeded() -> String? {
+    let userID = runtimeSession.accountState?.userId
+    let sanitizedUserID = DesktopLocalProfile.sanitizedUserID(userID)
+    guard sanitizedUserID != screenMemoryProfileUserID else { return nil }
+
+    let newScreenMemory = Self.makeScreenMemoryStore(userID: userID)
+    screenMemory.replace(with: newScreenMemory.store)
+    screenMemoryProfileUserID = sanitizedUserID
+    return newScreenMemory.status
   }
 
   private static func renderRuntimeState(_ state: DesktopRuntimeSessionState) -> String {
@@ -378,6 +389,26 @@ private final class DesktopViewModel: ObservableObject {
 
   private static func renderExcludedApps(_ apps: Set<String>) -> String {
     apps.sorted().joined(separator: ", ")
+  }
+
+  private static func makeScreenMemoryStore(userID: String?) -> (store: ScreenMemoryStore, status: String) {
+    do {
+      let databaseURL = try SQLiteScreenMemoryStore.applicationSupportURL(userID: userID)
+      let store = try SQLiteScreenMemoryStore(databaseURL: databaseURL)
+      do {
+        let importResult = try LegacyScreenMemoryImporter()
+          .importFirstAvailableSource(userID: userID, into: store, limit: 2_000)
+        let status =
+          importResult.importedCount > 0
+          ? "Local Screen Memory ready · imported \(importResult.importedCount) local history record(s)"
+          : "Local Screen Memory ready"
+        return (store, status)
+      } catch {
+        return (store, "Local Screen Memory ready · legacy import skipped: \(error.localizedDescription)")
+      }
+    } catch {
+      return (InMemoryScreenMemoryStore(), "Screen Memory fallback: \(error.localizedDescription)")
+    }
   }
 }
 

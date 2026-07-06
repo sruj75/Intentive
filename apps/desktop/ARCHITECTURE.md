@@ -47,8 +47,10 @@ apps/desktop/
 - `RuntimeBridge.swift`: desktop WebSocket adapter, generation guard, outbound FIFO, message reducer, delivery acknowledgements.
 - `AuthControlPlane.swift`: native auth seam, dev auth provider, hosted auth callback boundary, typed Control Plane client.
 - `ScreenMemory.swift`: local Screen Memory records, FTS-first search, deterministic local embedding seam.
+- `DesktopLocalProfile.swift`: shared local profile paths for active Screen Memory storage and explicit Omi-era import sources.
+- `LegacyScreenMemoryImporter`: read-only bridge from Omi-era screenshot rows into the active Screen Memory store, checkpointed by source fingerprint so unchanged legacy databases are not re-imported every launch.
 - `ContextCompiler.swift`: deterministic analyzers and `perception_event` publisher with the raw-frame egress guard.
-- `DesktopExperience.swift`: floating-bar chat, push-to-talk pipeline, capture coordinator, and Effect Runner.
+- `DesktopExperience.swift`: floating-bar chat, push-to-talk pipeline seam, Omi-style context-gated capture cadence, capture coordinator, and Effect Runner. Push-to-talk fails closed unless a real local transcription adapter is injected; the default path must not fabricate transcripts.
 
 ## Verification
 

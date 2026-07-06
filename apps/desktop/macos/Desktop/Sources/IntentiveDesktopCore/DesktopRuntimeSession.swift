@@ -68,7 +68,7 @@ public final class DesktopRuntimeSessionCoordinator {
   public func restoreAndConnect() async -> DesktopRuntimeSessionState {
     do {
       guard let jwt = try await auth.restore() else {
-        state = .signedOut
+        markSignedOut()
         return state
       }
       return await connect(jwt: jwt)
@@ -84,7 +84,7 @@ public final class DesktopRuntimeSessionCoordinator {
       let jwt = try await auth.signIn()
       return await connect(jwt: jwt)
     } catch DesktopAuthError.missingToken {
-      state = .signedOut
+      markSignedOut()
       return state
     } catch {
       state = .failed(error.localizedDescription)
@@ -94,7 +94,7 @@ public final class DesktopRuntimeSessionCoordinator {
 
   public func disconnect() {
     runtime.disconnect()
-    state = .signedOut
+    markSignedOut()
   }
 
   public func markRuntimeConnected() {
@@ -132,7 +132,7 @@ public final class DesktopRuntimeSessionCoordinator {
       case .retry(let retryAfterSeconds):
         state = .retry(retryAfterSeconds: retryAfterSeconds)
       case .reauth:
-        state = .signedOut
+        markSignedOut()
       case .gate:
         state = account.nextGate.map(DesktopRuntimeSessionState.gate) ?? .gate(.capturePermissionSetup)
       }
@@ -141,5 +141,11 @@ public final class DesktopRuntimeSessionCoordinator {
       state = .failed(error.localizedDescription)
       return state
     }
+  }
+
+  private func markSignedOut() {
+    accountState = nil
+    registeredDeviceId = nil
+    state = .signedOut
   }
 }

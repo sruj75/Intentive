@@ -118,6 +118,40 @@ final class DesktopRuntimeSessionTests: XCTestCase {
     XCTAssertEqual(state, .retry(retryAfterSeconds: 7))
     XCTAssertNil(socket.connectedURL)
   }
+
+  func testDisconnectClearsAccountAndRegisteredDeviceState() async {
+    let auth = FakeAuthAdapter(token: "user-jwt")
+    let controlPlane = FakeDesktopControlPlane(
+      accountState: AccountState(
+        userId: "user-1",
+        hasAgentInstance: true,
+        hasDesktopClient: true
+      ),
+      routingResult: .ok(
+        AgentRoute(
+          agentInstanceId: "agent-1",
+          wsURL: URL(string: "wss://runtime.test")!,
+          runtimeJWT: "runtime-jwt"
+        )
+      )
+    )
+    let socket = SessionFakeRuntimeSocket()
+    let session = DesktopRuntimeSessionCoordinator(
+      auth: auth,
+      controlPlane: controlPlane,
+      device: ClientDeviceService(deviceId: "fingerprint-1"),
+      runtime: RuntimeAdapter(socket: socket, clientVersion: "desktop-test"),
+      capturePermissionGranted: { true }
+    )
+    _ = await session.restoreAndConnect()
+
+    session.disconnect()
+
+    XCTAssertEqual(session.state, .signedOut)
+    XCTAssertNil(session.accountState)
+    XCTAssertNil(session.registeredDeviceId)
+    XCTAssertEqual(socket.closeCount, 1)
+  }
 }
 
 private final class FakeAuthAdapter: AuthAdapter {
@@ -183,6 +217,7 @@ private final class SessionFakeRuntimeSocket: RuntimeSocket {
   private(set) var connectedURL: URL?
   private(set) var connectedJWT: String?
   private(set) var sent: [Data] = []
+  private(set) var closeCount = 0
 
   var sentObjects: [[String: Any]] {
     sent.compactMap { data in
@@ -199,5 +234,7 @@ private final class SessionFakeRuntimeSocket: RuntimeSocket {
     sent.append(data)
   }
 
-  func close() {}
+  func close() {
+    closeCount += 1
+  }
 }

@@ -46,6 +46,17 @@ public protocol LocalTranscriptionService {
   func transcribe(_ pcm16k: Data) async throws -> String
 }
 
+public enum PushToTalkTranscriptionError: Error, Equatable, LocalizedError {
+  case unavailable
+
+  public var errorDescription: String? {
+    switch self {
+    case .unavailable:
+      return "Local push-to-talk transcription is not configured."
+    }
+  }
+}
+
 public struct EnergyVoiceActivityGate: VoiceActivityGate {
   public var rmsThreshold: Int
 
@@ -74,12 +85,11 @@ public struct PushToTalkVoiceActivityGate: VoiceActivityGate {
   }
 }
 
-public struct DeterministicLocalTranscriptionService: LocalTranscriptionService {
+public struct UnavailableLocalTranscriptionService: LocalTranscriptionService {
   public init() {}
 
   public func transcribe(_ pcm16k: Data) async throws -> String {
-    guard !pcm16k.isEmpty else { return "" }
-    return "Captured voice message"
+    throw PushToTalkTranscriptionError.unavailable
   }
 }
 
@@ -92,7 +102,7 @@ public final class PushToTalkManager {
   public init(
     audioCapture: AudioCaptureService,
     voiceGate: VoiceActivityGate = PushToTalkVoiceActivityGate(),
-    transcription: LocalTranscriptionService = DeterministicLocalTranscriptionService(),
+    transcription: LocalTranscriptionService = UnavailableLocalTranscriptionService(),
     runtimeClient: RuntimeChatClient
   ) {
     self.audioCapture = audioCapture
@@ -186,10 +196,10 @@ public final class CaptureCoordinator {
           ScreenMemoryRecord(
             id: artifact.id,
             capturedAt: artifact.capturedAt,
-            appName: stringSignal(artifact.signals["app"]) ?? "Unknown",
-            windowTitle: "",
+            appName: frame.appName,
+            windowTitle: frame.windowTitle,
             summary: artifact.summary,
-            ocrText: artifact.summary,
+            ocrText: frame.ocrText,
             retentionClass: artifact.retentionClass,
             sensitivityLabel: artifact.sensitivityLabel,
             embedding: artifact.embedding
@@ -206,13 +216,14 @@ public final class CaptureCoordinator {
   }
 
   public func captureOnce(from source: DesktopCaptureSource) async throws -> [PerceptionEvent] {
+    if let contextSource = source as? DesktopWindowContextSource {
+      let context = try contextSource.activeWindowContext()
+      guard compiler.currentSettings.captureEnabled, !compiler.currentSettings.isExcluded(appName: context.appName) else {
+        return []
+      }
+    }
     let frame = try await source.captureFrame()
     return try accept(frame: frame.withoutRawFrameBytes())
-  }
-
-  private func stringSignal(_ value: JSONValue?) -> String? {
-    guard case .string(let text) = value else { return nil }
-    return text
   }
 }
 
@@ -261,6 +272,89 @@ public enum ScreenMemoryCaptureLoopEvent: Equatable, Sendable {
   case failed(String)
 }
 
+public enum DesktopCaptureCadenceDecision: Equatable, Sendable {
+  case capture
+  case skip(String)
+}
+
+public struct DesktopCaptureCadenceGate: Sendable {
+  private struct NormalizedContext: Equatable, Sendable {
+    var appName: String
+    var windowTitle: String
+
+    init(_ context: DesktopWindowContext) {
+      appName = CompilerSettings.normalizedAppName(context.appName)
+      windowTitle = context.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+  }
+
+  private struct PendingContext: Equatable, Sendable {
+    var context: NormalizedContext
+    var firstSeenAt: Date
+  }
+
+  private var lastCapturedContext: NormalizedContext?
+  private var lastCapturedAt: Date?
+  private var pendingContext: PendingContext?
+
+  public init() {}
+
+  public mutating func decision(
+    for context: DesktopWindowContext,
+    at now: Date,
+    settings: CompilerSettings
+  ) -> DesktopCaptureCadenceDecision {
+    let normalized = NormalizedContext(context)
+
+    guard let lastCapturedContext, let lastCapturedAt else {
+      pendingContext = nil
+      return .capture
+    }
+
+    if normalized == lastCapturedContext {
+      pendingContext = nil
+      let interval = isMessagingApp(normalized.appName)
+        ? settings.messagingFallbackSeconds
+        : settings.sameContextMinimumSeconds
+      let elapsed = now.timeIntervalSince(lastCapturedAt)
+      return elapsed >= interval ? .capture : .skip("same context throttled")
+    }
+
+    if pendingContext?.context != normalized {
+      pendingContext = PendingContext(context: normalized, firstSeenAt: now)
+      return .skip("context change debounce")
+    }
+
+    guard let pendingContext else {
+      return .skip("context change debounce")
+    }
+    let elapsed = now.timeIntervalSince(pendingContext.firstSeenAt)
+    return elapsed >= settings.contextChangeDebounceSeconds
+      ? .capture
+      : .skip("context change debounce")
+  }
+
+  public mutating func recordCapture(of context: DesktopWindowContext, at capturedAt: Date) {
+    lastCapturedContext = NormalizedContext(context)
+    lastCapturedAt = capturedAt
+    pendingContext = nil
+  }
+
+  private func isMessagingApp(_ normalizedAppName: String) -> Bool {
+    Self.messagingAppNames.contains(normalizedAppName)
+  }
+
+  private static let messagingAppNames: Set<String> = [
+    "discord",
+    "messages",
+    "microsoft teams",
+    "signal",
+    "slack",
+    "telegram",
+    "whatsapp",
+  ]
+}
+
 @MainActor
 public final class ScreenMemoryCaptureLoop {
   public nonisolated static let defaultIntervalSeconds: TimeInterval = 3
@@ -269,7 +363,9 @@ public final class ScreenMemoryCaptureLoop {
   private let source: DesktopCaptureSource
   private let settingsProvider: () -> CompilerSettings
   private let permissionProvider: () -> Bool
+  private let now: () -> Date
   private let intervalSeconds: TimeInterval
+  private var cadenceGate: DesktopCaptureCadenceGate
   private var task: Task<Void, Never>?
 
   public private(set) var state: ScreenMemoryCaptureLoopState
@@ -279,14 +375,18 @@ public final class ScreenMemoryCaptureLoop {
     source: DesktopCaptureSource,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
+    now: @escaping () -> Date = { Date() },
     intervalSeconds: TimeInterval = ScreenMemoryCaptureLoop.defaultIntervalSeconds,
+    cadenceGate: DesktopCaptureCadenceGate = DesktopCaptureCadenceGate(),
     initialState: ScreenMemoryCaptureLoopState = ScreenMemoryCaptureLoopState()
   ) {
     self.coordinator = coordinator
     self.source = source
     self.settingsProvider = settingsProvider
     self.permissionProvider = permissionProvider
+    self.now = now
     self.intervalSeconds = max(0.2, intervalSeconds)
+    self.cadenceGate = cadenceGate
     state = initialState
   }
 
@@ -321,37 +421,69 @@ public final class ScreenMemoryCaptureLoop {
   }
 
   public func captureTick() async -> ScreenMemoryCaptureLoopEvent {
-    guard settingsProvider().captureEnabled else {
-      state.skippedCaptureCount += 1
-      state.lastSkipReason = "capture disabled"
-      state.lastError = nil
-      return .skipped("capture disabled")
+    let settings = settingsProvider()
+    guard settings.captureEnabled else {
+      return recordSkip("capture disabled")
     }
 
     guard permissionProvider() else {
-      state.skippedCaptureCount += 1
-      state.lastSkipReason = "screen recording permission required"
-      state.lastError = nil
-      return .skipped("screen recording permission required")
+      return recordSkip("screen recording permission required")
+    }
+
+    let captureStartedAt = now()
+    var windowContext: DesktopWindowContext?
+    if let contextSource = source as? DesktopWindowContextSource {
+      do {
+        let context = try contextSource.activeWindowContext()
+        windowContext = context
+        guard !settings.isExcluded(appName: context.appName) else {
+          return recordSkip("current app skipped")
+        }
+        switch cadenceGate.decision(for: context, at: captureStartedAt, settings: settings) {
+        case .capture:
+          break
+        case .skip(let reason):
+          return recordSkip(reason)
+        }
+      } catch {
+        return recordFailure(error.localizedDescription)
+      }
     }
 
     do {
       let events = try await coordinator.captureOnce(from: source)
+      guard !events.isEmpty else {
+        return recordSkip("current app skipped")
+      }
       state.capturedFrameCount += 1
       state.publishedEventCount += events.count
       state.lastCapturedAt = events.first?.capturedAt
       state.lastError = nil
       state.lastSkipReason = nil
+      if let windowContext {
+        cadenceGate.recordCapture(of: windowContext, at: captureStartedAt)
+      }
       return .captured(eventCount: events.count)
     } catch {
-      state.failedCaptureCount += 1
-      state.lastError = error.localizedDescription
-      state.lastSkipReason = nil
-      return .failed(error.localizedDescription)
+      return recordFailure(error.localizedDescription)
     }
   }
 
   private var intervalNanoseconds: UInt64 {
     UInt64(intervalSeconds * 1_000_000_000)
+  }
+
+  private func recordSkip(_ reason: String) -> ScreenMemoryCaptureLoopEvent {
+    state.skippedCaptureCount += 1
+    state.lastSkipReason = reason
+    state.lastError = nil
+    return .skipped(reason)
+  }
+
+  private func recordFailure(_ reason: String) -> ScreenMemoryCaptureLoopEvent {
+    state.failedCaptureCount += 1
+    state.lastError = reason
+    state.lastSkipReason = nil
+    return .failed(reason)
   }
 }

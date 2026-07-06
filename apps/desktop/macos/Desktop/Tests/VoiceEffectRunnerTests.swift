@@ -16,6 +16,22 @@ final class VoiceEffectRunnerTests: XCTestCase {
     XCTAssertEqual(runtime.userMessages, ["What should I focus on?"])
   }
 
+  func testPushToTalkDefaultTranscriptionDoesNotSendFabricatedMessage() async throws {
+    let runtime = RecordingRuntimeClient()
+    let ptt = PushToTalkManager(
+      audioCapture: FixedAudioCapture(pcm16k: sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)),
+      runtimeClient: runtime
+    )
+
+    do {
+      _ = try await ptt.captureAndSend()
+      XCTFail("Expected default push-to-talk transcription to be unavailable")
+    } catch let error as PushToTalkTranscriptionError {
+      XCTAssertEqual(error, .unavailable)
+    }
+    XCTAssertTrue(runtime.userMessages.isEmpty)
+  }
+
   func testPushToTalkIgnoresSilence() async throws {
     let runtime = RecordingRuntimeClient()
     let transcription = RecordingTranscription(text: "ignored")

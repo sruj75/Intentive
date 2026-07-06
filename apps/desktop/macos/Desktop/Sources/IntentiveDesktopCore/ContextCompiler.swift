@@ -40,6 +40,20 @@ public protocol DesktopCaptureSource {
   func captureFrame() async throws -> CapturedFrame
 }
 
+public struct DesktopWindowContext: Equatable, Sendable {
+  public var appName: String
+  public var windowTitle: String
+
+  public init(appName: String, windowTitle: String = "") {
+    self.appName = appName
+    self.windowTitle = windowTitle
+  }
+}
+
+public protocol DesktopWindowContextSource: DesktopCaptureSource {
+  func activeWindowContext() throws -> DesktopWindowContext
+}
+
 public struct CompilerSettings: Codable, Equatable, Sendable {
   public var captureEnabled: Bool
   public var excludedApps: Set<String>

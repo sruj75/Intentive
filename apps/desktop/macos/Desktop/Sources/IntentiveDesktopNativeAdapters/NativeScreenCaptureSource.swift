@@ -54,7 +54,7 @@ public struct NativeScreenRecordingPermissionGateway: ScreenRecordingPermissionG
   }
 }
 
-public final class NativeScreenCaptureSource: DesktopCaptureSource {
+public final class NativeScreenCaptureSource: DesktopWindowContextSource {
   private let now: @Sendable () -> Date
   private let idFactory: @Sendable () -> String
 
@@ -91,6 +91,14 @@ public final class NativeScreenCaptureSource: DesktopCaptureSource {
       windowTitle: activeWindow.windowTitle ?? "",
       ocrText: ocrText,
       rawFrameBytes: nil
+    )
+  }
+
+  public func activeWindowContext() throws -> DesktopWindowContext {
+    let activeWindow = try resolveActiveWindow()
+    return DesktopWindowContext(
+      appName: activeWindow.appName,
+      windowTitle: activeWindow.windowTitle ?? ""
     )
   }
 
