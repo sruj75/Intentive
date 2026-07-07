@@ -40,11 +40,50 @@ public struct ScreenMemorySearchResult: Equatable, Sendable {
   public var rank: Int
 }
 
+public struct AudioMemoryRecord: Codable, Equatable, Identifiable, Sendable {
+  public var id: String
+  public var capturedAt: String
+  public var periodStart: String
+  public var periodEnd: String
+  public var transcript: String
+  public var summary: String
+  public var retentionClass: String
+  public var sensitivityLabel: SensitivityLabel
+  public var embedding: PerceptionEmbeddingRef?
+
+  public init(
+    id: String,
+    capturedAt: String,
+    periodStart: String,
+    periodEnd: String,
+    transcript: String,
+    summary: String,
+    retentionClass: String = "audio_memory_30d",
+    sensitivityLabel: SensitivityLabel = .normal,
+    embedding: PerceptionEmbeddingRef? = nil
+  ) {
+    self.id = id
+    self.capturedAt = capturedAt
+    self.periodStart = periodStart
+    self.periodEnd = periodEnd
+    self.transcript = transcript
+    self.summary = summary
+    self.retentionClass = retentionClass
+    self.sensitivityLabel = sensitivityLabel
+    self.embedding = embedding
+  }
+}
+
 public protocol ScreenMemoryStore: AnyObject {
   func add(_ record: ScreenMemoryRecord)
   func recent(limit: Int) -> [ScreenMemoryRecord]
   func search(_ query: String, limit: Int) -> [ScreenMemorySearchResult]
   func delete(id: String)
+}
+
+public protocol AudioMemoryStore: AnyObject {
+  func addAudioMemory(_ record: AudioMemoryRecord)
+  func recentAudioMemory(limit: Int) -> [AudioMemoryRecord]
 }
 
 public protocol PerceptionEventOutbox: AnyObject {
@@ -80,8 +119,9 @@ public protocol LegacyScreenMemoryImportCheckpointStore: AnyObject {
   func saveLegacyImportCheckpoint(_ checkpoint: LegacyScreenMemoryImportCheckpoint) throws
 }
 
-public final class InMemoryScreenMemoryStore: ScreenMemoryStore, PerceptionEventOutbox {
+public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore, PerceptionEventOutbox {
   private var records: [ScreenMemoryRecord] = []
+  private var audioRecords: [AudioMemoryRecord] = []
   private var perceptionOutbox: [PerceptionEvent] = []
 
   public init(records: [ScreenMemoryRecord] = []) {
@@ -137,6 +177,21 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore, PerceptionEvent
     records.removeAll { $0.id == id }
   }
 
+  public func addAudioMemory(_ record: AudioMemoryRecord) {
+    if let index = audioRecords.firstIndex(where: { $0.id == record.id }) {
+      audioRecords[index] = record
+    } else {
+      audioRecords.append(record)
+    }
+  }
+
+  public func recentAudioMemory(limit: Int) -> [AudioMemoryRecord] {
+    audioRecords
+      .sorted { $0.capturedAt > $1.capturedAt }
+      .prefix(max(0, limit))
+      .map { $0 }
+  }
+
   public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
     if let index = perceptionOutbox.firstIndex(where: { $0.eventId == event.eventId }) {
       perceptionOutbox[index] = event
@@ -154,7 +209,7 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore, PerceptionEvent
   }
 }
 
-public final class SwitchableScreenMemoryStore: ScreenMemoryStore, PerceptionEventOutbox {
+public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore, PerceptionEventOutbox {
   private var store: ScreenMemoryStore
 
   public init(_ store: ScreenMemoryStore) {
@@ -180,6 +235,14 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, PerceptionEve
 
   public func delete(id: String) {
     store.delete(id: id)
+  }
+
+  public func addAudioMemory(_ record: AudioMemoryRecord) {
+    (store as? AudioMemoryStore)?.addAudioMemory(record)
+  }
+
+  public func recentAudioMemory(limit: Int) -> [AudioMemoryRecord] {
+    (store as? AudioMemoryStore)?.recentAudioMemory(limit: limit) ?? []
   }
 
   public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
@@ -241,7 +304,7 @@ public enum ScreenMemoryStoreError: Error, Equatable, LocalizedError {
 }
 
 public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemoryImportCheckpointStore,
-  PerceptionEventOutbox
+  AudioMemoryStore, PerceptionEventOutbox
 {
   public private(set) var lastError: ScreenMemoryStoreError?
 
@@ -308,6 +371,18 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemor
   public func delete(id: String) {
     captureError {
       try deleteRecord(id: id)
+    }
+  }
+
+  public func addAudioMemory(_ record: AudioMemoryRecord) {
+    captureError {
+      try addAudioMemoryRecord(record)
+    }
+  }
+
+  public func recentAudioMemory(limit: Int) -> [AudioMemoryRecord] {
+    captureError(default: []) {
+      try recentAudioMemoryRecords(limit: limit)
     }
   }
 
@@ -406,6 +481,65 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemor
   public func deleteRecord(id: String) throws {
     try execute("DELETE FROM screen_memory_records_fts WHERE id = ?", bindings: [.text(id)])
     try execute("DELETE FROM screen_memory_records WHERE id = ?", bindings: [.text(id)])
+  }
+
+  public func addAudioMemoryRecord(_ record: AudioMemoryRecord) throws {
+    let embeddingJSON = try record.embedding.map { embedding in
+      String(data: try encoder.encode(embedding), encoding: .utf8) ?? ""
+    }
+    try execute(
+      """
+      INSERT INTO audio_memory_records (
+        id, captured_at, period_start, period_end, transcript, summary,
+        retention_class, sensitivity_label, embedding_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        captured_at = excluded.captured_at,
+        period_start = excluded.period_start,
+        period_end = excluded.period_end,
+        transcript = excluded.transcript,
+        summary = excluded.summary,
+        retention_class = excluded.retention_class,
+        sensitivity_label = excluded.sensitivity_label,
+        embedding_json = excluded.embedding_json
+      """,
+      bindings: [
+        .text(record.id),
+        .text(record.capturedAt),
+        .text(record.periodStart),
+        .text(record.periodEnd),
+        .text(record.transcript),
+        .text(record.summary),
+        .text(record.retentionClass),
+        .text(record.sensitivityLabel.rawValue),
+        embeddingJSON.map(SQLiteBinding.text) ?? .null,
+      ]
+    )
+  }
+
+  public func recentAudioMemoryRecords(limit: Int) throws -> [AudioMemoryRecord] {
+    try withStatement(
+      """
+      SELECT id, captured_at, period_start, period_end, transcript, summary,
+             retention_class, sensitivity_label, embedding_json
+      FROM audio_memory_records
+      ORDER BY captured_at DESC
+      LIMIT ?
+      """,
+      bindings: [.int(max(0, limit))]
+    ) { statement in
+      var records: [AudioMemoryRecord] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          records.append(try decodeAudioMemoryRecord(statement))
+        } else if result == SQLITE_DONE {
+          return records
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
   }
 
   public func legacyImportCheckpoint(for sourceIdentifier: String) throws -> LegacyScreenMemoryImportCheckpoint? {
@@ -559,6 +693,21 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemor
       )
       """
     )
+    try execute(
+      """
+      CREATE TABLE IF NOT EXISTS audio_memory_records (
+        id TEXT PRIMARY KEY,
+        captured_at TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        transcript TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        retention_class TEXT NOT NULL,
+        sensitivity_label TEXT NOT NULL,
+        embedding_json TEXT
+      )
+      """
+    )
   }
 
   private func queryRecords(_ sql: String, bindings: [SQLiteBinding] = []) throws -> [ScreenMemoryRecord] {
@@ -591,6 +740,26 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemor
       windowTitle: try columnText(statement, 3),
       summary: try columnText(statement, 4),
       ocrText: try columnText(statement, 5),
+      retentionClass: try columnText(statement, 6),
+      sensitivityLabel: label,
+      embedding: embedding
+    )
+  }
+
+  private func decodeAudioMemoryRecord(_ statement: OpaquePointer) throws -> AudioMemoryRecord {
+    let embeddingText = try optionalColumnText(statement, 8)
+    let embedding = try embeddingText.flatMap { text -> PerceptionEmbeddingRef? in
+      guard let data = text.data(using: .utf8), !data.isEmpty else { return nil }
+      return try decoder.decode(PerceptionEmbeddingRef.self, from: data)
+    }
+    let label = SensitivityLabel(rawValue: try columnText(statement, 7)) ?? .sensitive
+    return AudioMemoryRecord(
+      id: try columnText(statement, 0),
+      capturedAt: try columnText(statement, 1),
+      periodStart: try columnText(statement, 2),
+      periodEnd: try columnText(statement, 3),
+      transcript: try columnText(statement, 4),
+      summary: try columnText(statement, 5),
       retentionClass: try columnText(statement, 6),
       sensitivityLabel: label,
       embedding: embedding

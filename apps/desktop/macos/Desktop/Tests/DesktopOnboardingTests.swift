@@ -82,6 +82,15 @@ final class DesktopOnboardingTests: XCTestCase {
       microphonePermissionGranted: true
     )
     XCTAssertEqual(requirements.nextIncompleteStep, .voiceDemo)
+
+    progress = progress.completing(.voiceDemo)
+    requirements = DesktopOnboardingRequirements(
+      progress: progress,
+      screenRecordingPermissionGranted: true,
+      accessibilityPermissionGranted: true,
+      microphonePermissionGranted: true
+    )
+    XCTAssertEqual(requirements.nextIncompleteStep, .ambientAudioConsent)
   }
 
   func testUserDefaultsOnboardingStorePersistsProgress() throws {

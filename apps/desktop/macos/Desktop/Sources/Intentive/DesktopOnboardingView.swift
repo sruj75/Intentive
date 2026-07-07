@@ -254,8 +254,14 @@ struct DesktopOnboardingSheet: View {
         reviewVoiceDemo: {
           reviewVoiceDemo()
           markStepReviewed(.voiceDemo)
+          advance()
         }
       )
+    case .ambientAudioConsent:
+      AmbientAudioConsentStep(markReviewed: {
+        markStepReviewed(.ambientAudioConsent)
+        advance()
+      })
     }
   }
 
@@ -529,6 +535,31 @@ private struct VoiceDemoStep: View {
   }
 }
 
+private struct AmbientAudioConsentStep: View {
+  let markReviewed: () -> Void
+
+  var body: some View {
+    StepPane(title: "Ambient Audio", systemImage: "waveform.badge.magnifyingglass") {
+      VStack(alignment: .leading, spacing: 12) {
+        OnboardingPoint(
+          systemImage: "power",
+          title: "Off by default",
+          detail: "Ambient audio capture uses the local microphone path and only publishes compact summaries after the local speech gate."
+        )
+        OnboardingPoint(
+          systemImage: "lock.shield",
+          title: "Local transcript",
+          detail: "Raw audio stays on this Mac. Local transcripts are stored only in Screen Memory."
+        )
+      }
+    } footer: {
+      Button(action: markReviewed) {
+        Label("Review Ambient Audio", systemImage: "checkmark.circle")
+      }
+      .buttonStyle(.borderedProminent)
+    }
+  }
+}
 private struct StepPane<Content: View, Footer: View>: View {
   let title: String
   let systemImage: String
@@ -630,6 +661,8 @@ private extension DesktopOnboardingStep {
       return "Voice Shortcut"
     case .voiceDemo:
       return "Voice Demo"
+    case .ambientAudioConsent:
+      return "Ambient Audio"
     }
   }
 
@@ -649,6 +682,8 @@ private extension DesktopOnboardingStep {
       return "Push-to-talk"
     case .voiceDemo:
       return "Push-to-talk path"
+    case .ambientAudioConsent:
+      return "Off by default"
     }
   }
 
@@ -668,6 +703,8 @@ private extension DesktopOnboardingStep {
       return "keyboard.badge.waveform"
     case .voiceDemo:
       return "waveform"
+    case .ambientAudioConsent:
+      return "waveform.badge.magnifyingglass"
     }
   }
 }

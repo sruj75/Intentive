@@ -11,6 +11,8 @@ coverage/
 .expo/
 target/
 .build/
+**/.build/
+.context/
 pnpm-lock.yaml
 
 apps/mobile/ios/Pods/

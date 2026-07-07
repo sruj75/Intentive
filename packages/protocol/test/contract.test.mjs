@@ -167,6 +167,24 @@ test("perception_event validates the committed wire fixture", () => {
   assert.equal(result.data.artifact_type, "searchable_screen_record");
 });
 
+test("perception_event accepts ambient audio summaries", () => {
+  const result = protocol.clientToRuntimeEvent.safeParse({
+    ...readJsonFixture("perception-event.json"),
+    event_id: "ambient-audio-1",
+    artifact_type: "ambient_audio_summary",
+    summary: "Recent nearby speech discussed the launch checklist.",
+    signals: {
+      transcript_word_count: 7,
+      audio_source: "microphone",
+    },
+    local_record_ref: "screen-memory://ambient-audio/ambient-audio-1",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.type, "perception_event");
+  assert.equal(result.data.artifact_type, "ambient_audio_summary");
+});
+
 test("perception_event rejects stale context_snapshot fields and bad embedding dimensions", () => {
   const staleSnapshot = protocol.clientToRuntimeEvent.safeParse({
     type: "context_snapshot",

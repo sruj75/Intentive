@@ -3,7 +3,7 @@ import IntentiveDesktopNativeAdapters
 import IntentiveDesktopNativeAssets
 import SwiftUI
 
-private enum DesktopSection: String, CaseIterable, Identifiable {
+enum DesktopSection: String, CaseIterable, Identifiable {
   case home = "Home"
   case screenMemory = "Screen Memory"
   case chat = "Floating Chat"
@@ -26,7 +26,7 @@ private enum DesktopSection: String, CaseIterable, Identifiable {
 }
 
 @MainActor
-private final class DesktopViewModel: ObservableObject {
+final class DesktopViewModel: ObservableObject {
   @Published var selected: DesktopSection = .home
   @Published var query = ""
   @Published var input = ""
@@ -55,6 +55,8 @@ private final class DesktopViewModel: ObservableObject {
   private let notificationSink = UserNotificationDesktopSink()
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
+  private let runAnywhereVoiceClient = DefaultRunAnywhereVoiceClient()
+  private let voiceTurnCoordinator = VoiceTurnCoordinator()
   private let pushToTalkRecorder = NativePushToTalkAudioRecorder()
   private let pushToTalkShortcutMonitor = NativePushToTalkShortcutMonitor()
   private var runtimeRestoreAttempted = false
@@ -78,9 +80,12 @@ private final class DesktopViewModel: ObservableObject {
   private lazy var floatingBarPresenter = IntentiveFloatingBarPresenter(controller: floatingBarController)
   private lazy var pushToTalk = PushToTalkManager(
     audioCapture: NativeMicrophoneAudioCaptureService(),
-    voiceGate: PushToTalkVoiceActivityGate(vad: SileroPushToTalkVADPredictor()),
-    transcription: FluidAudioLocalTranscriptionService(),
+    voiceGate: RunAnywhereVoiceActivityGate(client: runAnywhereVoiceClient),
+    transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient),
     runtimeClient: runtime
+  )
+  private lazy var speechPlayback = StreamingSpeechPlaybackService(
+    synthesizer: RunAnywhereSpeechSynthesizer(client: runAnywhereVoiceClient)
   )
   private lazy var compiler = ContextCompiler(settings: compilerSettings)
   private lazy var publisher = PerceptionPublisher(
@@ -94,11 +99,27 @@ private final class DesktopViewModel: ObservableObject {
     screenMemory: screenMemory,
     publisher: publisher
   )
+  private lazy var ambientAudio = AmbientAudioCoordinator(
+    audioMemory: screenMemory,
+    publisher: publisher
+  )
   private lazy var captureLoop = ScreenMemoryCaptureLoop(
     coordinator: capture,
     source: captureSource,
     settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
     permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
+  )
+  private lazy var ambientAudioLoop = AmbientAudioCaptureLoop(
+    coordinator: ambientAudio,
+    audioCapture: NativeMicrophoneAudioCaptureService(captureDuration: 4.0),
+    voiceGate: RunAnywhereVoiceActivityGate(client: runAnywhereVoiceClient),
+    transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient),
+    settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
+    permissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
+    activeWindowProvider: { [weak self] in
+      guard let self else { return nil }
+      return try self.captureSource.activeWindowContext()
+    }
   )
 
   var messages: [ChatMessage] {
@@ -154,6 +175,7 @@ private final class DesktopViewModel: ObservableObject {
     status = initialScreenMemory.status
     configureRuntimeSocketCallbacks()
     configurePushToTalkShortcutMonitor()
+    reconcileAmbientAudioCapture()
   }
 
   func restoreRuntimeSessionIfNeeded() async {
@@ -305,6 +327,7 @@ private final class DesktopViewModel: ObservableObject {
       microphonePermissionStatus.isGranted
       ? "Microphone permission granted"
       : "Microphone permission required"
+    reconcileAmbientAudioCapture()
   }
 
   func openMicrophoneSettings() {
@@ -317,6 +340,7 @@ private final class DesktopViewModel: ObservableObject {
     refreshScreenRecordingPermission()
     accessibilityPermissionGranted = accessibilityPermissionGateway.hasAccessibilityPermission()
     microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
+    reconcileAmbientAudioCapture()
   }
 
   func openFloatingBarFromOnboarding() {
@@ -342,14 +366,16 @@ private final class DesktopViewModel: ObservableObject {
       return
     }
 
+    performVoiceTurnActions(voiceTurnCoordinator.beginCapture())
     voiceCaptureRunning = true
-    voiceStatus = "Listening for a push-to-talk turn..."
-    status = "Listening for voice"
+    voiceStatus = "Capturing a push-to-talk turn..."
+    status = "Capturing voice"
     defer { voiceCaptureRunning = false }
 
     do {
       let message = try await pushToTalk.captureAndSend()
       if let message {
+        performVoiceTurnActions(voiceTurnCoordinator.awaitReply())
         voiceStatus =
           runtime.status == .connected
           ? "Sent: \(message.body)"
@@ -359,11 +385,13 @@ private final class DesktopViewModel: ObservableObject {
           ? "Voice turn sent to Runtime Bridge"
           : "Voice turn queued until Runtime connects"
       } else {
+        performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
         voiceStatus = "No speech detected"
         status = "Voice turn ignored because no speech was detected"
       }
       objectWillChange.send()
     } catch {
+      performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
       voiceStatus = error.localizedDescription
       status = "Voice turn failed: \(error.localizedDescription)"
     }
@@ -429,11 +457,12 @@ private final class DesktopViewModel: ObservableObject {
       return
     }
 
+    performVoiceTurnActions(voiceTurnCoordinator.beginCapture())
     voiceCaptureRunning = true
     voiceStatus = pushToTalkShortcutStateMachine.state == .lockedListening
       ? "Voice locked. Tap Option again to send."
       : "Hold Option to talk..."
-    status = "Listening for voice"
+    status = "Capturing voice"
 
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -508,6 +537,7 @@ private final class DesktopViewModel: ObservableObject {
     do {
       let message = try await pushToTalk.processAndSend(pcm16k: audio)
       if let message {
+        performVoiceTurnActions(voiceTurnCoordinator.awaitReply())
         voiceStatus =
           runtime.status == .connected
           ? "Sent: \(message.body)"
@@ -517,6 +547,7 @@ private final class DesktopViewModel: ObservableObject {
           ? "Voice turn sent to Runtime Bridge"
           : "Voice turn queued until Runtime connects"
       } else {
+        performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
         voiceStatus = "No speech detected"
         status = "Voice turn ignored because no speech was detected"
       }
@@ -532,6 +563,7 @@ private final class DesktopViewModel: ObservableObject {
   private func finishPushToTalkShortcutAfterFailure(_ error: Error) {
     pushToTalkRecorder.cancel()
     pendingPushToTalkAudio = nil
+    performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
     performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
     voiceCaptureRunning = false
     voiceStatus = error.localizedDescription
@@ -559,8 +591,54 @@ private final class DesktopViewModel: ObservableObject {
       if captureLoop.state.isRunning {
         captureLoop.stop()
       }
+      ambientAudioLoop.stop()
       captureRunning = false
       status = "Screen Memory is off"
+    }
+    reconcileAmbientAudioCapture()
+  }
+
+  func setSpokenResponsesEnabled(_ enabled: Bool) {
+    var settings = compilerSettings
+    settings.spokenResponsesEnabled = enabled
+    applyCompilerSettings(settings)
+    if !enabled {
+      speechPlayback.stop()
+      performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
+    }
+    status = enabled ? "Spoken responses are on" : "Spoken responses are off"
+  }
+
+  func setAmbientAudioCaptureEnabled(_ enabled: Bool) {
+    var settings = compilerSettings
+    settings.ambientAudioCaptureEnabled = enabled
+    applyCompilerSettings(settings)
+    reconcileAmbientAudioCapture()
+    status = enabled ? "Ambient audio capture is on" : "Ambient audio capture is off"
+  }
+
+  private func reconcileAmbientAudioCapture() {
+    guard compilerSettings.ambientAudioCaptureEnabled, microphonePermissionStatus.isGranted else {
+      ambientAudioLoop.stop()
+      return
+    }
+    _ = ambientAudioLoop.start { [weak self] event in
+      Task { @MainActor [weak self] in
+        self?.handleAmbientAudioEvent(event)
+      }
+    }
+  }
+
+  private func handleAmbientAudioEvent(_ event: AmbientAudioCaptureLoopEvent) {
+    switch event {
+    case .captured(let eventPublished):
+      status = eventPublished
+        ? "Ambient audio summary captured"
+        : "Ambient audio capture produced no summary"
+    case .skipped:
+      break
+    case .failed(let reason):
+      status = "Ambient audio capture failed: \(reason)"
     }
   }
 
@@ -638,12 +716,37 @@ private final class DesktopViewModel: ObservableObject {
   }
 
   private func handleRuntimeCompanionMessage(_ message: CompanionMessage) {
-    guard message.viaPostMessageBack else { return }
-    deliverEffect(
-      message,
-      runtimeClient: alreadyAcknowledgedRuntimeClient,
-      statusMessage: "Effect Runner delivered Runtime nudge"
+    performVoiceTurnActions(
+      voiceTurnCoordinator.handleCompanionReply(
+        message,
+        spokenResponsesEnabled: compilerSettings.spokenResponsesEnabled
+      )
     )
+    if message.viaPostMessageBack {
+      deliverEffect(
+        message,
+        runtimeClient: alreadyAcknowledgedRuntimeClient,
+        statusMessage: "Effect Runner delivered Runtime nudge"
+      )
+    }
+  }
+
+  private func performVoiceTurnActions(_ actions: [VoiceTurnAction]) {
+    for action in actions {
+      switch action {
+      case .speak(let text):
+        speechPlayback.speak(text) { [weak self] in
+          guard let self else { return }
+          self.performVoiceTurnActions(self.voiceTurnCoordinator.finishSpeaking())
+        }
+      case .stopPlayback:
+        speechPlayback.stop()
+      case .muteSystemAudio:
+        SystemAudioMuteController.shared.muteForSpeechCapture()
+      case .restoreSystemAudio:
+        SystemAudioMuteController.shared.restoreAfterSpeechCapture()
+      }
+    }
   }
 
   private func handleRuntimeSocketMessage(_ data: Data) {
@@ -848,8 +951,18 @@ private enum DesktopRuntimeConfiguration {
 }
 
 struct MainWindowView: View {
-  @StateObject private var model = DesktopViewModel()
+  @StateObject private var model: DesktopViewModel
   @FocusState private var searchFocused: Bool
+
+  @MainActor
+  init() {
+    _model = StateObject(wrappedValue: DesktopViewModel())
+  }
+
+  @MainActor
+  init(model: DesktopViewModel) {
+    _model = StateObject(wrappedValue: model)
+  }
 
   var body: some View {
     NavigationSplitView {
@@ -1128,7 +1241,10 @@ private struct VoiceView: View {
               await model.runPushToTalkTurn()
             }
           } label: {
-            Label(model.voiceCaptureRunning ? "Listening" : "Record Voice Turn", systemImage: model.voiceCaptureRunning ? "stop.circle" : "mic.circle")
+            Label(
+              model.voiceCaptureRunning ? "Capturing" : "Record Voice Turn",
+              systemImage: model.voiceCaptureRunning ? "stop.circle" : "mic.circle"
+            )
           }
           .buttonStyle(.borderedProminent)
           .disabled(model.voiceCaptureRunning || !model.microphonePermissionStatus.isGranted)
@@ -1151,6 +1267,25 @@ private struct VoiceView: View {
           }
           .disabled(model.accessibilityPermissionGranted)
         }
+
+        Toggle(
+          "Spoken responses",
+          isOn: Binding(
+            get: { model.compilerSettings.spokenResponsesEnabled },
+            set: { model.setSpokenResponsesEnabled($0) }
+          )
+        )
+        .toggleStyle(.switch)
+
+        Toggle(
+          "Ambient audio capture",
+          isOn: Binding(
+            get: { model.compilerSettings.ambientAudioCaptureEnabled },
+            set: { model.setAmbientAudioCaptureEnabled($0) }
+          )
+        )
+        .toggleStyle(.switch)
+        .disabled(!model.microphonePermissionStatus.isGranted)
 
         HStack(spacing: 10) {
           ProgressView()

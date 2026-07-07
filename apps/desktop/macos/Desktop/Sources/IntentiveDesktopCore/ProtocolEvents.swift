@@ -79,6 +79,7 @@ public enum ArtifactType: String, Codable, Equatable, CaseIterable, Sendable {
   case searchableScreenRecord = "searchable_screen_record"
   case focusSignal = "focus_signal"
   case activitySummary = "activity_summary"
+  case ambientAudioSummary = "ambient_audio_summary"
 }
 
 public enum SensitivityLabel: String, Codable, Equatable, Sendable {

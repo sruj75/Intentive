@@ -39,11 +39,89 @@ public protocol AudioCaptureService {
 }
 
 public protocol VoiceActivityGate {
-  func containsSpeech(_ pcm16k: Data) -> Bool
+  func containsSpeech(_ pcm16k: Data) async -> Bool
 }
 
 public protocol LocalTranscriptionService {
   func transcribe(_ pcm16k: Data) async throws -> String
+}
+
+public protocol SpeechSynthesizer: Sendable {
+  func synthesize(_ text: String) -> AsyncThrowingStream<Data, Error>
+}
+
+public enum VoiceTurnState: Equatable, Sendable {
+  case idle
+  case capturing
+  case transcribing
+  case awaitingReply
+  case speaking
+}
+
+public enum VoiceTurnAction: Equatable, Sendable {
+  case speak(String)
+  case stopPlayback
+  case muteSystemAudio
+  case restoreSystemAudio
+}
+
+public final class VoiceTurnCoordinator {
+  public private(set) var state: VoiceTurnState
+
+  public init(state: VoiceTurnState = .idle) {
+    self.state = state
+  }
+
+  public var acceptsMicrophoneAudio: Bool {
+    state != .speaking
+  }
+
+  @discardableResult
+  public func beginCapture() -> [VoiceTurnAction] {
+    let actions: [VoiceTurnAction]
+    if state == .speaking {
+      actions = [.stopPlayback, .muteSystemAudio]
+    } else {
+      actions = [.muteSystemAudio]
+    }
+    state = .capturing
+    return actions
+  }
+
+  public func beginTranscribing() {
+    state = .transcribing
+  }
+
+  @discardableResult
+  public func awaitReply() -> [VoiceTurnAction] {
+    state = .awaitingReply
+    return [.restoreSystemAudio]
+  }
+
+  @discardableResult
+  public func handleCompanionReply(_ message: CompanionMessage, spokenResponsesEnabled: Bool) -> [VoiceTurnAction] {
+    let text = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard spokenResponsesEnabled, !text.isEmpty else {
+      state = .idle
+      return [.restoreSystemAudio]
+    }
+    state = .speaking
+    return [.restoreSystemAudio, .speak(text)]
+  }
+
+  @discardableResult
+  public func finishSpeaking() -> [VoiceTurnAction] {
+    guard state == .speaking else { return [] }
+    state = .idle
+    return [.restoreSystemAudio]
+  }
+
+  @discardableResult
+  public func cancelTurn() -> [VoiceTurnAction] {
+    let shouldStop = state == .speaking
+    state = .idle
+    return shouldStop ? [.stopPlayback, .restoreSystemAudio] : [.restoreSystemAudio]
+  }
 }
 
 public enum PushToTalkTranscriptionError: Error, Equatable, LocalizedError {
@@ -68,7 +146,7 @@ public struct EnergyVoiceActivityGate: VoiceActivityGate {
     self.rmsThreshold = rmsThreshold
   }
 
-  public func containsSpeech(_ pcm16k: Data) -> Bool {
+  public func containsSpeech(_ pcm16k: Data) async -> Bool {
     PushToTalkTurnGate.audioEnergy(pcm16k: pcm16k).rms > rmsThreshold
   }
 }
@@ -80,7 +158,7 @@ public struct PushToTalkVoiceActivityGate: VoiceActivityGate {
     self.vad = vad
   }
 
-  public func containsSpeech(_ pcm16k: Data) -> Bool {
+  public func containsSpeech(_ pcm16k: Data) async -> Bool {
     PushToTalkTurnGate.turnHasSpeech(pcm16k: pcm16k, vad: vad)
   }
 }
@@ -119,7 +197,7 @@ public final class PushToTalkManager {
 
   @discardableResult
   public func processAndSend(pcm16k: Data) async throws -> ChatMessage? {
-    guard voiceGate.containsSpeech(pcm16k) else { return nil }
+    guard await voiceGate.containsSpeech(pcm16k) else { return nil }
     let transcript = try await transcription.transcribe(pcm16k)
     guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return try runtimeClient.sendUserMessage(transcript)
@@ -322,6 +400,41 @@ public final class CaptureCoordinator {
     }
     let frame = try await source.captureFrame()
     return try accept(frame: frame.withoutRawFrameBytes())
+  }
+}
+
+public final class AmbientAudioCoordinator {
+  private let analyzer: AmbientAudioAnalyzer
+  private let audioMemory: AudioMemoryStore
+  private let publisher: PerceptionPublisher
+
+  public init(
+    analyzer: AmbientAudioAnalyzer = AmbientAudioAnalyzer(),
+    audioMemory: AudioMemoryStore,
+    publisher: PerceptionPublisher
+  ) {
+    self.analyzer = analyzer
+    self.audioMemory = audioMemory
+    self.publisher = publisher
+  }
+
+  @discardableResult
+  public func accept(transcript: AmbientAudioTranscript) throws -> PerceptionEvent? {
+    guard let artifact = try analyzer.analyze(transcript) else { return nil }
+    audioMemory.addAudioMemory(
+      AudioMemoryRecord(
+        id: transcript.id,
+        capturedAt: transcript.capturedAt,
+        periodStart: transcript.periodStart,
+        periodEnd: transcript.periodEnd,
+        transcript: transcript.transcript,
+        summary: artifact.summary,
+        retentionClass: artifact.retentionClass,
+        sensitivityLabel: artifact.sensitivityLabel,
+        embedding: artifact.embedding
+      )
+    )
+    return try publisher.publish(artifact)
   }
 }
 
@@ -579,6 +692,186 @@ public final class ScreenMemoryCaptureLoop {
   }
 
   private func recordFailure(_ reason: String) -> ScreenMemoryCaptureLoopEvent {
+    state.failedCaptureCount += 1
+    state.lastError = reason
+    state.lastSkipReason = nil
+    return .failed(reason)
+  }
+}
+
+public struct AmbientAudioCaptureLoopState: Equatable, Sendable {
+  public var isRunning: Bool
+  public var capturedSegmentCount: Int
+  public var publishedEventCount: Int
+  public var skippedCaptureCount: Int
+  public var failedCaptureCount: Int
+  public var lastCapturedAt: String?
+  public var lastError: String?
+  public var lastSkipReason: String?
+
+  public init(
+    isRunning: Bool = false,
+    capturedSegmentCount: Int = 0,
+    publishedEventCount: Int = 0,
+    skippedCaptureCount: Int = 0,
+    failedCaptureCount: Int = 0,
+    lastCapturedAt: String? = nil,
+    lastError: String? = nil,
+    lastSkipReason: String? = nil
+  ) {
+    self.isRunning = isRunning
+    self.capturedSegmentCount = capturedSegmentCount
+    self.publishedEventCount = publishedEventCount
+    self.skippedCaptureCount = skippedCaptureCount
+    self.failedCaptureCount = failedCaptureCount
+    self.lastCapturedAt = lastCapturedAt
+    self.lastError = lastError
+    self.lastSkipReason = lastSkipReason
+  }
+}
+
+public enum AmbientAudioCaptureLoopEvent: Equatable, Sendable {
+  case captured(eventPublished: Bool)
+  case skipped(String)
+  case failed(String)
+}
+
+@MainActor
+public final class AmbientAudioCaptureLoop {
+  public nonisolated static let defaultIntervalSeconds: TimeInterval = 15
+
+  private let coordinator: AmbientAudioCoordinator
+  private let audioCapture: AudioCaptureService
+  private let voiceGate: VoiceActivityGate
+  private let transcription: LocalTranscriptionService
+  private let settingsProvider: () -> CompilerSettings
+  private let permissionProvider: () -> Bool
+  private let activeWindowProvider: (() throws -> DesktopWindowContext?)?
+  private let now: () -> Date
+  private let intervalSeconds: TimeInterval
+  private var cadenceGate: AmbientAudioCadenceGate
+  private var task: Task<Void, Never>?
+
+  public private(set) var state: AmbientAudioCaptureLoopState
+
+  public init(
+    coordinator: AmbientAudioCoordinator,
+    audioCapture: AudioCaptureService,
+    voiceGate: VoiceActivityGate,
+    transcription: LocalTranscriptionService,
+    settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
+    permissionProvider: @escaping () -> Bool = { true },
+    activeWindowProvider: (() throws -> DesktopWindowContext?)? = nil,
+    now: @escaping () -> Date = { Date() },
+    intervalSeconds: TimeInterval = AmbientAudioCaptureLoop.defaultIntervalSeconds,
+    cadenceGate: AmbientAudioCadenceGate = AmbientAudioCadenceGate(),
+    initialState: AmbientAudioCaptureLoopState = AmbientAudioCaptureLoopState()
+  ) {
+    self.coordinator = coordinator
+    self.audioCapture = audioCapture
+    self.voiceGate = voiceGate
+    self.transcription = transcription
+    self.settingsProvider = settingsProvider
+    self.permissionProvider = permissionProvider
+    self.activeWindowProvider = activeWindowProvider
+    self.now = now
+    self.intervalSeconds = max(1, intervalSeconds)
+    self.cadenceGate = cadenceGate
+    state = initialState
+  }
+
+  deinit {
+    task?.cancel()
+  }
+
+  @discardableResult
+  public func start(onEvent: ((AmbientAudioCaptureLoopEvent) -> Void)? = nil) -> Bool {
+    guard task == nil else { return false }
+    state.isRunning = true
+    task = Task { [weak self] in
+      guard let self else { return }
+      while !Task.isCancelled {
+        let event = await self.captureTick()
+        onEvent?(event)
+        do {
+          try await Task.sleep(nanoseconds: self.intervalNanoseconds)
+        } catch {
+          break
+        }
+      }
+    }
+    return true
+  }
+
+  public func stop() {
+    task?.cancel()
+    task = nil
+    state.isRunning = false
+  }
+
+  public func captureTick() async -> AmbientAudioCaptureLoopEvent {
+    let settings = settingsProvider()
+    guard settings.captureEnabled else {
+      return recordSkip("capture disabled")
+    }
+    guard settings.ambientAudioCaptureEnabled else {
+      return recordSkip("ambient audio capture disabled")
+    }
+    guard permissionProvider() else {
+      return recordSkip("microphone permission required")
+    }
+
+    do {
+      if let context = try activeWindowProvider?(), settings.isExcluded(appName: context.appName) {
+        return recordSkip("current app skipped")
+      }
+    } catch {
+      return recordFailure(error.localizedDescription)
+    }
+
+    let periodStartDate = now()
+    do {
+      let pcm16k = try await audioCapture.capturePushToTalkAudio()
+      guard await voiceGate.containsSpeech(pcm16k) else {
+        return recordSkip("no speech detected")
+      }
+      let rawTranscriptText = try await transcription.transcribe(pcm16k)
+      let transcriptText = rawTranscriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+      let capturedAtDate = now()
+      guard cadenceGate.shouldEmit(transcript: transcriptText, capturedAt: capturedAtDate) else {
+        return recordSkip("ambient audio cadence throttled")
+      }
+      let transcript = AmbientAudioTranscript(
+        id: UUID().uuidString,
+        capturedAt: capturedAtDate.protocolTimestamp,
+        periodStart: periodStartDate.protocolTimestamp,
+        periodEnd: capturedAtDate.protocolTimestamp,
+        transcript: transcriptText
+      )
+      let event = try coordinator.accept(transcript: transcript)
+      state.capturedSegmentCount += 1
+      state.publishedEventCount += event == nil ? 0 : 1
+      state.lastCapturedAt = transcript.capturedAt
+      state.lastError = nil
+      state.lastSkipReason = nil
+      return .captured(eventPublished: event != nil)
+    } catch {
+      return recordFailure(error.localizedDescription)
+    }
+  }
+
+  private var intervalNanoseconds: UInt64 {
+    UInt64(intervalSeconds * 1_000_000_000)
+  }
+
+  private func recordSkip(_ reason: String) -> AmbientAudioCaptureLoopEvent {
+    state.skippedCaptureCount += 1
+    state.lastSkipReason = reason
+    state.lastError = nil
+    return .skipped(reason)
+  }
+
+  private func recordFailure(_ reason: String) -> AmbientAudioCaptureLoopEvent {
     state.failedCaptureCount += 1
     state.lastError = reason
     state.lastSkipReason = nil

@@ -398,6 +398,28 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(loaded.messagingFallbackSeconds, 15)
   }
 
+  func testCompilerSettingsDecodeSavedSettingsBeforeVoiceToggles() throws {
+    let savedSettings = """
+      {
+        "captureEnabled": false,
+        "excludedApps": ["Safari"],
+        "contextChangeDebounceSeconds": 4,
+        "sameContextMinimumSeconds": 45,
+        "messagingFallbackSeconds": 12
+      }
+      """.data(using: .utf8)!
+
+    let loaded = try JSONDecoder().decode(CompilerSettings.self, from: savedSettings)
+
+    XCTAssertFalse(loaded.captureEnabled)
+    XCTAssertEqual(loaded.excludedApps, ["Safari"])
+    XCTAssertEqual(loaded.contextChangeDebounceSeconds, 4)
+    XCTAssertEqual(loaded.sameContextMinimumSeconds, 45)
+    XCTAssertEqual(loaded.messagingFallbackSeconds, 12)
+    XCTAssertTrue(loaded.spokenResponsesEnabled)
+    XCTAssertFalse(loaded.ambientAudioCaptureEnabled)
+  }
+
   func testPerceptionPublisherRejectsRawFrameBytes() throws {
     let runtime = RecordingRuntimeClient()
     let publisher = PerceptionPublisher(runtimeClient: runtime)
@@ -469,6 +491,149 @@ final class ScreenMemoryCompilerTests: XCTestCase {
 
     try reopened.removePerceptionEvent(eventId: event.eventId)
     XCTAssertTrue(try reopened.pendingPerceptionEvents(limit: 10).isEmpty)
+  }
+
+  func testAmbientAudioAnalyzerCreatesSummaryArtifactWithoutRawAudio() throws {
+    let transcript = AmbientAudioTranscript(
+      id: "segment-1",
+      capturedAt: "2026-07-05T10:00:10.000Z",
+      periodStart: "2026-07-05T10:00:00.000Z",
+      periodEnd: "2026-07-05T10:00:10.000Z",
+      transcript: "the launch checklist needs owner names before the Friday review"
+    )
+
+    let artifact = try XCTUnwrap(AmbientAudioAnalyzer().analyze(transcript))
+
+    XCTAssertEqual(artifact.id, "ambient-audio-segment-1")
+    XCTAssertEqual(artifact.artifactType, .ambientAudioSummary)
+    XCTAssertEqual(artifact.localRecordRef, "screen-memory://ambient-audio/segment-1")
+    XCTAssertEqual(artifact.signals["audio_source"], .string("microphone"))
+    XCTAssertEqual(artifact.sensitivityLabel, .normal)
+    XCTAssertNil(artifact.rawFrameBytes)
+    XCTAssertNotNil(artifact.embedding)
+  }
+
+  func testAmbientAudioAnalyzerSuppressesSecretTranscriptAndEmbedding() throws {
+    let transcript = AmbientAudioTranscript(
+      id: "secret-segment",
+      capturedAt: "2026-07-05T10:00:10.000Z",
+      periodStart: "2026-07-05T10:00:00.000Z",
+      periodEnd: "2026-07-05T10:00:10.000Z",
+      transcript: "the deploy password is hunter2"
+    )
+
+    let artifact = try XCTUnwrap(AmbientAudioAnalyzer().analyze(transcript))
+
+    XCTAssertEqual(artifact.summary, "Secret-like ambient audio content was detected and suppressed.")
+    XCTAssertEqual(artifact.sensitivityLabel, .secretDetected)
+    XCTAssertNil(artifact.embedding)
+  }
+
+  func testAmbientAudioCoordinatorStoresTranscriptLocallyAndPublishesSummary() throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let coordinator = AmbientAudioCoordinator(
+      audioMemory: store,
+      publisher: PerceptionPublisher(runtimeClient: runtime)
+    )
+
+    let event = try coordinator.accept(
+      transcript: AmbientAudioTranscript(
+        id: "ambient-local",
+        capturedAt: "2026-07-05T10:00:10.000Z",
+        periodStart: "2026-07-05T10:00:00.000Z",
+        periodEnd: "2026-07-05T10:00:10.000Z",
+        transcript: "ship the desktop voice plan after the tests pass"
+      )
+    )
+
+    XCTAssertEqual(event?.artifactType, .ambientAudioSummary)
+    XCTAssertEqual(runtime.perceptionEvents.first?.artifactType, .ambientAudioSummary)
+    XCTAssertEqual(store.recentAudioMemory(limit: 1).first?.transcript, "ship the desktop voice plan after the tests pass")
+  }
+
+  func testAmbientAudioCoordinatorKeepsSecretTranscriptLocalOnly() throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let coordinator = AmbientAudioCoordinator(
+      audioMemory: store,
+      publisher: PerceptionPublisher(runtimeClient: runtime)
+    )
+
+    let event = try coordinator.accept(
+      transcript: AmbientAudioTranscript(
+        id: "ambient-secret",
+        capturedAt: "2026-07-05T10:00:10.000Z",
+        periodStart: "2026-07-05T10:00:00.000Z",
+        periodEnd: "2026-07-05T10:00:10.000Z",
+        transcript: "the deploy password is hunter2"
+      )
+    )
+
+    XCTAssertEqual(event?.summary, "Secret-like ambient audio content was detected and suppressed.")
+    XCTAssertEqual(event?.sensitivityLabel, .secretDetected)
+    XCTAssertEqual(store.recentAudioMemory(limit: 1).first?.transcript, "the deploy password is hunter2")
+    XCTAssertEqual(runtime.perceptionEvents.first?.summary, "Secret-like ambient audio content was detected and suppressed.")
+  }
+
+  func testSQLiteAudioMemoryPersistsLocalTranscripts() throws {
+    let url = try temporaryDatabaseURL()
+    do {
+      let store = try SQLiteScreenMemoryStore(databaseURL: url)
+      store.addAudioMemory(
+        AudioMemoryRecord(
+          id: "audio-1",
+          capturedAt: "2026-07-05T10:00:10.000Z",
+          periodStart: "2026-07-05T10:00:00.000Z",
+          periodEnd: "2026-07-05T10:00:10.000Z",
+          transcript: "local only transcript",
+          summary: "Recent ambient audio: local only transcript"
+        )
+      )
+      XCTAssertNil(store.lastError)
+    }
+
+    let reopened = try SQLiteScreenMemoryStore(databaseURL: url)
+    XCTAssertEqual(try reopened.recentAudioMemoryRecords(limit: 1).first?.transcript, "local only transcript")
+  }
+
+  func testAmbientAudioCadenceGateThrottlesRepeatedTranscript() {
+    var gate = AmbientAudioCadenceGate(minimumIntervalSeconds: 60)
+    let first = Date(timeIntervalSince1970: 100)
+
+    XCTAssertTrue(gate.shouldEmit(transcript: "launch checklist", capturedAt: first))
+    XCTAssertFalse(gate.shouldEmit(transcript: "launch checklist", capturedAt: first.addingTimeInterval(5)))
+    XCTAssertTrue(gate.shouldEmit(transcript: "different launch note", capturedAt: first.addingTimeInterval(6)))
+  }
+
+  @MainActor
+  func testAmbientAudioCaptureLoopPublishesVADGatedTranscript() async throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let coordinator = AmbientAudioCoordinator(
+      audioMemory: store,
+      publisher: PerceptionPublisher(runtimeClient: runtime)
+    )
+    var nowCallCount = 0
+    let loop = AmbientAudioCaptureLoop(
+      coordinator: coordinator,
+      audioCapture: FixedAmbientAudioCaptureService(pcm16k: Data([1, 2, 3, 4])),
+      voiceGate: FixedVoiceActivityGate(hasSpeech: true),
+      transcription: FixedAmbientTranscription(text: "ambient launch checklist"),
+      settingsProvider: { CompilerSettings(ambientAudioCaptureEnabled: true) },
+      permissionProvider: { true },
+      now: {
+        defer { nowCallCount += 1 }
+        return Date(timeIntervalSince1970: nowCallCount == 0 ? 100 : 108)
+      },
+      intervalSeconds: 1
+    )
+
+    let result = await loop.captureTick()
+
+    XCTAssertEqual(result, .captured(eventPublished: true))
+    XCTAssertEqual(runtime.perceptionEvents.first?.artifactType, .ambientAudioSummary)
+    XCTAssertEqual(store.recentAudioMemory(limit: 1).first?.transcript, "ambient launch checklist")
   }
 
   func testCaptureCoordinatorStoresAndPublishesPerception() throws {
@@ -1174,5 +1339,29 @@ final class RecordingRuntimeClient: RuntimeChatClient {
 
   func acknowledge(messageId: String) throws {
     acknowledgements.append(messageId)
+  }
+}
+
+private struct FixedAmbientAudioCaptureService: AudioCaptureService {
+  var pcm16k: Data
+
+  func capturePushToTalkAudio() async throws -> Data {
+    pcm16k
+  }
+}
+
+private struct FixedVoiceActivityGate: VoiceActivityGate {
+  var hasSpeech: Bool
+
+  func containsSpeech(_ pcm16k: Data) async -> Bool {
+    hasSpeech
+  }
+}
+
+private struct FixedAmbientTranscription: LocalTranscriptionService {
+  var text: String
+
+  func transcribe(_ pcm16k: Data) async throws -> String {
+    text
   }
 }

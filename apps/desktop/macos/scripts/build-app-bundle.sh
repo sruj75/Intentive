@@ -68,7 +68,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Intentive uses the microphone only for local push-to-talk transcription.</string>
+    <string>Intentive uses the microphone for local push-to-talk speech recognition and optional ambient audio summaries.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Intentive performs speech recognition on device for push-to-talk voice turns.</string>
   <key>NSCameraUsageDescription</key>
   <string>Intentive does not use the camera.</string>
   <key>NSScreenCaptureUsageDescription</key>

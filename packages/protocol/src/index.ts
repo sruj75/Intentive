@@ -61,6 +61,7 @@ export const perceptionArtifactType = z.enum([
   "searchable_screen_record",
   "focus_signal",
   "activity_summary",
+  "ambient_audio_summary",
 ]);
 export type PerceptionArtifactType = z.infer<typeof perceptionArtifactType>;
 

@@ -8,6 +8,7 @@ public enum DesktopOnboardingStep: String, CaseIterable, Codable, Hashable, Iden
   case floatingBarDemo = "floating_bar"
   case voiceShortcut = "voice_shortcut"
   case voiceDemo = "voice_demo"
+  case ambientAudioConsent = "ambient_audio_consent"
 
   public var id: String { rawValue }
 }
@@ -51,7 +52,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
   public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool {
     switch step {
     case .trustPrimer, .notificationPreview, .floatingBarShortcut, .floatingBarDemo, .voiceShortcut,
-      .voiceDemo:
+      .voiceDemo, .ambientAudioConsent:
       return progress.isReviewed(step)
     case .permissions:
       return progress.isReviewed(step)

@@ -107,6 +107,52 @@ final class VoiceEffectRunnerTests: XCTestCase {
     XCTAssertTrue(overlay.nudges.isEmpty)
     XCTAssertTrue(runtime.acknowledgements.isEmpty)
   }
+
+  func testVoiceTurnCoordinatorSpeaksAnyCompanionReplyWhenEnabled() {
+    let coordinator = VoiceTurnCoordinator(state: .awaitingReply)
+
+    let actions = coordinator.handleCompanionReply(
+      CompanionMessage(
+        messageId: "reply-1",
+        body: "Here is the answer.",
+        emittedAt: "2026-07-05T10:00:00.000Z",
+        viaPostMessageBack: false
+      ),
+      spokenResponsesEnabled: true
+    )
+
+    XCTAssertEqual(actions, [.restoreSystemAudio, .speak("Here is the answer.")])
+    XCTAssertEqual(coordinator.state, .speaking)
+    XCTAssertFalse(coordinator.acceptsMicrophoneAudio)
+  }
+
+  func testVoiceTurnCoordinatorDoesNotSpeakWhenDisabled() {
+    let coordinator = VoiceTurnCoordinator(state: .awaitingReply)
+
+    let actions = coordinator.handleCompanionReply(
+      CompanionMessage(
+        messageId: "reply-1",
+        body: "Silent answer",
+        emittedAt: "2026-07-05T10:00:00.000Z",
+        viaPostMessageBack: true
+      ),
+      spokenResponsesEnabled: false
+    )
+
+    XCTAssertEqual(actions, [.restoreSystemAudio])
+    XCTAssertEqual(coordinator.state, .idle)
+    XCTAssertTrue(coordinator.acceptsMicrophoneAudio)
+  }
+
+  func testVoiceTurnCoordinatorStopsPlaybackOnBargeIn() {
+    let coordinator = VoiceTurnCoordinator(state: .speaking)
+
+    let actions = coordinator.beginCapture()
+
+    XCTAssertEqual(actions, [.stopPlayback, .muteSystemAudio])
+    XCTAssertEqual(coordinator.state, .capturing)
+    XCTAssertTrue(coordinator.acceptsMicrophoneAudio)
+  }
 }
 
 private struct FixedAudioCapture: AudioCaptureService {

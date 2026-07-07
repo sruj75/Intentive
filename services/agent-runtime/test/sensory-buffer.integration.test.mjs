@@ -70,6 +70,25 @@ test(
   },
 );
 
+test("Sensory Buffer renders ambient audio Perception Events", { skip }, async () => {
+  const session = boundSession(randomUUID());
+  const channel = channelFor();
+
+  await channel.accept(
+    session,
+    perceptionEvent(
+      "ambient_audio_1",
+      "2026-06-09T00:03:00.000Z",
+      "nearby speech discussed the launch checklist",
+      "ambient_audio_summary",
+    ),
+  );
+
+  const latest = await sensoryBuffer.readLatest(session.userId);
+  assert.match(latest, /Artifact: ambient_audio_summary/);
+  assert.match(latest, /nearby speech discussed the launch checklist/);
+});
+
 test(
   "Sensory Buffer picks whichever perception event arrived most recently",
   { skip },
@@ -183,7 +202,7 @@ function boundSession(userId) {
   };
 }
 
-function perceptionEvent(eventId, capturedAt, summary) {
+function perceptionEvent(eventId, capturedAt, summary, artifactType = "searchable_screen_record") {
   return {
     type: "perception_event",
     event_id: eventId,
@@ -191,7 +210,7 @@ function perceptionEvent(eventId, capturedAt, summary) {
     captured_at: capturedAt,
     period_start: "2026-06-08T23:55:00.000Z",
     period_end: capturedAt,
-    artifact_type: "searchable_screen_record",
+    artifact_type: artifactType,
     summary,
     signals: { app: "Code" },
     sensitivity_label: "normal",

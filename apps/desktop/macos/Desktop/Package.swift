@@ -17,7 +17,10 @@ let package = Package(
       url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
       exact: "1.24.2"
     ),
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.4"),
+    .package(
+      url: "https://github.com/RunanywhereAI/runanywhere-sdks",
+      revision: "3ebae86014588d8c06a548540c6c14aeb017de1d"
+    ),
   ],
   targets: [
     .target(
@@ -28,7 +31,9 @@ let package = Package(
       name: "IntentiveDesktopNativeAdapters",
       dependencies: [
         "IntentiveDesktopCore",
-        .product(name: "FluidAudio", package: "FluidAudio"),
+        .product(name: "RunAnywhere", package: "runanywhere-sdks"),
+        .product(name: "RunAnywhereONNX", package: "runanywhere-sdks"),
+        .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
       ],
       path: "Sources/IntentiveDesktopNativeAdapters"
     ),
@@ -36,7 +41,6 @@ let package = Package(
       name: "IntentiveDesktopNativeAssets",
       dependencies: [
         "IntentiveDesktopCore",
-        .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
       ],
       path: "Sources",
       exclude: [
@@ -93,9 +97,11 @@ let package = Package(
         "Resources/tray_icon.png",
         "Rewind",
         "ScreenActivitySyncService.swift",
+        "SileroPushToTalkVADPredictor.swift",
         "Theme",
         "TranscriptionRetryService.swift",
         "UpdaterViewModel.swift",
+        "VADGateService.swift",
         "WhatsNewToast.swift",
       ],
       sources: [
@@ -110,7 +116,6 @@ let package = Package(
         "NotificationRegistrationRepair.swift",
         "ScreenCaptureService.swift",
         "ScreenRecordingPermissionPolicy.swift",
-        "SileroPushToTalkVADPredictor.swift",
         "SpatialOverlay/SpatialOverlayCore.swift",
         "SpatialOverlay/SpatialOverlayDogfood.swift",
         "SpatialOverlay/SpatialOverlayGeometry.swift",
@@ -118,7 +123,6 @@ let package = Package(
         "SpatialOverlay/SpatialOverlayResolver.swift",
         "SystemAudioCaptureService.swift",
         "UpdateRelaunchWindowPolicy.swift",
-        "VADGateService.swift",
       ],
       resources: [
         .process("Resources/silero_vad.onnx")
@@ -160,7 +164,6 @@ let package = Package(
         "ScreenCaptureWebPTests.swift",
         "ScreenPrivacyExclusionTests.swift",
         "ShortcutSettingsTests.swift",
-        "StreamingPCMPlaybackQueueTests.swift",
         "TranscriptionFinalizationStateMachineTests.swift",
         "TranscriptionSessionRecordTests.swift",
         "TranscriptionStorageRecoveryTests.swift",

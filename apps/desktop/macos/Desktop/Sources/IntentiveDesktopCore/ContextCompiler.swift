@@ -54,25 +54,79 @@ public protocol DesktopWindowContextSource: DesktopCaptureSource {
   func activeWindowContext() throws -> DesktopWindowContext
 }
 
+public struct AmbientAudioTranscript: Equatable, Sendable {
+  public var id: String
+  public var capturedAt: String
+  public var periodStart: String
+  public var periodEnd: String
+  public var transcript: String
+  public var source: String
+
+  public init(
+    id: String,
+    capturedAt: String,
+    periodStart: String,
+    periodEnd: String,
+    transcript: String,
+    source: String = "microphone"
+  ) {
+    self.id = id
+    self.capturedAt = capturedAt
+    self.periodStart = periodStart
+    self.periodEnd = periodEnd
+    self.transcript = transcript
+    self.source = source
+  }
+}
+
 public struct CompilerSettings: Codable, Equatable, Sendable {
   public var captureEnabled: Bool
   public var excludedApps: Set<String>
   public var contextChangeDebounceSeconds: Double
   public var sameContextMinimumSeconds: Double
   public var messagingFallbackSeconds: Double
+  public var spokenResponsesEnabled: Bool
+  public var ambientAudioCaptureEnabled: Bool
 
   public init(
     captureEnabled: Bool = true,
     excludedApps: Set<String> = [],
     contextChangeDebounceSeconds: Double = 3,
     sameContextMinimumSeconds: Double = 60,
-    messagingFallbackSeconds: Double = 15
+    messagingFallbackSeconds: Double = 15,
+    spokenResponsesEnabled: Bool = true,
+    ambientAudioCaptureEnabled: Bool = false
   ) {
     self.captureEnabled = captureEnabled
     self.excludedApps = excludedApps
     self.contextChangeDebounceSeconds = contextChangeDebounceSeconds
     self.sameContextMinimumSeconds = sameContextMinimumSeconds
     self.messagingFallbackSeconds = messagingFallbackSeconds
+    self.spokenResponsesEnabled = spokenResponsesEnabled
+    self.ambientAudioCaptureEnabled = ambientAudioCaptureEnabled
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case captureEnabled
+    case excludedApps
+    case contextChangeDebounceSeconds
+    case sameContextMinimumSeconds
+    case messagingFallbackSeconds
+    case spokenResponsesEnabled
+    case ambientAudioCaptureEnabled
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      captureEnabled: try container.decodeIfPresent(Bool.self, forKey: .captureEnabled) ?? true,
+      excludedApps: try container.decodeIfPresent(Set<String>.self, forKey: .excludedApps) ?? [],
+      contextChangeDebounceSeconds: try container.decodeIfPresent(Double.self, forKey: .contextChangeDebounceSeconds) ?? 3,
+      sameContextMinimumSeconds: try container.decodeIfPresent(Double.self, forKey: .sameContextMinimumSeconds) ?? 60,
+      messagingFallbackSeconds: try container.decodeIfPresent(Double.self, forKey: .messagingFallbackSeconds) ?? 15,
+      spokenResponsesEnabled: try container.decodeIfPresent(Bool.self, forKey: .spokenResponsesEnabled) ?? true,
+      ambientAudioCaptureEnabled: try container.decodeIfPresent(Bool.self, forKey: .ambientAudioCaptureEnabled) ?? false
+    )
   }
 
   public func isExcluded(appName: String) -> Bool {
@@ -249,6 +303,83 @@ public struct ActivitySummaryAnalyzer {
       localRecordRef: "screen-memory://activity/\(last.id)",
       embedding: nil
     )
+  }
+}
+
+public struct AmbientAudioAnalyzer {
+  private let embeddingService: LocalEmbeddingService
+  private let secretDetector: HardSecretDetector
+
+  public init(
+    embeddingService: LocalEmbeddingService = LocalEmbeddingService(),
+    secretDetector: HardSecretDetector = HardSecretDetector()
+  ) {
+    self.embeddingService = embeddingService
+    self.secretDetector = secretDetector
+  }
+
+  public func analyze(
+    _ transcript: AmbientAudioTranscript,
+    retentionClass: String = "audio_memory_30d"
+  ) throws -> CompiledPerceptionArtifact? {
+    let words = transcript.transcript.split(whereSeparator: \.isWhitespace)
+    guard !words.isEmpty else { return nil }
+
+    let hasSecret = secretDetector.containsSecret(transcript.transcript)
+    let summary =
+      hasSecret
+      ? "Secret-like ambient audio content was detected and suppressed."
+      : compactSummary(words: words)
+    return CompiledPerceptionArtifact(
+      id: "ambient-audio-\(transcript.id)",
+      artifactType: .ambientAudioSummary,
+      capturedAt: transcript.capturedAt,
+      periodStart: transcript.periodStart,
+      periodEnd: transcript.periodEnd,
+      summary: summary,
+      signals: [
+        "audio_source": .string(transcript.source),
+        "transcript_redacted": .bool(hasSecret),
+        "transcript_word_count": .number(Double(words.count)),
+      ],
+      retentionClass: retentionClass,
+      sensitivityLabel: hasSecret ? .secretDetected : .normal,
+      confidence: hasSecret ? 0.45 : 0.76,
+      localRecordRef: "screen-memory://ambient-audio/\(transcript.id)",
+      embedding: hasSecret ? nil : try embeddingService.embed(summary),
+      rawFrameBytes: nil
+    )
+  }
+
+  private func compactSummary(words: [Substring]) -> String {
+    let compacted = words.prefix(24).joined(separator: " ")
+    return "Recent ambient audio: \(compacted)"
+  }
+}
+
+public struct AmbientAudioCadenceGate: Sendable {
+  private var lastTranscript: String?
+  private var lastCapturedAt: Date?
+  public var minimumIntervalSeconds: TimeInterval
+
+  public init(minimumIntervalSeconds: TimeInterval = 20) {
+    self.minimumIntervalSeconds = max(0, minimumIntervalSeconds)
+  }
+
+  public mutating func shouldEmit(transcript: String, capturedAt: Date) -> Bool {
+    let normalized = transcript
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    guard !normalized.isEmpty else { return false }
+    defer {
+      lastTranscript = normalized
+      lastCapturedAt = capturedAt
+    }
+    guard let lastTranscript, let lastCapturedAt else { return true }
+    if normalized == lastTranscript, capturedAt.timeIntervalSince(lastCapturedAt) < minimumIntervalSeconds {
+      return false
+    }
+    return true
   }
 }
 

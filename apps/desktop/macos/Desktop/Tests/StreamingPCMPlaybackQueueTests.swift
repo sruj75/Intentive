@@ -1,5 +1,5 @@
 import XCTest
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAdapters
 
 final class StreamingPCMPlaybackQueueTests: XCTestCase {
   private final class BufferBox {}
@@ -9,13 +9,15 @@ final class StreamingPCMPlaybackQueueTests: XCTestCase {
       contentsOf: URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("Sources/FloatingControlBar/StreamingPCMPlayer.swift"),
+        .appendingPathComponent("Sources/IntentiveDesktopNativeAdapters/StreamingSpeechPlaybackService.swift"),
       encoding: .utf8
     )
 
     XCTAssertTrue(source.contains("var onPlaybackScheduled: ((Int) -> Void)?"))
-    XCTAssertTrue(source.contains("let scheduledPlaybackEpoch = playbackEpoch\n    onPlaybackScheduled?(scheduledPlaybackEpoch)"))
-    XCTAssertTrue(source.contains("for buffer in buffersToReplay {\n        self.schedule(buffer)\n      }"))
+    XCTAssertTrue(source.contains("let scheduledPlaybackEpoch = playbackEpoch"))
+    XCTAssertTrue(source.contains("onPlaybackScheduled?(scheduledPlaybackEpoch)"))
+    XCTAssertTrue(source.contains("for buffer in buffersToReplay {"))
+    XCTAssertTrue(source.contains("self.schedule(buffer)"))
   }
 
   func testConfigurationChangeReturnsScheduledTailForReplay() {
