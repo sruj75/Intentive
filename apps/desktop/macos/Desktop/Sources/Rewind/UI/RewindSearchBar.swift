@@ -17,12 +17,12 @@ struct RewindSearchBar: View {
             // Search field
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(isSearchFocused ? OmiColors.purplePrimary : OmiColors.textTertiary)
+                    .foregroundColor(isSearchFocused ? IntentiveColors.purplePrimary : IntentiveColors.textTertiary)
                     .animation(.easeInOut(duration: 0.15), value: isSearchFocused)
 
                 TextField("Search your screen history...", text: $searchQuery)
                     .textFieldStyle(.plain)
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
                     .focused($isSearchFocused)
 
                 if isSearching {
@@ -36,7 +36,7 @@ struct RewindSearchBar: View {
                         searchQuery = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(OmiColors.textTertiary)
+                            .foregroundColor(IntentiveColors.textTertiary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -45,10 +45,10 @@ struct RewindSearchBar: View {
                 if searchQuery.isEmpty && !isSearchFocused {
                     Text("⌘F")
                         .scaledFont(size: 10, weight: .medium, design: .monospaced)
-                        .foregroundColor(OmiColors.textQuaternary)
+                        .foregroundColor(IntentiveColors.textQuaternary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(OmiColors.backgroundQuaternary)
+                        .background(IntentiveColors.backgroundQuaternary)
                         .cornerRadius(3)
                 }
             }
@@ -56,10 +56,10 @@ struct RewindSearchBar: View {
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(OmiColors.backgroundTertiary)
+                    .fill(IntentiveColors.backgroundTertiary)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(isSearchFocused ? OmiColors.purplePrimary.opacity(0.5) : Color.clear, lineWidth: 1)
+                            .stroke(isSearchFocused ? IntentiveColors.purplePrimary.opacity(0.5) : Color.clear, lineWidth: 1)
                     )
             )
 
@@ -114,14 +114,14 @@ struct RewindSearchBar: View {
                         Image(systemName: "chevron.down")
                             .scaledFont(size: 10)
                     }
-                    .foregroundColor(selectedApp != nil ? OmiColors.textPrimary : OmiColors.textSecondary)
+                    .foregroundColor(selectedApp != nil ? IntentiveColors.textPrimary : IntentiveColors.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .background(selectedApp != nil ? Color.white : OmiColors.backgroundTertiary)
+                    .background(selectedApp != nil ? Color.white : IntentiveColors.backgroundTertiary)
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(selectedApp != nil ? OmiColors.border : Color.clear, lineWidth: 1)
+                            .stroke(selectedApp != nil ? IntentiveColors.border : Color.clear, lineWidth: 1)
                     )
                 }
                 .menuStyle(.borderlessButton)
@@ -160,10 +160,10 @@ struct RewindSearchBar: View {
                             Text("Clear")
                         }
                         .scaledFont(size: 11)
-                        .foregroundColor(OmiColors.textTertiary)
+                        .foregroundColor(IntentiveColors.textTertiary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(OmiColors.backgroundQuaternary)
+                        .background(IntentiveColors.backgroundQuaternary)
                         .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -181,14 +181,14 @@ struct RewindSearchBar: View {
         } label: {
             Text(title)
                 .scaledFont(size: 12, weight: isSelected ? .semibold : .regular)
-                .foregroundColor(isSelected ? OmiColors.textPrimary : OmiColors.textTertiary)
+                .foregroundColor(isSelected ? IntentiveColors.textPrimary : IntentiveColors.textTertiary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(isSelected ? Color.white : Color.clear)
                 .cornerRadius(6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(isSelected ? OmiColors.border : Color.clear, lineWidth: 1)
+                        .stroke(isSelected ? IntentiveColors.border : Color.clear, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -219,6 +219,6 @@ struct RewindSearchBar: View {
         )
     }
     .padding()
-    .background(OmiColors.backgroundPrimary)
+    .background(IntentiveColors.backgroundPrimary)
 }
 #endif

@@ -98,22 +98,22 @@ private struct WhatsNewToastCard: View {
         HStack(alignment: .top, spacing: 8) {
           Text("omi updated")
             .scaledFont(size: 14, weight: .semibold)
-            .foregroundColor(OmiColors.textPrimary)
+            .foregroundColor(IntentiveColors.textPrimary)
           Spacer(minLength: 0)
           closeButton
         }
 
         Text(version.isEmpty ? "A new version is installed" : "Now on version \(version)")
           .scaledFont(size: 12)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
 
         HStack(spacing: 4) {
           Text("See what's new")
             .scaledFont(size: 12, weight: .medium)
-            .foregroundColor(OmiColors.purpleSecondary)
+            .foregroundColor(IntentiveColors.purpleSecondary)
           Image(systemName: "arrow.up.right")
             .scaledFont(size: 10, weight: .semibold)
-            .foregroundColor(OmiColors.purpleSecondary)
+            .foregroundColor(IntentiveColors.purpleSecondary)
         }
         .padding(.top, 3)
       }
@@ -122,11 +122,11 @@ private struct WhatsNewToastCard: View {
     .frame(width: 304, alignment: .topLeading)
     .background(
       RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .fill(OmiColors.backgroundRaised)
+        .fill(IntentiveColors.backgroundRaised)
     )
     .overlay(
       RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(OmiColors.border, lineWidth: 1)
+        .stroke(IntentiveColors.border, lineWidth: 1)
     )
     .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
     .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -141,7 +141,7 @@ private struct WhatsNewToastCard: View {
         Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
       } else {
         Image(systemName: "sparkles").resizable().aspectRatio(contentMode: .fit)
-          .foregroundColor(OmiColors.purplePrimary)
+          .foregroundColor(IntentiveColors.purplePrimary)
       }
     }
     .frame(width: 34, height: 34)
@@ -151,7 +151,7 @@ private struct WhatsNewToastCard: View {
     Button(action: onClose) {
       Image(systemName: "xmark")
         .scaledFont(size: 10, weight: .bold)
-        .foregroundColor(OmiColors.textTertiary)
+        .foregroundColor(IntentiveColors.textTertiary)
         .padding(4)
         .contentShape(Rectangle())
     }

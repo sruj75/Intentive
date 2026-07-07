@@ -152,6 +152,51 @@ final class DesktopRuntimeSessionTests: XCTestCase {
     XCTAssertNil(session.registeredDeviceId)
     XCTAssertEqual(socket.closeCount, 1)
   }
+
+  func testRuntimeCloseMarksAdapterLostAndPreservesQueueForNextRoute() async throws {
+    let auth = FakeAuthAdapter(token: "user-jwt")
+    let controlPlane = FakeDesktopControlPlane(
+      accountState: AccountState(
+        userId: "user-1",
+        hasAgentInstance: true,
+        hasDesktopClient: true
+      ),
+      routingResult: .ok(
+        AgentRoute(
+          agentInstanceId: "agent-1",
+          wsURL: URL(string: "wss://runtime.test")!,
+          runtimeJWT: "runtime-jwt"
+        )
+      )
+    )
+    let socket = SessionFakeRuntimeSocket()
+    let runtime = RuntimeAdapter(socket: socket, clientVersion: "desktop-test")
+    let session = DesktopRuntimeSessionCoordinator(
+      auth: auth,
+      controlPlane: controlPlane,
+      device: ClientDeviceService(deviceId: "fingerprint-1"),
+      runtime: runtime,
+      capturePermissionGranted: { true }
+    )
+    _ = await session.restoreAndConnect()
+    try runtime.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+
+    session.markRuntimeClosed(reason: "network dropped")
+    let queued = try runtime.sendUserMessage("queued while offline")
+    _ = await session.restoreAndConnect()
+    try runtime.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+
+    XCTAssertEqual(session.state, .connecting)
+    XCTAssertEqual(runtime.messageStore.message(id: queued.id)?.status, .pending)
+    XCTAssertEqual(
+      socket.sentObjects.compactMap { $0["type"] as? String },
+      ["connect", "connect", "user_message"]
+    )
+  }
 }
 
 private final class FakeAuthAdapter: AuthAdapter {

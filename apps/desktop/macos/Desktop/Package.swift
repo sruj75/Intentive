@@ -12,6 +12,13 @@ let package = Package(
     .library(name: "IntentiveDesktopNativeAdapters", targets: ["IntentiveDesktopNativeAdapters"]),
     .library(name: "IntentiveDesktopNativeAssets", targets: ["IntentiveDesktopNativeAssets"]),
   ],
+  dependencies: [
+    .package(
+      url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
+      exact: "1.24.2"
+    ),
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.4"),
+  ],
   targets: [
     .target(
       name: "IntentiveDesktopCore",
@@ -19,11 +26,18 @@ let package = Package(
     ),
     .target(
       name: "IntentiveDesktopNativeAdapters",
-      dependencies: ["IntentiveDesktopCore"],
+      dependencies: [
+        "IntentiveDesktopCore",
+        .product(name: "FluidAudio", package: "FluidAudio"),
+      ],
       path: "Sources/IntentiveDesktopNativeAdapters"
     ),
     .target(
       name: "IntentiveDesktopNativeAssets",
+      dependencies: [
+        "IntentiveDesktopCore",
+        .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
+      ],
       path: "Sources",
       exclude: [
         "AppBuild.swift",
@@ -58,6 +72,16 @@ let package = Package(
         "LocalTranscriptionService.swift",
         "Logger.swift",
         "MainWindow",
+        "OnboardingFloatingBarDemoView.swift",
+        "OnboardingFloatingBarShortcutStepView.swift",
+        "OnboardingFlow.swift",
+        "OnboardingNotificationStepView.swift",
+        "OnboardingPermissionStepView.swift",
+        "OnboardingStepScaffold.swift",
+        "OnboardingTrustStepView.swift",
+        "OnboardingView.swift",
+        "OnboardingVoiceDemoView.swift",
+        "OnboardingVoiceShortcutStepView.swift",
         "ProactiveAssistants",
         "Resources/AppIcon.icns",
         "Resources/accessibility_permission.gif",
@@ -86,6 +110,7 @@ let package = Package(
         "NotificationRegistrationRepair.swift",
         "ScreenCaptureService.swift",
         "ScreenRecordingPermissionPolicy.swift",
+        "SileroPushToTalkVADPredictor.swift",
         "SpatialOverlay/SpatialOverlayCore.swift",
         "SpatialOverlay/SpatialOverlayDogfood.swift",
         "SpatialOverlay/SpatialOverlayGeometry.swift",
@@ -101,12 +126,20 @@ let package = Package(
     ),
     .executableTarget(
       name: "Intentive",
-      dependencies: ["IntentiveDesktopCore", "IntentiveDesktopNativeAdapters"],
+      dependencies: [
+        "IntentiveDesktopCore",
+        "IntentiveDesktopNativeAdapters",
+        "IntentiveDesktopNativeAssets",
+      ],
       path: "Sources/Intentive"
     ),
     .testTarget(
       name: "IntentiveDesktopCoreTests",
-      dependencies: ["IntentiveDesktopCore", "IntentiveDesktopNativeAssets"],
+      dependencies: [
+        "IntentiveDesktopCore",
+        "IntentiveDesktopNativeAdapters",
+        "IntentiveDesktopNativeAssets",
+      ],
       path: "Tests",
       exclude: [
         // Restored Omi subsystem tests stay in-tree as renovation assets until

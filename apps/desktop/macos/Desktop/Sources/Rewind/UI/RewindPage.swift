@@ -68,9 +68,9 @@ struct RewindPage: View {
     }
 
     private var finishButtonBackground: Color {
-        if showSavedSuccess { return OmiColors.success }
-        if showDiscarded { return OmiColors.warning }
-        if showError { return OmiColors.error }
+        if showSavedSuccess { return IntentiveColors.success }
+        if showDiscarded { return IntentiveColors.warning }
+        if showError { return IntentiveColors.error }
         return .white
     }
 
@@ -321,7 +321,7 @@ struct RewindPage: View {
     private var rewindToggle: some View {
         ZStack {
             Capsule()
-                .fill(isMonitoring ? OmiColors.purplePrimary : Color.red)
+                .fill(isMonitoring ? IntentiveColors.purplePrimary : Color.red)
                 .frame(width: 36, height: 20)
 
             Circle()
@@ -499,7 +499,7 @@ struct RewindPage: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(OmiColors.backgroundTertiary.opacity(0.8))
+        .background(IntentiveColors.backgroundTertiary.opacity(0.8))
     }
 
     // MARK: - Timeline Content Body (without top bar)
@@ -611,7 +611,7 @@ struct RewindPage: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .scaledFont(size: 12)
-                .foregroundColor(isSearchFocused ? OmiColors.purplePrimary : .white.opacity(0.5))
+                .foregroundColor(isSearchFocused ? IntentiveColors.purplePrimary : .white.opacity(0.5))
 
             TextField("Search your screen history...", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
@@ -658,7 +658,7 @@ struct RewindPage: View {
                 .fill(Color.white.opacity(0.1))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSearchFocused ? OmiColors.purplePrimary.opacity(0.5) : Color.clear, lineWidth: 1)
+                        .stroke(isSearchFocused ? IntentiveColors.purplePrimary.opacity(0.5) : Color.clear, lineWidth: 1)
                 )
         )
     }
@@ -1046,12 +1046,12 @@ struct RewindPage: View {
             } else {
                 ZStack {
                     Circle()
-                        .fill(OmiColors.purplePrimary.opacity(0.1))
+                        .fill(IntentiveColors.purplePrimary.opacity(0.1))
                         .frame(width: 80, height: 80)
 
                     Image(systemName: "clock.arrow.circlepath")
                         .scaledFont(size: 36)
-                        .foregroundColor(OmiColors.purplePrimary.opacity(0.6))
+                        .foregroundColor(IntentiveColors.purplePrimary.opacity(0.6))
                 }
 
                 Text("No Screenshots Yet")
@@ -1111,7 +1111,7 @@ struct RewindPage: View {
                 } label: {
                     Text("Rebuild Index")
                         .scaledFont(size: 11, weight: .medium)
-                        .foregroundColor(OmiColors.textPrimary)
+                        .foregroundColor(IntentiveColors.textPrimary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(Color.white)
@@ -1179,12 +1179,12 @@ struct RewindPage: View {
         VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(OmiColors.error.opacity(0.1))
+                    .fill(IntentiveColors.error.opacity(0.1))
                     .frame(width: 80, height: 80)
 
                 Image(systemName: "exclamationmark.triangle")
                     .scaledFont(size: 36)
-                    .foregroundColor(OmiColors.error)
+                    .foregroundColor(IntentiveColors.error)
             }
 
             Text("Failed to Load Screenshots")
@@ -1203,7 +1203,7 @@ struct RewindPage: View {
                     Text("Retry")
                 }
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(Color.white)
@@ -1247,7 +1247,7 @@ struct RewindPage: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(OmiColors.backgroundTertiary.opacity(0.8))
+                .background(IntentiveColors.backgroundTertiary.opacity(0.8))
             }
 
             // Split panel: transcript (left) + notes (right)
@@ -1267,11 +1267,11 @@ struct RewindPage: View {
                         )
                     }
                     .frame(width: transcriptWidth)
-                    .background(OmiColors.backgroundPrimary)
+                    .background(IntentiveColors.backgroundPrimary)
 
                     // Divider
                     Rectangle()
-                        .fill(OmiColors.border)
+                        .fill(IntentiveColors.border)
                         .frame(width: 1)
 
                     // Right: Notes
@@ -1280,7 +1280,7 @@ struct RewindPage: View {
                 }
             }
         }
-        .background(OmiColors.backgroundPrimary)
+        .background(IntentiveColors.backgroundPrimary)
         .task {
             await appState?.fetchPeople()
         }
@@ -1325,13 +1325,13 @@ struct RewindPage: View {
                         RecordingBarTranscriptText()
                         Image(systemName: isTranscriptExpanded ? "chevron.up" : "chevron.down")
                             .scaledFont(size: 10, weight: .semibold)
-                            .foregroundColor(OmiColors.textTertiary)
+                            .foregroundColor(IntentiveColors.textTertiary)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(OmiColors.backgroundTertiary.opacity(0.5))
+                            .fill(IntentiveColors.backgroundTertiary.opacity(0.5))
                     )
                 }
                 .buttonStyle(.plain)
@@ -1345,14 +1345,14 @@ struct RewindPage: View {
                 // Saving indicator
                 ZStack {
                     Circle()
-                        .fill(OmiColors.purplePrimary.opacity(0.3))
+                        .fill(IntentiveColors.purplePrimary.opacity(0.3))
                         .frame(width: 24, height: 24)
                         .scaleEffect(isSavingPulsing ? 1.5 : 1.0)
                         .opacity(isSavingPulsing ? 0.0 : 0.6)
 
                     Image(systemName: "arrow.up.circle.fill")
                         .scaledFont(size: 16)
-                        .foregroundColor(OmiColors.purplePrimary)
+                        .foregroundColor(IntentiveColors.purplePrimary)
                         .scaleEffect(isSavingPulsing ? 1.1 : 1.0)
                 }
                 .animation(
@@ -1365,7 +1365,7 @@ struct RewindPage: View {
 
                 Text("Saving conversation...")
                     .scaledFont(size: 14, weight: .medium)
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
 
                 ProgressView()
                     .scaleEffect(0.7)
@@ -1400,7 +1400,7 @@ struct RewindPage: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
                     .background(Capsule().fill(finishButtonBackground))
-                    .overlay(Capsule().stroke(OmiColors.border, lineWidth: 1))
+                    .overlay(Capsule().stroke(IntentiveColors.border, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .disabled(isFinishing || showSavedSuccess || showDiscarded || showError)
@@ -1410,7 +1410,7 @@ struct RewindPage: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(OmiColors.backgroundTertiary.opacity(0.8))
+        .background(IntentiveColors.backgroundTertiary.opacity(0.8))
     }
 
     // MARK: - Audio Toggle
@@ -1418,7 +1418,7 @@ struct RewindPage: View {
     private func audioToggle(appState: AppState) -> some View {
         ZStack {
             Capsule()
-                .fill(appState.isTranscribing ? OmiColors.purplePrimary : Color.red)
+                .fill(appState.isTranscribing ? IntentiveColors.purplePrimary : Color.red)
                 .frame(width: 36, height: 20)
 
             Circle()
@@ -1499,7 +1499,7 @@ struct SearchResultListItem: View {
                         AppIconView(appName: screenshot.appName, size: 16)
                         Text(screenshot.appName)
                             .scaledFont(size: 12, weight: .medium)
-                            .foregroundColor(OmiColors.purplePrimary)
+                            .foregroundColor(IntentiveColors.purplePrimary)
                         if let windowTitle = screenshot.windowTitle, !windowTitle.isEmpty {
                             Text("›")
                                 .foregroundColor(.white.opacity(0.3))
@@ -1556,12 +1556,12 @@ struct SearchResultListItem: View {
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? OmiColors.purplePrimary.opacity(0.15) :
+                    .fill(isSelected ? IntentiveColors.purplePrimary.opacity(0.15) :
                           (isHovered ? Color.white.opacity(0.05) : Color.clear))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? OmiColors.purplePrimary.opacity(0.4) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? IntentiveColors.purplePrimary.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1644,7 +1644,7 @@ struct SearchResultGroupItem: View {
                         AppIconView(appName: group.appName, size: 16)
                         Text(group.appName)
                             .scaledFont(size: 12, weight: .medium)
-                            .foregroundColor(OmiColors.purplePrimary)
+                            .foregroundColor(IntentiveColors.purplePrimary)
                         if let windowTitle = group.windowTitle, !windowTitle.isEmpty {
                             Text("›")
                                 .foregroundColor(.white.opacity(0.3))
@@ -1674,10 +1674,10 @@ struct SearchResultGroupItem: View {
                                 Text("\(group.count) screenshots")
                             }
                             .scaledFont(size: 10)
-                            .foregroundColor(OmiColors.purplePrimary.opacity(0.8))
+                            .foregroundColor(IntentiveColors.purplePrimary.opacity(0.8))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(OmiColors.purplePrimary.opacity(0.15))
+                            .background(IntentiveColors.purplePrimary.opacity(0.15))
                             .cornerRadius(4)
                         }
 
@@ -1717,12 +1717,12 @@ struct SearchResultGroupItem: View {
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? OmiColors.purplePrimary.opacity(0.15) :
+                    .fill(isSelected ? IntentiveColors.purplePrimary.opacity(0.15) :
                           (isHovered ? Color.white.opacity(0.05) : Color.clear))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? OmiColors.purplePrimary.opacity(0.4) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? IntentiveColors.purplePrimary.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1833,19 +1833,19 @@ struct SearchResultRow: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .scaledFont(size: 14)
-                        .foregroundColor(OmiColors.purplePrimary)
+                        .foregroundColor(IntentiveColors.purplePrimary)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? OmiColors.purplePrimary.opacity(0.2) :
+                    .fill(isSelected ? IntentiveColors.purplePrimary.opacity(0.2) :
                           (isHovered ? Color.white.opacity(0.1) : Color.white.opacity(0.05)))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? OmiColors.purplePrimary.opacity(0.5) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? IntentiveColors.purplePrimary.opacity(0.5) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

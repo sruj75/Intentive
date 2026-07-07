@@ -63,7 +63,13 @@ public final class MessageStore {
   }
 
   public func replaceServerWindow(_ snapshot: SessionSnapshot) {
-    messages = snapshot.messages.map(Self.serverMessage)
+    let serverMessages = snapshot.messages.map(Self.serverMessage)
+    let serverIds = Set(serverMessages.map(\.id))
+    let pendingLocalMessages = messages.filter { message in
+      guard message.author == .user, case .pending = message.status else { return false }
+      return !serverIds.contains(message.id)
+    }
+    messages = serverMessages + pendingLocalMessages
     beforeCursor = snapshot.beforeCursor
   }
 
@@ -223,6 +229,13 @@ public final class RuntimeAdapter: RuntimeChatClient {
     connectionGeneration += 1
     status = .disconnected
     outboundQueue.removeAll()
+    failPendingUserMessages(reason: "Runtime Bridge disconnected.")
+    socket.close()
+  }
+
+  public func markConnectionLost(reason: String? = nil) {
+    connectionGeneration += 1
+    status = reason.map(RuntimeConnectionStatus.failed) ?? .disconnected
     socket.close()
   }
 
@@ -318,5 +331,12 @@ public final class RuntimeAdapter: RuntimeChatClient {
     for data in pending {
       try socket.send(data)
     }
+  }
+
+  private func failPendingUserMessages(reason: String) {
+    for messageId in pendingUserMessages.keys {
+      messageStore.markFailed(messageId, reason: reason)
+    }
+    pendingUserMessages.removeAll()
   }
 }

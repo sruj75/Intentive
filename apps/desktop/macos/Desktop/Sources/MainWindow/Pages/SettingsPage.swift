@@ -18,7 +18,7 @@ struct SettingsPage: View {
           HStack {
             Text(selectedSection.rawValue)
               .scaledFont(size: 28, weight: .bold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
               .id(selectedSection)
               .transition(.opacity)
               .animation(.easeInOut(duration: 0.15), value: selectedSection)
@@ -50,7 +50,7 @@ struct SettingsPage: View {
         }
       }
     }
-    .background(OmiColors.backgroundSecondary.opacity(0.3))
+    .background(IntentiveColors.backgroundSecondary.opacity(0.3))
     .onAppear {
       AnalyticsManager.shared.settingsPageOpened()
     }

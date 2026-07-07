@@ -114,10 +114,108 @@ public final class PushToTalkManager {
   @discardableResult
   public func captureAndSend() async throws -> ChatMessage? {
     let pcm16k = try await audioCapture.capturePushToTalkAudio()
+    return try await processAndSend(pcm16k: pcm16k)
+  }
+
+  @discardableResult
+  public func processAndSend(pcm16k: Data) async throws -> ChatMessage? {
     guard voiceGate.containsSpeech(pcm16k) else { return nil }
     let transcript = try await transcription.transcribe(pcm16k)
     guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return try runtimeClient.sendUserMessage(transcript)
+  }
+}
+
+public enum PushToTalkShortcutState: Equatable, Sendable {
+  case idle
+  case listening
+  case pendingLockDecision
+  case lockedListening
+  case finalizing
+}
+
+public enum PushToTalkShortcutAction: Equatable, Sendable {
+  case startRecording
+  case stopRecordingAndSend
+  case stopRecordingAndHoldForLock
+  case sendPendingRecording
+  case discardPendingRecording
+  case schedulePendingLockTimeout(after: TimeInterval)
+  case cancelPendingLockTimeout
+}
+
+public struct PushToTalkShortcutStateMachine: Sendable {
+  public private(set) var state: PushToTalkShortcutState
+  public var doubleTapThreshold: TimeInterval
+  public var tapToLockMaxHoldDuration: TimeInterval
+  public var doubleTapForLock: Bool
+
+  private var lastDownAt: TimeInterval?
+
+  public init(
+    state: PushToTalkShortcutState = .idle,
+    doubleTapThreshold: TimeInterval = 0.4,
+    tapToLockMaxHoldDuration: TimeInterval = 0.22,
+    doubleTapForLock: Bool = true
+  ) {
+    self.state = state
+    self.doubleTapThreshold = doubleTapThreshold
+    self.tapToLockMaxHoldDuration = tapToLockMaxHoldDuration
+    self.doubleTapForLock = doubleTapForLock
+  }
+
+  public mutating func shortcutDown(at now: TimeInterval) -> [PushToTalkShortcutAction] {
+    switch state {
+    case .idle:
+      lastDownAt = now
+      state = .listening
+      return [.startRecording]
+    case .pendingLockDecision:
+      lastDownAt = now
+      state = .lockedListening
+      return [.cancelPendingLockTimeout, .discardPendingRecording, .startRecording]
+    case .lockedListening:
+      state = .finalizing
+      return [.stopRecordingAndSend]
+    case .listening, .finalizing:
+      return []
+    }
+  }
+
+  public mutating func shortcutUp(at now: TimeInterval) -> [PushToTalkShortcutAction] {
+    switch state {
+    case .listening:
+      let holdDuration = now - (lastDownAt ?? now)
+      lastDownAt = nil
+      if doubleTapForLock && holdDuration < tapToLockMaxHoldDuration {
+        state = .pendingLockDecision
+        return [
+          .stopRecordingAndHoldForLock,
+          .schedulePendingLockTimeout(after: doubleTapThreshold),
+        ]
+      }
+      state = .finalizing
+      return [.stopRecordingAndSend]
+    case .idle, .pendingLockDecision, .lockedListening, .finalizing:
+      return []
+    }
+  }
+
+  public mutating func pendingLockTimeout() -> [PushToTalkShortcutAction] {
+    guard state == .pendingLockDecision else { return [] }
+    state = .finalizing
+    return [.sendPendingRecording]
+  }
+
+  public mutating func finishProcessing() {
+    state = .idle
+    lastDownAt = nil
+  }
+
+  public mutating func cancel() -> [PushToTalkShortcutAction] {
+    state = .idle
+    lastDownAt = nil
+    return [.cancelPendingLockTimeout, .discardPendingRecording]
   }
 }
 

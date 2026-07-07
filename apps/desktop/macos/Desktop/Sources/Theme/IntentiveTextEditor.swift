@@ -18,7 +18,7 @@ private class AutoFocusScrollView: NSScrollView {
 }
 
 /// NSTextView subclass that reports IME marked-text composition state.
-private class OmiNSTextView: NSTextView {
+private class IntentiveNSTextView: NSTextView {
     var onMarkedTextStatusChange: ((Bool) -> Void)?
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
@@ -42,7 +42,7 @@ private class OmiNSTextView: NSTextView {
 }
 
 /// Unified NSTextView wrapper used by both the main chat input and the floating control bar.
-struct OmiTextEditor: NSViewRepresentable {
+struct IntentiveTextEditor: NSViewRepresentable {
     @Binding var text: String
 
     // Appearance
@@ -62,7 +62,7 @@ struct OmiTextEditor: NSViewRepresentable {
     var onHeightChange: ((CGFloat) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = OmiNSTextView()
+        let textView = IntentiveNSTextView()
         textView.font = .systemFont(ofSize: fontSize)
         textView.textColor = textColor
         textView.backgroundColor = .clear

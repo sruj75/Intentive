@@ -47,6 +47,12 @@ public protocol ScreenMemoryStore: AnyObject {
   func delete(id: String)
 }
 
+public protocol PerceptionEventOutbox: AnyObject {
+  func enqueuePerceptionEvent(_ event: PerceptionEvent) throws
+  func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent]
+  func removePerceptionEvent(eventId: String) throws
+}
+
 public struct LegacyScreenMemoryImportCheckpoint: Equatable, Sendable {
   public var sourceIdentifier: String
   public var sourceFingerprint: String
@@ -74,8 +80,9 @@ public protocol LegacyScreenMemoryImportCheckpointStore: AnyObject {
   func saveLegacyImportCheckpoint(_ checkpoint: LegacyScreenMemoryImportCheckpoint) throws
 }
 
-public final class InMemoryScreenMemoryStore: ScreenMemoryStore {
+public final class InMemoryScreenMemoryStore: ScreenMemoryStore, PerceptionEventOutbox {
   private var records: [ScreenMemoryRecord] = []
+  private var perceptionOutbox: [PerceptionEvent] = []
 
   public init(records: [ScreenMemoryRecord] = []) {
     self.records = records
@@ -129,9 +136,25 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore {
   public func delete(id: String) {
     records.removeAll { $0.id == id }
   }
+
+  public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
+    if let index = perceptionOutbox.firstIndex(where: { $0.eventId == event.eventId }) {
+      perceptionOutbox[index] = event
+    } else {
+      perceptionOutbox.append(event)
+    }
+  }
+
+  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
+    Array(perceptionOutbox.prefix(max(0, limit)))
+  }
+
+  public func removePerceptionEvent(eventId: String) throws {
+    perceptionOutbox.removeAll { $0.eventId == eventId }
+  }
 }
 
-public final class SwitchableScreenMemoryStore: ScreenMemoryStore {
+public final class SwitchableScreenMemoryStore: ScreenMemoryStore, PerceptionEventOutbox {
   private var store: ScreenMemoryStore
 
   public init(_ store: ScreenMemoryStore) {
@@ -139,6 +162,7 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore {
   }
 
   public func replace(with store: ScreenMemoryStore) {
+    carryPendingPerceptionEvents(to: store)
     self.store = store
   }
 
@@ -156,6 +180,37 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore {
 
   public func delete(id: String) {
     store.delete(id: id)
+  }
+
+  public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
+    try (store as? PerceptionEventOutbox)?.enqueuePerceptionEvent(event)
+  }
+
+  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
+    try (store as? PerceptionEventOutbox)?.pendingPerceptionEvents(limit: limit) ?? []
+  }
+
+  public func removePerceptionEvent(eventId: String) throws {
+    try (store as? PerceptionEventOutbox)?.removePerceptionEvent(eventId: eventId)
+  }
+
+  private func carryPendingPerceptionEvents(to replacement: ScreenMemoryStore) {
+    guard
+      let currentOutbox = store as? PerceptionEventOutbox,
+      let replacementOutbox = replacement as? PerceptionEventOutbox,
+      let pending = try? currentOutbox.pendingPerceptionEvents(limit: 10_000)
+    else {
+      return
+    }
+
+    for event in pending {
+      do {
+        try replacementOutbox.enqueuePerceptionEvent(event)
+        try currentOutbox.removePerceptionEvent(eventId: event.eventId)
+      } catch {
+        continue
+      }
+    }
   }
 }
 
@@ -185,7 +240,9 @@ public enum ScreenMemoryStoreError: Error, Equatable, LocalizedError {
   }
 }
 
-public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemoryImportCheckpointStore {
+public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemoryImportCheckpointStore,
+  PerceptionEventOutbox
+{
   public private(set) var lastError: ScreenMemoryStoreError?
 
   private var db: OpaquePointer?
@@ -399,6 +456,59 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemor
     )
   }
 
+  public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
+    let encoded = try ProtocolEventCodec.encode(event)
+    guard let encodedText = String(data: encoded, encoding: .utf8) else {
+      throw ScreenMemoryStoreError.invalidText
+    }
+    try execute(
+      """
+      INSERT INTO perception_event_outbox (event_id, event_json, enqueued_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(event_id) DO UPDATE SET
+        event_json = excluded.event_json,
+        enqueued_at = excluded.enqueued_at
+      """,
+      bindings: [
+        .text(event.eventId),
+        .text(encodedText),
+        .text(Date().protocolTimestamp),
+      ]
+    )
+  }
+
+  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
+    try withStatement(
+      """
+      SELECT event_json
+      FROM perception_event_outbox
+      ORDER BY enqueued_at ASC, event_id ASC
+      LIMIT ?
+      """,
+      bindings: [.int(max(0, limit))]
+    ) { statement in
+      var events: [PerceptionEvent] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          let eventJSON = try columnText(statement, 0)
+          guard let eventData = eventJSON.data(using: .utf8) else {
+            throw ScreenMemoryStoreError.invalidText
+          }
+          events.append(try ProtocolEventCodec.decodePerceptionEvent(eventData))
+        } else if result == SQLITE_DONE {
+          return events
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
+  }
+
+  public func removePerceptionEvent(eventId: String) throws {
+    try execute("DELETE FROM perception_event_outbox WHERE event_id = ?", bindings: [.text(eventId)])
+  }
+
   private func migrate() throws {
     try execute("PRAGMA journal_mode = WAL")
     try execute("PRAGMA foreign_keys = ON")
@@ -437,6 +547,15 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, LegacyScreenMemor
         imported_at TEXT NOT NULL,
         imported_count INTEGER NOT NULL,
         skipped_count INTEGER NOT NULL
+      )
+      """
+    )
+    try execute(
+      """
+      CREATE TABLE IF NOT EXISTS perception_event_outbox (
+        event_id TEXT PRIMARY KEY,
+        event_json TEXT NOT NULL,
+        enqueued_at TEXT NOT NULL
       )
       """
     )

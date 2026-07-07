@@ -43,6 +43,33 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertEqual(socket.sentTypes, ["connect", "user_message"])
   }
 
+  func testHelloOkPreservesPendingLocalUserMessagesMissingFromServerWindow() throws {
+    let store = MessageStore()
+    let pending = UserMessage(
+      messageId: "desktop-pending",
+      body: "still local",
+      sentAt: "2026-07-06T00:00:01.000Z"
+    )
+    _ = store.appendPending(pending)
+
+    store.replaceServerWindow(
+      SessionSnapshot(
+        messages: [
+          SessionMessage(
+            messageId: "server-reply",
+            author: .companion,
+            body: "server",
+            at: "2026-07-06T00:00:02.000Z"
+          )
+        ],
+        beforeCursor: nil
+      )
+    )
+
+    XCTAssertEqual(store.messages.map(\.id), ["server-reply", "desktop-pending"])
+    XCTAssertEqual(store.message(id: "desktop-pending")?.status, .pending)
+  }
+
   func testConnectFrameIdentifiesDesktopAndCarriesRuntimeJWT() throws {
     let socket = FakeRuntimeSocket()
     let adapter = RuntimeAdapter(socket: socket, clientVersion: "desktop-test")
@@ -210,6 +237,59 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertEqual(adapter.status, .failed("bad connect"))
   }
 
+  func testConnectionLossPreservesQueuedUserMessageForReconnect() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    try adapter.connect(routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "jwt-1"))
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+    let generationBeforeLoss = adapter.connectionGeneration
+
+    adapter.markConnectionLost(reason: "network dropped")
+    let queued = try adapter.sendUserMessage("keep this turn")
+
+    XCTAssertEqual(adapter.status, .failed("network dropped"))
+    XCTAssertEqual(adapter.connectionGeneration, generationBeforeLoss + 1)
+    XCTAssertEqual(adapter.messageStore.message(id: queued.id)?.status, .pending)
+    XCTAssertEqual(socket.sentTypes, ["connect"])
+    XCTAssertEqual(socket.closeCount, 1)
+
+    try adapter.connect(routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "jwt-2"))
+    XCTAssertEqual(socket.sentTypes, ["connect", "connect"])
+
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+
+    XCTAssertEqual(adapter.status, .connected)
+    XCTAssertEqual(socket.sentTypes, ["connect", "connect", "user_message"])
+    let userMessage = try XCTUnwrap(socket.sentObjects.last)
+    XCTAssertEqual(userMessage["body"] as? String, "keep this turn")
+  }
+
+  func testExplicitDisconnectClearsQueuedUserMessageAndFailsPendingBubble() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    try adapter.connect(routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "jwt-1"))
+
+    let queued = try adapter.sendUserMessage("discard on sign out")
+    adapter.disconnect()
+
+    XCTAssertEqual(adapter.status, .disconnected)
+    XCTAssertEqual(
+      adapter.messageStore.message(id: queued.id)?.status,
+      .failed("Runtime Bridge disconnected.")
+    )
+
+    try adapter.connect(routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "jwt-2"))
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+
+    XCTAssertEqual(socket.sentTypes, ["connect", "connect"])
+  }
+
   func testSessionEndMarkerMatchesStrictProtocolShape() throws {
     let socket = FakeRuntimeSocket()
     let adapter = RuntimeAdapter(
@@ -235,6 +315,7 @@ private final class FakeRuntimeSocket: RuntimeSocket {
   private(set) var connectedURL: URL?
   private(set) var connectedJWT: String?
   private(set) var sent: [Data] = []
+  private(set) var closeCount = 0
 
   var sentTypes: [String] {
     sentObjects.compactMap { $0["type"] as? String }
@@ -255,7 +336,9 @@ private final class FakeRuntimeSocket: RuntimeSocket {
     sent.append(data)
   }
 
-  func close() {}
+  func close() {
+    closeCount += 1
+  }
 }
 
 private final class RecordingFloatingBarRuntimeClient: RuntimeChatClient {

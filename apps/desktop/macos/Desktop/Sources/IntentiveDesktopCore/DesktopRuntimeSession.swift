@@ -102,6 +102,7 @@ public final class DesktopRuntimeSessionCoordinator {
   }
 
   public func markRuntimeClosed(reason: String) {
+    runtime.markConnectionLost(reason: reason)
     state = .failed(reason)
   }
 

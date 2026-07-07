@@ -51,7 +51,7 @@ struct AskAIInputView: View {
                             .padding(.vertical, 8)
                     }
 
-                    OmiTextEditor(
+                    IntentiveTextEditor(
                         text: $localInput,
                         lineFragmentPadding: 8,
                         onSubmit: {

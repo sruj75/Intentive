@@ -299,9 +299,17 @@ public final class ContextCompiler {
 
 public final class PerceptionPublisher {
   private let runtimeClient: RuntimeChatClient
+  private let outbox: PerceptionEventOutbox?
+  private let isRuntimeConnected: () -> Bool
 
-  public init(runtimeClient: RuntimeChatClient) {
+  public init(
+    runtimeClient: RuntimeChatClient,
+    outbox: PerceptionEventOutbox? = nil,
+    isRuntimeConnected: @escaping () -> Bool = { true }
+  ) {
     self.runtimeClient = runtimeClient
+    self.outbox = outbox
+    self.isRuntimeConnected = isRuntimeConnected
   }
 
   @discardableResult
@@ -323,7 +331,24 @@ public final class PerceptionPublisher {
       confidence: artifact.confidence,
       localRecordRef: artifact.localRecordRef
     )
+    try outbox?.enqueuePerceptionEvent(event)
+    guard isRuntimeConnected() else {
+      return event
+    }
     try runtimeClient.sendPerceptionEvent(event)
+    try outbox?.removePerceptionEvent(eventId: event.eventId)
     return event
+  }
+
+  @discardableResult
+  public func flushPendingPerceptionEvents(limit: Int = 100) throws -> Int {
+    guard isRuntimeConnected(), let outbox else { return 0 }
+    var flushedCount = 0
+    for event in try outbox.pendingPerceptionEvents(limit: limit) {
+      try runtimeClient.sendPerceptionEvent(event)
+      try outbox.removePerceptionEvent(eventId: event.eventId)
+      flushedCount += 1
+    }
+    return flushedCount
   }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 /// Shared dark palette for the native macOS app.
 /// Keep this aligned with the stronger parts of the older Flutter desktop styling:
 /// neutral dark surfaces, restrained borders, and a purple accent without neon overload.
-enum OmiColors {
+enum IntentiveColors {
   // MARK: - Background Colors
   static let backgroundPrimary = Color(hex: 0x0F0F0F)
   static let backgroundSecondary = Color(hex: 0x1A1A1A)

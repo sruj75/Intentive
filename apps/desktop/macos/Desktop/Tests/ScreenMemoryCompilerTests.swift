@@ -264,6 +264,31 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(first.search("anonymous", limit: 10).first?.record.id, "first")
   }
 
+  func testSwitchableScreenMemoryStoreCarriesPendingPerceptionOutboxAcrossReplacement() throws {
+    let first = InMemoryScreenMemoryStore()
+    let second = InMemoryScreenMemoryStore()
+    let event = PerceptionEvent(
+      eventId: "carry-pending",
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      periodStart: "2026-07-05T10:00:00.000Z",
+      periodEnd: "2026-07-05T10:00:00.000Z",
+      artifactType: .searchableScreenRecord,
+      summary: "pending profile switch",
+      sensitivityLabel: .normal,
+      retentionClass: "screen_memory_30d",
+      confidence: 0.9,
+      localRecordRef: "screen-memory://records/carry-pending"
+    )
+    try first.enqueuePerceptionEvent(event)
+    let store = SwitchableScreenMemoryStore(first)
+
+    store.replace(with: second)
+
+    XCTAssertTrue(try first.pendingPerceptionEvents(limit: 10).isEmpty)
+    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 10), [event])
+    XCTAssertEqual(try second.pendingPerceptionEvents(limit: 10), [event])
+  }
+
   func testSQLiteScreenMemoryPersistsRecordsAcrossReopen() throws {
     let url = try temporaryDatabaseURL()
     let embedding = try LocalEmbeddingService(dim: 8).embed("runtime bridge queue")
@@ -396,6 +421,56 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertTrue(runtime.perceptionEvents.isEmpty)
   }
 
+  func testPerceptionPublisherQueuesDisconnectedEventsAndFlushesOnReconnect() throws {
+    let runtime = RecordingRuntimeClient()
+    let outbox = InMemoryScreenMemoryStore()
+    var connected = false
+    let publisher = PerceptionPublisher(
+      runtimeClient: runtime,
+      outbox: outbox,
+      isRuntimeConnected: { connected }
+    )
+    let artifact = screenArtifact(id: "queued")
+
+    let event = try publisher.publish(artifact)
+
+    XCTAssertEqual(event.eventId, "queued")
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+    XCTAssertEqual(try outbox.pendingPerceptionEvents(limit: 10).map(\.eventId), ["queued"])
+
+    connected = true
+    XCTAssertEqual(try publisher.flushPendingPerceptionEvents(), 1)
+    XCTAssertEqual(runtime.perceptionEvents.map(\.eventId), ["queued"])
+    XCTAssertTrue(try outbox.pendingPerceptionEvents(limit: 10).isEmpty)
+  }
+
+  func testSQLitePerceptionOutboxPersistsAcrossReopen() throws {
+    let url = try temporaryDatabaseURL()
+    let event = PerceptionEvent(
+      eventId: "durable-outbox",
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      periodStart: "2026-07-05T10:00:00.000Z",
+      periodEnd: "2026-07-05T10:00:00.000Z",
+      artifactType: .searchableScreenRecord,
+      summary: "durable local perception event",
+      sensitivityLabel: .normal,
+      retentionClass: "screen_memory_30d",
+      confidence: 0.9,
+      localRecordRef: "screen-memory://records/durable-outbox"
+    )
+
+    do {
+      let store = try SQLiteScreenMemoryStore(databaseURL: url)
+      try store.enqueuePerceptionEvent(event)
+    }
+
+    let reopened = try SQLiteScreenMemoryStore(databaseURL: url)
+    XCTAssertEqual(try reopened.pendingPerceptionEvents(limit: 10), [event])
+
+    try reopened.removePerceptionEvent(eventId: event.eventId)
+    XCTAssertTrue(try reopened.pendingPerceptionEvents(limit: 10).isEmpty)
+  }
+
   func testCaptureCoordinatorStoresAndPublishesPerception() throws {
     let runtime = RecordingRuntimeClient()
     let store = InMemoryScreenMemoryStore()
@@ -418,6 +493,36 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(events.count, 1)
     XCTAssertEqual(runtime.perceptionEvents.count, 1)
     XCTAssertEqual(store.search("compiler", limit: 10).count, 1)
+  }
+
+  func testCaptureCoordinatorStoresLocalRecordAndQueuesPerceptionWhenRuntimeDisconnected() throws {
+    let runtime = RecordingRuntimeClient()
+    let store = InMemoryScreenMemoryStore()
+    let publisher = PerceptionPublisher(
+      runtimeClient: runtime,
+      outbox: store,
+      isRuntimeConnected: { false }
+    )
+    let coordinator = CaptureCoordinator(
+      compiler: ContextCompiler(),
+      screenMemory: store,
+      publisher: publisher
+    )
+
+    let events = try coordinator.accept(
+      frame: CapturedFrame(
+        id: "offline-frame",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Code",
+        windowTitle: "Intentive",
+        ocrText: "offline perception outbox"
+      )
+    )
+
+    XCTAssertEqual(events.map(\.eventId), ["screen-offline-frame"])
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+    XCTAssertEqual(store.search("offline outbox", limit: 10).first?.record.id, "screen-offline-frame")
+    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 10).map(\.eventId), ["screen-offline-frame"])
   }
 
   func testCaptureCoordinatorStoresPerceptionInSQLiteScreenMemory() throws {
@@ -529,6 +634,23 @@ final class ScreenMemoryCompilerTests: XCTestCase {
 
   private func temporaryDatabaseURL() throws -> URL {
     try temporaryDirectory().appendingPathComponent("screen-memory.sqlite")
+  }
+
+  private func screenArtifact(id: String) -> CompiledPerceptionArtifact {
+    CompiledPerceptionArtifact(
+      id: id,
+      artifactType: .searchableScreenRecord,
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      periodStart: "2026-07-05T10:00:00.000Z",
+      periodEnd: "2026-07-05T10:00:00.000Z",
+      summary: "queued perception event",
+      signals: [:],
+      retentionClass: "screen_memory_30d",
+      sensitivityLabel: .normal,
+      confidence: 0.9,
+      localRecordRef: "screen-memory://records/\(id)",
+      embedding: nil
+    )
   }
 
   private func temporaryDirectory() throws -> URL {

@@ -26,19 +26,19 @@ extension SettingsContentView {
           VStack(alignment: .leading, spacing: 2) {
             Text(ShortcutSettings.voiceSpeedLabel(for: currentSpeed))
               .scaledFont(size: 16, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
             Text("Voice playback speed")
               .scaledFont(size: 13)
-              .foregroundColor(OmiColors.textSecondary)
+              .foregroundColor(IntentiveColors.textSecondary)
           }
           Spacer()
           Text("\(String(format: "%.1f", currentSpeed))×")
             .font(.system(size: 22, weight: .bold, design: .rounded))
-            .foregroundColor(OmiColors.purplePrimary)
+            .foregroundColor(IntentiveColors.purplePrimary)
             .frame(width: 52, height: 52)
             .background(
               RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(OmiColors.purplePrimary.opacity(0.15))
+                .fill(IntentiveColors.purplePrimary.opacity(0.15))
             )
         }
 
@@ -51,19 +51,19 @@ extension SettingsContentView {
             ZStack(alignment: .leading) {
               // Track background
               RoundedRectangle(cornerRadius: 4)
-                .fill(OmiColors.backgroundQuaternary)
+                .fill(IntentiveColors.backgroundQuaternary)
                 .frame(height: 6)
 
               // Filled track
               RoundedRectangle(cornerRadius: 4)
-                .fill(OmiColors.purplePrimary)
+                .fill(IntentiveColors.purplePrimary)
                 .frame(width: trackWidth * CGFloat(currentIndex) / segmentCount, height: 6)
 
               // Step dots
               ForEach(0..<steps.count, id: \.self) { i in
                 Circle()
                   .fill(
-                    i <= currentIndex ? OmiColors.purplePrimary : OmiColors.backgroundQuaternary
+                    i <= currentIndex ? IntentiveColors.purplePrimary : IntentiveColors.backgroundQuaternary
                   )
                   .frame(width: 8, height: 8)
                   .position(
@@ -97,11 +97,11 @@ extension SettingsContentView {
           HStack {
             Text("Slow")
               .scaledFont(size: 11)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
             Spacer()
             Text("Max")
               .scaledFont(size: 11)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
           }
         }
       }
@@ -123,20 +123,20 @@ extension SettingsContentView {
         VStack(alignment: .leading, spacing: 2) {
           Text("Frequency")
             .scaledFont(size: 14)
-            .foregroundColor(OmiColors.textSecondary)
+            .foregroundColor(IntentiveColors.textSecondary)
           Text("How often to receive notifications")
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
         }
         Spacer()
         Text(currentLabel)
           .scaledFont(size: 13, weight: .semibold)
-          .foregroundColor(OmiColors.purplePrimary)
+          .foregroundColor(IntentiveColors.purplePrimary)
           .padding(.horizontal, 10)
           .padding(.vertical, 4)
           .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-              .fill(OmiColors.purplePrimary.opacity(0.15))
+              .fill(IntentiveColors.purplePrimary.opacity(0.15))
           )
       }
 
@@ -145,17 +145,17 @@ extension SettingsContentView {
 
         ZStack(alignment: .leading) {
           RoundedRectangle(cornerRadius: 4)
-            .fill(OmiColors.backgroundQuaternary)
+            .fill(IntentiveColors.backgroundQuaternary)
             .frame(height: 6)
 
           RoundedRectangle(cornerRadius: 4)
-            .fill(OmiColors.purplePrimary)
+            .fill(IntentiveColors.purplePrimary)
             .frame(width: trackWidth * CGFloat(currentIndex) / segmentCount, height: 6)
 
           ForEach(0..<stepCount, id: \.self) { i in
             Circle()
               .fill(
-                i <= currentIndex ? OmiColors.purplePrimary : OmiColors.backgroundQuaternary
+                i <= currentIndex ? IntentiveColors.purplePrimary : IntentiveColors.backgroundQuaternary
               )
               .frame(width: 8, height: 8)
               .position(
@@ -191,11 +191,11 @@ extension SettingsContentView {
       HStack {
         Text(frequencyOptions.first?.1 ?? "Off")
           .scaledFont(size: 11)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
         Spacer()
         Text(frequencyOptions.last?.1 ?? "Maximum")
           .scaledFont(size: 11)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
       }
     }
 
@@ -212,16 +212,16 @@ extension SettingsContentView {
       HStack(spacing: 10) {
         Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
           .scaledFont(size: 16)
-          .foregroundColor(isSelected ? OmiColors.purplePrimary : OmiColors.textTertiary)
+          .foregroundColor(isSelected ? IntentiveColors.purplePrimary : IntentiveColors.textTertiary)
 
         VStack(alignment: .leading, spacing: 1) {
           Text(label)
             .scaledFont(size: 14, weight: isSelected ? .medium : .regular)
-            .foregroundColor(isSelected ? OmiColors.textPrimary : OmiColors.textSecondary)
+            .foregroundColor(isSelected ? IntentiveColors.textPrimary : IntentiveColors.textSecondary)
 
           Text(subtitle)
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
         }
 
         Spacer()
@@ -230,7 +230,7 @@ extension SettingsContentView {
       .padding(.horizontal, 8)
       .background(
         RoundedRectangle(cornerRadius: 8)
-          .fill(isSelected ? OmiColors.purplePrimary.opacity(0.1) : Color.clear)
+          .fill(isSelected ? IntentiveColors.purplePrimary.opacity(0.1) : Color.clear)
       )
     }
     .buttonStyle(.plain)
@@ -243,17 +243,17 @@ extension SettingsContentView {
       HStack {
         Text("Tier \(tier)")
           .scaledFont(size: 11, weight: .semibold)
-          .foregroundColor(unlocked ? OmiColors.purplePrimary : OmiColors.textTertiary)
+          .foregroundColor(unlocked ? IntentiveColors.purplePrimary : IntentiveColors.textTertiary)
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
           .background(
             RoundedRectangle(cornerRadius: 4)
-              .fill(unlocked ? OmiColors.purplePrimary.opacity(0.15) : OmiColors.backgroundTertiary)
+              .fill(unlocked ? IntentiveColors.purplePrimary.opacity(0.15) : IntentiveColors.backgroundTertiary)
           )
 
         Text(name)
           .scaledFont(size: 14, weight: .medium)
-          .foregroundColor(unlocked ? OmiColors.textPrimary : OmiColors.textTertiary)
+          .foregroundColor(unlocked ? IntentiveColors.textPrimary : IntentiveColors.textTertiary)
 
         Spacer()
 
@@ -264,19 +264,19 @@ extension SettingsContentView {
         } else {
           Image(systemName: "lock.fill")
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
         }
       }
 
       HStack(spacing: 8) {
         Text(requirement)
           .scaledFont(size: 12)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
 
         if let progress = progress, !unlocked {
           Text("(\(progress))")
             .scaledMonospacedDigitFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary.opacity(0.7))
+            .foregroundColor(IntentiveColors.textTertiary.opacity(0.7))
         }
       }
     }
@@ -287,13 +287,13 @@ extension SettingsContentView {
     HStack {
       Text(label)
         .scaledFont(size: 14)
-        .foregroundColor(OmiColors.textSecondary)
+        .foregroundColor(IntentiveColors.textSecondary)
 
       Spacer()
 
       Text(formatNumber(value))
         .scaledMonospacedDigitFont(size: 14, weight: .medium)
-        .foregroundColor(OmiColors.textPrimary)
+        .foregroundColor(IntentiveColors.textPrimary)
     }
   }
 
@@ -301,7 +301,7 @@ extension SettingsContentView {
     HStack {
       Text(label)
         .scaledFont(size: 14)
-        .foregroundColor(OmiColors.textSecondary)
+        .foregroundColor(IntentiveColors.textSecondary)
 
       Spacer()
 
@@ -391,18 +391,18 @@ extension SettingsContentView {
               HStack(spacing: 6) {
                 Text("omi")
                   .scaledFont(size: 18, weight: .bold)
-                  .foregroundColor(OmiColors.textPrimary)
+                  .foregroundColor(IntentiveColors.textPrimary)
 
                 if !updaterViewModel.activeChannelLabel.isEmpty {
                   Text("(\(updaterViewModel.activeChannelLabel))")
                     .scaledFont(size: 13, weight: .medium)
-                    .foregroundColor(OmiColors.purplePrimary)
+                    .foregroundColor(IntentiveColors.purplePrimary)
                 }
               }
 
               Text("Version \(updaterViewModel.currentVersion) (\(updaterViewModel.buildNumber))")
                 .scaledFont(size: 13)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
                 .textSelection(.enabled)
             }
 
@@ -410,7 +410,7 @@ extension SettingsContentView {
           }
 
           Divider()
-            .background(OmiColors.backgroundQuaternary)
+            .background(IntentiveColors.backgroundQuaternary)
 
           // Links
           linkRow(title: "What's New", url: AppBuild.changelogURLString)
@@ -422,13 +422,13 @@ extension SettingsContentView {
             HStack {
               Text("Privacy Policy")
                 .scaledFont(size: 14)
-                .foregroundColor(OmiColors.textSecondary)
+                .foregroundColor(IntentiveColors.textSecondary)
 
               Spacer()
 
               Image(systemName: "arrow.right")
                 .scaledFont(size: 12)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
             }
           }
           .buttonStyle(.plain)
@@ -442,11 +442,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "arrow.triangle.2.circlepath")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.purplePrimary)
+              .foregroundColor(IntentiveColors.purplePrimary)
 
             Text("Software Updates")
               .scaledFont(size: 15, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -463,7 +463,7 @@ extension SettingsContentView {
           if let lastCheck = updaterViewModel.lastUpdateCheckDate {
             Text("Last checked: \(lastCheck, style: .relative) ago")
               .scaledFont(size: 12)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
           }
 
           if let failure = updaterViewModel.lastUpdateFailure {
@@ -471,15 +471,15 @@ extension SettingsContentView {
               HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                   .scaledFont(size: 14)
-                  .foregroundColor(OmiColors.warning)
+                  .foregroundColor(IntentiveColors.warning)
 
                 VStack(alignment: .leading, spacing: 4) {
                   Text("Update Needs Attention")
                     .scaledFont(size: 13, weight: .semibold)
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
                   Text(failure.userMessage)
                     .scaledFont(size: 12)
-                    .foregroundColor(OmiColors.textSecondary)
+                    .foregroundColor(IntentiveColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 }
               }
@@ -505,12 +505,12 @@ extension SettingsContentView {
               }
             }
             .padding(12)
-            .background(OmiColors.backgroundTertiary)
+            .background(IntentiveColors.backgroundTertiary)
             .cornerRadius(8)
           }
 
           Divider()
-            .background(OmiColors.backgroundQuaternary)
+            .background(IntentiveColors.backgroundQuaternary)
 
           settingRow(
             title: "Automatic Updates",
@@ -539,17 +539,17 @@ extension SettingsContentView {
           if updaterViewModel.usesManagedUpdatePolicy {
             Text("Release builds always auto-check and auto-install updates in the background.")
               .scaledFont(size: 12)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
           } else if AnalyticsManager.isDevBuild {
             Text(
               "Development builds keep automatic installation disabled to avoid replacing the local app."
             )
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
           }
 
           Divider()
-            .background(OmiColors.backgroundQuaternary)
+            .background(IntentiveColors.backgroundQuaternary)
 
           settingRow(
             title: "Update Channel", subtitle: updaterViewModel.updateChannel.description,
@@ -600,16 +600,16 @@ extension SettingsContentView {
         HStack(spacing: 16) {
           Image(systemName: "exclamationmark.bubble.fill")
             .scaledFont(size: 16)
-            .foregroundColor(OmiColors.purplePrimary)
+            .foregroundColor(IntentiveColors.purplePrimary)
 
           VStack(alignment: .leading, spacing: 4) {
             Text("Report an Issue")
               .scaledFont(size: 15, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Text("Help us improve omi")
               .scaledFont(size: 13)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
           }
 
           Spacer()
@@ -629,14 +629,14 @@ extension SettingsContentView {
     HStack {
       Text(label)
         .scaledFont(size: 13)
-        .foregroundColor(OmiColors.textTertiary)
+        .foregroundColor(IntentiveColors.textTertiary)
       Spacer()
       Text(keys)
         .scaledMonospacedFont(size: 13, weight: .medium)
-        .foregroundColor(OmiColors.textSecondary)
+        .foregroundColor(IntentiveColors.textSecondary)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(OmiColors.backgroundTertiary.opacity(0.8))
+        .background(IntentiveColors.backgroundTertiary.opacity(0.8))
         .cornerRadius(5)
     }
   }
@@ -649,10 +649,10 @@ extension SettingsContentView {
       .padding(20)
       .background(
         RoundedRectangle(cornerRadius: 12)
-          .fill(OmiColors.backgroundTertiary.opacity(0.5))
+          .fill(IntentiveColors.backgroundTertiary.opacity(0.5))
           .overlay(
             RoundedRectangle(cornerRadius: 12)
-              .stroke(OmiColors.backgroundQuaternary.opacity(0.3), lineWidth: 1)
+              .stroke(IntentiveColors.backgroundQuaternary.opacity(0.3), lineWidth: 1)
           )
       )
     return Group {
@@ -673,10 +673,10 @@ extension SettingsContentView {
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
           .scaledFont(size: 14)
-          .foregroundColor(OmiColors.textSecondary)
+          .foregroundColor(IntentiveColors.textSecondary)
         Text(subtitle)
           .scaledFont(size: 12)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
       }
 
       Spacer()
@@ -703,13 +703,13 @@ extension SettingsContentView {
       HStack {
         Text(title)
           .scaledFont(size: 14)
-          .foregroundColor(OmiColors.textSecondary)
+          .foregroundColor(IntentiveColors.textSecondary)
 
         Spacer()
 
         Image(systemName: "arrow.up.right")
           .scaledFont(size: 12)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
       }
     }
     .buttonStyle(.plain)
@@ -718,12 +718,12 @@ extension SettingsContentView {
   func trackingItem(_ text: String) -> some View {
     HStack(spacing: 8) {
       Circle()
-        .fill(OmiColors.textTertiary.opacity(0.5))
+        .fill(IntentiveColors.textTertiary.opacity(0.5))
         .frame(width: 4, height: 4)
 
       Text(text)
         .scaledFont(size: 12)
-        .foregroundColor(OmiColors.textTertiary)
+        .foregroundColor(IntentiveColors.textTertiary)
     }
   }
 
@@ -735,7 +735,7 @@ extension SettingsContentView {
 
       Text(text)
         .scaledFont(size: 12)
-        .foregroundColor(OmiColors.textSecondary)
+        .foregroundColor(IntentiveColors.textSecondary)
     }
   }
 
@@ -750,17 +750,17 @@ extension SettingsContentView {
       HStack(alignment: .top, spacing: 12) {
         Image(systemName: icon)
           .scaledFont(size: 14)
-          .foregroundColor(OmiColors.purplePrimary)
+          .foregroundColor(IntentiveColors.purplePrimary)
           .frame(width: 20, alignment: .leading)
 
         VStack(alignment: .leading, spacing: 4) {
           Text(title)
             .scaledFont(size: 14, weight: .medium)
-            .foregroundColor(OmiColors.textPrimary)
+            .foregroundColor(IntentiveColors.textPrimary)
 
           Text(subtitle)
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
             .fixedSize(horizontal: false, vertical: true)
         }
 

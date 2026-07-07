@@ -13,16 +13,16 @@ struct PermissionsPage: View {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .scaledFont(size: 28)
-                            .foregroundColor(OmiColors.warning)
+                            .foregroundColor(IntentiveColors.warning)
 
                         Text("Permissions Required")
                             .scaledFont(size: 24, weight: .bold)
-                            .foregroundColor(OmiColors.textPrimary)
+                            .foregroundColor(IntentiveColors.textPrimary)
                     }
 
                     Text("omi needs the following permissions to work properly.")
                         .scaledFont(size: 14)
-                        .foregroundColor(OmiColors.textSecondary)
+                        .foregroundColor(IntentiveColors.textSecondary)
                 }
                 .padding(.bottom, 8)
 
@@ -47,7 +47,7 @@ struct PermissionsPage: View {
 
                         Text("All permissions granted! omi is ready to use.")
                             .scaledFont(size: 15, weight: .medium)
-                            .foregroundColor(OmiColors.textPrimary)
+                            .foregroundColor(IntentiveColors.textPrimary)
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -96,7 +96,7 @@ struct MicrophonePermissionSection: View {
         } else if isPermissionDenied {
             return Color.red.opacity(0.15)
         } else {
-            return OmiColors.backgroundTertiary
+            return IntentiveColors.backgroundTertiary
         }
     }
 
@@ -106,7 +106,7 @@ struct MicrophonePermissionSection: View {
         } else if isPermissionDenied {
             return .red
         } else {
-            return OmiColors.textSecondary
+            return IntentiveColors.textSecondary
         }
     }
 
@@ -116,7 +116,7 @@ struct MicrophonePermissionSection: View {
         } else if isPermissionDenied {
             return Color.red.opacity(0.5)
         } else {
-            return OmiColors.backgroundQuaternary.opacity(0.5)
+            return IntentiveColors.backgroundQuaternary.opacity(0.5)
         }
     }
 
@@ -141,7 +141,7 @@ struct MicrophonePermissionSection: View {
                         HStack(spacing: 8) {
                             Text("Microphone")
                                 .scaledFont(size: 16, weight: .semibold)
-                                .foregroundColor(OmiColors.textPrimary)
+                                .foregroundColor(IntentiveColors.textPrimary)
 
                             microphoneStatusBadge
                         }
@@ -150,14 +150,14 @@ struct MicrophonePermissionSection: View {
                             ? "Permission was denied - reset required"
                             : "Required for voice recording and transcription")
                             .scaledFont(size: 13)
-                            .foregroundColor(isPermissionDenied ? .red.opacity(0.8) : OmiColors.textTertiary)
+                            .foregroundColor(isPermissionDenied ? .red.opacity(0.8) : IntentiveColors.textTertiary)
                     }
 
                     Spacer()
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .scaledFont(size: 14, weight: .medium)
-                        .foregroundColor(OmiColors.textTertiary)
+                        .foregroundColor(IntentiveColors.textTertiary)
                 }
                 .padding(20)
             }
@@ -167,7 +167,7 @@ struct MicrophonePermissionSection: View {
             if isExpanded && !appState.hasMicrophonePermission {
                 VStack(alignment: .leading, spacing: 16) {
                     Divider()
-                        .background(OmiColors.backgroundQuaternary)
+                        .background(IntentiveColors.backgroundQuaternary)
 
                     if isPermissionDenied {
                         // DENIED STATE - Show reset options
@@ -183,7 +183,7 @@ struct MicrophonePermissionSection: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(isPermissionDenied ? Color.red.opacity(0.05) : OmiColors.backgroundSecondary.opacity(0.5))
+                .fill(isPermissionDenied ? Color.red.opacity(0.05) : IntentiveColors.backgroundSecondary.opacity(0.5))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(borderColor, lineWidth: isPermissionDenied ? 2 : 1)
@@ -199,12 +199,12 @@ struct MicrophonePermissionSection: View {
             Text(appState.hasMicrophonePermission ? "Granted" : (isPermissionDenied ? "Denied" : "Not Granted"))
                 .scaledFont(size: 12, weight: .medium)
         }
-        .foregroundColor(appState.hasMicrophonePermission ? .green : (isPermissionDenied ? .red : OmiColors.warning))
+        .foregroundColor(appState.hasMicrophonePermission ? .green : (isPermissionDenied ? .red : IntentiveColors.warning))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(appState.hasMicrophonePermission ? Color.green.opacity(0.15) : (isPermissionDenied ? Color.red.opacity(0.15) : OmiColors.warning.opacity(0.15)))
+                .fill(appState.hasMicrophonePermission ? Color.green.opacity(0.15) : (isPermissionDenied ? Color.red.opacity(0.15) : IntentiveColors.warning.opacity(0.15)))
         )
     }
 
@@ -215,13 +215,13 @@ struct MicrophonePermissionSection: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Microphone access was previously denied. Reset the permission to try again:")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
             // Option 1: Quick Reset
             VStack(alignment: .leading, spacing: 8) {
                 Text("Option 1: Quick Reset")
                     .scaledFont(size: 13, weight: .semibold)
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
 
                 Button(action: tryDirectReset) {
                     HStack(spacing: 8) {
@@ -242,7 +242,7 @@ struct MicrophonePermissionSection: View {
                     .frame(maxWidth: .infinity)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(isResetting ? Color.gray : OmiColors.purplePrimary)
+                            .fill(isResetting ? Color.gray : IntentiveColors.purplePrimary)
                     )
                 }
                 .buttonStyle(.plain)
@@ -253,7 +253,7 @@ struct MicrophonePermissionSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Option 2: Reset via Terminal")
                     .scaledFont(size: 13, weight: .semibold)
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
 
                 Button(action: tryTerminalReset) {
                     HStack(spacing: 8) {
@@ -262,13 +262,13 @@ struct MicrophonePermissionSection: View {
                         Text("Open Terminal")
                             .scaledFont(size: 14, weight: .semibold)
                     }
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(OmiColors.backgroundTertiary)
+                            .fill(IntentiveColors.backgroundTertiary)
                     )
                 }
                 .buttonStyle(.plain)
@@ -278,18 +278,18 @@ struct MicrophonePermissionSection: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Option 3: Manual")
                     .scaledFont(size: 13, weight: .semibold)
-                    .foregroundColor(OmiColors.textPrimary)
+                    .foregroundColor(IntentiveColors.textPrimary)
 
                 // Step 1: Open System Settings
                 HStack(alignment: .top, spacing: 8) {
                     Text("1.")
                         .scaledFont(size: 13, weight: .semibold)
-                        .foregroundColor(OmiColors.textSecondary)
+                        .foregroundColor(IntentiveColors.textSecondary)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Open System Settings")
                             .scaledFont(size: 13)
-                            .foregroundColor(OmiColors.textSecondary)
+                            .foregroundColor(IntentiveColors.textSecondary)
 
                         Button(action: openSystemSettings) {
                             HStack(spacing: 8) {
@@ -298,12 +298,12 @@ struct MicrophonePermissionSection: View {
                                 Text("Open Privacy Settings")
                                     .scaledFont(size: 14, weight: .semibold)
                             }
-                            .foregroundColor(OmiColors.textPrimary)
+                            .foregroundColor(IntentiveColors.textPrimary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(OmiColors.backgroundTertiary)
+                                    .fill(IntentiveColors.backgroundTertiary)
                             )
                         }
                         .buttonStyle(.plain)
@@ -314,12 +314,12 @@ struct MicrophonePermissionSection: View {
                 HStack(alignment: .top, spacing: 8) {
                     Text("2.")
                         .scaledFont(size: 13, weight: .semibold)
-                        .foregroundColor(OmiColors.textSecondary)
+                        .foregroundColor(IntentiveColors.textSecondary)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Find \"omi\" and toggle it ON")
                             .scaledFont(size: 13)
-                            .foregroundColor(OmiColors.textSecondary)
+                            .foregroundColor(IntentiveColors.textSecondary)
 
                         // Screenshot showing the toggle
                         if let image = NSImage(contentsOfFile: Bundle.resourceBundle.path(forResource: "microphone-settings", ofType: "png") ?? "") {
@@ -330,7 +330,7 @@ struct MicrophonePermissionSection: View {
                                 .cornerRadius(8)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(OmiColors.backgroundQuaternary, lineWidth: 1)
+                                        .stroke(IntentiveColors.backgroundQuaternary, lineWidth: 1)
                                 )
                         }
                     }
@@ -344,7 +344,7 @@ struct MicrophonePermissionSection: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("How to grant microphone access:")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
             VStack(alignment: .leading, spacing: 12) {
                 instructionStep(number: 1, text: "Click \"Grant Access\" below - a system dialog will appear")
@@ -367,7 +367,7 @@ struct MicrophonePermissionSection: View {
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(OmiColors.purplePrimary)
+                        .fill(IntentiveColors.purplePrimary)
                 )
             }
             .buttonStyle(.plain)
@@ -424,12 +424,12 @@ struct ScreenRecordingPermissionSection: View {
                     // Icon
                     ZStack {
                         Circle()
-                            .fill(appState.isScreenRecordingStale ? Color.red.opacity(0.15) : (appState.hasScreenRecordingPermission ? Color.green.opacity(0.15) : OmiColors.backgroundTertiary))
+                            .fill(appState.isScreenRecordingStale ? Color.red.opacity(0.15) : (appState.hasScreenRecordingPermission ? Color.green.opacity(0.15) : IntentiveColors.backgroundTertiary))
                             .frame(width: 48, height: 48)
 
                         Image(systemName: appState.isScreenRecordingStale ? "rectangle.on.rectangle.slash" : "rectangle.inset.filled.and.person.filled")
                             .scaledFont(size: 22)
-                            .foregroundColor(appState.isScreenRecordingStale ? .red : (appState.hasScreenRecordingPermission ? .green : OmiColors.textSecondary))
+                            .foregroundColor(appState.isScreenRecordingStale ? .red : (appState.hasScreenRecordingPermission ? .green : IntentiveColors.textSecondary))
                     }
 
                     // Title and status
@@ -437,7 +437,7 @@ struct ScreenRecordingPermissionSection: View {
                         HStack(spacing: 8) {
                             Text("Screen Recording")
                                 .scaledFont(size: 16, weight: .semibold)
-                                .foregroundColor(OmiColors.textPrimary)
+                                .foregroundColor(IntentiveColors.textPrimary)
 
                             if appState.isScreenRecordingStale {
                                 HStack(spacing: 4) {
@@ -462,14 +462,14 @@ struct ScreenRecordingPermissionSection: View {
                             ? "Permission needs re-enabling after app update"
                             : "Required for proactive monitoring and context awareness")
                             .scaledFont(size: 13)
-                            .foregroundColor(appState.isScreenRecordingStale ? .red.opacity(0.8) : OmiColors.textTertiary)
+                            .foregroundColor(appState.isScreenRecordingStale ? .red.opacity(0.8) : IntentiveColors.textTertiary)
                     }
 
                     Spacer()
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .scaledFont(size: 14, weight: .medium)
-                        .foregroundColor(OmiColors.textTertiary)
+                        .foregroundColor(IntentiveColors.textTertiary)
                 }
                 .padding(20)
             }
@@ -479,7 +479,7 @@ struct ScreenRecordingPermissionSection: View {
             if isExpanded && (!appState.hasScreenRecordingPermission || appState.isScreenRecordingStale) {
                 VStack(alignment: .leading, spacing: 16) {
                     Divider()
-                        .background(OmiColors.backgroundQuaternary)
+                        .background(IntentiveColors.backgroundQuaternary)
 
                     if appState.isScreenRecordingStale {
                         // STALE STATE - developer signing changed, user must toggle off/on
@@ -495,10 +495,10 @@ struct ScreenRecordingPermissionSection: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(appState.isScreenRecordingStale ? Color.red.opacity(0.05) : OmiColors.backgroundSecondary.opacity(0.5))
+                .fill(appState.isScreenRecordingStale ? Color.red.opacity(0.05) : IntentiveColors.backgroundSecondary.opacity(0.5))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(appState.hasScreenRecordingPermission ? Color.green.opacity(0.3) : (appState.isScreenRecordingStale ? Color.red.opacity(0.5) : OmiColors.backgroundQuaternary.opacity(0.5)), lineWidth: appState.isScreenRecordingStale ? 2 : 1)
+                        .stroke(appState.hasScreenRecordingPermission ? Color.green.opacity(0.3) : (appState.isScreenRecordingStale ? Color.red.opacity(0.5) : IntentiveColors.backgroundQuaternary.opacity(0.5)), lineWidth: appState.isScreenRecordingStale ? 2 : 1)
                 )
         )
     }
@@ -509,7 +509,7 @@ struct ScreenRecordingPermissionSection: View {
         return VStack(alignment: .leading, spacing: 16) {
             Text("Screen recording needs to be re-enabled after an app update.")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
             VStack(alignment: .leading, spacing: 12) {
                 // Step 1 — Open Settings button inline
@@ -518,12 +518,12 @@ struct ScreenRecordingPermissionSection: View {
                         .scaledFont(size: 12, weight: .bold)
                         .foregroundColor(.white)
                         .frame(width: 22, height: 22)
-                        .background(Circle().fill(OmiColors.purplePrimary))
+                        .background(Circle().fill(IntentiveColors.purplePrimary))
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Open Screen Recording settings")
                             .scaledFont(size: 13)
-                            .foregroundColor(OmiColors.textSecondary)
+                            .foregroundColor(IntentiveColors.textSecondary)
 
                         Button(action: {
                             ScreenCaptureService.openScreenRecordingPreferences()
@@ -539,7 +539,7 @@ struct ScreenRecordingPermissionSection: View {
                             .padding(.vertical, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(OmiColors.purplePrimary)
+                                    .fill(IntentiveColors.purplePrimary)
                             )
                         }
                         .buttonStyle(.plain)
@@ -555,12 +555,12 @@ struct ScreenRecordingPermissionSection: View {
                         .scaledFont(size: 12, weight: .bold)
                         .foregroundColor(.white)
                         .frame(width: 22, height: 22)
-                        .background(Circle().fill(OmiColors.purplePrimary))
+                        .background(Circle().fill(IntentiveColors.purplePrimary))
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Come back to omi and grant the permission")
                             .scaledFont(size: 13)
-                            .foregroundColor(OmiColors.textSecondary)
+                            .foregroundColor(IntentiveColors.textSecondary)
 
                         Button(action: {
                             // Reset stale state so Grant flow works fresh
@@ -600,7 +600,7 @@ struct ScreenRecordingPermissionSection: View {
         return VStack(alignment: .leading, spacing: 16) {
             Text("How to grant screen recording access:")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
             VStack(alignment: .leading, spacing: 12) {
                 instructionStep(number: 1, text: "Click \"Open Settings\" below - this will make omi appear in the list")
@@ -615,7 +615,7 @@ struct ScreenRecordingPermissionSection: View {
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(OmiColors.backgroundQuaternary, lineWidth: 1)
+                        .stroke(IntentiveColors.backgroundQuaternary, lineWidth: 1)
                 )
 
             Button(action: {
@@ -641,7 +641,7 @@ struct ScreenRecordingPermissionSection: View {
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(OmiColors.purplePrimary)
+                        .fill(IntentiveColors.purplePrimary)
                 )
             }
             .buttonStyle(.plain)
@@ -666,7 +666,7 @@ struct NotificationPermissionSection: View {
         } else if isPermissionDenied {
             return Color.red.opacity(0.15)
         } else {
-            return OmiColors.backgroundTertiary
+            return IntentiveColors.backgroundTertiary
         }
     }
 
@@ -676,7 +676,7 @@ struct NotificationPermissionSection: View {
         } else if isPermissionDenied {
             return .red
         } else {
-            return OmiColors.textSecondary
+            return IntentiveColors.textSecondary
         }
     }
 
@@ -686,7 +686,7 @@ struct NotificationPermissionSection: View {
         } else if isPermissionDenied {
             return Color.red.opacity(0.5)
         } else {
-            return OmiColors.backgroundQuaternary.opacity(0.5)
+            return IntentiveColors.backgroundQuaternary.opacity(0.5)
         }
     }
 
@@ -711,7 +711,7 @@ struct NotificationPermissionSection: View {
                         HStack(spacing: 8) {
                             Text("Notifications")
                                 .scaledFont(size: 16, weight: .semibold)
-                                .foregroundColor(OmiColors.textPrimary)
+                                .foregroundColor(IntentiveColors.textPrimary)
 
                             notificationStatusBadge
                         }
@@ -720,14 +720,14 @@ struct NotificationPermissionSection: View {
                             ? "Permission was denied - enable in System Settings"
                             : "Required for proactive assistant alerts")
                             .scaledFont(size: 13)
-                            .foregroundColor(isPermissionDenied ? .red.opacity(0.8) : OmiColors.textTertiary)
+                            .foregroundColor(isPermissionDenied ? .red.opacity(0.8) : IntentiveColors.textTertiary)
                     }
 
                     Spacer()
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .scaledFont(size: 14, weight: .medium)
-                        .foregroundColor(OmiColors.textTertiary)
+                        .foregroundColor(IntentiveColors.textTertiary)
                 }
                 .padding(20)
             }
@@ -737,7 +737,7 @@ struct NotificationPermissionSection: View {
             if isExpanded && !appState.hasNotificationPermission {
                 VStack(alignment: .leading, spacing: 16) {
                     Divider()
-                        .background(OmiColors.backgroundQuaternary)
+                        .background(IntentiveColors.backgroundQuaternary)
 
                     if isPermissionDenied {
                         // DENIED STATE - Show settings instructions
@@ -753,7 +753,7 @@ struct NotificationPermissionSection: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(isPermissionDenied ? Color.red.opacity(0.05) : OmiColors.backgroundSecondary.opacity(0.5))
+                .fill(isPermissionDenied ? Color.red.opacity(0.05) : IntentiveColors.backgroundSecondary.opacity(0.5))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(borderColor, lineWidth: isPermissionDenied ? 2 : 1)
@@ -769,12 +769,12 @@ struct NotificationPermissionSection: View {
             Text(appState.hasNotificationPermission ? "Granted" : (isPermissionDenied ? "Denied" : "Not Granted"))
                 .scaledFont(size: 12, weight: .medium)
         }
-        .foregroundColor(appState.hasNotificationPermission ? .green : (isPermissionDenied ? .red : OmiColors.warning))
+        .foregroundColor(appState.hasNotificationPermission ? .green : (isPermissionDenied ? .red : IntentiveColors.warning))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(appState.hasNotificationPermission ? Color.green.opacity(0.15) : (isPermissionDenied ? Color.red.opacity(0.15) : OmiColors.warning.opacity(0.15)))
+                .fill(appState.hasNotificationPermission ? Color.green.opacity(0.15) : (isPermissionDenied ? Color.red.opacity(0.15) : IntentiveColors.warning.opacity(0.15)))
         )
     }
 
@@ -783,7 +783,7 @@ struct NotificationPermissionSection: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Notification access was previously denied. Enable it in System Settings:")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
             VStack(alignment: .leading, spacing: 12) {
                 instructionStep(number: 1, text: "Click \"Open Settings\" below")
@@ -805,7 +805,7 @@ struct NotificationPermissionSection: View {
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(OmiColors.purplePrimary)
+                        .fill(IntentiveColors.purplePrimary)
                 )
             }
             .buttonStyle(.plain)
@@ -817,7 +817,7 @@ struct NotificationPermissionSection: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("How to grant notification access:")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
             VStack(alignment: .leading, spacing: 12) {
                 instructionStep(number: 1, text: "Click \"Grant Access\" below - a system dialog will appear")
@@ -840,7 +840,7 @@ struct NotificationPermissionSection: View {
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(OmiColors.purplePrimary)
+                        .fill(IntentiveColors.purplePrimary)
                 )
             }
             .buttonStyle(.plain)
@@ -857,12 +857,12 @@ private func statusBadge(isGranted: Bool) -> some View {
         Text(isGranted ? "Granted" : "Not Granted")
             .scaledFont(size: 12, weight: .medium)
     }
-    .foregroundColor(isGranted ? .green : OmiColors.warning)
+    .foregroundColor(isGranted ? .green : IntentiveColors.warning)
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
     .background(
         Capsule()
-            .fill(isGranted ? Color.green.opacity(0.15) : OmiColors.warning.opacity(0.15))
+            .fill(isGranted ? Color.green.opacity(0.15) : IntentiveColors.warning.opacity(0.15))
     )
 }
 
@@ -872,11 +872,11 @@ private func instructionStep(number: Int, text: String) -> some View {
             .scaledFont(size: 12, weight: .bold)
             .foregroundColor(.white)
             .frame(width: 22, height: 22)
-            .background(Circle().fill(OmiColors.purplePrimary))
+            .background(Circle().fill(IntentiveColors.purplePrimary))
 
         Text(text)
             .scaledFont(size: 13)
-            .foregroundColor(OmiColors.textSecondary)
+            .foregroundColor(IntentiveColors.textSecondary)
     }
 }
 
@@ -884,6 +884,6 @@ private func instructionStep(number: Int, text: String) -> some View {
 #Preview {
     PermissionsPage(appState: AppState())
         .frame(width: 800, height: 700)
-        .background(OmiColors.backgroundPrimary)
+        .background(IntentiveColors.backgroundPrimary)
 }
 #endif

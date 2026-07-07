@@ -12,11 +12,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "bell.badge.fill")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.purplePrimary)
+              .foregroundColor(IntentiveColors.purplePrimary)
 
             Text("Notifications")
               .scaledFont(size: 15, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -30,11 +30,11 @@ extension SettingsContentView {
 
           Text("Control how often you receive notifications")
             .scaledFont(size: 13)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
 
           if notificationsEnabled {
             Divider()
-              .background(OmiColors.backgroundQuaternary)
+              .background(IntentiveColors.backgroundQuaternary)
 
             notificationFrequencySlider(settingId: "notifications.frequency")
 
@@ -109,11 +109,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "text.badge.checkmark")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.purplePrimary)
+              .foregroundColor(IntentiveColors.purplePrimary)
 
             Text("Daily Summary")
               .scaledFont(size: 15, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -127,11 +127,11 @@ extension SettingsContentView {
 
           Text("Receive a daily summary of your conversations and activities")
             .scaledFont(size: 13)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
 
           if dailySummaryEnabled {
             Divider()
-              .background(OmiColors.backgroundQuaternary)
+              .background(IntentiveColors.backgroundQuaternary)
 
             settingRow(
               title: "Summary Time", subtitle: "When to send your daily summary",
@@ -164,7 +164,7 @@ extension SettingsContentView {
         VStack(alignment: .leading, spacing: 16) {
           Text("Data Controls")
             .scaledFont(size: 15, weight: .semibold)
-            .foregroundColor(OmiColors.textPrimary)
+            .foregroundColor(IntentiveColors.textPrimary)
 
           privacyToggleRow(
             icon: "mic.fill",
@@ -194,12 +194,12 @@ extension SettingsContentView {
           HStack(spacing: 10) {
             Image(systemName: "shield.lefthalf.filled")
               .scaledFont(size: 14)
-              .foregroundColor(OmiColors.purplePrimary)
+              .foregroundColor(IntentiveColors.purplePrimary)
               .frame(width: 20)
 
             Text("Encryption")
               .scaledFont(size: 14, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
           }
 
           HStack(spacing: 10) {
@@ -210,7 +210,7 @@ extension SettingsContentView {
 
             Text("Server-side encryption")
               .scaledFont(size: 13)
-              .foregroundColor(OmiColors.textSecondary)
+              .foregroundColor(IntentiveColors.textSecondary)
 
             Text("Active")
               .scaledFont(size: 10, weight: .semibold)
@@ -223,7 +223,7 @@ extension SettingsContentView {
 
           Text("Your data is encrypted and stored securely with Google Cloud infrastructure.")
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
         }
       }
 
@@ -238,18 +238,18 @@ extension SettingsContentView {
             HStack(spacing: 10) {
               Image(systemName: "list.bullet")
                 .scaledFont(size: 14)
-                .foregroundColor(OmiColors.purplePrimary)
+                .foregroundColor(IntentiveColors.purplePrimary)
                 .frame(width: 20)
 
               Text("What We Track")
                 .scaledFont(size: 14, weight: .medium)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
               Spacer()
 
               Image(systemName: "chevron.right")
                 .scaledFont(size: 11, weight: .semibold)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
                 .rotationEffect(.degrees(isTrackingExpanded ? 90 : 0))
             }
           }
@@ -279,12 +279,12 @@ extension SettingsContentView {
           HStack(spacing: 10) {
             Image(systemName: "hand.raised.fill")
               .scaledFont(size: 14)
-              .foregroundColor(OmiColors.purplePrimary)
+              .foregroundColor(IntentiveColors.purplePrimary)
               .frame(width: 20)
 
             Text("Privacy Guarantees")
               .scaledFont(size: 14, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
           }
 
           VStack(alignment: .leading, spacing: 6) {

@@ -1,5 +1,6 @@
 import IntentiveDesktopCore
 import IntentiveDesktopNativeAdapters
+import IntentiveDesktopNativeAssets
 import SwiftUI
 
 private enum DesktopSection: String, CaseIterable, Identifiable {
@@ -35,17 +36,32 @@ private final class DesktopViewModel: ObservableObject {
   @Published var compilerSettings: CompilerSettings
   @Published var excludedAppsText: String
   @Published var screenRecordingPermissionGranted: Bool
+  @Published var accessibilityPermissionGranted: Bool
+  @Published var microphonePermissionStatus: DesktopMicrophonePermissionStatus
   @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
+  @Published var onboardingProgress: DesktopOnboardingProgress
+  @Published var showOnboarding: Bool
+  @Published var voiceCaptureRunning = false
+  @Published var voiceStatus = "Ready for a local push-to-talk turn"
+  @Published var voiceShortcutState: PushToTalkShortcutState = .idle
 
   let messageStore = MessageStore()
   let screenMemory: SwitchableScreenMemoryStore
   private let settingsStore: any ScreenMemorySettingsStore
   private let permissionGateway: any ScreenRecordingPermissionGateway
+  private let accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway
+  private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
+  private let onboardingStore: any DesktopOnboardingProgressStore
   private let notificationSink = UserNotificationDesktopSink()
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
+  private let pushToTalkRecorder = NativePushToTalkAudioRecorder()
+  private let pushToTalkShortcutMonitor = NativePushToTalkShortcutMonitor()
   private var runtimeRestoreAttempted = false
   private var screenMemoryProfileUserID = DesktopLocalProfile.anonymousUserID
+  private var pushToTalkShortcutStateMachine = PushToTalkShortcutStateMachine()
+  private var pendingPushToTalkAudio: Data?
+  private var pendingPushToTalkLockTask: Task<Void, Never>?
   private lazy var runtime = RuntimeAdapter(
     socket: runtimeSocket,
     messageStore: messageStore,
@@ -60,8 +76,18 @@ private final class DesktopViewModel: ObservableObject {
   )
   private lazy var floatingBarController = FloatingBarController(runtimeClient: runtime, messageStore: messageStore)
   private lazy var floatingBarPresenter = IntentiveFloatingBarPresenter(controller: floatingBarController)
+  private lazy var pushToTalk = PushToTalkManager(
+    audioCapture: NativeMicrophoneAudioCaptureService(),
+    voiceGate: PushToTalkVoiceActivityGate(vad: SileroPushToTalkVADPredictor()),
+    transcription: FluidAudioLocalTranscriptionService(),
+    runtimeClient: runtime
+  )
   private lazy var compiler = ContextCompiler(settings: compilerSettings)
-  private lazy var publisher = PerceptionPublisher(runtimeClient: runtime)
+  private lazy var publisher = PerceptionPublisher(
+    runtimeClient: runtime,
+    outbox: screenMemory,
+    isRuntimeConnected: { [weak self] in self?.runtime.status == .connected }
+  )
   private lazy var captureSource = NativeScreenCaptureSource()
   private lazy var capture = CaptureCoordinator(
     compiler: compiler,
@@ -83,21 +109,51 @@ private final class DesktopViewModel: ObservableObject {
     screenMemory.search(query, limit: 24)
   }
 
+  var onboardingRequirements: DesktopOnboardingRequirements {
+    DesktopOnboardingRequirements(
+      progress: onboardingProgress,
+      screenRecordingPermissionGranted: screenRecordingPermissionGranted,
+      accessibilityPermissionGranted: accessibilityPermissionGranted,
+      microphonePermissionGranted: microphonePermissionStatus.isGranted
+    )
+  }
+
   init(
     settingsStore: any ScreenMemorySettingsStore = UserDefaultsScreenMemorySettingsStore(),
-    permissionGateway: any ScreenRecordingPermissionGateway = NativeScreenRecordingPermissionGateway()
+    permissionGateway: any ScreenRecordingPermissionGateway = NativeScreenRecordingPermissionGateway(),
+    accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway = NativeAccessibilityPermissionGateway(),
+    microphonePermissionGateway: any DesktopMicrophonePermissionGateway = NativeMicrophonePermissionGateway(),
+    onboardingStore: any DesktopOnboardingProgressStore = UserDefaultsDesktopOnboardingProgressStore()
   ) {
     self.settingsStore = settingsStore
     self.permissionGateway = permissionGateway
+    self.accessibilityPermissionGateway = accessibilityPermissionGateway
+    self.microphonePermissionGateway = microphonePermissionGateway
+    self.onboardingStore = onboardingStore
     let settings = settingsStore.load()
+    let progress = onboardingStore.load()
+    let screenRecordingPermissionGranted = permissionGateway.hasScreenRecordingPermission()
+    let accessibilityPermissionGranted = accessibilityPermissionGateway.hasAccessibilityPermission()
+    let microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
     compilerSettings = settings
     excludedAppsText = Self.renderExcludedApps(settings.excludedApps)
-    screenRecordingPermissionGranted = permissionGateway.hasScreenRecordingPermission()
+    self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
+    self.accessibilityPermissionGranted = accessibilityPermissionGranted
+    self.microphonePermissionStatus = microphonePermissionStatus
+    onboardingProgress = progress
+    showOnboarding =
+      !DesktopOnboardingRequirements(
+        progress: progress,
+        screenRecordingPermissionGranted: screenRecordingPermissionGranted,
+        accessibilityPermissionGranted: accessibilityPermissionGranted,
+        microphonePermissionGranted: microphonePermissionStatus.isGranted
+      ).isComplete
 
     let initialScreenMemory = Self.makeScreenMemoryStore(userID: nil)
     screenMemory = SwitchableScreenMemoryStore(initialScreenMemory.store)
     status = initialScreenMemory.status
     configureRuntimeSocketCallbacks()
+    configurePushToTalkShortcutMonitor()
   }
 
   func restoreRuntimeSessionIfNeeded() async {
@@ -128,7 +184,7 @@ private final class DesktopViewModel: ObservableObject {
     status = "Capturing active window..."
     do {
       let events = try await capture.captureOnce(from: captureSource)
-      status = "Published \(events.count) perception event(s)"
+      status = perceptionCaptureStatus(eventCount: events.count)
       objectWillChange.send()
     } catch {
       status = "Capture failed: \(error.localizedDescription)"
@@ -156,10 +212,7 @@ private final class DesktopViewModel: ObservableObject {
       guard let self else { return }
       switch event {
       case .captured(let eventCount):
-        status =
-          eventCount == 0
-          ? "Capture running. Current app skipped"
-          : "Capture running. Published \(eventCount) perception event(s)"
+        status = "Capture running. \(perceptionCaptureStatus(eventCount: eventCount))"
       case .skipped(let reason):
         status = "Capture paused: \(reason)"
       case .failed(let message):
@@ -189,6 +242,300 @@ private final class DesktopViewModel: ObservableObject {
   func openFloatingBar() {
     floatingBarPresenter.show()
     status = "Floating bar open"
+  }
+
+  func presentOnboarding() {
+    refreshDesktopPermissions()
+    showOnboarding = true
+  }
+
+  func finishOnboardingLater() {
+    showOnboarding = false
+    status = "Desktop setup can be resumed from Setup"
+  }
+
+  func finishOnboarding() {
+    guard onboardingRequirements.isComplete else {
+      status = "Desktop setup is not complete"
+      return
+    }
+    showOnboarding = false
+    status = "Desktop setup complete"
+  }
+
+  func markOnboardingStepReviewed(_ step: DesktopOnboardingStep) {
+    onboardingProgress = onboardingProgress.completing(step)
+    do {
+      try onboardingStore.save(onboardingProgress)
+    } catch {
+      status = error.localizedDescription
+    }
+  }
+
+  func requestOnboardingScreenRecordingPermission() {
+    markOnboardingStepReviewed(.permissions)
+    requestScreenRecordingPermission()
+  }
+
+  func openOnboardingScreenRecordingSettings() {
+    markOnboardingStepReviewed(.permissions)
+    openScreenRecordingSettings()
+  }
+
+  func requestAccessibilityPermission() {
+    markOnboardingStepReviewed(.permissions)
+    let requested = accessibilityPermissionGateway.requestAccessibilityPermission()
+    accessibilityPermissionGranted = requested || accessibilityPermissionGateway.hasAccessibilityPermission()
+    status =
+      accessibilityPermissionGranted
+      ? "Accessibility permission granted"
+      : "Accessibility permission required for global push-to-talk"
+  }
+
+  func openAccessibilitySettings() {
+    markOnboardingStepReviewed(.permissions)
+    accessibilityPermissionGateway.openAccessibilitySettings()
+    status = "Opened Accessibility settings"
+  }
+
+  func requestMicrophonePermission() async {
+    markOnboardingStepReviewed(.permissions)
+    microphonePermissionStatus = await microphonePermissionGateway.requestAccess()
+    status =
+      microphonePermissionStatus.isGranted
+      ? "Microphone permission granted"
+      : "Microphone permission required"
+  }
+
+  func openMicrophoneSettings() {
+    markOnboardingStepReviewed(.permissions)
+    microphonePermissionGateway.openMicrophoneSettings()
+    status = "Opened Microphone settings"
+  }
+
+  func refreshDesktopPermissions() {
+    refreshScreenRecordingPermission()
+    accessibilityPermissionGranted = accessibilityPermissionGateway.hasAccessibilityPermission()
+    microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
+  }
+
+  func openFloatingBarFromOnboarding() {
+    openFloatingBar()
+    markOnboardingStepReviewed(.floatingBarDemo)
+  }
+
+  func reviewVoiceDemo() {
+    selected = .voice
+    markOnboardingStepReviewed(.voiceDemo)
+    status =
+      microphonePermissionStatus.isGranted
+      ? "Voice path ready for local transcription"
+      : "Microphone permission required for voice"
+  }
+
+  func runPushToTalkTurn() async {
+    guard !voiceCaptureRunning else { return }
+    refreshDesktopPermissions()
+    guard microphonePermissionStatus.isGranted else {
+      voiceStatus = "Microphone permission is required"
+      status = "Microphone permission required for voice"
+      return
+    }
+
+    voiceCaptureRunning = true
+    voiceStatus = "Listening for a push-to-talk turn..."
+    status = "Listening for voice"
+    defer { voiceCaptureRunning = false }
+
+    do {
+      let message = try await pushToTalk.captureAndSend()
+      if let message {
+        voiceStatus =
+          runtime.status == .connected
+          ? "Sent: \(message.body)"
+          : "Queued: \(message.body)"
+        status =
+          runtime.status == .connected
+          ? "Voice turn sent to Runtime Bridge"
+          : "Voice turn queued until Runtime connects"
+      } else {
+        voiceStatus = "No speech detected"
+        status = "Voice turn ignored because no speech was detected"
+      }
+      objectWillChange.send()
+    } catch {
+      voiceStatus = error.localizedDescription
+      status = "Voice turn failed: \(error.localizedDescription)"
+    }
+  }
+
+  private func configurePushToTalkShortcutMonitor() {
+    pushToTalkShortcutMonitor.onShortcutEvent = { [weak self] event in
+      Task { @MainActor [weak self] in
+        self?.handlePushToTalkShortcutEvent(event)
+      }
+    }
+    pushToTalkShortcutMonitor.start()
+  }
+
+  private func handlePushToTalkShortcutEvent(_ event: NativePushToTalkShortcutEvent) {
+    let now = ProcessInfo.processInfo.systemUptime
+    let actions: [PushToTalkShortcutAction]
+    switch event {
+    case .down:
+      actions = pushToTalkShortcutStateMachine.shortcutDown(at: now)
+    case .up:
+      actions = pushToTalkShortcutStateMachine.shortcutUp(at: now)
+    }
+    voiceShortcutState = pushToTalkShortcutStateMachine.state
+    performPushToTalkShortcutActions(actions)
+  }
+
+  private func performPushToTalkShortcutActions(_ actions: [PushToTalkShortcutAction]) {
+    for action in actions {
+      switch action {
+      case .startRecording:
+        startShortcutVoiceRecording()
+      case .stopRecordingAndSend:
+        stopShortcutVoiceRecordingAndSend()
+      case .stopRecordingAndHoldForLock:
+        stopShortcutVoiceRecordingForLockDecision()
+      case .sendPendingRecording:
+        sendPendingShortcutVoiceRecording()
+      case .discardPendingRecording:
+        pendingPushToTalkAudio = nil
+      case .schedulePendingLockTimeout(let delay):
+        schedulePendingPushToTalkLockTimeout(delay: delay)
+      case .cancelPendingLockTimeout:
+        pendingPushToTalkLockTask?.cancel()
+        pendingPushToTalkLockTask = nil
+      }
+    }
+    voiceShortcutState = pushToTalkShortcutStateMachine.state
+  }
+
+  private func startShortcutVoiceRecording() {
+    refreshDesktopPermissions()
+    guard accessibilityPermissionGranted else {
+      voiceStatus = "Accessibility permission is required for the global Option shortcut"
+      status = "Accessibility permission required for global push-to-talk"
+      performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
+      return
+    }
+    guard microphonePermissionStatus.isGranted else {
+      voiceStatus = "Microphone permission is required"
+      status = "Microphone permission required for voice"
+      performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
+      return
+    }
+
+    voiceCaptureRunning = true
+    voiceStatus = pushToTalkShortcutStateMachine.state == .lockedListening
+      ? "Voice locked. Tap Option again to send."
+      : "Hold Option to talk..."
+    status = "Listening for voice"
+
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        try await pushToTalkRecorder.start()
+      } catch {
+        voiceCaptureRunning = false
+        voiceStatus = error.localizedDescription
+        status = "Voice turn failed: \(error.localizedDescription)"
+        performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
+      }
+    }
+  }
+
+  private func stopShortcutVoiceRecordingAndSend() {
+    pendingPushToTalkLockTask?.cancel()
+    pendingPushToTalkLockTask = nil
+    voiceStatus = "Finalizing voice turn..."
+    voiceCaptureRunning = false
+
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        let audio = try pushToTalkRecorder.stop()
+        await processCapturedPushToTalkAudio(audio)
+      } catch {
+        finishPushToTalkShortcutAfterFailure(error)
+      }
+    }
+  }
+
+  private func stopShortcutVoiceRecordingForLockDecision() {
+    voiceStatus = "Tap Option again to lock, or wait to send."
+    voiceCaptureRunning = false
+
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        pendingPushToTalkAudio = try pushToTalkRecorder.stop()
+      } catch {
+        finishPushToTalkShortcutAfterFailure(error)
+      }
+    }
+  }
+
+  private func sendPendingShortcutVoiceRecording() {
+    pendingPushToTalkLockTask?.cancel()
+    pendingPushToTalkLockTask = nil
+    guard let audio = pendingPushToTalkAudio else {
+      finishPushToTalkShortcutAfterFailure(NativeMicrophoneAudioCaptureError.noAudioCaptured)
+      return
+    }
+    pendingPushToTalkAudio = nil
+    voiceStatus = "Finalizing voice turn..."
+
+    Task { @MainActor [weak self] in
+      await self?.processCapturedPushToTalkAudio(audio)
+    }
+  }
+
+  private func schedulePendingPushToTalkLockTimeout(delay: TimeInterval) {
+    pendingPushToTalkLockTask?.cancel()
+    pendingPushToTalkLockTask = Task { @MainActor [weak self] in
+      let nanoseconds = UInt64(max(0, delay) * 1_000_000_000)
+      try? await Task.sleep(nanoseconds: nanoseconds)
+      guard let self, !Task.isCancelled else { return }
+      performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.pendingLockTimeout())
+    }
+  }
+
+  private func processCapturedPushToTalkAudio(_ audio: Data) async {
+    do {
+      let message = try await pushToTalk.processAndSend(pcm16k: audio)
+      if let message {
+        voiceStatus =
+          runtime.status == .connected
+          ? "Sent: \(message.body)"
+          : "Queued: \(message.body)"
+        status =
+          runtime.status == .connected
+          ? "Voice turn sent to Runtime Bridge"
+          : "Voice turn queued until Runtime connects"
+      } else {
+        voiceStatus = "No speech detected"
+        status = "Voice turn ignored because no speech was detected"
+      }
+      pushToTalkShortcutStateMachine.finishProcessing()
+      voiceShortcutState = pushToTalkShortcutStateMachine.state
+      voiceCaptureRunning = false
+      objectWillChange.send()
+    } catch {
+      finishPushToTalkShortcutAfterFailure(error)
+    }
+  }
+
+  private func finishPushToTalkShortcutAfterFailure(_ error: Error) {
+    pushToTalkRecorder.cancel()
+    pendingPushToTalkAudio = nil
+    performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
+    voiceCaptureRunning = false
+    voiceStatus = error.localizedDescription
+    status = "Voice turn failed: \(error.localizedDescription)"
   }
 
   func triggerEffect() {
@@ -336,10 +683,30 @@ private final class DesktopViewModel: ObservableObject {
   private func applyRuntimeState(_ state: DesktopRuntimeSessionState) {
     runtimeState = state
     let storageStatus = reconfigureScreenMemoryForAuthenticatedUserIfNeeded()
-    status = [Self.renderRuntimeState(state), storageStatus]
+    let flushStatus = flushQueuedPerceptionEventsIfConnected(state)
+    status = [Self.renderRuntimeState(state), storageStatus, flushStatus]
       .compactMap { $0 }
       .joined(separator: " · ")
     objectWillChange.send()
+  }
+
+  private func perceptionCaptureStatus(eventCount: Int) -> String {
+    if eventCount == 0 {
+      return "No perception events captured"
+    }
+    return runtime.status == .connected
+      ? "Published \(eventCount) perception event(s)"
+      : "Queued \(eventCount) perception event(s) for Runtime"
+  }
+
+  private func flushQueuedPerceptionEventsIfConnected(_ state: DesktopRuntimeSessionState) -> String? {
+    guard case .connected = state else { return nil }
+    do {
+      let flushed = try publisher.flushPendingPerceptionEvents()
+      return flushed > 0 ? "synced \(flushed) queued perception event(s)" : nil
+    } catch {
+      return "perception sync pending: \(error.localizedDescription)"
+    }
   }
 
   private func reconfigureScreenMemoryForAuthenticatedUserIfNeeded() -> String? {
@@ -507,6 +874,32 @@ struct MainWindowView: View {
       model.selected = .screenMemory
       searchFocused = true
     }
+    .sheet(isPresented: $model.showOnboarding) {
+      DesktopOnboardingSheet(
+        progress: model.onboardingProgress,
+        requirements: model.onboardingRequirements,
+        screenRecordingPermissionGranted: model.screenRecordingPermissionGranted,
+        accessibilityPermissionGranted: model.accessibilityPermissionGranted,
+        microphonePermissionStatus: model.microphonePermissionStatus,
+        markStepReviewed: model.markOnboardingStepReviewed,
+        requestScreenRecordingPermission: model.requestOnboardingScreenRecordingPermission,
+        openScreenRecordingSettings: model.openOnboardingScreenRecordingSettings,
+        requestAccessibilityPermission: model.requestAccessibilityPermission,
+        openAccessibilitySettings: model.openAccessibilitySettings,
+        requestMicrophonePermission: {
+          Task {
+            await model.requestMicrophonePermission()
+          }
+        },
+        openMicrophoneSettings: model.openMicrophoneSettings,
+        refreshPermissions: model.refreshDesktopPermissions,
+        previewNotification: model.triggerEffect,
+        openFloatingBar: model.openFloatingBarFromOnboarding,
+        reviewVoiceDemo: model.reviewVoiceDemo,
+        finishLater: model.finishOnboardingLater,
+        finish: model.finishOnboarding
+      )
+    }
     .task {
       await model.restoreRuntimeSessionIfNeeded()
     }
@@ -520,6 +913,11 @@ struct MainWindowView: View {
       Text(model.status)
         .font(.caption)
         .foregroundStyle(.secondary)
+      Button {
+        model.presentOnboarding()
+      } label: {
+        Label("Setup", systemImage: "checklist")
+      }
       Button {
         Task {
           await model.signInAndConnectRuntime()
@@ -556,7 +954,7 @@ struct MainWindowView: View {
     case .chat:
       FloatingChatView(model: model)
     case .voice:
-      VoiceView()
+      VoiceView(model: model)
     case .effects:
       EffectsView(model: model)
     case .settings:
@@ -699,12 +1097,92 @@ private struct FloatingChatView: View {
 }
 
 private struct VoiceView: View {
+  @ObservedObject var model: DesktopViewModel
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Label("Push-to-talk pipeline", systemImage: "waveform")
-        .font(.title2)
-      Text("Global shortcut, local voice activity detection, local transcription, then a normal user_message into the Runtime Bridge.")
-        .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 18) {
+      HStack(alignment: .center) {
+        Label("Push-to-talk", systemImage: "waveform")
+          .font(.title2)
+        Spacer()
+        VStack(alignment: .trailing, spacing: 4) {
+          Label(
+            model.accessibilityPermissionGranted ? "Shortcut Ready" : "Shortcut Permission Required",
+            systemImage: model.accessibilityPermissionGranted
+              ? "keyboard.badge.checkmark"
+              : "keyboard.badge.exclamationmark"
+          )
+          .foregroundStyle(model.accessibilityPermissionGranted ? .green : .orange)
+          Label(
+            model.microphonePermissionStatus.label,
+            systemImage: model.microphonePermissionStatus.systemImage
+          )
+          .foregroundStyle(model.microphonePermissionStatus.isGranted ? .green : .orange)
+        }
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 10) {
+          Button {
+            Task {
+              await model.runPushToTalkTurn()
+            }
+          } label: {
+            Label(model.voiceCaptureRunning ? "Listening" : "Record Voice Turn", systemImage: model.voiceCaptureRunning ? "stop.circle" : "mic.circle")
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(model.voiceCaptureRunning || !model.microphonePermissionStatus.isGranted)
+
+          Button {
+            Task {
+              await model.requestMicrophonePermission()
+            }
+          } label: {
+            Label("Request Access", systemImage: "mic")
+          }
+          .disabled(model.microphonePermissionStatus.isGranted)
+
+          Button(action: model.openMicrophoneSettings) {
+            Label("Open Settings", systemImage: "gearshape")
+          }
+
+          Button(action: model.requestAccessibilityPermission) {
+            Label("Enable Shortcut", systemImage: "option")
+          }
+          .disabled(model.accessibilityPermissionGranted)
+        }
+
+        HStack(spacing: 10) {
+          ProgressView()
+            .controlSize(.small)
+            .opacity(model.voiceCaptureRunning ? 1 : 0)
+          Text(model.voiceStatus)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .textSelection(.enabled)
+        }
+
+        HStack(spacing: 8) {
+          Label("Hold Option to talk", systemImage: "option")
+          Text("Double-tap Option to lock")
+            .foregroundStyle(.secondary)
+          Spacer()
+          Text(model.voiceShortcutState == .idle ? "Idle" : "Active")
+            .font(.caption)
+            .foregroundStyle(model.voiceShortcutState == .idle ? Color.secondary : Color.green)
+        }
+        .font(.caption)
+        .opacity(model.accessibilityPermissionGranted ? 1 : 0.55)
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
+        Label("Local path", systemImage: "lock.shield")
+          .font(.headline)
+        Text("Mic audio is captured locally, screened by voice activity detection, transcribed on-device, and sent as a normal Runtime message.")
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       Spacer()
     }
     .padding(24)
@@ -741,6 +1219,9 @@ private struct SettingsView: View {
             set: model.setCaptureEnabled
           )
         )
+        Button(action: model.presentOnboarding) {
+          Label("Open Desktop Setup", systemImage: "checklist")
+        }
       }
 
       Section("Privacy") {
@@ -762,6 +1243,54 @@ private struct SettingsView: View {
             Label("Open System Settings", systemImage: "gearshape")
           }
           Button(action: model.refreshScreenRecordingPermission) {
+            Label("Refresh", systemImage: "arrow.clockwise")
+          }
+        }
+
+        HStack {
+          Label("Accessibility", systemImage: "keyboard.badge.checkmark")
+          Spacer()
+          Label(
+            model.accessibilityPermissionGranted ? "Granted" : "Required",
+            systemImage: model.accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+          )
+          .foregroundStyle(model.accessibilityPermissionGranted ? .green : .orange)
+        }
+
+        HStack {
+          Button(action: model.requestAccessibilityPermission) {
+            Label("Request Access", systemImage: "option")
+          }
+          Button(action: model.openAccessibilitySettings) {
+            Label("Open System Settings", systemImage: "gearshape")
+          }
+          Button(action: model.refreshDesktopPermissions) {
+            Label("Refresh", systemImage: "arrow.clockwise")
+          }
+        }
+
+        HStack {
+          Label("Microphone", systemImage: "mic")
+          Spacer()
+          Label(
+            model.microphonePermissionStatus.label,
+            systemImage: model.microphonePermissionStatus.systemImage
+          )
+          .foregroundStyle(model.microphonePermissionStatus.isGranted ? .green : .orange)
+        }
+
+        HStack {
+          Button {
+            Task {
+              await model.requestMicrophonePermission()
+            }
+          } label: {
+            Label("Request Access", systemImage: "mic")
+          }
+          Button(action: model.openMicrophoneSettings) {
+            Label("Open System Settings", systemImage: "gearshape")
+          }
+          Button(action: model.refreshDesktopPermissions) {
             Label("Refresh", systemImage: "arrow.clockwise")
           }
         }

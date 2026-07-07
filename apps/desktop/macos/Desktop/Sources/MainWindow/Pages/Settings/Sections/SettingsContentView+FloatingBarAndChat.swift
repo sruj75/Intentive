@@ -9,13 +9,13 @@ extension SettingsContentView {
       settingsCard(settingId: "floatingbar.show") {
         HStack(spacing: 16) {
           Circle()
-            .fill(showAskOmiBar ? OmiColors.success : OmiColors.textTertiary.opacity(0.3))
+            .fill(showAskOmiBar ? IntentiveColors.success : IntentiveColors.textTertiary.opacity(0.3))
             .frame(width: 12, height: 12)
-            .shadow(color: showAskOmiBar ? OmiColors.success.opacity(0.5) : .clear, radius: 6)
+            .shadow(color: showAskOmiBar ? IntentiveColors.success.opacity(0.5) : .clear, radius: 6)
 
           Text("Show floating bar")
             .scaledFont(size: 16, weight: .semibold)
-            .foregroundColor(OmiColors.textPrimary)
+            .foregroundColor(IntentiveColors.textPrimary)
 
           Spacer()
 
@@ -36,23 +36,23 @@ extension SettingsContentView {
         VStack(alignment: .leading, spacing: 16) {
           Text("Background Style")
             .scaledFont(size: 16, weight: .semibold)
-            .foregroundColor(OmiColors.textPrimary)
+            .foregroundColor(IntentiveColors.textPrimary)
 
           HStack(spacing: 16) {
             Text("Transparent")
               .scaledFont(size: 13, weight: shortcutSettings.solidBackground ? .regular : .semibold)
               .foregroundColor(
-                shortcutSettings.solidBackground ? OmiColors.textTertiary : OmiColors.textPrimary)
+                shortcutSettings.solidBackground ? IntentiveColors.textTertiary : IntentiveColors.textPrimary)
 
             Toggle("", isOn: $shortcutSettings.solidBackground)
               .toggleStyle(.switch)
-              .tint(OmiColors.purplePrimary)
+              .tint(IntentiveColors.purplePrimary)
               .labelsHidden()
 
             Text("Solid Dark")
               .scaledFont(size: 13, weight: shortcutSettings.solidBackground ? .semibold : .regular)
               .foregroundColor(
-                shortcutSettings.solidBackground ? OmiColors.textPrimary : OmiColors.textTertiary)
+                shortcutSettings.solidBackground ? IntentiveColors.textPrimary : IntentiveColors.textTertiary)
 
             Spacer()
           }
@@ -64,15 +64,15 @@ extension SettingsContentView {
           VStack(alignment: .leading, spacing: 4) {
             Text("Draggable Floating Bar")
               .scaledFont(size: 16, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
             Text("Allow repositioning the floating bar by dragging it.")
               .scaledFont(size: 13)
-              .foregroundColor(OmiColors.textSecondary)
+              .foregroundColor(IntentiveColors.textSecondary)
           }
           Spacer()
           Toggle("", isOn: $shortcutSettings.draggableBarEnabled)
             .toggleStyle(.switch)
-            .tint(OmiColors.purplePrimary)
+            .tint(IntentiveColors.purplePrimary)
         }
       }
 
@@ -81,15 +81,15 @@ extension SettingsContentView {
           VStack(alignment: .leading, spacing: 4) {
             Text("Typed Questions")
               .scaledFont(size: 16, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
             Text("Speak answers aloud when you submit a typed question from the floating bar.")
               .scaledFont(size: 13)
-              .foregroundColor(OmiColors.textSecondary)
+              .foregroundColor(IntentiveColors.textSecondary)
           }
           Spacer()
           Toggle("", isOn: floatingBarTypedVoiceAnswersBinding)
             .toggleStyle(.switch)
-            .tint(OmiColors.purplePrimary)
+            .tint(IntentiveColors.purplePrimary)
         }
       }
 
@@ -109,12 +109,12 @@ extension SettingsContentView {
         VStack(alignment: .leading, spacing: 4) {
           Text("Voice")
             .scaledFont(size: 16, weight: .semibold)
-            .foregroundColor(OmiColors.textPrimary)
+            .foregroundColor(IntentiveColors.textPrimary)
           Text(
             ShortcutSettings.voiceOption(for: shortcutSettings.selectedVoiceID).description
           )
           .scaledFont(size: 13)
-          .foregroundColor(OmiColors.textSecondary)
+          .foregroundColor(IntentiveColors.textSecondary)
         }
         Spacer()
         Picker("", selection: $shortcutSettings.selectedVoiceID) {
@@ -125,7 +125,7 @@ extension SettingsContentView {
         .pickerStyle(.menu)
         .labelsHidden()
         .frame(width: 180)
-        .tint(OmiColors.purplePrimary)
+        .tint(IntentiveColors.purplePrimary)
       }
     }
   }
@@ -142,11 +142,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "cpu")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             Text("AI Provider")
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -171,12 +171,12 @@ extension SettingsContentView {
               Link(destination: url) {
                 Text("\(provider.tagline) · \(url.host ?? "")")
                   .scaledFont(size: 12)
-                  .foregroundColor(OmiColors.textTertiary)
+                  .foregroundColor(IntentiveColors.textTertiary)
               }
             } else {
               Text(provider.tagline)
                 .scaledFont(size: 12)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
             }
           }
 
@@ -189,7 +189,7 @@ extension SettingsContentView {
                 .scaledFont(size: 12)
               Text("Connected to Claude")
                 .scaledFont(size: 12)
-                .foregroundColor(OmiColors.textSecondary)
+                .foregroundColor(IntentiveColors.textSecondary)
 
               Spacer()
 
@@ -215,11 +215,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "bubble.left.and.bubble.right")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             Text("Ask Mode")
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -233,7 +233,7 @@ extension SettingsContentView {
             "When enabled, shows an Ask/Act toggle in the chat. Ask mode restricts the AI to read-only actions. When disabled, the AI always runs in Act mode."
           )
           .scaledFont(size: 12)
-          .foregroundColor(OmiColors.textTertiary)
+          .foregroundColor(IntentiveColors.textTertiary)
         }
       }
 
@@ -243,11 +243,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "folder")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             Text("Workspace")
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -287,19 +287,19 @@ extension SettingsContentView {
           if !aiChatWorkingDirectory.isEmpty {
             Text(aiChatWorkingDirectory)
               .scaledFont(size: 12)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
               .lineLimit(1)
               .truncationMode(.middle)
 
             Text("Project-level CLAUDE.md and skills will be discovered from this directory")
               .scaledFont(size: 12)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
           } else {
             Text(
               "No workspace set. Set a project directory to discover project-level CLAUDE.md and skills."
             )
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
           }
         }
       }
@@ -310,11 +310,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "doc.text")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             Text("CLAUDE.md")
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
           }
@@ -324,12 +324,12 @@ extension SettingsContentView {
             HStack {
               Text("Global")
                 .scaledFont(size: 11, weight: .medium)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
                   RoundedRectangle(cornerRadius: 4)
-                    .fill(OmiColors.backgroundPrimary.opacity(0.5))
+                    .fill(IntentiveColors.backgroundPrimary.opacity(0.5))
                 )
 
               Spacer()
@@ -354,13 +354,13 @@ extension SettingsContentView {
               let sizeKB = Double(content.utf8.count) / 1024.0
               Text("\(path) (\(String(format: "%.1f", sizeKB)) KB)")
                 .scaledFont(size: 12)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             } else {
               Text("No CLAUDE.md found at ~/.claude/CLAUDE.md")
                 .scaledFont(size: 12)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
             }
           }
 
@@ -372,12 +372,12 @@ extension SettingsContentView {
               HStack {
                 Text("Project")
                   .scaledFont(size: 11, weight: .medium)
-                  .foregroundColor(OmiColors.purplePrimary)
+                  .foregroundColor(IntentiveColors.purplePrimary)
                   .padding(.horizontal, 6)
                   .padding(.vertical, 2)
                   .background(
                     RoundedRectangle(cornerRadius: 4)
-                      .fill(OmiColors.purplePrimary.opacity(0.1))
+                      .fill(IntentiveColors.purplePrimary.opacity(0.1))
                   )
 
                 Spacer()
@@ -402,13 +402,13 @@ extension SettingsContentView {
                 let sizeKB = Double(content.utf8.count) / 1024.0
                 Text("\(path) (\(String(format: "%.1f", sizeKB)) KB)")
                   .scaledFont(size: 12)
-                  .foregroundColor(OmiColors.textTertiary)
+                  .foregroundColor(IntentiveColors.textTertiary)
                   .lineLimit(1)
                   .truncationMode(.middle)
               } else {
                 Text("No CLAUDE.md found at \(aiChatWorkingDirectory)/CLAUDE.md")
                   .scaledFont(size: 12)
-                  .foregroundColor(OmiColors.textTertiary)
+                  .foregroundColor(IntentiveColors.textTertiary)
               }
             }
           }
@@ -421,18 +421,18 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "sparkles")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             if aiChatProjectDiscoveredSkills.isEmpty {
               Text("Skills (\(aiChatDiscoveredSkills.count) discovered)")
                 .scaledFont(size: 15, weight: .semibold)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
             } else {
               Text(
                 "Skills (\(aiChatDiscoveredSkills.count) global + \(aiChatProjectDiscoveredSkills.count) project)"
               )
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
             }
 
             Spacer()
@@ -453,28 +453,28 @@ extension SettingsContentView {
           if allSkills.isEmpty {
             Text("No skills found in ~/.claude/skills/")
               .scaledFont(size: 12)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
           } else {
             Text("Skill descriptions are included in the AI chat system prompt")
               .scaledFont(size: 12)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             // Search field
             HStack(spacing: 8) {
               Image(systemName: "magnifyingglass")
                 .scaledFont(size: 12)
-                .foregroundColor(OmiColors.textTertiary)
+                .foregroundColor(IntentiveColors.textTertiary)
 
               TextField("Search skills...", text: $skillSearchQuery)
                 .textFieldStyle(.plain)
                 .scaledFont(size: 13)
-                .foregroundColor(OmiColors.textPrimary)
+                .foregroundColor(IntentiveColors.textPrimary)
 
               if !skillSearchQuery.isEmpty {
                 Button(action: { skillSearchQuery = "" }) {
                   Image(systemName: "xmark.circle.fill")
                     .scaledFont(size: 12)
-                    .foregroundColor(OmiColors.textTertiary)
+                    .foregroundColor(IntentiveColors.textTertiary)
                 }
                 .buttonStyle(.plain)
               }
@@ -482,7 +482,7 @@ extension SettingsContentView {
             .padding(8)
             .background(
               RoundedRectangle(cornerRadius: 8)
-                .fill(OmiColors.backgroundPrimary.opacity(0.5))
+                .fill(IntentiveColors.backgroundPrimary.opacity(0.5))
             )
 
             ScrollView {
@@ -518,12 +518,12 @@ extension SettingsContentView {
                       HStack(spacing: 6) {
                         Text(skill.name)
                           .scaledFont(size: 13, weight: .medium)
-                          .foregroundColor(OmiColors.textPrimary)
+                          .foregroundColor(IntentiveColors.textPrimary)
 
                         Text(origin)
                           .scaledFont(size: 9, weight: .medium)
                           .foregroundColor(
-                            origin == "Project" ? OmiColors.purplePrimary : OmiColors.textTertiary
+                            origin == "Project" ? IntentiveColors.purplePrimary : IntentiveColors.textTertiary
                           )
                           .padding(.horizontal, 4)
                           .padding(.vertical, 1)
@@ -531,15 +531,15 @@ extension SettingsContentView {
                             RoundedRectangle(cornerRadius: 3)
                               .fill(
                                 origin == "Project"
-                                  ? OmiColors.purplePrimary.opacity(0.1)
-                                  : OmiColors.backgroundPrimary.opacity(0.5))
+                                  ? IntentiveColors.purplePrimary.opacity(0.1)
+                                  : IntentiveColors.backgroundPrimary.opacity(0.5))
                           )
                       }
 
                       if !skill.description.isEmpty {
                         Text(skill.description)
                           .scaledFont(size: 11)
-                          .foregroundColor(OmiColors.textTertiary)
+                          .foregroundColor(IntentiveColors.textTertiary)
                           .lineLimit(1)
                           .truncationMode(.tail)
                       }
@@ -578,11 +578,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "globe")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             Text("Browser Extension")
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -593,7 +593,7 @@ extension SettingsContentView {
                   .frame(width: 6, height: 6)
                 Text("Connected")
                   .scaledFont(size: 11)
-                  .foregroundColor(OmiColors.textTertiary)
+                  .foregroundColor(IntentiveColors.textTertiary)
               }
             }
 
@@ -607,7 +607,7 @@ extension SettingsContentView {
 
           Text("Lets the AI use your Chrome browser with all your logged-in sessions.")
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
 
           if playwrightUseExtension {
             if playwrightExtensionToken.isEmpty {
@@ -629,11 +629,11 @@ extension SettingsContentView {
               HStack(spacing: 8) {
                 Text("Token")
                   .scaledFont(size: 12)
-                  .foregroundColor(OmiColors.textTertiary)
+                  .foregroundColor(IntentiveColors.textTertiary)
 
                 Text(String(playwrightExtensionToken.prefix(8)) + "...")
                   .scaledFont(size: 12, weight: .medium)
-                  .foregroundColor(OmiColors.textPrimary)
+                  .foregroundColor(IntentiveColors.textPrimary)
                   .font(.system(.body, design: .monospaced))
 
                 Spacer()
@@ -676,11 +676,11 @@ extension SettingsContentView {
           HStack {
             Image(systemName: "hammer")
               .scaledFont(size: 16)
-              .foregroundColor(OmiColors.textTertiary)
+              .foregroundColor(IntentiveColors.textTertiary)
 
             Text("Dev Mode")
               .scaledFont(size: 15, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
+              .foregroundColor(IntentiveColors.textPrimary)
 
             Spacer()
 
@@ -695,7 +695,7 @@ extension SettingsContentView {
 
           Text("Let the AI modify the app's source code, rebuild it, and add custom features.")
             .scaledFont(size: 12)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
 
           if devModeEnabled {
             VStack(alignment: .leading, spacing: 8) {
@@ -705,7 +705,7 @@ extension SettingsContentView {
                   .scaledFont(size: 12)
                 Text("AI can modify UI, add features, create custom SQLite tables")
                   .scaledFont(size: 12)
-                  .foregroundColor(OmiColors.textSecondary)
+                  .foregroundColor(IntentiveColors.textSecondary)
               }
               HStack(spacing: 6) {
                 Image(systemName: "lock.fill")
@@ -713,7 +713,7 @@ extension SettingsContentView {
                   .scaledFont(size: 12)
                 Text("Backend API, auth, and sync logic are read-only")
                   .scaledFont(size: 12)
-                  .foregroundColor(OmiColors.textSecondary)
+                  .foregroundColor(IntentiveColors.textSecondary)
               }
             }
           }
@@ -752,14 +752,14 @@ extension SettingsContentView {
       HStack {
         Text(fileViewerTitle)
           .scaledFont(size: 16, weight: .semibold)
-          .foregroundColor(OmiColors.textPrimary)
+          .foregroundColor(IntentiveColors.textPrimary)
 
         Spacer()
 
         Button(action: { showFileViewer = false }) {
           Image(systemName: "xmark.circle.fill")
             .scaledFont(size: 18)
-            .foregroundColor(OmiColors.textTertiary)
+            .foregroundColor(IntentiveColors.textTertiary)
         }
         .buttonStyle(.plain)
       }
@@ -771,14 +771,14 @@ extension SettingsContentView {
       ScrollView {
         Text(fileViewerContent)
           .font(.system(size: 12, design: .monospaced))
-          .foregroundColor(OmiColors.textSecondary)
+          .foregroundColor(IntentiveColors.textSecondary)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(16)
       }
     }
     .frame(width: 600, height: 500)
-    .background(OmiColors.backgroundSecondary)
+    .background(IntentiveColors.backgroundSecondary)
   }
 
   func refreshAIChatConfig() {

@@ -401,7 +401,7 @@ struct AIResponseView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(OmiColors.purplePrimary.opacity(0.12))
+        .background(IntentiveColors.purplePrimary.opacity(0.12))
         .cornerRadius(8)
     }
 

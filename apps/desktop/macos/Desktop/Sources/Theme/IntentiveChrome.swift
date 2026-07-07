@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum OmiChrome {
+enum IntentiveChrome {
     static let windowRadius: CGFloat = 26
     static let cardRadius: CGFloat = 24
     static let sectionRadius: CGFloat = 20
@@ -8,7 +8,7 @@ enum OmiChrome {
     static let chipRadius: CGFloat = 14
 }
 
-private struct OmiPanelModifier: ViewModifier {
+private struct IntentivePanelModifier: ViewModifier {
     let fill: Color
     let radius: CGFloat
     let stroke: Color?
@@ -33,16 +33,16 @@ private struct OmiPanelModifier: ViewModifier {
 }
 
 extension View {
-    func omiPanel(
-        fill: Color = OmiColors.backgroundSecondary,
-        radius: CGFloat = OmiChrome.cardRadius,
-        stroke: Color? = OmiColors.border.opacity(0.28),
+    func intentivePanel(
+        fill: Color = IntentiveColors.backgroundSecondary,
+        radius: CGFloat = IntentiveChrome.cardRadius,
+        stroke: Color? = IntentiveColors.border.opacity(0.28),
         shadowOpacity: Double = 0.14,
         shadowRadius: CGFloat = 18,
         shadowY: CGFloat = 10
     ) -> some View {
         modifier(
-            OmiPanelModifier(
+            IntentivePanelModifier(
                 fill: fill,
                 radius: radius,
                 stroke: stroke,
@@ -53,13 +53,13 @@ extension View {
         )
     }
 
-    func omiControlSurface(
-        fill: Color = OmiColors.backgroundTertiary,
-        radius: CGFloat = OmiChrome.controlRadius,
+    func intentiveControlSurface(
+        fill: Color = IntentiveColors.backgroundTertiary,
+        radius: CGFloat = IntentiveChrome.controlRadius,
         stroke: Color? = nil
     ) -> some View {
         modifier(
-            OmiPanelModifier(
+            IntentivePanelModifier(
                 fill: fill,
                 radius: radius,
                 stroke: stroke,
