@@ -66,4 +66,4 @@ The monorepo gate for this deployable is:
 pnpm harness --scope apps/desktop
 ```
 
-The harness includes a debug bundle smoke that assembles `Intentive.app` and verifies the production bundle contract: app identity, auth callback URL scheme, privacy strings, Sparkle metadata, app icon, executable, and the SwiftPM native-assets bundle used by local VAD.
+The harness includes a debug bundle smoke that assembles `Intentive.app` and verifies the production bundle contract: app identity, auth callback URL scheme, privacy strings, Sparkle metadata, app icon, executable, and the SwiftPM native-assets bundle in `Contents/Resources` used by local VAD.

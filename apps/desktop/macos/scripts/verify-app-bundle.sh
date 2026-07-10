@@ -52,7 +52,7 @@ APP_BUNDLE="$(
 PLIST="$APP_BUNDLE/Contents/Info.plist"
 EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Intentive"
 APP_ICON="$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-NATIVE_ASSETS_BUNDLE="$APP_BUNDLE/$NATIVE_ASSETS_BUNDLE_NAME"
+NATIVE_ASSETS_BUNDLE="$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
 VAD_MODEL="$NATIVE_ASSETS_BUNDLE/silero_vad.onnx"
 
 [[ -f "$PLIST" ]] || fail "Info.plist missing"

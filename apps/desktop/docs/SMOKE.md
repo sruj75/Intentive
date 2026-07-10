@@ -82,7 +82,7 @@ Confirm the generated `Info.plist` contains:
 4. `CFBundleShortVersionString` and `CFBundleVersion` matching the release tag/build.
 5. `NSScreenCaptureUsageDescription`, `NSAppleEventsUsageDescription`, `NSMicrophoneUsageDescription`, and `NSAudioCaptureUsageDescription`.
 6. `SUFeedURL` and `SUPublicEDKey` when Sparkle update metadata is provided.
-7. `IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx` at the app bundle root for SwiftPM `Bundle.module` lookup.
+7. `Contents/Resources/IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx` for SwiftPM `Bundle.module` lookup.
 
 For the mechanical local check:
 
@@ -91,3 +91,7 @@ pnpm --dir apps/desktop release:smoke
 ```
 
 On a signed release candidate, also verify the DMG opens on a clean Mac and the generated `appcast.xml` points at the GitHub Release asset with numeric `sparkle:version` build metadata.
+
+## Internal Clean-Slate Smoke
+
+For changes to capture readiness or native permission onboarding, have an agent start `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` in the background. In the fresh Tart VM, the person at the keyboard installs the shared `Intentive.app` into `/Applications` and confirms the first-run Screen Recording, Microphone, and Accessibility flow; macOS requires those consent prompts to be handled in the GUI. The agent then runs `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` to stop and delete the guest. Never install or test Intentive in `intentive-base`; that template must remain app-free and permission-free. See [DEVELOPMENT.md](DEVELOPMENT.md#internal-build-clean-macos-permission-slate) for base-VM setup and cleanup behavior.

@@ -45,7 +45,7 @@ if [[ ! -d "$NATIVE_ASSETS_BUNDLE_SOURCE" ]]; then
   echo "Missing native assets bundle: $NATIVE_ASSETS_BUNDLE_SOURCE" >&2
   exit 1
 fi
-cp -R "$NATIVE_ASSETS_BUNDLE_SOURCE" "$APP_BUNDLE/$NATIVE_ASSETS_BUNDLE_NAME"
+cp -R "$NATIVE_ASSETS_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
