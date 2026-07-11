@@ -1,6 +1,6 @@
 import Combine
 import XCTest
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 @MainActor
 final class FloatingControlBarStateTests: XCTestCase {
@@ -151,9 +151,9 @@ final class FloatingControlBarStateTests: XCTestCase {
     /// Thread 3: leaveAgentSurface lands on .mainResponse when there IS a main conversation.
     func testLeaveAgentSurfaceLandsOnMainResponseWhenMainConversationExists() {
         let state = FloatingControlBarState()
-        // Seed a main conversation
+        // Seed a main conversation (Intentive answers via the local-answer override).
         state.displayedQuery = "What is the weather?"
-        state.currentAIMessage = ChatMessage(text: "Sunny.", sender: .ai)
+        state.setLocalAnswerOverride(ChatMessage(text: "Sunny.", sender: .ai))
 
         let agentID = UUID()
         state.present(.agent(agentID))

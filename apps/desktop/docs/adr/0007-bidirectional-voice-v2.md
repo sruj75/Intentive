@@ -1,20 +1,28 @@
-# ADR 0007: Bidirectional voice v2 uses RunAnywhere for local ears and mouth
+# ADR 0007: Text-first Companion; the mic is on-device dictation
 
 ## Status
 
-Accepted.
+Accepted. Supersedes the earlier "bidirectional voice v2" decision (spoken replies + barge-in) recorded under this number.
+
+## Context
+
+An earlier revision of this ADR accepted a bidirectional voice loop: the Companion spoke its replies aloud through local RunAnywhere TTS and a desktop playback queue, with barge-in and system-audio muting to keep the microphone and speaker from fighting. That machinery — a `VoiceTurnCoordinator` speaking/barge-in state machine, a streaming PCM playback service, a system-audio mute controller, and a dedicated "Voice" surface — added significant complexity for a talk-back experience we decided not to ship.
 
 ## Decision
 
-Desktop voice v2 uses the RunAnywhere Swift SDK for local STT, VAD, and TTS. The Mac remains an ears-and-mouth Client: it captures and synthesizes audio locally, while the Agent Runtime remains the only Companion brain.
+The Companion replies in **text only**. It never speaks back. There is no local TTS, no playback queue, and no speaking/barge-in/mic-interlock state.
 
-Raw audio never crosses the Client boundary. Push-to-talk turns are VAD-gated, transcribed on device, and sent as normal `user_message` events. Companion replies can be spoken locally through RunAnywhere TTS and a desktop playback queue. Barge-in stops current playback before new microphone capture starts.
+The microphone is **dictation**, not a send button. A push-to-talk turn (button or the global Option shortcut) is captured locally, screened by on-device voice-activity detection, and transcribed on device by RunAnywhere STT. The transcript is placed into the composer for the user to review, edit, and send with a normal `user_message` — the same terminal step a typed message takes. Dictation itself never sends; that decision lives entirely at the call site, which is why the dictation manager holds no runtime client.
 
-Ambient audio capture is off by default. When enabled, the Desktop Client periodically captures short local microphone segments, gates them with local VAD, transcribes them on device, stores the transcript only in local Screen Memory, and publishes a compact `perception_event` with `artifact_type: "ambient_audio_summary"`. Secret-like transcript content suppresses the published summary and embedding.
+Raw audio never crosses the Client boundary. The Mac stays local-vision/local-ears first: it captures and transcribes locally, and the Agent Runtime remains the only Companion brain.
+
+Ambient audio capture is unchanged and retained. When enabled, the Desktop Client periodically captures short local microphone segments, gates them with local VAD, transcribes them on device, stores the transcript only in local Screen Memory, and publishes a compact `perception_event` with `artifact_type: "ambient_audio_summary"`. Secret-like transcript content suppresses the published summary and embedding. This is a separate feature from push-to-talk dictation.
 
 ## Consequences
 
-- The shared Protocol owns `ambient_audio_summary`; Runtime ingestion treats it as a normal perception artifact.
-- Screen Memory owns local audio transcript records alongside screen records.
-- The menu-bar item shows ambient capture state and can disable ambient capture in one click.
-- The current RunAnywhere `0.19.13` Swift package publishes iOS-named ONNX artifacts for macOS and does not link ONNX Runtime symbols by itself. The desktop package therefore keeps an explicit `onnxruntime` dependency as a link shim while FluidAudio remains removed.
+- The talk-back path is removed: the streaming speech playback service, the `SpeechSynthesizer` seam, the `VoiceTurnCoordinator`, the system-audio mute controller, and the `spokenResponsesEnabled` setting are gone. RunAnywhere TTS warm-up (`loadTTSVoice`) is dropped; only STT and VAD warm-up remain.
+- The push-to-talk manager is now a transcription-only deep module returning a transcript for the composer; it no longer sends.
+- ADR-0004 (push-to-talk turns become `user_message`) still holds for the underlying capture/transcription pipeline; only the terminal step moved from auto-send to fill-the-composer.
+- The shared Protocol still owns `ambient_audio_summary`; Runtime ingestion treats it as a normal perception artifact. Screen Memory still owns local audio transcript records alongside screen records.
+- The desktop package keeps its explicit `onnxruntime` link-shim dependency for RunAnywhere STT/VAD on macOS.
+- Ambient capture state and its toggle live in the menu-bar dropdown; the standalone "Voice" surface is retired.

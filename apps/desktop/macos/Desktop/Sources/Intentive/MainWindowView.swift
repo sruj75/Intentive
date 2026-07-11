@@ -7,7 +7,6 @@ enum DesktopSection: String, CaseIterable, Identifiable {
   case home = "Home"
   case screenMemory = "Screen Memory"
   case chat = "Floating Chat"
-  case voice = "Voice"
   case effects = "Effects"
   case settings = "Settings"
 
@@ -18,7 +17,6 @@ enum DesktopSection: String, CaseIterable, Identifiable {
     case .home: return "rectangle.grid.2x2"
     case .screenMemory: return "clock.arrow.circlepath"
     case .chat: return "text.bubble"
-    case .voice: return "waveform"
     case .effects: return "bell.badge"
     case .settings: return "gearshape"
     }
@@ -56,7 +54,6 @@ final class DesktopViewModel: ObservableObject {
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
   private let runAnywhereVoiceClient = DefaultRunAnywhereVoiceClient()
-  private let voiceTurnCoordinator = VoiceTurnCoordinator()
   private let pushToTalkRecorder = NativePushToTalkAudioRecorder()
   private let pushToTalkShortcutMonitor = NativePushToTalkShortcutMonitor()
   private var runtimeRestoreAttempted = false
@@ -77,15 +74,11 @@ final class DesktopViewModel: ObservableObject {
     capturePermissionGranted: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
   )
   private lazy var floatingBarController = FloatingBarController(runtimeClient: runtime, messageStore: messageStore)
-  private lazy var floatingBarPresenter = IntentiveFloatingBarPresenter(controller: floatingBarController)
+  private let floatingBarManager = FloatingControlBarManager.shared
   private lazy var pushToTalk = PushToTalkManager(
     audioCapture: NativeMicrophoneAudioCaptureService(),
     voiceGate: RunAnywhereVoiceActivityGate(client: runAnywhereVoiceClient),
-    transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient),
-    runtimeClient: runtime
-  )
-  private lazy var speechPlayback = StreamingSpeechPlaybackService(
-    synthesizer: RunAnywhereSpeechSynthesizer(client: runAnywhereVoiceClient)
+    transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient)
   )
   private lazy var compiler = ContextCompiler(settings: compilerSettings)
   private lazy var publisher = PerceptionPublisher(
@@ -175,6 +168,8 @@ final class DesktopViewModel: ObservableObject {
     status = initialScreenMemory.status
     configureRuntimeSocketCallbacks()
     configurePushToTalkShortcutMonitor()
+    floatingBarManager.configure(controller: floatingBarController)
+    floatingBarManager.registerGlobalShortcut()
     reconcileAmbientAudioCapture()
   }
 
@@ -262,7 +257,7 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func openFloatingBar() {
-    floatingBarPresenter.show()
+    floatingBarManager.show()
     status = "Floating bar open"
   }
 
@@ -292,6 +287,29 @@ final class DesktopViewModel: ObservableObject {
     } catch {
       status = error.localizedDescription
     }
+  }
+
+  /// Menu-bar action: clear onboarding progress and reopen the setup flow.
+  func resetOnboarding() {
+    onboardingProgress = DesktopOnboardingProgress()
+    do {
+      try onboardingStore.save(onboardingProgress)
+    } catch {
+      status = error.localizedDescription
+    }
+    refreshDesktopPermissions()
+    showOnboarding = true
+    NSApp.activate(ignoringOtherApps: true)
+    status = "Onboarding reset"
+  }
+
+  /// Menu-bar action: disconnect the Runtime Bridge and sign out locally.
+  func signOut() {
+    runtimeSession.disconnect()
+    runtimeRestoreAttempted = false
+    applyRuntimeState(runtimeSession.state)
+    status = "Signed out"
+    objectWillChange.send()
   }
 
   func requestOnboardingScreenRecordingPermission() {
@@ -349,7 +367,7 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func reviewVoiceDemo() {
-    selected = .voice
+    selected = .chat
     markOnboardingStepReviewed(.voiceDemo)
     status =
       microphonePermissionStatus.isGranted
@@ -366,35 +384,51 @@ final class DesktopViewModel: ObservableObject {
       return
     }
 
-    performVoiceTurnActions(voiceTurnCoordinator.beginCapture())
     voiceCaptureRunning = true
     voiceStatus = "Capturing a push-to-talk turn..."
     status = "Capturing voice"
     defer { voiceCaptureRunning = false }
 
     do {
-      let message = try await pushToTalk.captureAndSend()
-      if let message {
-        performVoiceTurnActions(voiceTurnCoordinator.awaitReply())
-        voiceStatus =
-          runtime.status == .connected
-          ? "Sent: \(message.body)"
-          : "Queued: \(message.body)"
-        status =
-          runtime.status == .connected
-          ? "Voice turn sent to Runtime Bridge"
-          : "Voice turn queued until Runtime connects"
-      } else {
-        performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
-        voiceStatus = "No speech detected"
-        status = "Voice turn ignored because no speech was detected"
-      }
+      let transcript = try await pushToTalk.captureTranscript()
+      applyDictation(transcript)
       objectWillChange.send()
     } catch {
-      performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
       voiceStatus = error.localizedDescription
       status = "Voice turn failed: \(error.localizedDescription)"
     }
+  }
+
+  /// Places a dictated transcript into the composer for review instead of
+  /// sending it. The user edits and sends normally (ADR-0007). A nil transcript
+  /// means the turn contained no speech.
+  private func applyDictation(_ transcript: String?) {
+    guard let transcript else {
+      voiceStatus = "No speech detected"
+      status = "Voice turn ignored because no speech was detected"
+      return
+    }
+    let existing = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    input = existing.isEmpty ? transcript : existing + " " + transcript
+    voiceStatus = "Dictated: \(transcript)"
+    status = "Dictation added to the composer for review"
+  }
+
+  /// The global push-to-talk shortcut is the "talk to the companion from
+  /// anywhere" affordance, so its transcript is staged in the floating bar's
+  /// composer for review (never sent — ADR-0007) rather than the main-window
+  /// composer. A nil/empty transcript means the turn contained no speech.
+  private func stageShortcutDictationInFloatingBar(_ transcript: String?) {
+    guard let transcript,
+      !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      voiceStatus = "No speech detected"
+      status = "Voice turn ignored because no speech was detected"
+      return
+    }
+    floatingBarManager.receiveDictation(transcript)
+    voiceStatus = "Dictated: \(transcript)"
+    status = "Dictation added to the floating bar for review"
   }
 
   private func configurePushToTalkShortcutMonitor() {
@@ -457,7 +491,6 @@ final class DesktopViewModel: ObservableObject {
       return
     }
 
-    performVoiceTurnActions(voiceTurnCoordinator.beginCapture())
     voiceCaptureRunning = true
     voiceStatus = pushToTalkShortcutStateMachine.state == .lockedListening
       ? "Voice locked. Tap Option again to send."
@@ -535,22 +568,8 @@ final class DesktopViewModel: ObservableObject {
 
   private func processCapturedPushToTalkAudio(_ audio: Data) async {
     do {
-      let message = try await pushToTalk.processAndSend(pcm16k: audio)
-      if let message {
-        performVoiceTurnActions(voiceTurnCoordinator.awaitReply())
-        voiceStatus =
-          runtime.status == .connected
-          ? "Sent: \(message.body)"
-          : "Queued: \(message.body)"
-        status =
-          runtime.status == .connected
-          ? "Voice turn sent to Runtime Bridge"
-          : "Voice turn queued until Runtime connects"
-      } else {
-        performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
-        voiceStatus = "No speech detected"
-        status = "Voice turn ignored because no speech was detected"
-      }
+      let transcript = try await pushToTalk.transcript(fromPCM16k: audio)
+      stageShortcutDictationInFloatingBar(transcript)
       pushToTalkShortcutStateMachine.finishProcessing()
       voiceShortcutState = pushToTalkShortcutStateMachine.state
       voiceCaptureRunning = false
@@ -563,7 +582,6 @@ final class DesktopViewModel: ObservableObject {
   private func finishPushToTalkShortcutAfterFailure(_ error: Error) {
     pushToTalkRecorder.cancel()
     pendingPushToTalkAudio = nil
-    performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
     performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
     voiceCaptureRunning = false
     voiceStatus = error.localizedDescription
@@ -596,17 +614,6 @@ final class DesktopViewModel: ObservableObject {
       status = "Screen Memory is off"
     }
     reconcileAmbientAudioCapture()
-  }
-
-  func setSpokenResponsesEnabled(_ enabled: Bool) {
-    var settings = compilerSettings
-    settings.spokenResponsesEnabled = enabled
-    applyCompilerSettings(settings)
-    if !enabled {
-      speechPlayback.stop()
-      performVoiceTurnActions(voiceTurnCoordinator.cancelTurn())
-    }
-    status = enabled ? "Spoken responses are on" : "Spoken responses are off"
   }
 
   func setAmbientAudioCaptureEnabled(_ enabled: Bool) {
@@ -716,36 +723,14 @@ final class DesktopViewModel: ObservableObject {
   }
 
   private func handleRuntimeCompanionMessage(_ message: CompanionMessage) {
-    performVoiceTurnActions(
-      voiceTurnCoordinator.handleCompanionReply(
-        message,
-        spokenResponsesEnabled: compilerSettings.spokenResponsesEnabled
-      )
-    )
+    // The companion replies in text only; the message renders in the chat
+    // surfaces. A Post-Message-Back reply additionally fires a local effect.
     if message.viaPostMessageBack {
       deliverEffect(
         message,
         runtimeClient: alreadyAcknowledgedRuntimeClient,
         statusMessage: "Effect Runner delivered Runtime nudge"
       )
-    }
-  }
-
-  private func performVoiceTurnActions(_ actions: [VoiceTurnAction]) {
-    for action in actions {
-      switch action {
-      case .speak(let text):
-        speechPlayback.speak(text) { [weak self] in
-          guard let self else { return }
-          self.performVoiceTurnActions(self.voiceTurnCoordinator.finishSpeaking())
-        }
-      case .stopPlayback:
-        speechPlayback.stop()
-      case .muteSystemAudio:
-        SystemAudioMuteController.shared.muteForSpeechCapture()
-      case .restoreSystemAudio:
-        SystemAudioMuteController.shared.restoreAfterSpeechCapture()
-      }
     }
   }
 
@@ -756,7 +741,7 @@ final class DesktopViewModel: ObservableObject {
         runtimeSession.markRuntimeConnected()
       }
       applyRuntimeState(runtimeSession.state)
-      floatingBarPresenter.refreshMessages()
+      floatingBarManager.refreshMessages()
       objectWillChange.send()
     } catch {
       status = "Runtime event failed: \(error.localizedDescription)"
@@ -770,7 +755,7 @@ final class DesktopViewModel: ObservableObject {
   ) {
     let runner = EffectRunner(
       notifications: notificationSink,
-      overlay: FloatingBarOverlaySink(presenter: floatingBarPresenter),
+      overlay: FloatingBarOverlaySink(manager: floatingBarManager),
       runtimeClient: runtimeClient
     )
     do {
@@ -1066,8 +1051,6 @@ struct MainWindowView: View {
       ScreenMemoryView(model: model, searchFocused: $searchFocused)
     case .chat:
       FloatingChatView(model: model)
-    case .voice:
-      VoiceView(model: model)
     case .effects:
       EffectsView(model: model)
     case .settings:
@@ -1206,122 +1189,6 @@ private struct FloatingChatView: View {
     .padding(10)
     .background(message.author == .companion ? Color(nsColor: .controlBackgroundColor) : Color.accentColor.opacity(0.18))
     .clipShape(RoundedRectangle(cornerRadius: 8))
-  }
-}
-
-private struct VoiceView: View {
-  @ObservedObject var model: DesktopViewModel
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack(alignment: .center) {
-        Label("Push-to-talk", systemImage: "waveform")
-          .font(.title2)
-        Spacer()
-        VStack(alignment: .trailing, spacing: 4) {
-          Label(
-            model.accessibilityPermissionGranted ? "Shortcut Ready" : "Shortcut Permission Required",
-            systemImage: model.accessibilityPermissionGranted
-              ? "keyboard.badge.checkmark"
-              : "keyboard.badge.exclamationmark"
-          )
-          .foregroundStyle(model.accessibilityPermissionGranted ? .green : .orange)
-          Label(
-            model.microphonePermissionStatus.label,
-            systemImage: model.microphonePermissionStatus.systemImage
-          )
-          .foregroundStyle(model.microphonePermissionStatus.isGranted ? .green : .orange)
-        }
-      }
-
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(spacing: 10) {
-          Button {
-            Task {
-              await model.runPushToTalkTurn()
-            }
-          } label: {
-            Label(
-              model.voiceCaptureRunning ? "Capturing" : "Record Voice Turn",
-              systemImage: model.voiceCaptureRunning ? "stop.circle" : "mic.circle"
-            )
-          }
-          .buttonStyle(.borderedProminent)
-          .disabled(model.voiceCaptureRunning || !model.microphonePermissionStatus.isGranted)
-
-          Button {
-            Task {
-              await model.requestMicrophonePermission()
-            }
-          } label: {
-            Label("Request Access", systemImage: "mic")
-          }
-          .disabled(model.microphonePermissionStatus.isGranted)
-
-          Button(action: model.openMicrophoneSettings) {
-            Label("Open Settings", systemImage: "gearshape")
-          }
-
-          Button(action: model.requestAccessibilityPermission) {
-            Label("Enable Shortcut", systemImage: "option")
-          }
-          .disabled(model.accessibilityPermissionGranted)
-        }
-
-        Toggle(
-          "Spoken responses",
-          isOn: Binding(
-            get: { model.compilerSettings.spokenResponsesEnabled },
-            set: { model.setSpokenResponsesEnabled($0) }
-          )
-        )
-        .toggleStyle(.switch)
-
-        Toggle(
-          "Ambient audio capture",
-          isOn: Binding(
-            get: { model.compilerSettings.ambientAudioCaptureEnabled },
-            set: { model.setAmbientAudioCaptureEnabled($0) }
-          )
-        )
-        .toggleStyle(.switch)
-        .disabled(!model.microphonePermissionStatus.isGranted)
-
-        HStack(spacing: 10) {
-          ProgressView()
-            .controlSize(.small)
-            .opacity(model.voiceCaptureRunning ? 1 : 0)
-          Text(model.voiceStatus)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .textSelection(.enabled)
-        }
-
-        HStack(spacing: 8) {
-          Label("Hold Option to talk", systemImage: "option")
-          Text("Double-tap Option to lock")
-            .foregroundStyle(.secondary)
-          Spacer()
-          Text(model.voiceShortcutState == .idle ? "Idle" : "Active")
-            .font(.caption)
-            .foregroundStyle(model.voiceShortcutState == .idle ? Color.secondary : Color.green)
-        }
-        .font(.caption)
-        .opacity(model.accessibilityPermissionGranted ? 1 : 0.55)
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        Label("Local path", systemImage: "lock.shield")
-          .font(.headline)
-        Text("Mic audio is captured locally, screened by voice activity detection, transcribed on-device, and sent as a normal Runtime message.")
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-
-      Spacer()
-    }
-    .padding(24)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }
 

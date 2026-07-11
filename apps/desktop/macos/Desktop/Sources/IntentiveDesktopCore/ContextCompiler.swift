@@ -85,7 +85,6 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
   public var contextChangeDebounceSeconds: Double
   public var sameContextMinimumSeconds: Double
   public var messagingFallbackSeconds: Double
-  public var spokenResponsesEnabled: Bool
   public var ambientAudioCaptureEnabled: Bool
 
   public init(
@@ -94,7 +93,6 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
     contextChangeDebounceSeconds: Double = 3,
     sameContextMinimumSeconds: Double = 60,
     messagingFallbackSeconds: Double = 15,
-    spokenResponsesEnabled: Bool = true,
     ambientAudioCaptureEnabled: Bool = false
   ) {
     self.captureEnabled = captureEnabled
@@ -102,7 +100,6 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
     self.contextChangeDebounceSeconds = contextChangeDebounceSeconds
     self.sameContextMinimumSeconds = sameContextMinimumSeconds
     self.messagingFallbackSeconds = messagingFallbackSeconds
-    self.spokenResponsesEnabled = spokenResponsesEnabled
     self.ambientAudioCaptureEnabled = ambientAudioCaptureEnabled
   }
 
@@ -112,7 +109,6 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
     case contextChangeDebounceSeconds
     case sameContextMinimumSeconds
     case messagingFallbackSeconds
-    case spokenResponsesEnabled
     case ambientAudioCaptureEnabled
   }
 
@@ -124,7 +120,6 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
       contextChangeDebounceSeconds: try container.decodeIfPresent(Double.self, forKey: .contextChangeDebounceSeconds) ?? 3,
       sameContextMinimumSeconds: try container.decodeIfPresent(Double.self, forKey: .sameContextMinimumSeconds) ?? 60,
       messagingFallbackSeconds: try container.decodeIfPresent(Double.self, forKey: .messagingFallbackSeconds) ?? 15,
-      spokenResponsesEnabled: try container.decodeIfPresent(Bool.self, forKey: .spokenResponsesEnabled) ?? true,
       ambientAudioCaptureEnabled: try container.decodeIfPresent(Bool.self, forKey: .ambientAudioCaptureEnabled) ?? false
     )
   }

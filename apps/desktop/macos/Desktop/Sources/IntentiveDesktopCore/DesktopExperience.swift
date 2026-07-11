@@ -46,84 +46,6 @@ public protocol LocalTranscriptionService {
   func transcribe(_ pcm16k: Data) async throws -> String
 }
 
-public protocol SpeechSynthesizer: Sendable {
-  func synthesize(_ text: String) -> AsyncThrowingStream<Data, Error>
-}
-
-public enum VoiceTurnState: Equatable, Sendable {
-  case idle
-  case capturing
-  case transcribing
-  case awaitingReply
-  case speaking
-}
-
-public enum VoiceTurnAction: Equatable, Sendable {
-  case speak(String)
-  case stopPlayback
-  case muteSystemAudio
-  case restoreSystemAudio
-}
-
-public final class VoiceTurnCoordinator {
-  public private(set) var state: VoiceTurnState
-
-  public init(state: VoiceTurnState = .idle) {
-    self.state = state
-  }
-
-  public var acceptsMicrophoneAudio: Bool {
-    state != .speaking
-  }
-
-  @discardableResult
-  public func beginCapture() -> [VoiceTurnAction] {
-    let actions: [VoiceTurnAction]
-    if state == .speaking {
-      actions = [.stopPlayback, .muteSystemAudio]
-    } else {
-      actions = [.muteSystemAudio]
-    }
-    state = .capturing
-    return actions
-  }
-
-  public func beginTranscribing() {
-    state = .transcribing
-  }
-
-  @discardableResult
-  public func awaitReply() -> [VoiceTurnAction] {
-    state = .awaitingReply
-    return [.restoreSystemAudio]
-  }
-
-  @discardableResult
-  public func handleCompanionReply(_ message: CompanionMessage, spokenResponsesEnabled: Bool) -> [VoiceTurnAction] {
-    let text = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard spokenResponsesEnabled, !text.isEmpty else {
-      state = .idle
-      return [.restoreSystemAudio]
-    }
-    state = .speaking
-    return [.restoreSystemAudio, .speak(text)]
-  }
-
-  @discardableResult
-  public func finishSpeaking() -> [VoiceTurnAction] {
-    guard state == .speaking else { return [] }
-    state = .idle
-    return [.restoreSystemAudio]
-  }
-
-  @discardableResult
-  public func cancelTurn() -> [VoiceTurnAction] {
-    let shouldStop = state == .speaking
-    state = .idle
-    return shouldStop ? [.stopPlayback, .restoreSystemAudio] : [.restoreSystemAudio]
-  }
-}
-
 public enum PushToTalkTranscriptionError: Error, Equatable, LocalizedError {
   case unavailable
 
@@ -171,36 +93,38 @@ public struct UnavailableLocalTranscriptionService: LocalTranscriptionService {
   }
 }
 
+/// Push-to-talk dictation. Captures a microphone turn, screens it with the
+/// voice-activity gate, and transcribes it on device. The transcript is
+/// returned for the caller to place in the composer for review — dictation
+/// never sends on its own. This is why the manager holds no runtime client:
+/// the "fill the composer, do not send" decision lives entirely at the call
+/// site (see ADR-0007; contrast ADR-0004's captured-audio → user_message path).
+/// Returns nil when the turn contains no speech or transcribes to empty text.
 public final class PushToTalkManager {
   private let audioCapture: AudioCaptureService
   private let voiceGate: VoiceActivityGate
   private let transcription: LocalTranscriptionService
-  private let runtimeClient: RuntimeChatClient
 
   public init(
     audioCapture: AudioCaptureService,
     voiceGate: VoiceActivityGate = PushToTalkVoiceActivityGate(),
-    transcription: LocalTranscriptionService = UnavailableLocalTranscriptionService(),
-    runtimeClient: RuntimeChatClient
+    transcription: LocalTranscriptionService = UnavailableLocalTranscriptionService()
   ) {
     self.audioCapture = audioCapture
     self.voiceGate = voiceGate
     self.transcription = transcription
-    self.runtimeClient = runtimeClient
   }
 
-  @discardableResult
-  public func captureAndSend() async throws -> ChatMessage? {
+  public func captureTranscript() async throws -> String? {
     let pcm16k = try await audioCapture.capturePushToTalkAudio()
-    return try await processAndSend(pcm16k: pcm16k)
+    return try await transcript(fromPCM16k: pcm16k)
   }
 
-  @discardableResult
-  public func processAndSend(pcm16k: Data) async throws -> ChatMessage? {
+  public func transcript(fromPCM16k pcm16k: Data) async throws -> String? {
     guard await voiceGate.containsSpeech(pcm16k) else { return nil }
     let transcript = try await transcription.transcribe(pcm16k)
-    guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-    return try runtimeClient.sendUserMessage(transcript)
+    let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 }
 

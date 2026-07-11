@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import Omi_Computer
+@testable import IntentiveDesktopNativeAssets
 
 final class FloatingBarGeometryTests: XCTestCase {
     private let visibleFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)

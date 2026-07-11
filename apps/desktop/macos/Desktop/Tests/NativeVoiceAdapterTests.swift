@@ -138,7 +138,6 @@ private final class FakeRunAnywhereVoiceClient: RunAnywhereVoiceClient, @uncheck
   private(set) var warmUpCallCount = 0
   private(set) var transcriptionInputs: [Data] = []
   private(set) var vadFrameInputs: [[Float]] = []
-  private(set) var synthesizedTexts: [String] = []
 
   init(transcript: String, vadProbabilities: [Float] = []) {
     self.transcript = transcript
@@ -159,12 +158,5 @@ private final class FakeRunAnywhereVoiceClient: RunAnywhereVoiceClient, @uncheck
     defer { vadIndex += 1 }
     guard vadIndex < vadProbabilities.count else { return 0 }
     return vadProbabilities[vadIndex]
-  }
-
-  func synthesize(_ text: String) -> AsyncThrowingStream<Data, Error> {
-    synthesizedTexts.append(text)
-    return AsyncThrowingStream { continuation in
-      continuation.finish()
-    }
   }
 }

@@ -16,6 +16,15 @@ final class AnalyticsManager {
     _ = previousStatus
     _ = currentStatus
   }
+
+  // Floating-bar analytics referenced by the salvaged Omi bar. Intentive routes
+  // telemetry elsewhere, so these are inert.
+  func floatingBarAskOmiOpened(source: String) { _ = source }
+  func floatingBarAskOmiClosed() {}
+  func floatingBarToggled(visible: Bool, source: String) {
+    _ = visible
+    _ = source
+  }
 }
 
 func log(_ message: String) {

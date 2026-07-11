@@ -10,4 +10,5 @@ Numbering is local to `apps/desktop/`.
 | 0004 | Push-to-talk voice v1, superseded | [0004-push-to-talk-voice-v1.md](0004-push-to-talk-voice-v1.md) |
 | 0005 | Screen Memory local store and embeddings | [0005-screen-memory-local-store-and-embeddings.md](0005-screen-memory-local-store-and-embeddings.md) |
 | 0006 | Sparkle appcast hosting | [0006-sparkle-appcast-hosting.md](0006-sparkle-appcast-hosting.md) |
-| 0007 | Bidirectional voice v2 | [0007-bidirectional-voice-v2.md](0007-bidirectional-voice-v2.md) |
+| 0007 | Text-first Companion; mic is dictation (supersedes bidirectional voice v2) | [0007-bidirectional-voice-v2.md](0007-bidirectional-voice-v2.md) |
+| 0008 | Floating control bar — minimal-diff restoration of Omi's real bar | [0008-floating-bar-strip-and-salvage.md](0008-floating-bar-strip-and-salvage.md) |

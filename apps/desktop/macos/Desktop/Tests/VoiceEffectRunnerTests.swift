@@ -3,52 +3,45 @@ import Foundation
 import XCTest
 
 final class VoiceEffectRunnerTests: XCTestCase {
-  func testPushToTalkTranscribesSpeechAndSendsUserMessage() async throws {
-    let runtime = RecordingRuntimeClient()
+  // Dictation replaces the old auto-send push-to-talk: a turn is transcribed on
+  // device and the transcript is returned for the composer to review. The
+  // manager holds no runtime client, so it structurally cannot send (ADR-0007).
+  func testDictationTranscribesSpeechAndReturnsTranscript() async throws {
     let ptt = PushToTalkManager(
       audioCapture: FixedAudioCapture(pcm16k: sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)),
-      transcription: FixedTranscription(text: "What should I focus on?"),
-      runtimeClient: runtime
+      transcription: FixedTranscription(text: "What should I focus on?")
     )
 
-    let message = try await ptt.captureAndSend()
-    XCTAssertEqual(message?.body, "What should I focus on?")
-    XCTAssertEqual(runtime.userMessages, ["What should I focus on?"])
+    let transcript = try await ptt.captureTranscript()
+    XCTAssertEqual(transcript, "What should I focus on?")
   }
 
-  func testPushToTalkDefaultTranscriptionDoesNotSendFabricatedMessage() async throws {
-    let runtime = RecordingRuntimeClient()
+  func testDictationDefaultTranscriptionIsUnavailable() async throws {
     let ptt = PushToTalkManager(
-      audioCapture: FixedAudioCapture(pcm16k: sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)),
-      runtimeClient: runtime
+      audioCapture: FixedAudioCapture(pcm16k: sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500))
     )
 
     do {
-      _ = try await ptt.captureAndSend()
+      _ = try await ptt.captureTranscript()
       XCTFail("Expected default push-to-talk transcription to be unavailable")
     } catch let error as PushToTalkTranscriptionError {
       XCTAssertEqual(error, .unavailable)
     }
-    XCTAssertTrue(runtime.userMessages.isEmpty)
   }
 
-  func testPushToTalkIgnoresSilence() async throws {
-    let runtime = RecordingRuntimeClient()
+  func testDictationIgnoresSilence() async throws {
     let transcription = RecordingTranscription(text: "ignored")
     let ptt = PushToTalkManager(
       audioCapture: FixedAudioCapture(pcm16k: pcm16k(seconds: 1.0) { _ in 0 }),
-      transcription: transcription,
-      runtimeClient: runtime
+      transcription: transcription
     )
 
-    let message = try await ptt.captureAndSend()
-    XCTAssertNil(message)
-    XCTAssertTrue(runtime.userMessages.isEmpty)
+    let transcript = try await ptt.captureTranscript()
+    XCTAssertNil(transcript)
     XCTAssertEqual(transcription.callCount, 0)
   }
 
-  func testPushToTalkRejectsBroadbandNoiseBeforeTranscription() async throws {
-    let runtime = RecordingRuntimeClient()
+  func testDictationRejectsBroadbandNoiseBeforeTranscription() async throws {
     let transcription = RecordingTranscription(text: "ignored")
     var state: UInt64 = 0x1234abcd
     let noise = pcm16k(seconds: 1.0) { _ in
@@ -58,13 +51,11 @@ final class VoiceEffectRunnerTests: XCTestCase {
     }
     let ptt = PushToTalkManager(
       audioCapture: FixedAudioCapture(pcm16k: noise),
-      transcription: transcription,
-      runtimeClient: runtime
+      transcription: transcription
     )
 
-    let message = try await ptt.captureAndSend()
-    XCTAssertNil(message)
-    XCTAssertTrue(runtime.userMessages.isEmpty)
+    let transcript = try await ptt.captureTranscript()
+    XCTAssertNil(transcript)
     XCTAssertEqual(transcription.callCount, 0)
   }
 
@@ -106,52 +97,6 @@ final class VoiceEffectRunnerTests: XCTestCase {
     XCTAssertTrue(notifications.delivered.isEmpty)
     XCTAssertTrue(overlay.nudges.isEmpty)
     XCTAssertTrue(runtime.acknowledgements.isEmpty)
-  }
-
-  func testVoiceTurnCoordinatorSpeaksAnyCompanionReplyWhenEnabled() {
-    let coordinator = VoiceTurnCoordinator(state: .awaitingReply)
-
-    let actions = coordinator.handleCompanionReply(
-      CompanionMessage(
-        messageId: "reply-1",
-        body: "Here is the answer.",
-        emittedAt: "2026-07-05T10:00:00.000Z",
-        viaPostMessageBack: false
-      ),
-      spokenResponsesEnabled: true
-    )
-
-    XCTAssertEqual(actions, [.restoreSystemAudio, .speak("Here is the answer.")])
-    XCTAssertEqual(coordinator.state, .speaking)
-    XCTAssertFalse(coordinator.acceptsMicrophoneAudio)
-  }
-
-  func testVoiceTurnCoordinatorDoesNotSpeakWhenDisabled() {
-    let coordinator = VoiceTurnCoordinator(state: .awaitingReply)
-
-    let actions = coordinator.handleCompanionReply(
-      CompanionMessage(
-        messageId: "reply-1",
-        body: "Silent answer",
-        emittedAt: "2026-07-05T10:00:00.000Z",
-        viaPostMessageBack: true
-      ),
-      spokenResponsesEnabled: false
-    )
-
-    XCTAssertEqual(actions, [.restoreSystemAudio])
-    XCTAssertEqual(coordinator.state, .idle)
-    XCTAssertTrue(coordinator.acceptsMicrophoneAudio)
-  }
-
-  func testVoiceTurnCoordinatorStopsPlaybackOnBargeIn() {
-    let coordinator = VoiceTurnCoordinator(state: .speaking)
-
-    let actions = coordinator.beginCapture()
-
-    XCTAssertEqual(actions, [.stopPlayback, .muteSystemAudio])
-    XCTAssertEqual(coordinator.state, .capturing)
-    XCTAssertTrue(coordinator.acceptsMicrophoneAudio)
   }
 }
 

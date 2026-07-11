@@ -5,6 +5,9 @@ import SwiftUI
 
 @main
 struct IntentiveApp: App {
+  // The menu bar is an `NSStatusItem` owned by the delegate, not a SwiftUI
+  // `MenuBarExtra` (which renders unreliably on Sequoia). See IntentiveAppDelegate.
+  @NSApplicationDelegateAdaptor(IntentiveAppDelegate.self) private var appDelegate
   @StateObject private var model = DesktopViewModel()
 
   init() {
@@ -17,6 +20,7 @@ struct IntentiveApp: App {
     WindowGroup {
       MainWindowView(model: model)
         .frame(minWidth: 940, minHeight: 620)
+        .onAppear { appDelegate.attach(model: model) }
     }
     .commands {
       CommandGroup(after: .appInfo) {
@@ -25,22 +29,6 @@ struct IntentiveApp: App {
         }
         .keyboardShortcut("f", modifiers: [.command])
       }
-    }
-
-    MenuBarExtra {
-      Button(model.compilerSettings.ambientAudioCaptureEnabled ? "Mute Ambient Capture" : "Enable Ambient Capture") {
-        model.setAmbientAudioCaptureEnabled(!model.compilerSettings.ambientAudioCaptureEnabled)
-      }
-      .disabled(!model.microphonePermissionStatus.isGranted)
-
-      Button("Open Intentive") {
-        NSApp.activate(ignoringOtherApps: true)
-      }
-    } label: {
-      Label(
-        model.compilerSettings.ambientAudioCaptureEnabled ? "Intentive Capturing" : "Intentive",
-        systemImage: model.compilerSettings.ambientAudioCaptureEnabled ? "waveform.circle.fill" : "waveform.circle"
-      )
     }
   }
 }

@@ -416,7 +416,6 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(loaded.contextChangeDebounceSeconds, 4)
     XCTAssertEqual(loaded.sameContextMinimumSeconds, 45)
     XCTAssertEqual(loaded.messagingFallbackSeconds, 12)
-    XCTAssertTrue(loaded.spokenResponsesEnabled)
     XCTAssertFalse(loaded.ambientAudioCaptureEnabled)
   }
 

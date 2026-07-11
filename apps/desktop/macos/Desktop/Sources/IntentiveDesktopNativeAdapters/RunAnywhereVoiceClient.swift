@@ -7,7 +7,6 @@ public protocol RunAnywhereVoiceClient: Sendable {
   func warmUp() async throws
   func transcribe(_ pcm16k: Data) async throws -> String
   func vadProbability(_ frame512: [Float]) async throws -> Float
-  func synthesize(_ text: String) -> AsyncThrowingStream<Data, Error>
 }
 
 public enum RunAnywhereTranscriptionError: Error, Equatable, LocalizedError {
@@ -115,32 +114,25 @@ public final class DefaultRunAnywhereVoiceClient: RunAnywhereVoiceClient, @unche
   private static let warmup = RunAnywhereVoiceWarmupState()
 
   private let sttModelID: String
-  private let ttsVoiceID: String
   private let vadSampleRate: Int
   private let vadFrameLength: Float
   private let vadEnergyThreshold: Float
-  private let ttsSampleRate: Int
 
   public init(
     sttModelID: String = "sherpa-onnx-whisper-tiny.en",
-    ttsVoiceID: String = "piper-en-us-amy",
     vadSampleRate: Int = 16_000,
     vadFrameLength: Float = 0.032,
-    vadEnergyThreshold: Float = 0.015,
-    ttsSampleRate: Int = 22_050
+    vadEnergyThreshold: Float = 0.015
   ) {
     self.sttModelID = sttModelID
-    self.ttsVoiceID = ttsVoiceID
     self.vadSampleRate = vadSampleRate
     self.vadFrameLength = vadFrameLength
     self.vadEnergyThreshold = vadEnergyThreshold
-    self.ttsSampleRate = ttsSampleRate
   }
 
   public func warmUp() async throws {
     try await Self.warmup.warmUp(
       sttModelID: sttModelID,
-      ttsVoiceID: ttsVoiceID,
       vadSampleRate: vadSampleRate,
       vadFrameLength: vadFrameLength,
       vadEnergyThreshold: vadEnergyThreshold
@@ -157,31 +149,6 @@ public final class DefaultRunAnywhereVoiceClient: RunAnywhereVoiceClient, @unche
     let isSpeech = try await RunAnywhere.detectSpeech(in: frame512)
     return isSpeech ? 1 : 0
   }
-
-  public func synthesize(_ text: String) -> AsyncThrowingStream<Data, Error> {
-    AsyncThrowingStream { continuation in
-      Task {
-        do {
-          try await warmUp()
-          var yieldedChunk = false
-          let output = try await RunAnywhere.synthesizeStream(
-            text,
-            options: TTSOptions(sampleRate: ttsSampleRate)
-          ) { chunk in
-            guard !chunk.isEmpty else { return }
-            yieldedChunk = true
-            continuation.yield(chunk)
-          }
-          if !yieldedChunk, !output.audioData.isEmpty {
-            continuation.yield(output.audioData)
-          }
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-    }
-  }
 }
 
 private actor RunAnywhereVoiceWarmupState {
@@ -189,7 +156,6 @@ private actor RunAnywhereVoiceWarmupState {
 
   func warmUp(
     sttModelID: String,
-    ttsVoiceID: String,
     vadSampleRate: Int,
     vadFrameLength: Float,
     vadEnergyThreshold: Float
@@ -202,7 +168,6 @@ private actor RunAnywhereVoiceWarmupState {
     }
 
     try await RunAnywhere.loadSTTModel(sttModelID)
-    try await RunAnywhere.loadTTSVoice(ttsVoiceID)
     try await RunAnywhere.initializeVAD(
       VADConfiguration(
         energyThreshold: vadEnergyThreshold,

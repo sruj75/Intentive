@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import MarkdownUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -147,7 +146,7 @@ struct FloatingControlBarView: View {
 
     /// The notch "thinking" state: a PTT query is committed and being processed,
     /// with no live listening or open conversation surface. Shows the spinning
-    /// Omi mark + "Thinking" in the notch lobes.
+    /// Omi mark in the left notch lobe.
     private var showingNotchThinking: Bool {
         (state.isThinking || state.isVoiceResponseWaiting)
             && !state.showingAIConversation && !state.isVoiceListening
@@ -188,6 +187,14 @@ struct FloatingControlBarView: View {
                 } else {
                     pillAgentListMenu
                 }
+            }
+
+            if state.usesNotchIsland && !state.pttHintText.isEmpty && !state.showingAIConversation {
+                notchPttHintRow
+                    .frame(height: FloatingControlBarWindow.pttHintRowHeight)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+                    .transition(.opacity)
             }
 
             if state.showingAIConversation {
@@ -245,6 +252,7 @@ struct FloatingControlBarView: View {
                 let hasExpandedSurface = state.showingAIConversation
                     || state.currentNotification != nil
                     || shouldShowNotchHoverMenu
+                    || !state.pttHintText.isEmpty
                 let bottomRadius: CGFloat = state.showingAIConversation || state.currentNotification != nil ? 22 : 18
                 let surfaceWidth = hasExpandedSurface
                     ? max(notchChromeWidth, geometry.size.width - notchSurfaceHorizontalInset * 2)
@@ -414,15 +422,7 @@ struct FloatingControlBarView: View {
             }
             .buttonStyle(.plain)
 
-            if showingNotchThinking {
-                Text("Thinking")
-                    .scaledFont(size: 11, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            } else if notchSettingsHovering {
+            if !showingNotchThinking && notchSettingsHovering {
                 notchSettingsButton
                     .zIndex(1)
                     .transition(.scale.combined(with: .opacity))
@@ -447,6 +447,22 @@ struct FloatingControlBarView: View {
         .accessibilityIdentifier("notch_floating_bar_settings")
         .accessibilityLabel("Floating Bar Settings")
         .accessibilityHint("Open settings")
+    }
+
+    /// Transient too-short PTT hint shown below the notch chrome (notch layout has
+    /// no inline text spot, unlike the pill's `voiceListeningView`). White/neutral,
+    /// no toast; cleared on the same ~2s lifecycle as `pttHintText`.
+    private var notchPttHintRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "mic.fill")
+                .scaledFont(size: 11, weight: .semibold)
+                .foregroundColor(.white.opacity(0.9))
+            Text(state.pttHintText)
+                .scaledFont(size: 12, weight: .medium)
+                .foregroundColor(.white)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var notchOmiChatRow: some View {
@@ -583,21 +599,11 @@ struct FloatingControlBarView: View {
 
     private var conversationView: some View {
         ZStack(alignment: .top) {
-            if case .agent = state.conversationSurface, let activeAgentChatPill {
-                AgentMainChatView(
-                    pill: activeAgentChatPill,
-                    manager: agentPills,
-                    onBackToAgentRows: {
-                        showAgentListFromConversation()
-                    },
-                    onEscape: onEscape,
-                    onSpawnSibling: { siblingID in
-                        (window as? FloatingControlBarWindow)?
-                            .resizeForActiveAgentChatPublic(pillID: siblingID, animated: false)
-                    }
-                )
-                .id(activeAgentChatPill.id)
-                .zIndex(1)
+            if case .agent = state.conversationSurface, activeAgentChatPill != nil {
+                // Subagent chat surface removed: Intentive is a conversational
+                // companion with no agent routing (ADR-0007). This branch is
+                // inert (pills are always empty) and never rendered.
+                EmptyView()
             } else if state.conversationSurface == .mainResponse {
                 mainConversationContainer {
                     aiResponseView
@@ -726,24 +732,58 @@ struct FloatingControlBarView: View {
         openAgentInChat(agentID: pill.id)
     }
 
-    private func openAgentInChat(agentID: UUID) {
-        guard let pill = agentPills.pills.first(where: { $0.id == agentID }) else { return }
-        if state.conversationSurface == .agent(pill.id) {
-            showAgentListFromConversation()
-            return
+    private func openAgentInChat(agentID: UUID, completion: ((Bool) -> Void)? = nil) {
+        openAgentInChat(
+            ref: AgentTimelineRef(pillId: agentID, sessionId: nil, runId: nil),
+            completion: completion
+        )
+    }
+
+    private func openAgentInChat(ref: AgentTimelineRef, completion: ((Bool) -> Void)? = nil) {
+        Task { @MainActor in
+            let resolved = await agentPills.resolveAndPresentAgent(
+                pillId: ref.pillId,
+                sessionId: ref.sessionId,
+                runId: ref.runId
+            )
+            guard resolved else {
+                log(
+                    "FloatingControlBarView: agent open unavailable after hydrate "
+                        + "pillId=\(ref.pillId?.uuidString ?? "nil") "
+                        + "sessionId=\(ref.sessionId ?? "nil") "
+                        + "runId=\(ref.runId ?? "nil")"
+                )
+                completion?(false)
+                return
+            }
+            guard let pill = agentPills.pills.first(where: { pill in
+                if let pillId = ref.pillId, pill.id == pillId { return true }
+                if let runId = ref.runId, pill.canonicalRunId == runId { return true }
+                if let sessionId = ref.sessionId, pill.canonicalSessionId == sessionId { return true }
+                return false
+            }) ?? ref.pillId.flatMap({ id in agentPills.pills.first(where: { $0.id == id }) }) else {
+                completion?(false)
+                return
+            }
+            if state.conversationSurface == .agent(pill.id) {
+                showAgentListFromConversation()
+                completion?(true)
+                return
+            }
+            agentPills.markViewed(pillID: pill.id)
+            let barWindow = window as? FloatingControlBarWindow
+            let wasShowingConversation = state.showingAIConversation
+            state.setNotchHoverMenuOpen(false)
+            notchLogoHovering = false
+            barWindow?.makeKeyAndOrderFront(nil)
+            withAnimation(agentChatSwitchTransition) {
+                state.present(.agent(pill.id))
+                state.isAILoading = false
+                state.aiInputText = ""
+            }
+            barWindow?.resizeForActiveAgentChatPublic(pillID: pill.id, animated: !wasShowingConversation)
+            completion?(true)
         }
-        agentPills.markViewed(pillID: pill.id)
-        let barWindow = window as? FloatingControlBarWindow
-        let wasShowingConversation = state.showingAIConversation
-        state.setNotchHoverMenuOpen(false)
-        notchLogoHovering = false
-        barWindow?.makeKeyAndOrderFront(nil)
-        withAnimation(agentChatSwitchTransition) {
-            state.present(.agent(pill.id))
-            state.isAILoading = false
-            state.aiInputText = ""
-        }
-        barWindow?.resizeForActiveAgentChatPublic(pillID: pill.id, animated: !wasShowingConversation)
     }
 
     private func openOmiChatFromNotchRow() {
@@ -924,7 +964,10 @@ struct FloatingControlBarView: View {
 
     private func openFloatingBarSettings() {
         activateMainAppWindow()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        // Post the navigate request once the main window is key (its
+        // `navigateToFloatingBarSettings` receiver is mounted by then) rather than
+        // guessing a fixed delay for the window to appear (BL-005).
+        runWhenMainAppWindowKey {
             NotificationCenter.default.post(name: .navigateToFloatingBarSettings, object: nil)
         }
     }
@@ -932,13 +975,56 @@ struct FloatingControlBarView: View {
     private func activateMainAppWindow() {
         NSApp.activate()
 
-        if !revealMainAppWindow() {
-            AppDelegate.openMainWindow?()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                NSApp.activate()
-                _ = revealMainAppWindow()
-            }
+        if revealMainAppWindow() { return }
+
+        // No existing window — open one and reveal it the moment it becomes key,
+        // instead of guessing a fixed delay for openWindow(id:) to create it (BL-005).
+        AppDelegate.openMainWindow?()
+        runWhenMainAppWindowKey {
+            NSApp.activate()
+            _ = revealMainAppWindow()
         }
+    }
+
+    /// True for the app's real main window (not the floating panel or the
+    /// menu-bar popover).
+    private static func isRealMainAppWindow(_ window: NSWindow) -> Bool {
+        !(window is NSPanel)
+            && window.frame.width > 300
+            && window.frame.height > 200
+            && !window.title.hasPrefix("Item-")
+    }
+
+    /// Run `action` once the app's main window is key — immediately if one already
+    /// is, otherwise on the next `didBecomeKeyNotification` for a real main window.
+    /// Replaces fixed `asyncAfter` guesses that waited for `openWindow(id:)` to
+    /// create/activate the window (BL-005); the window-key event is the real signal.
+    private func runWhenMainAppWindowKey(_ action: @escaping () -> Void) {
+        if let key = NSApp.keyWindow, Self.isRealMainAppWindow(key) {
+            // One runloop hop, same as the observer path below, so a freshly-keyed
+            // window's content (e.g. the navigate receiver) is mounted before we act.
+            DispatchQueue.main.async { action() }
+            return
+        }
+        var token: NSObjectProtocol?
+        let removeObserver = {
+            if let token { NotificationCenter.default.removeObserver(token) }
+        }
+        token = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow, Self.isRealMainAppWindow(window) else {
+                return
+            }
+            removeObserver()
+            // One runloop hop so SwiftUI can mount the freshly-opened window's
+            // content (e.g. the navigate receiver) before we act.
+            DispatchQueue.main.async { action() }
+        }
+        // Safety net: if no real main window ever becomes key (e.g. openMainWindow
+        // was nil, or the view went away), drop the observer after a bounded delay
+        // so it can't linger on the default center indefinitely.
+        Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { _ in removeObserver() }
     }
 
     @discardableResult
@@ -968,7 +1054,15 @@ struct FloatingControlBarView: View {
     private var controlBarView: some View {
         let allowsHoverExpansion = isHovering && !state.isVoiceResponseGlowActive
         return Group {
-            if state.isVoiceListening && !state.isVoiceFollowUp {
+            if !state.pttHintText.isEmpty {
+                // Too-short PTT hint takes precedence over every other bar state
+                // (incl. follow-up turns) for its brief window.
+                voiceListeningView
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .frame(height: 42)
+                    .transition(.opacity)
+            } else if state.isVoiceListening && !state.isVoiceFollowUp {
                 voiceListeningView
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -1016,7 +1110,10 @@ struct FloatingControlBarView: View {
                         NotchAgentListRow(
                             title: pill.title,
                             status: pill.status,
-                            activity: pill.latestActivity,
+                            activity: ChatContinuityInvariants.agentPreviewText(
+                                prompt: pill.query,
+                                output: pill.latestActivity
+                            ),
                             isSelected: pill.id == state.activeAgentChatPillID,
                             progress: 1
                         )
@@ -1177,20 +1274,30 @@ struct FloatingControlBarView: View {
 
     private var voiceListeningView: some View {
         HStack(spacing: 7) {
-            // Playful realtime mic waveform (replaces the old pulsing red dot)
-            VoiceWaveformBars(isActive: state.isVoiceListening)
+            if !state.pttHintText.isEmpty {
+                // Too-short PTT tap: inline hint instead of the live waveform.
+                Image(systemName: "mic.fill")
+                    .scaledFont(size: 12, weight: .semibold)
+                    .foregroundColor(.white)
+                Text(state.pttHintText)
+                    .scaledFont(size: 11, weight: .medium)
+                    .foregroundColor(.white)
+            } else {
+                // Playful realtime mic waveform (replaces the old pulsing red dot)
+                VoiceWaveformBars(isActive: state.isVoiceListening)
 
-            Image(systemName: "mic.fill")
-                .scaledFont(size: 12, weight: .semibold)
-                .foregroundColor(.white)
+                Image(systemName: "mic.fill")
+                    .scaledFont(size: 12, weight: .semibold)
+                    .foregroundColor(.white)
 
-            if state.isVoiceLocked {
-                Image(systemName: "lock.fill")
-                    .scaledFont(size: 10, weight: .bold)
-                    .foregroundColor(.orange)
-                    .frame(width: 18, height: 18)
-                    .background(Color.orange.opacity(0.2))
-                    .cornerRadius(4)
+                if state.isVoiceLocked {
+                    Image(systemName: "lock.fill")
+                        .scaledFont(size: 10, weight: .bold)
+                        .foregroundColor(.orange)
+                        .frame(width: 18, height: 18)
+                        .background(Color.orange.opacity(0.2))
+                        .cornerRadius(4)
+                }
             }
         }
     }
@@ -1250,15 +1357,23 @@ struct FloatingControlBarView: View {
         state.inputViewHeight = baseHeight + headerBudget
     }
 
+    private var floatingChatProvider: ChatProvider? {
+        FloatingControlBarManager.shared.sharedFloatingProvider
+    }
+
     private var aiResponseView: some View {
-        AIResponseView(
+        // Re-read derived content when viewport anchors or streamed answer tokens change.
+        let _ = state.chatViewport
+        let _ = state.answerStreamToken
+        let provider = floatingChatProvider
+        return AIResponseView(
             isLoading: Binding(
                 get: { state.isAILoading },
                 set: { state.isAILoading = $0 }
             ),
-            currentMessage: state.currentAIMessage,
+            currentMessage: state.currentAIMessage(from: provider),
             userInput: state.displayedQuery,
-            chatHistory: state.chatHistory,
+            chatHistory: state.derivedChatHistory(from: provider),
             isVoiceFollowUp: Binding(
                 get: { state.isVoiceFollowUp },
                 set: { state.isVoiceFollowUp = $0 }
@@ -1272,23 +1387,25 @@ struct FloatingControlBarView: View {
             onClearVisibleConversation: onClearVisibleConversation,
             onEscape: onEscape,
             onSendFollowUp: { message in
-                archiveCurrentExchange()
+                state.archiveCurrentExchange(using: floatingChatProvider)
 
                 (window as? FloatingControlBarWindow)?
                     .beginVisibleMainQuery(message, fromVoice: false, animated: true)
                 state.displayedQuery = message
-                state.currentQuestionMessageId = nil
+                state.bindQuestionMessageId(nil)
                 state.markConversationActivity()
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
                     state.isAILoading = true
-                    state.currentAIMessage = nil
                 }
                 onSendQuery(message)
             },
             onRate: onRate,
             onShareLink: onShareLink,
-            onOpenAgent: { agentID in
-                openAgentInChat(agentID: agentID)
+            onOpenAgent: { agentID, completion in
+                openAgentInChat(agentID: agentID, completion: completion)
+            },
+            onOpenAgentRef: { ref, completion in
+                openAgentInChat(ref: ref, completion: completion)
             }
         )
         .transition(
@@ -1296,20 +1413,6 @@ struct FloatingControlBarView: View {
                 insertion: .move(edge: .bottom).combined(with: .opacity),
                 removal: .move(edge: .bottom).combined(with: .opacity)
             ))
-    }
-
-    private func archiveCurrentExchange() {
-        guard let currentMessage = state.currentAIMessage else { return }
-        guard !currentMessage.text.isEmpty || !currentMessage.contentBlocks.isEmpty else { return }
-
-        let currentQuery = state.displayedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        state.chatHistory.append(
-            FloatingChatExchange(
-                question: currentQuery.isEmpty ? nil : currentQuery,
-                questionMessageId: state.currentQuestionMessageId,
-                aiMessage: currentMessage
-            )
-        )
     }
 
 }
@@ -1496,22 +1599,8 @@ private struct NotchOmiMark: View {
 /// carry a brightness trail (bright head → faint tail) so the continuous
 /// rotation reads as a sweeping comet rather than a static ring of dots.
 private struct NotchThinkingMark: View {
-    @State private var angle: Double = 0
-
-    private static let trail: [Color] = (0..<8).map { index in
-        Color.white.opacity(1.0 - Double(index) * 0.1)
-    }
-
     var body: some View {
-        NotchOmiMark(dotColors: Self.trail)
-            .rotationEffect(.degrees(angle))
-            .onAppear {
-                angle = 0
-                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-                    angle = 360
-                }
-            }
-            .accessibilityLabel("Thinking")
+        OmiThinkingMark()
     }
 }
 
@@ -1526,529 +1615,6 @@ private struct SubagentChatPointer: Shape {
     }
 }
 
-private struct AgentMainChatView: View {
-    @EnvironmentObject var state: FloatingControlBarState
-    @ObservedObject var pill: AgentPill
-    @ObservedObject var manager: AgentPillsManager
-    let onBackToAgentRows: () -> Void
-    let onEscape: () -> Void
-    let onSpawnSibling: (UUID) -> Void
-
-    @State private var followUpText = ""
-    @State private var attachments: [ChatAttachment] = []
-    @State private var isDropTargeted = false
-    @FocusState private var isFollowUpFocused: Bool
-
-    private var isRecording: Bool {
-        manager.recordingPillID == pill.id
-    }
-
-    private var isRunning: Bool {
-        switch pill.status {
-        case .queued, .starting, .running:
-            return true
-        case .done, .stopped, .failed:
-            return false
-        }
-    }
-
-    private var displayedMessages: [ChatMessage] {
-        if !pill.conversationMessages.isEmpty {
-            return pill.conversationMessages
-        }
-        var fallback = [ChatMessage(id: "\(pill.id.uuidString)-query", text: pill.query, sender: .user)]
-        if let message = pill.aiMessage {
-            let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty || !message.contentBlocks.isEmpty {
-                fallback.append(message)
-            }
-        }
-        return fallback
-    }
-
-    private var hasAssistantTurn: Bool {
-        displayedMessages.contains { $0.sender == .ai }
-    }
-
-    private var activityText: String {
-        pill.latestActivity.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var scrollContentToken: AnyHashable {
-        AnyHashable(
-            [
-                String(pill.contentRevision),
-                pill.latestActivity,
-                displayedMessages.map { message in
-                    [
-                        message.id,
-                        message.text,
-                        String(message.contentBlocks.count),
-                        String(message.displayResources.count),
-                        String(message.isStreaming),
-                    ].joined(separator: "\u{1F}")
-                }.joined(separator: "\u{1E}"),
-                String(isRecording),
-            ].joined(separator: "\u{1D}")
-        )
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-
-            ChatScrollContainer(
-                bottomAnchorId: "agentBottom",
-                contentChangeToken: scrollContentToken,
-                scrollPaddingTrailing: 30,
-                onContentHeightChange: { height in
-                    state.reportContentHeight(height, for: .agent(pill.id))
-                }
-            ) {
-                conversationContent
-                    .id(pill.contentRevision)
-
-                if isRecording {
-                    voiceFollowUpView
-                        .id("agentVoiceFollowUp")
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            followUpInput
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            manager.markViewed(pillID: pill.id)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                isFollowUpFocused = true
-            }
-        }
-        .onExitCommand {
-            onEscape()
-        }
-    }
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            Button(action: onBackToAgentRows) {
-                Image(systemName: "chevron.left")
-                    .scaledFont(size: 13, weight: .semibold)
-                    .foregroundColor(.white.opacity(0.82))
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Back to chats")
-
-            Text(pill.title)
-                .scaledFont(size: 13, weight: .bold)
-                .foregroundColor(.white)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            statusBadge
-        }
-    }
-
-    private var statusBadge: some View {
-        HStack(spacing: 6) {
-            Group {
-                if pill.status == .done {
-                    Button {
-                        manager.dismiss(pillID: pill.id)
-                        onBackToAgentRows()
-                    } label: {
-                        statusBadgeLabel
-                    }
-                    .buttonStyle(.plain)
-                    .help("Dismiss completed agent")
-                } else {
-                    statusBadgeLabel
-                }
-            }
-
-            if isRunning {
-                stopButton
-            }
-        }
-    }
-
-    private var stopButton: some View {
-        Button {
-            manager.stop(pillID: pill.id)
-        } label: {
-            Image(systemName: "stop.fill")
-                .scaledFont(size: 8, weight: .bold)
-                .foregroundColor(.black.opacity(0.82))
-                .frame(width: 22, height: 22)
-                .background(pill.status.tintColor)
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Stop subagent")
-        .help("Stop subagent")
-    }
-
-    private var statusBadgeLabel: some View {
-        Text(pill.status.displayLabel)
-            .scaledFont(size: 9, weight: .bold)
-            .foregroundColor(statusForeground)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(pill.status.tintColor.opacity(statusBackgroundOpacity))
-            .clipShape(Capsule())
-    }
-
-    private var statusForeground: Color {
-        switch pill.status {
-        case .queued, .starting, .running, .done:
-            return .black.opacity(0.86)
-        case .stopped:
-            return .black.opacity(0.78)
-        case .failed:
-            return .white
-        }
-    }
-
-    private var statusBackgroundOpacity: Double {
-        switch pill.status {
-        case .queued, .starting, .running, .done, .stopped:
-            return 1
-        case .failed:
-            return 0.75
-        }
-    }
-
-    @ViewBuilder
-    private var conversationContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach(displayedMessages) { message in
-                agentMessageBubble(message)
-            }
-
-            if isRunning && !hasAssistantTurn {
-                runningActivityView
-            }
-        }
-    }
-
-    private var runningActivityView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TypingIndicator()
-                .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-            if !activityText.isEmpty {
-                Text(activityText)
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundColor(.white.opacity(0.62))
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func agentMessageBubble(_ message: ChatMessage) -> some View {
-        let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if message.sender == .user {
-            VStack(alignment: .leading, spacing: 8) {
-                if !trimmed.isEmpty {
-                    Text(trimmed)
-                        .scaledFont(size: 13, weight: .semibold)
-                        .foregroundColor(.white)
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                agentResourceStrip(message)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(Color.white.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .contextMenu {
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(message.copyableText, forType: .string)
-                }
-            }
-        } else if trimmed.isEmpty && message.isStreaming && message.displayResources.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                TypingIndicator()
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                if !activityText.isEmpty {
-                    Text(activityText)
-                        .scaledFont(size: 12, weight: .semibold)
-                        .foregroundColor(.white.opacity(0.62))
-                        .textSelection(.enabled)
-                    }
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                agentAssistantContent(message)
-                agentResourceStrip(message)
-            }
-            .padding(.horizontal, 4)
-            .contextMenu {
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(message.copyableText, forType: .string)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func agentResourceStrip(_ message: ChatMessage) -> some View {
-        if !message.displayResources.isEmpty {
-            ChatResourceStrip(
-                resources: message.displayResources,
-                density: .compact,
-                alignment: .leading
-            )
-            .environment(\.colorScheme, .dark)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    @ViewBuilder
-    private func agentAssistantContent(_ message: ChatMessage) -> some View {
-        if !message.contentBlocks.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(groupedContentBlocks(for: message)) { group in
-                    switch group {
-                    case .text(_, let text):
-                        if !text.isEmpty {
-                            SelectableMarkdown(text: text, sender: .ai)
-                                .environment(\.colorScheme, .dark)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    case .toolCalls(_, let calls):
-                        ToolCallsGroup(calls: calls, compact: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    case .thinking(_, let text):
-                        ThinkingBlock(text: text)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    case .discoveryCard(_, let title, let summary, let fullText):
-                        DiscoveryCard(title: title, summary: summary, fullText: fullText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
-        } else {
-            let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                Markdown(trimmed)
-                    .markdownTheme(.aiMessage(scale: 0.88))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
-    private func groupedContentBlocks(for message: ChatMessage) -> [ContentBlockGroup] {
-        let grouped = ContentBlockGroup.group(message.contentBlocks)
-
-        return grouped.filter { group in
-            switch group {
-            case .text, .discoveryCard:
-                return true
-            case .toolCalls(_, let calls):
-                if calls.contains(where: { $0.spawnedAgentID != nil }) {
-                    return true
-                }
-                if message.isStreaming {
-                    return calls.contains { block in
-                        if case .toolCall(_, _, let status, _, _, _) = block {
-                            return status.isInFlight
-                        }
-                        return false
-                    }
-                }
-                return false
-            case .thinking:
-                return message.isStreaming
-            }
-        }
-    }
-
-    private var voiceFollowUpView: some View {
-        HStack(spacing: 8) {
-            VoiceWaveformBars(isActive: true)
-            Image(systemName: "mic.fill")
-                .scaledFont(size: 14, weight: .semibold)
-                .foregroundColor(.white)
-            Text("Listening...")
-                .scaledFont(size: 13)
-                .foregroundColor(.white.opacity(0.62))
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var followUpInput: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !attachments.isEmpty {
-                AttachmentPreviewRow(
-                    attachments: attachments,
-                    onRemove: removeAttachment
-                )
-                .environment(\.colorScheme, .dark)
-            }
-
-            HStack(spacing: 6) {
-                Button {
-                    manager.toggleFollowUpVoice(for: pill)
-                } label: {
-                    Image(systemName: isRecording ? "stop.circle.fill" : "mic.fill")
-                        .scaledFont(size: 17, weight: .semibold)
-                        .foregroundColor(isRecording ? Color.white : .secondary)
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-                .help(isRecording ? "Stop voice follow-up" : "Voice follow-up")
-
-                Button(action: pickAttachments) {
-                    Image(systemName: "paperclip")
-                        .scaledFont(size: 15, weight: .medium)
-                        .foregroundColor(.secondary)
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-                .help("Attach files")
-                .disabled(attachments.count >= kMaxChatAttachments)
-
-                TextField("Ask this agent...", text: $followUpText)
-                    .textFieldStyle(.plain)
-                    .scaledFont(size: 13)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(isDropTargeted ? 0.18 : 0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .focused($isFollowUpFocused)
-                    .onSubmit {
-                        sendFollowUp()
-                    }
-
-                Button(action: sendFollowUp) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .scaledFont(size: 20)
-                        .foregroundColor(canSend ? .white : .secondary)
-                }
-                .disabled(!canSend)
-                .buttonStyle(.plain)
-            }
-        }
-        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleAttachmentDrop)
-    }
-
-    private var canSend: Bool {
-        !followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
-    }
-
-    private func sendFollowUp() {
-        let trimmed = followUpText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let staged = attachments
-        guard !trimmed.isEmpty || !staged.isEmpty else { return }
-        followUpText = ""
-        attachments = []
-        // Attachments are addressed to *this* agent (they reference local files it
-        // should read), so bypass the "@agent" handoff heuristic when files are staged.
-        if staged.isEmpty, let handoff = AgentPillsManager.floatingAgentHandoff(for: trimmed) {
-            guard let sibling = AgentDelegationExecutor.shared.spawnResolvedDelegation(
-                .init(
-                    originalUserText: handoff.originalRequest,
-                    brief: handoff.agentTask,
-                    title: nil,
-                    spokenAck: nil,
-                    directedProvider: nil,
-                    harnessOverride: pill.bridgeHarnessOverride
-                ),
-                model: pill.model,
-                fromVoice: false
-            ) else {
-                manager.continueAgent(from: pill, text: trimmed)
-                return
-            }
-            state.present(.agent(sibling.id))
-            // Route through the window resize/observer setup so the new
-            // sibling's reportContentHeight(.agent(sibling.id)) updates are
-            // observed. Without this the height observer stays keyed to the
-            // previous agent and the sibling's chat stays clipped.
-            onSpawnSibling(sibling.id)
-            return
-        }
-        manager.continueAgent(from: pill, text: trimmed, attachments: staged)
-    }
-
-    // MARK: - Attachments
-
-    private func pickAttachments() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [
-            .image, .jpeg, .png, .gif, .heic, .heif, .webP, .tiff, .bmp,
-            .pdf, .plainText, .json, .commaSeparatedText, .html,
-            .text, .content,
-        ]
-        if panel.runModal() == .OK {
-            addAttachmentURLs(panel.urls)
-        }
-    }
-
-    private func handleAttachmentDrop(providers: [NSItemProvider]) -> Bool {
-        var urls: [URL] = []
-        let lock = NSLock()
-        let group = DispatchGroup()
-        for provider in providers {
-            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { continue }
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                defer { group.leave() }
-                let loadedURL: URL?
-                if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    loadedURL = url
-                } else if let url = item as? URL {
-                    loadedURL = url
-                } else {
-                    loadedURL = nil
-                }
-                if let loadedURL {
-                    lock.lock()
-                    urls.append(loadedURL)
-                    lock.unlock()
-                }
-            }
-        }
-        group.notify(queue: .main) { addAttachmentURLs(urls) }
-        return !providers.isEmpty
-    }
-
-    private func addAttachmentURLs(_ urls: [URL]) {
-        let remaining = max(0, kMaxChatAttachments - attachments.count)
-        guard remaining > 0 else { return }
-        let staged = urls.prefix(remaining).compactMap { url -> ChatAttachment? in
-            guard var attachment = ChatAttachment.from(url: url) else { return nil }
-            // Files are read from disk by the local agent, so mark them ready
-            // immediately — there is no upload step in the floating-pill path.
-            attachment.state = .localOnly
-            return attachment
-        }
-        guard !staged.isEmpty else { return }
-        attachments.append(contentsOf: staged)
-    }
-
-    private func removeAttachment(_ id: String) {
-        attachments.removeAll { $0.id == id }
-    }
-}
 
 /// Re-renders when any individual pill's @Published status changes — the
 /// manager only publishes on pill add/remove, so per-pill observers are needed
@@ -2303,7 +1869,10 @@ private struct NotchAgentMorphField: View {
                             NotchAgentListRow(
                                 title: pill.title,
                                 status: pill.status,
-                                activity: pill.latestActivity,
+                                activity: ChatContinuityInvariants.agentPreviewText(
+                                    prompt: pill.query,
+                                    output: pill.latestActivity
+                                ),
                                 isSelected: pill.id == activePillID,
                                 progress: rowRevealProgress
                             )
