@@ -4,14 +4,16 @@ SwiftPM macOS app for the Intentive Desktop Client.
 
 ## Development
 
+From the repository root:
+
 ```bash
-xcrun swift build -c debug --package-path Desktop
-xcrun swift test --package-path Desktop
-scripts/verify-app-bundle.sh
-./run.sh
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
+apps/desktop/macos/scripts/verify-app-bundle.sh
+apps/desktop/macos/run.sh
 ```
 
-Use `xcrun swift`, not bare `swift`, so the active Xcode SDK is used.
+Use the package scripts, which select Xcode through `xcrun` and isolate SwiftPM output on T9 per workspace.
 
 Named local launches can set `INTENTIVE_APP_NAME`:
 

@@ -71,6 +71,7 @@ Agent Runtime ──HTTP /internal/notifications/push──> Control Plane ─�
 | 8080 | Control Plane (HTTP)             |
 | 8787 | Agent Runtime — public WebSocket |
 | 8081 | Agent Runtime — internal HTTP    |
+| 8082 | Mobile Metro                     |
 
 The paired internal secrets and the Neon dev branch are already wired across the two
 services' git-ignored `.env` files. The **database** is one isolated Neon branch,
@@ -191,6 +192,27 @@ Then stop the clients via their own runbooks ("kill it" in the Mobile / Desktop
 docs). Nothing local persists except the Neon dev branch, which is meant to stick
 around; delete it from the Neon console / MCP if you want a clean slate.
 
+For the complete machine-local sweep, use `pnpm development:clean`. It stops the
+backend ports, Metro on its reserved `:8082`, booted simulators, and the disposable
+Tart clone, then removes only one-run temp files and portable build archives. It
+keeps active-workspace caches: pnpm packages, Mobile Pods, Xcode DerivedData, the
+per-workspace SwiftPM cache on T9, and the immutable Tart base. `pnpm
+development:status` reports the storage root and reserved-port ownership without
+changing anything.
+
+### Storage hygiene: cache versus deadweight
+
+- **Keep while the workspace is active:** `node_modules`, Mobile `ios/` + Pods,
+  Xcode DerivedData, the current simulator, the workspace's external SwiftPM
+  scratch, and the Tart base. These shorten the next build.
+- **Delete after each clean sweep:** owned servers, orphan launchers/tailers,
+  Metro/EAS temp directories, screenshots, portable `build-*.tar.gz` artifacts,
+  and the disposable Tart clone. No later build reuses them.
+- **Delete when Conductor archives the workspace:** that workspace's T9 build root
+  and generated build trees accidentally placed in `.context`. The archive hook
+  preserves `.context/attachments`, plans, notes, and Conductor's session database,
+  and refuses to archive when unknown context data remains unexpectedly large.
+
 **Verify the sweep** (every line should report free/none):
 
 ```bash
@@ -222,8 +244,10 @@ pgrep -fl "local-stack\.sh|intentive-local-stack" || echo "no stray launchers �
    have the configured issuer and audience.
 3. **`localhost` works on the simulator, not on a physical phone.** Use the Mac's LAN
    IP (and the same for `PUBLIC_WS_URL` if you test on-device).
-4. **Port discipline:** CP `8080`, Runtime WS `8787`, Runtime internal `8081`. If a
-   start fails on "address in use," run `scripts/local-stack.sh --down` first.
+4. **Port discipline:** CP `8080`, Runtime WS `8787`, Runtime internal `8081`, Metro
+   `8082`. Metro must never use `8081`: its old teardown command could kill the
+   Agent Runtime. If a start fails on "address in use," run
+   `scripts/local-stack.sh --down` first.
 5. **First request is slow (cold start).** The dev branch scales to zero
    immediately, so the first DB-backed call after idle takes ~2–3s while it wakes;
    `local-stack.sh` waits on the Control Plane's `/ready` (which warms it) before

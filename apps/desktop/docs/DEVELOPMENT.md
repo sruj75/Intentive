@@ -3,13 +3,19 @@
 The current desktop app is a Swift Package Manager macOS app under `apps/desktop/macos`.
 
 ```bash
-cd apps/desktop/macos
-xcrun swift build -c debug --package-path Desktop
-xcrun swift test --package-path Desktop
-./run.sh
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
+apps/desktop/macos/run.sh
 ```
 
-Use `./run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, and `INTENTIVE_SPARKLE_PUBLIC_ED_KEY` when assembling a release candidate outside GitHub Actions.
+Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, and `INTENTIVE_SPARKLE_PUBLIC_ED_KEY` when assembling a release candidate outside GitHub Actions.
+
+All active SwiftPM commands go through `macos/scripts/swiftpm.sh`. On this Mac it
+fails closed unless T9 is mounted, and gives every Conductor workspace an isolated
+scratch path under `/Volumes/T9/Developer/Intentive/workspaces/<workspace>/swiftpm/desktop`.
+Do not bypass the wrapper with a raw `xcrun swift build`: that recreates a package-local
+`.build` directory on the internal SSD. CI and machines without the local storage policy
+fall back to a git-ignored workspace build root.
 
 ## Internal build: clean macOS permission slate
 
@@ -59,7 +65,7 @@ The script is deliberately built so the base cannot be deleted by normal operati
 
 ### Keep the caches; reset the guest
 
-The fast development cache and the clean permission slate are deliberately independent. SwiftPM keeps its incremental build cache in `apps/desktop/macos/Desktop/.build` on the host, and Tart keeps the macOS base image and copy-on-write layers in `TART_HOME` (on this machine, `/Volumes/T9/Tart`). Keep both warm for fast builds and fast cloning. Only `intentive-clean` is reset: deleting that clone removes test state without rebuilding Swift dependencies or recreating macOS.
+The fast development cache and the clean permission slate are deliberately independent. SwiftPM keeps its per-workspace incremental build cache on T9 through `macos/scripts/swiftpm.sh`, and Tart keeps the macOS base image and copy-on-write layers in `TART_HOME` (on this machine, `/Volumes/T9/Tart`). Keep both warm for fast builds and fast cloning. Only `intentive-clean` is reset: deleting that clone removes test state without rebuilding Swift dependencies or recreating macOS. When Conductor archives the workspace, its archive hook deletes that workspace's external SwiftPM cache so a useful cache cannot become abandoned deadweight.
 
 ```bash
 # Build the native app and open a fresh, self-cleaning VM.

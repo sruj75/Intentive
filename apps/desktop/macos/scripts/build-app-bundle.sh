@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGE_PATH="$ROOT_DIR/Desktop"
+SWIFTPM="$ROOT_DIR/scripts/swiftpm.sh"
 CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="${INTENTIVE_APP_NAME:-Intentive}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.0}"
@@ -10,11 +11,8 @@ APP_BUILD="${INTENTIVE_APP_BUILD:-1}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
 SPARKLE_FEED_URL="${INTENTIVE_SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${INTENTIVE_SPARKLE_PUBLIC_ED_KEY:-}"
-BUILD_DIR="$PACKAGE_PATH/.build/$CONFIGURATION"
-APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 APP_ICON_SOURCE="$PACKAGE_PATH/Sources/Resources/AppIcon.icns"
 NATIVE_ASSETS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAssets.bundle"
-NATIVE_ASSETS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ASSETS_BUNDLE_NAME"
 
 if [[ -z "$SPARKLE_FEED_URL" && -n "${GITHUB_REPOSITORY:-}" ]]; then
   SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml"
@@ -35,7 +33,10 @@ AUTH_CALLBACK_SCHEME_XML="$(xml_escape "$AUTH_CALLBACK_SCHEME")"
 SPARKLE_FEED_URL_XML="$(xml_escape "$SPARKLE_FEED_URL")"
 SPARKLE_PUBLIC_ED_KEY_XML="$(xml_escape "$SPARKLE_PUBLIC_ED_KEY")"
 
-xcrun swift build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH"
+"$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH"
+BUILD_DIR="$("$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH" --show-bin-path)"
+APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
+NATIVE_ASSETS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ASSETS_BUNDLE_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"

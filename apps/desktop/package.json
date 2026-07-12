@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "xcrun swift build -c debug --package-path macos/Desktop",
+    "build": "bash macos/scripts/swiftpm.sh build -c debug --package-path macos/Desktop",
     "internal:build": "bash macos/scripts/tart-internal-build.sh --build",
     "internal:close": "bash macos/scripts/tart-internal-build.sh --delete",
     "internal:run": "bash macos/scripts/tart-internal-build.sh",
     "internal:status": "bash macos/scripts/tart-internal-build.sh --status",
     "release:smoke": "bash macos/scripts/verify-app-bundle.sh",
-    "typecheck": "xcrun swift build -c debug --package-path macos/Desktop",
+    "typecheck": "bash macos/scripts/swiftpm.sh build -c debug --package-path macos/Desktop",
     "test": "bash macos/test.sh"
   }
 }

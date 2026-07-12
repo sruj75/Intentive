@@ -93,15 +93,18 @@ jobs:
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
-          CONFIGURATION=release \
-            INTENTIVE_APP_NAME=Intentive \
-            INTENTIVE_APP_VERSION="$VERSION" \
-            INTENTIVE_APP_BUILD="$BUILD_NUMBER" \
-            INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
-            INTENTIVE_SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" \
-            INTENTIVE_SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
-            apps/desktop/macos/scripts/build-app-bundle.sh
-          echo "APP_BUNDLE=apps/desktop/macos/Desktop/.build/release/Intentive.app" >> "$GITHUB_ENV"
+          APP_BUNDLE="$(
+            CONFIGURATION=release \
+              INTENTIVE_APP_NAME=Intentive \
+              INTENTIVE_APP_VERSION="$VERSION" \
+              INTENTIVE_APP_BUILD="$BUILD_NUMBER" \
+              INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
+              INTENTIVE_SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" \
+              INTENTIVE_SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
+              apps/desktop/macos/scripts/build-app-bundle.sh | tail -n 1
+          )"
+          [[ -d "$APP_BUNDLE" ]] || { echo "Missing app bundle: $APP_BUNDLE" >&2; exit 1; }
+          echo "APP_BUNDLE=$APP_BUNDLE" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
         env:

@@ -11,13 +11,12 @@ The SwiftPM macOS app lives under [`macos/`](macos/). The active package is [`ma
 ## Development
 
 ```bash
-cd apps/desktop/macos
-xcrun swift build -c debug --package-path Desktop
-xcrun swift test --package-path Desktop
-./run.sh
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
+apps/desktop/macos/run.sh
 ```
 
-Use `xcrun swift ...`, not bare `swift`, so the SDK matches local Xcode. Do not use `xcodebuild`; there is no Xcode project.
+Use the package scripts, which route `xcrun swift` through the per-workspace T9 scratch wrapper. Do not use `xcodebuild`; there is no Xcode project.
 
 ## Guardrails
 

@@ -7,9 +7,8 @@ macOS client for Intentive. The target app captures local screen context, mainta
 The app currently lives under [`macos/`](macos/) as a Swift Package Manager project in renovation.
 
 ```bash
-cd apps/desktop/macos
-xcrun swift build -c debug --package-path Desktop
-xcrun swift test --package-path Desktop
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
 ```
 
 See [`AGENTS.md`](AGENTS.md), [`CONTEXT.md`](CONTEXT.md), and [`ARCHITECTURE.md`](ARCHITECTURE.md) before changing the Desktop Client.

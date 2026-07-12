@@ -36,6 +36,8 @@
     "hooks:pre-commit": "sh tools/hooks/run-pre-commit.sh",
     "hooks:staged-check": "node tools/hooks/check-staged.mjs",
     "dev": "turbo run dev",
+    "development:status": "bash scripts/development-cleanup.sh --status",
+    "development:clean": "bash scripts/development-cleanup.sh --runtime",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

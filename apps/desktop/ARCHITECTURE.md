@@ -55,9 +55,8 @@ apps/desktop/
 ## Verification
 
 ```bash
-cd apps/desktop/macos
-xcrun swift build -c debug --package-path Desktop
-xcrun swift test --package-path Desktop
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
 ```
 
 The monorepo gate for this deployable is:

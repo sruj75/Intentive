@@ -63,9 +63,8 @@ Factory model: [`docs/FACTORY.md`](FACTORY.md). Self-improvement loop: [`docs/fa
 Desktop is a SwiftPM macOS app:
 
 ```bash
-cd apps/desktop/macos
-xcrun swift build -c debug --package-path Desktop
-xcrun swift test --package-path Desktop
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
 ```
 
 The target monorepo gate is `pnpm harness --scope apps/desktop`.
@@ -139,7 +138,7 @@ Unit tests don't cover native rendering. To verify a change visually on the iOS
 Simulator (e.g. via XcodeBuildMCP `build_run_sim` or `expo run:ios`):
 
 1. **Start Metro first, from `apps/mobile`** — `pnpm --dir apps/mobile dev`. A Debug
-   build loads JS from Metro at `localhost:8081`. Starting it from the repo root makes
+   build loads JS from Metro at `localhost:8082`. Starting it from the repo root makes
    Metro pick the wrong project root and every bundle 404s (`Unable to resolve ./index`).
 2. **Repo path must contain no spaces** — CocoaPods/Ruby resolves the real path and a
    space (e.g. the old `Desktop/Hey Intentive`) breaks `pod install` and the build. The
