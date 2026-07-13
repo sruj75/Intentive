@@ -16,7 +16,7 @@ TART_STORE="${TART_HOME:-$HOME/.tart}"
 TART_BASE_VM="${TART_BASE_VM:-intentive-base}"
 TART_VM_NAME="${TART_VM_NAME:-intentive-clean}"
 TART_BASE_IMAGE="${TART_BASE_IMAGE:-}"
-DEFAULT_OCI_BASE="ghcr.io/cirruslabs/macos-sequoia-base:latest"
+DEFAULT_OCI_BASE="ghcr.io/cirruslabs/macos-tahoe-base:latest"
 MIN_FREE_GB_PULL="${MIN_FREE_GB_PULL:-90}"
 CLEANED=0
 

@@ -33,6 +33,8 @@ Tag this runbook into an agent and use the following phrases. The canonical VM s
 | **"just build the app"** | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:build` | Builds and signs the native `.app` only. |
 | **"rebuild the base"** | `TART_HOME=/Volumes/T9/Tart apps/desktop/macos/scripts/tart-internal-build.sh --create-base <ipsw-url-or-path>` | Creates a new pristine base; complete Setup Assistant before using it. |
 
+> **VM login (OCI base):** username `admin`, password `admin`. macOS will prompt for these when you grant Screen Recording, Microphone, or Accessibility permission inside the VM. The `admin` account is a member of the `admin` group (UID 501) and can authorize TCC prompts. This only applies to clones of the OCI base image (`ghcr.io/cirruslabs/macos-tahoe-base:latest`); a local `intentive-base` created via `--create-base` uses whatever credentials you set during Setup Assistant.
+
 The normal run is deliberately away-from-keyboard safe: closing the VM window, interrupting its runner, or using **"kill it"** invokes the same stop-and-delete procedure. Tart terminates every process inside the guest before it deletes the guest disk. The script starts no host-side backend, capture daemon, or helper process, so a completed cleanup leaves no internal-build servers running on the host.
 
 ### Why we use a VM
@@ -57,6 +59,30 @@ Two pieces:
 
 The script is deliberately built so the base cannot be deleted by normal operations: `--delete` stops/deletes only `intentive-clean`; `--create-base` refuses to run if a base already exists. **Never run a raw `tart delete intentive-base`.**
 
+### Agent guardrail: the base is immutable
+
+> **Read this before touching any Tart command.** The base (`intentive-base` or the OCI image `ghcr.io/cirruslabs/macos-tahoe-base:latest`) is a one-time, hour-plus download that is never to be deleted, mutated, or "reset" by an agent. This is a hard rule. It exists because the base is the only expensive artifact in the VM stack; everything else is disposable in seconds.
+
+**NEVER do any of the following — no exceptions, no "I thought it was dirty," no speculative cleanup:**
+
+- `tart delete intentive-base` — not to fix a dirty clone, not to free disk, not because a run failed. Never.
+- `tart delete` any `ghcr.io/cirruslabs/macos-*` OCI image from the local store. The OCI image is immutable and read-only; it cannot be contaminated and has no reason to be removed.
+- Boot the base VM and install `Intentive.app`, grant TCC permissions, or change system settings. The base stays at "fresh Setup Assistant completed, nothing else." If you need to test something, do it in a clone.
+- Run `--create-base` when a base already exists. The script refuses; do not work around it.
+- Delete the base to "start over" because a clone looks wrong. A dirty clone is the expected, normal state — see [The one rule that caused a major incident](#the-one-rule-that-caused-a-major-incident).
+
+**If you suspect the base is contaminated:** STOP. Do not act on assumption.
+
+1. Boot the base VM directly: `TART_HOME=/Volumes/T9/Tart tart run intentive-base`.
+2. Inspect `/Applications` and System Settings > Privacy & Security for stale grants.
+3. If it is genuinely contaminated, **rename it out of the way first** (`tart rename intentive-base intentive-base-suspect-<date>`) so it can be recovered, then rebuild — never delete speculatively.
+
+**What you SHOULD do instead — always:**
+
+- All app installs, TCC grants, onboarding state, and test artifacts belong in the disposable clone `intentive-clean`. That is its purpose.
+- To reset state for a fresh test: `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` and then `internal:run`. This deletes the clone only (~30 s) and makes a fresh one. This is the normal, expected, repeatable reset.
+- The base and the clone are deliberately independent. Keep the base warm and untouched; reset the clone freely.
+
 ### The one rule that caused a major incident
 
 **A dirty clone is normal and expected — it is not a problem.** The clone is where app installs, TCC grants, and test state belong. If `Intentive.app` is sitting in `intentive-clean`'s `/Applications`, that's the whole point — someone copied it there to test. You reset it with `internal:close` and a fresh `internal:run`. That takes 30 seconds.
@@ -76,7 +102,7 @@ TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:build
 TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
 ```
 
-The default clone is `intentive-clean`; its base is a local `intentive-base` when present, otherwise Tart's `ghcr.io/cirruslabs/macos-sequoia-base:latest`. **OCI base images are immutable and read-only — they can never be contaminated.** A local `intentive-base` VM takes priority over the OCI image; if it exists and was tainted, every clone inherits the taint. Before creating a local base, prefer the OCI image unless you have a specific reason (e.g. custom macOS configuration).
+The default clone is `intentive-clean`; its base is a local `intentive-base` when present, otherwise Tart's `ghcr.io/cirruslabs/macos-tahoe-base:latest`. **OCI base images are immutable and read-only — they can never be contaminated.** A local `intentive-base` VM takes priority over the OCI image; if it exists and was tainted, every clone inherits the taint. Before creating a local base, prefer the OCI image unless you have a specific reason (e.g. custom macOS configuration).
 
 `--delete` only removes the clone. A normal run deletes the clone when its VM window closes or the command is interrupted; the next run also removes any stale clone before creating a new one.
 
@@ -84,7 +110,7 @@ The default clone is `intentive-clean`; its base is a local `intentive-base` whe
 
 Before running `internal:run`, verify:
 
-1. `tart list` shows the OCI base or a local `intentive-base`. If neither exists, the script will pull the OCI image (~25 GB, one-time). Wait for the pull to finish.
+1. `tart list` shows the OCI base or a local `intentive-base`. If neither exists, the script will pull the OCI image (~27 GB, one-time). Wait for the pull to finish. Once the base exists, it is permanent — see [Agent guardrail](#agent-guardrail-the-base-is-immutable); never delete it.
 2. If a local `intentive-base` exists, it **must** be clean. To verify: `tart run intentive-base` and check `/Applications` for stale `Intentive.app`. If present, the base is contaminated — rename it out of the way (never delete) and rebuild from IPSW or OCI.
 3. If only the OCI image exists (no local base), every clone is guaranteed clean. OCI images are immutable.
 4. The disposable `intentive-clean` is expected to get dirty — that's where test state lives. Kill and re-clone, never touch the base.
@@ -107,7 +133,7 @@ apps/desktop/macos/scripts/tart-internal-build.sh --create-base \
 tart run intentive-base
 ```
 
-**Option B — OCI pull (no local IPSW, ~25 GB download, takes hours).** Skip `--create-base`; `internal:run` will pull `ghcr.io/cirruslabs/macos-sequoia-base:latest` automatically when no local base exists. Requires ~90 GB free in `TART_HOME`.
+**Option B — OCI pull (no local IPSW, ~27 GB download, takes hours).** Skip `--create-base`; `internal:run` will pull `ghcr.io/cirruslabs/macos-tahoe-base:latest` automatically when no local base exists. Requires ~90 GB free in `TART_HOME`.
 
 **Option C — fresh IPSW from Apple.** Download a UniversalMac Restore IPSW from Apple's public CDN and point `--create-base` at the URL or local path:
 
