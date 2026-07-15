@@ -172,6 +172,16 @@ public protocol ScreenMemoryVideoArchiving: Sendable {
     expectedSampleCount: Int
   ) async -> ScreenMemoryVideoChunkRecoveryState
   func discardChunk(_ chunkID: ScreenMemoryVideoChunkID) async
+  func deleteChunk(_ chunkID: ScreenMemoryVideoChunkID) async throws
+  func deleteAllMedia() async throws
+}
+
+public extension ScreenMemoryVideoArchiving {
+  func deleteChunk(_ chunkID: ScreenMemoryVideoChunkID) async throws {
+    await discardChunk(chunkID)
+  }
+
+  func deleteAllMedia() async throws {}
 }
 
 public struct ScreenMemoryVideoFrame: Equatable, Sendable {
@@ -264,6 +274,8 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
   private let profile: ScreenMemoryProfile
   private let store: SQLiteScreenMemoryStore
   private let ingestCoordinator: ScreenMemoryIngestCoordinator
+  private let retentionPersistence: any ScreenMemoryRetentionPersisting
+  private let now: @Sendable () -> Date
 
   public var userID: String { profile.userID }
 
@@ -274,10 +286,19 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     secretDetector: HardSecretDetector = HardSecretDetector(),
     embeddingService: LocalEmbeddingService = LocalEmbeddingService(),
     videoArchive: (any ScreenMemoryVideoArchiving)? = nil,
-    staleVideoChunkDelay: TimeInterval = 70
+    staleVideoChunkDelay: TimeInterval = 70,
+    retentionPersistence: (any ScreenMemoryRetentionPersisting)? = nil,
+    now: @escaping @Sendable () -> Date = { Date() }
   ) throws {
     self.profile = profile
+    self.now = now
+    let resolvedRetentionPersistence = retentionPersistence
+      ?? UserDefaultsScreenMemoryRetentionPersistence(userID: profile.userID)
+    self.retentionPersistence = resolvedRetentionPersistence
+    let retentionPeriod = resolvedRetentionPersistence.loadRetentionPeriod() ?? .sevenDays
+    try resolvedRetentionPersistence.saveRetentionPeriod(retentionPeriod)
     let openedStore = try SQLiteScreenMemoryStore(databaseURL: profile.databaseURL)
+    try openedStore.applyRetentionPeriod(retentionPeriod)
     store = openedStore
     let latest = try openedStore.latestPerceptualRecord()
     let coordinator = ScreenMemoryIngestCoordinator(
@@ -289,13 +310,14 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
       store: openedStore,
       videoArchive: videoArchive,
       staleVideoChunkDelay: staleVideoChunkDelay,
+      fileManager: .default,
+      profile: profile,
+      now: now,
+      retentionPeriod: retentionPeriod,
       lastObservedHash: latest?.hash,
       latestStoredRecordID: latest.flatMap { UUID(uuidString: $0.id) }.map(ScreenMemoryRecordID.init)
     )
     ingestCoordinator = coordinator
-    if videoArchive != nil {
-      Task { try? await coordinator.prepareVideoArchive() }
-    }
   }
 
   public func ingest(_ input: ScreenMemoryCaptureInput) async throws -> ScreenMemoryIngestOutcome {
@@ -304,6 +326,48 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
 
   public func finalizeActiveVideoChunk() async throws {
     try await ingestCoordinator.finalizeActiveVideoChunk()
+  }
+
+  @discardableResult
+  public func prepare() async throws -> ScreenMemoryDeletionResult {
+    try await ingestCoordinator.prepareArchive()
+  }
+
+  @discardableResult
+  public func applyRetentionPolicy(
+    _ period: ScreenMemoryRetentionPeriod
+  ) async throws -> ScreenMemoryDeletionResult {
+    try retentionPersistence.saveRetentionPeriod(period)
+    return try await ingestCoordinator.applyRetentionPolicy(period)
+  }
+
+  @discardableResult
+  public func runStartupCleanup() async throws -> ScreenMemoryDeletionResult {
+    try await ingestCoordinator.prepareArchive()
+  }
+
+  @discardableResult
+  public func runScheduledCleanup() async throws -> ScreenMemoryDeletionResult {
+    try await ingestCoordinator.runScheduledCleanup()
+  }
+
+  public func delete(
+    recordID: ScreenMemoryRecordID,
+    confirmChunkDeletion: Bool
+  ) async throws -> ScreenMemoryDeletionResult {
+    try await ingestCoordinator.delete(
+      recordID: recordID,
+      confirmChunkDeletion: confirmChunkDeletion
+    )
+  }
+
+  @discardableResult
+  public func clearAll() async throws -> ScreenMemoryDeletionResult {
+    try await ingestCoordinator.clearAll()
+  }
+
+  public func storageReport() throws -> ScreenMemoryStorageReport {
+    try Self.storageReport(profile: profile)
   }
 
   public func videoFrame(for recordID: ScreenMemoryRecordID) async throws -> ScreenMemoryVideoFrame? {
@@ -377,6 +441,45 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     try store.removePerceptionEvent(eventId: eventId)
   }
 
+  private static func storageReport(profile: ScreenMemoryProfile) throws -> ScreenMemoryStorageReport {
+    let fileManager = FileManager.default
+    let userDirectory = profile.databaseURL.deletingLastPathComponent()
+    let normalizedVideoPath = profile.videoArchiveURL.standardizedFileURL.path
+    let databaseNames = Set([
+      profile.databaseURL.lastPathComponent,
+      profile.databaseURL.lastPathComponent + "-wal",
+      profile.databaseURL.lastPathComponent + "-shm",
+    ])
+    var databaseBytes: Int64 = 0
+    var videoBytes: Int64 = 0
+    var otherBytes: Int64 = 0
+    guard let enumerator = fileManager.enumerator(
+      at: userDirectory,
+      includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+      options: [.skipsHiddenFiles]
+    ) else {
+      return ScreenMemoryStorageReport(databaseBytes: 0, videoBytes: 0, otherArchiveBytes: 0)
+    }
+    for case let url as URL in enumerator {
+      let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+      guard values.isRegularFile == true else { continue }
+      let size = Int64(values.fileSize ?? 0)
+      let normalizedPath = url.standardizedFileURL.path
+      if databaseNames.contains(url.lastPathComponent) {
+        databaseBytes += size
+      } else if normalizedPath.hasPrefix(normalizedVideoPath + "/") {
+        videoBytes += size
+      } else {
+        otherBytes += size
+      }
+    }
+    return ScreenMemoryStorageReport(
+      databaseBytes: databaseBytes,
+      videoBytes: videoBytes,
+      otherArchiveBytes: otherBytes
+    )
+  }
+
 }
 
 private actor ScreenMemoryIngestCoordinator {
@@ -388,10 +491,17 @@ private actor ScreenMemoryIngestCoordinator {
   private let store: SQLiteScreenMemoryStore
   private let videoArchive: (any ScreenMemoryVideoArchiving)?
   private let staleVideoChunkDelay: TimeInterval
+  private let fileManager: FileManager
+  private let profile: ScreenMemoryProfile
+  private let now: @Sendable () -> Date
+  private var retentionPeriod: ScreenMemoryRetentionPeriod
   private var lastObservedHash: UInt64?
   private var latestStoredRecordID: ScreenMemoryRecordID?
   private var didRecoverVideoArchive = false
   private var staleFinalizationTask: Task<Void, Never>?
+  private var didPrepareArchive = false
+  private var lastRetentionCleanupAt: Date = .distantPast
+  private var isRetentionCleanupRunning = false
 
   init(
     profileUserID: String,
@@ -402,6 +512,10 @@ private actor ScreenMemoryIngestCoordinator {
     store: SQLiteScreenMemoryStore,
     videoArchive: (any ScreenMemoryVideoArchiving)?,
     staleVideoChunkDelay: TimeInterval,
+    fileManager: FileManager,
+    profile: ScreenMemoryProfile,
+    now: @escaping @Sendable () -> Date,
+    retentionPeriod: ScreenMemoryRetentionPeriod,
     lastObservedHash: UInt64?,
     latestStoredRecordID: ScreenMemoryRecordID?
   ) {
@@ -413,12 +527,16 @@ private actor ScreenMemoryIngestCoordinator {
     self.store = store
     self.videoArchive = videoArchive
     self.staleVideoChunkDelay = max(0, staleVideoChunkDelay)
+    self.fileManager = fileManager
+    self.profile = profile
+    self.now = now
+    self.retentionPeriod = retentionPeriod
     self.lastObservedHash = lastObservedHash
     self.latestStoredRecordID = latestStoredRecordID
   }
 
   func ingest(_ input: ScreenMemoryCaptureInput) async throws -> ScreenMemoryIngestOutcome {
-    try await recoverVideoArchiveIfNeeded()
+    _ = try await prepareArchive()
     guard input.userID == profileUserID else {
       throw ScreenMemoryArchiveError.profileMismatch
     }
@@ -445,6 +563,9 @@ private actor ScreenMemoryIngestCoordinator {
         text: ocr.fullText
       )
     let embedding = hasSecret ? nil : try embeddingService.embed(summary)
+    guard let capturedDate = Self.captureDate(input.capturedAt) else {
+      throw ScreenMemoryArchiveError.invalidCaptureTimestamp
+    }
     let record = ScreenMemoryRecord(
         id: recordID.value.uuidString,
         capturedAt: input.capturedAt,
@@ -455,6 +576,8 @@ private actor ScreenMemoryIngestCoordinator {
         ocrText: ocr.fullText,
         ocrBlocks: ocr.blocks,
         perceptualHash: perceptualHash,
+        retentionClass: retentionPeriod.retentionClass,
+        expiresAt: retentionPeriod.expiryDate(for: capturedDate).protocolTimestamp,
         sensitivityLabel: hasSecret ? .secretDetected : .normal,
         embedding: embedding
       )
@@ -467,6 +590,167 @@ private actor ScreenMemoryIngestCoordinator {
 
   func prepareVideoArchive() async throws {
     try await recoverVideoArchiveIfNeeded()
+  }
+
+  func prepareArchive() async throws -> ScreenMemoryDeletionResult {
+    if didPrepareArchive {
+      return ScreenMemoryDeletionResult(recordIDs: [], reason: .expired)
+    }
+    try await recoverVideoArchiveIfNeeded()
+    var deletedIDs: [String] = []
+    for plan in try store.pendingDeletionPlans() {
+      let result = try await executeDeletionPlan(plan, persistIntent: false)
+      deletedIDs.append(contentsOf: result.recordIDs)
+    }
+    let expired = try await runCleanup(force: true)
+    deletedIDs.append(contentsOf: expired.recordIDs)
+    didPrepareArchive = true
+    return ScreenMemoryDeletionResult(
+      recordIDs: Array(Set(deletedIDs)).sorted(),
+      reason: .expired
+    )
+  }
+
+  func applyRetentionPolicy(
+    _ period: ScreenMemoryRetentionPeriod
+  ) async throws -> ScreenMemoryDeletionResult {
+    retentionPeriod = period
+    try store.applyRetentionPeriod(period)
+    return try await runCleanup(force: true)
+  }
+
+  func runScheduledCleanup() async throws -> ScreenMemoryDeletionResult {
+    try await runCleanup(force: false)
+  }
+
+  func delete(
+    recordID: ScreenMemoryRecordID,
+    confirmChunkDeletion: Bool
+  ) async throws -> ScreenMemoryDeletionResult {
+    try await recoverVideoArchiveIfNeeded()
+    guard let plan = try store.manualDeletionPlan(recordID: recordID.value.uuidString) else {
+      return ScreenMemoryDeletionResult(recordIDs: [], reason: .manual)
+    }
+    if !plan.chunkIDs.isEmpty, !confirmChunkDeletion {
+      return ScreenMemoryDeletionResult(
+        recordIDs: [],
+        reason: .manual,
+        requiredChunkConfirmation: true
+      )
+    }
+    if !plan.chunkIDs.isEmpty {
+      try await finalizeActiveVideoChunk()
+    }
+    return try await executeDeletionPlan(plan)
+  }
+
+  func clearAll() async throws -> ScreenMemoryDeletionResult {
+    try await finalizeActiveVideoChunk()
+    let plan = try store.clearAllDeletionPlan()
+    let result = try await executeDeletionPlan(plan)
+    lastObservedHash = nil
+    latestStoredRecordID = nil
+    return result
+  }
+
+  private func runCleanup(force: Bool) async throws -> ScreenMemoryDeletionResult {
+    let cleanupTime = now()
+    if !force,
+       cleanupTime.timeIntervalSince(lastRetentionCleanupAt) < 6 * 60 * 60 {
+      return ScreenMemoryDeletionResult(recordIDs: [], reason: .expired)
+    }
+    guard !isRetentionCleanupRunning else {
+      return ScreenMemoryDeletionResult(recordIDs: [], reason: .expired)
+    }
+    isRetentionCleanupRunning = true
+    defer { isRetentionCleanupRunning = false }
+    try await finalizeActiveVideoChunk()
+    guard let plan = try store.expiryDeletionPlan(at: cleanupTime.protocolTimestamp) else {
+      lastRetentionCleanupAt = cleanupTime
+      return ScreenMemoryDeletionResult(recordIDs: [], reason: .expired)
+    }
+    let result = try await executeDeletionPlan(plan)
+    lastRetentionCleanupAt = cleanupTime
+    return result
+  }
+
+  private func executeDeletionPlan(
+    _ plan: ScreenMemoryDeletionPlan,
+    persistIntent: Bool = true
+  ) async throws -> ScreenMemoryDeletionResult {
+    if persistIntent {
+      try store.saveDeletionPlan(plan)
+    }
+
+    if plan.clearsAll {
+      if let videoArchive {
+        try await videoArchive.deleteAllMedia()
+      }
+      try removeAllArchiveOwnedFiles()
+    } else {
+      for rawChunkID in plan.chunkIDs {
+        guard let uuid = UUID(uuidString: rawChunkID) else { continue }
+        let chunkID = ScreenMemoryVideoChunkID(uuid)
+        if let videoArchive {
+          try await videoArchive.deleteChunk(chunkID)
+        } else {
+          try removeConventionalChunkFiles(chunkID)
+        }
+      }
+      try removeEmptyDirectories(in: profile.videoArchiveURL)
+    }
+
+    try store.commitDeletionPlan(plan)
+    return ScreenMemoryDeletionResult(
+      recordIDs: Array(Set(plan.recordIDs + plan.audioRecordIDs)).sorted(),
+      reason: plan.reason
+    )
+  }
+
+  private func removeConventionalChunkFiles(_ chunkID: ScreenMemoryVideoChunkID) throws {
+    let stem = chunkID.value.uuidString.lowercased()
+    for suffix in [".mp4", ".partial.mp4"] {
+      let url = profile.videoArchiveURL.appendingPathComponent(stem + suffix)
+      if fileManager.fileExists(atPath: url.path) {
+        try fileManager.removeItem(at: url)
+      }
+    }
+  }
+
+  private func removeAllArchiveOwnedFiles() throws {
+    let userDirectory = profile.databaseURL.deletingLastPathComponent()
+    let protectedNames = Set([
+      profile.databaseURL.lastPathComponent,
+      profile.databaseURL.lastPathComponent + "-wal",
+      profile.databaseURL.lastPathComponent + "-shm",
+    ])
+    let contents = try fileManager.contentsOfDirectory(
+      at: userDirectory,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    )
+    for url in contents where !protectedNames.contains(url.lastPathComponent) {
+      try fileManager.removeItem(at: url)
+    }
+    try fileManager.createDirectory(at: profile.videoArchiveURL, withIntermediateDirectories: true)
+  }
+
+  private func removeEmptyDirectories(in root: URL) throws {
+    guard fileManager.fileExists(atPath: root.path),
+          let enumerator = fileManager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+          )
+    else { return }
+    let directories = enumerator.compactMap { $0 as? URL }.reversed()
+    for directory in directories where directory != root {
+      let values = try directory.resourceValues(forKeys: [.isDirectoryKey])
+      guard values.isDirectory == true else { continue }
+      if try fileManager.contentsOfDirectory(atPath: directory.path).isEmpty {
+        try fileManager.removeItem(at: directory)
+      }
+    }
   }
 
   func finalizeActiveVideoChunk() async throws {

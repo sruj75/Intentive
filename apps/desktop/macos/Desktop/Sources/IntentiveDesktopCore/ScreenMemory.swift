@@ -12,6 +12,7 @@ public struct ScreenMemoryRecord: Codable, Equatable, Identifiable, Sendable {
   public var ocrBlocks: [ScreenMemoryOCRBlock]
   public var perceptualHash: UInt64?
   public var retentionClass: String
+  public var expiresAt: String?
   public var sensitivityLabel: SensitivityLabel
   public var embedding: PerceptionEmbeddingRef?
 
@@ -25,7 +26,8 @@ public struct ScreenMemoryRecord: Codable, Equatable, Identifiable, Sendable {
     ocrText: String,
     ocrBlocks: [ScreenMemoryOCRBlock] = [],
     perceptualHash: UInt64? = nil,
-    retentionClass: String = "screen_memory_30d",
+    retentionClass: String = "screen_memory_7d",
+    expiresAt: String? = nil,
     sensitivityLabel: SensitivityLabel = .normal,
     embedding: PerceptionEmbeddingRef? = nil
   ) {
@@ -39,6 +41,7 @@ public struct ScreenMemoryRecord: Codable, Equatable, Identifiable, Sendable {
     self.ocrBlocks = ocrBlocks
     self.perceptualHash = perceptualHash
     self.retentionClass = retentionClass
+    self.expiresAt = expiresAt
     self.sensitivityLabel = sensitivityLabel
     self.embedding = embedding
   }
@@ -68,6 +71,7 @@ public struct AudioMemoryRecord: Codable, Equatable, Identifiable, Sendable {
   public var transcript: String
   public var summary: String
   public var retentionClass: String
+  public var expiresAt: String?
   public var sensitivityLabel: SensitivityLabel
   public var embedding: PerceptionEmbeddingRef?
 
@@ -78,7 +82,8 @@ public struct AudioMemoryRecord: Codable, Equatable, Identifiable, Sendable {
     periodEnd: String,
     transcript: String,
     summary: String,
-    retentionClass: String = "audio_memory_30d",
+    retentionClass: String = "audio_memory_7d",
+    expiresAt: String? = nil,
     sensitivityLabel: SensitivityLabel = .normal,
     embedding: PerceptionEmbeddingRef? = nil
   ) {
@@ -89,6 +94,7 @@ public struct AudioMemoryRecord: Codable, Equatable, Identifiable, Sendable {
     self.transcript = transcript
     self.summary = summary
     self.retentionClass = retentionClass
+    self.expiresAt = expiresAt
     self.sensitivityLabel = sensitivityLabel
     self.embedding = embedding
   }
@@ -447,8 +453,8 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       """
       INSERT INTO screen_memory_records (
         id, captured_at, app_bundle_id, app_name, window_title, summary, ocr_text,
-        ocr_blocks_json, perceptual_hash, retention_class, sensitivity_label, embedding_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ocr_blocks_json, perceptual_hash, retention_class, expires_at, sensitivity_label, embedding_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         captured_at = excluded.captured_at,
         app_bundle_id = excluded.app_bundle_id,
@@ -459,6 +465,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         ocr_blocks_json = excluded.ocr_blocks_json,
         perceptual_hash = excluded.perceptual_hash,
         retention_class = excluded.retention_class,
+        expires_at = excluded.expires_at,
         sensitivity_label = excluded.sensitivity_label,
         embedding_json = excluded.embedding_json
       """,
@@ -473,6 +480,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         .text(ocrBlocksJSON),
         perceptualHash.map(SQLiteBinding.text) ?? .null,
         .text(record.retentionClass),
+        record.expiresAt.map(SQLiteBinding.text) ?? .text(Self.defaultExpiry(for: record.capturedAt)),
         .text(record.sensitivityLabel.rawValue),
         embeddingJSON.map(SQLiteBinding.text) ?? .null,
       ]
@@ -498,7 +506,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     try queryRecords(
       """
       SELECT id, captured_at, app_bundle_id, app_name, window_title, summary, ocr_text,
-             ocr_blocks_json, perceptual_hash, retention_class, sensitivity_label, embedding_json
+             ocr_blocks_json, perceptual_hash, retention_class, expires_at, sensitivity_label, embedding_json
       FROM screen_memory_records
       ORDER BY captured_at DESC
       LIMIT ?
@@ -518,7 +526,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       SELECT records.id, records.captured_at, records.app_bundle_id, records.app_name,
              records.window_title, records.summary, records.ocr_text,
              records.ocr_blocks_json, records.perceptual_hash, records.retention_class,
-             records.sensitivity_label, records.embedding_json
+             records.expires_at, records.sensitivity_label, records.embedding_json
       FROM screen_memory_records_fts AS fts
       JOIN screen_memory_records AS records ON records.id = fts.id
       WHERE screen_memory_records_fts MATCH ?
@@ -541,6 +549,202 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
   public func deleteRecord(id: String) throws {
     try execute("DELETE FROM screen_memory_records_fts WHERE id = ?", bindings: [.text(id)])
     try execute("DELETE FROM screen_memory_records WHERE id = ?", bindings: [.text(id)])
+  }
+
+  func applyRetentionPeriod(_ period: ScreenMemoryRetentionPeriod) throws {
+    try withTransaction {
+      try execute(
+        """
+        UPDATE screen_memory_records
+        SET retention_class = ?,
+            expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', captured_at, ?)
+        """,
+        bindings: [
+          .text(period.retentionClass),
+          .text("+\(period.rawValue) days"),
+        ]
+      )
+      try execute(
+        """
+        UPDATE audio_memory_records
+        SET retention_class = ?,
+            expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', captured_at, ?)
+        """,
+        bindings: [
+          .text(period.audioRetentionClass),
+          .text("+\(period.rawValue) days"),
+        ]
+      )
+    }
+  }
+
+  func expiryDeletionPlan(at now: String) throws -> ScreenMemoryDeletionPlan? {
+    let expiredChunkIDs = try queryStrings(
+      """
+      SELECT frames.chunk_id
+      FROM screen_memory_video_frames AS frames
+      JOIN screen_memory_records AS records ON records.id = frames.record_id
+      GROUP BY frames.chunk_id
+      HAVING MIN(records.expires_at) <= ?
+      ORDER BY MIN(records.expires_at) ASC
+      """,
+      bindings: [.text(now)]
+    )
+    var recordIDs: [String] = []
+    for chunkID in expiredChunkIDs {
+      recordIDs.append(
+        contentsOf: try queryStrings(
+          "SELECT record_id FROM screen_memory_video_frames WHERE chunk_id = ? ORDER BY captured_at ASC",
+          bindings: [.text(chunkID)]
+        )
+      )
+    }
+    recordIDs.append(
+      contentsOf: try queryStrings(
+        """
+        SELECT records.id
+        FROM screen_memory_records AS records
+        LEFT JOIN screen_memory_video_frames AS frames ON frames.record_id = records.id
+        WHERE frames.record_id IS NULL AND records.expires_at <= ?
+        ORDER BY records.captured_at ASC
+        """,
+        bindings: [.text(now)]
+      )
+    )
+    let audioIDs = try queryStrings(
+      "SELECT id FROM audio_memory_records WHERE expires_at <= ? ORDER BY captured_at ASC",
+      bindings: [.text(now)]
+    )
+    guard !recordIDs.isEmpty || !audioIDs.isEmpty || !expiredChunkIDs.isEmpty else { return nil }
+    return ScreenMemoryDeletionPlan(
+      id: UUID().uuidString,
+      reason: .expired,
+      recordIDs: Array(Set(recordIDs)).sorted(),
+      audioRecordIDs: audioIDs,
+      chunkIDs: expiredChunkIDs,
+      clearsAll: false
+    )
+  }
+
+  func manualDeletionPlan(recordID: String) throws -> ScreenMemoryDeletionPlan? {
+    guard try record(id: recordID) != nil else { return nil }
+    let chunkIDs = try queryStrings(
+      "SELECT chunk_id FROM screen_memory_video_frames WHERE record_id = ?",
+      bindings: [.text(recordID)]
+    )
+    let recordIDs: [String]
+    if let chunkID = chunkIDs.first {
+      recordIDs = try queryStrings(
+        "SELECT record_id FROM screen_memory_video_frames WHERE chunk_id = ? ORDER BY captured_at ASC",
+        bindings: [.text(chunkID)]
+      )
+    } else {
+      recordIDs = [recordID]
+    }
+    return ScreenMemoryDeletionPlan(
+      id: UUID().uuidString,
+      reason: .manual,
+      recordIDs: recordIDs,
+      audioRecordIDs: [],
+      chunkIDs: chunkIDs,
+      clearsAll: false
+    )
+  }
+
+  func clearAllDeletionPlan() throws -> ScreenMemoryDeletionPlan {
+    ScreenMemoryDeletionPlan(
+      id: UUID().uuidString,
+      reason: .clearAll,
+      recordIDs: try queryStrings("SELECT id FROM screen_memory_records ORDER BY captured_at ASC"),
+      audioRecordIDs: try queryStrings("SELECT id FROM audio_memory_records ORDER BY captured_at ASC"),
+      chunkIDs: try queryStrings("SELECT chunk_id FROM screen_memory_video_chunks ORDER BY created_at ASC"),
+      clearsAll: true
+    )
+  }
+
+  func saveDeletionPlan(_ plan: ScreenMemoryDeletionPlan) throws {
+    let data = try encoder.encode(plan)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw ScreenMemoryStoreError.invalidText
+    }
+    try execute(
+      """
+      INSERT OR REPLACE INTO screen_memory_deletion_journal(journal_id, plan_json, created_at)
+      VALUES (?, ?, ?)
+      """,
+      bindings: [.text(plan.id), .text(json), .text(Date().protocolTimestamp)]
+    )
+  }
+
+  func pendingDeletionPlans() throws -> [ScreenMemoryDeletionPlan] {
+    try withStatement(
+      "SELECT plan_json FROM screen_memory_deletion_journal ORDER BY created_at ASC",
+      bindings: []
+    ) { statement in
+      var plans: [ScreenMemoryDeletionPlan] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          let json = try columnText(statement, 0)
+          plans.append(try decoder.decode(ScreenMemoryDeletionPlan.self, from: Data(json.utf8)))
+        } else if result == SQLITE_DONE {
+          return plans
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
+  }
+
+  func commitDeletionPlan(_ plan: ScreenMemoryDeletionPlan) throws {
+    try withTransaction {
+      if plan.clearsAll {
+        try execute("DELETE FROM screen_memory_records_fts")
+        try execute("DELETE FROM screen_memory_records")
+        try execute("DELETE FROM screen_memory_video_chunks")
+        try execute("DELETE FROM audio_memory_records")
+        try execute("DELETE FROM perception_event_outbox")
+      } else {
+        for recordID in plan.recordIDs {
+          try execute("DELETE FROM screen_memory_records_fts WHERE id = ?", bindings: [.text(recordID)])
+          try execute("DELETE FROM screen_memory_records WHERE id = ?", bindings: [.text(recordID)])
+          try execute(
+            "DELETE FROM perception_event_outbox WHERE event_json LIKE ?",
+            bindings: [.text("%\(recordID)%")]
+          )
+        }
+        for audioID in plan.audioRecordIDs {
+          try execute("DELETE FROM audio_memory_records WHERE id = ?", bindings: [.text(audioID)])
+          try execute(
+            "DELETE FROM perception_event_outbox WHERE event_json LIKE ?",
+            bindings: [.text("%\(audioID)%")]
+          )
+        }
+        for chunkID in plan.chunkIDs {
+          try execute("DELETE FROM screen_memory_video_chunks WHERE chunk_id = ?", bindings: [.text(chunkID)])
+        }
+      }
+      try execute(
+        "DELETE FROM screen_memory_deletion_journal WHERE journal_id = ?",
+        bindings: [.text(plan.id)]
+      )
+    }
+  }
+
+  private func queryStrings(_ sql: String, bindings: [SQLiteBinding] = []) throws -> [String] {
+    try withStatement(sql, bindings: bindings) { statement in
+      var values: [String] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          values.append(try columnText(statement, 0))
+        } else if result == SQLITE_DONE {
+          return values
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
   }
 
   func latestPerceptualRecord() throws -> (id: String, hash: UInt64)? {
@@ -572,7 +776,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     try queryRecords(
       """
       SELECT id, captured_at, app_bundle_id, app_name, window_title, summary, ocr_text,
-             ocr_blocks_json, perceptual_hash, retention_class, sensitivity_label, embedding_json
+             ocr_blocks_json, perceptual_hash, retention_class, expires_at, sensitivity_label, embedding_json
       FROM screen_memory_records
       WHERE id = ?
       LIMIT 1
@@ -766,8 +970,8 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       """
       INSERT INTO audio_memory_records (
         id, captured_at, period_start, period_end, transcript, summary,
-        retention_class, sensitivity_label, embedding_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        retention_class, expires_at, sensitivity_label, embedding_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         captured_at = excluded.captured_at,
         period_start = excluded.period_start,
@@ -775,6 +979,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         transcript = excluded.transcript,
         summary = excluded.summary,
         retention_class = excluded.retention_class,
+        expires_at = excluded.expires_at,
         sensitivity_label = excluded.sensitivity_label,
         embedding_json = excluded.embedding_json
       """,
@@ -786,6 +991,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         .text(record.transcript),
         .text(record.summary),
         .text(record.retentionClass),
+        record.expiresAt.map(SQLiteBinding.text) ?? .text(Self.defaultExpiry(for: record.capturedAt)),
         .text(record.sensitivityLabel.rawValue),
         embeddingJSON.map(SQLiteBinding.text) ?? .null,
       ]
@@ -796,7 +1002,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     try withStatement(
       """
       SELECT id, captured_at, period_start, period_end, transcript, summary,
-             retention_class, sensitivity_label, embedding_json
+             retention_class, expires_at, sensitivity_label, embedding_json
       FROM audio_memory_records
       ORDER BY captured_at DESC
       LIMIT ?
@@ -886,6 +1092,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         ocr_blocks_json TEXT NOT NULL DEFAULT '[]',
         perceptual_hash TEXT,
         retention_class TEXT NOT NULL,
+        expires_at TEXT,
         sensitivity_label TEXT NOT NULL,
         embedding_json TEXT
       )
@@ -905,6 +1112,19 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       table: "screen_memory_records",
       column: "perceptual_hash",
       definition: "TEXT"
+    )
+    try ensureColumn(
+      table: "screen_memory_records",
+      column: "expires_at",
+      definition: "TEXT"
+    )
+    try execute(
+      """
+      UPDATE screen_memory_records
+      SET retention_class = 'screen_memory_7d',
+          expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', captured_at, '+7 days')
+      WHERE expires_at IS NULL
+      """
     )
     try execute(
       """
@@ -939,9 +1159,23 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         transcript TEXT NOT NULL,
         summary TEXT NOT NULL,
         retention_class TEXT NOT NULL,
+        expires_at TEXT,
         sensitivity_label TEXT NOT NULL,
         embedding_json TEXT
       )
+      """
+    )
+    try ensureColumn(
+      table: "audio_memory_records",
+      column: "expires_at",
+      definition: "TEXT"
+    )
+    try execute(
+      """
+      UPDATE audio_memory_records
+      SET retention_class = 'audio_memory_7d',
+          expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', captured_at, '+7 days')
+      WHERE expires_at IS NULL
       """
     )
     try execute(
@@ -968,7 +1202,16 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     try execute(
       "CREATE INDEX IF NOT EXISTS screen_memory_video_frames_captured_at ON screen_memory_video_frames(captured_at)"
     )
-    try execute("PRAGMA user_version = 3")
+    try execute(
+      """
+      CREATE TABLE IF NOT EXISTS screen_memory_deletion_journal (
+        journal_id TEXT PRIMARY KEY,
+        plan_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+      """
+    )
+    try execute("PRAGMA user_version = 4")
   }
 
   private func queryRecords(_ sql: String, bindings: [SQLiteBinding] = []) throws -> [ScreenMemoryRecord] {
@@ -992,12 +1235,12 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     let ocrBlocksData = Data(ocrBlocksText.utf8)
     let ocrBlocks = try decoder.decode([ScreenMemoryOCRBlock].self, from: ocrBlocksData)
     let perceptualHash = try optionalColumnText(statement, 8).flatMap { UInt64($0, radix: 16) }
-    let embeddingText = try optionalColumnText(statement, 11)
+    let embeddingText = try optionalColumnText(statement, 12)
     let embedding = try embeddingText.flatMap { text -> PerceptionEmbeddingRef? in
       guard let data = text.data(using: .utf8), !data.isEmpty else { return nil }
       return try decoder.decode(PerceptionEmbeddingRef.self, from: data)
     }
-    let label = SensitivityLabel(rawValue: try columnText(statement, 10)) ?? .sensitive
+    let label = SensitivityLabel(rawValue: try columnText(statement, 11)) ?? .sensitive
     return ScreenMemoryRecord(
       id: try columnText(statement, 0),
       capturedAt: try columnText(statement, 1),
@@ -1009,18 +1252,19 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       ocrBlocks: ocrBlocks,
       perceptualHash: perceptualHash,
       retentionClass: try columnText(statement, 9),
+      expiresAt: try optionalColumnText(statement, 10),
       sensitivityLabel: label,
       embedding: embedding
     )
   }
 
   private func decodeAudioMemoryRecord(_ statement: OpaquePointer) throws -> AudioMemoryRecord {
-    let embeddingText = try optionalColumnText(statement, 8)
+    let embeddingText = try optionalColumnText(statement, 9)
     let embedding = try embeddingText.flatMap { text -> PerceptionEmbeddingRef? in
       guard let data = text.data(using: .utf8), !data.isEmpty else { return nil }
       return try decoder.decode(PerceptionEmbeddingRef.self, from: data)
     }
-    let label = SensitivityLabel(rawValue: try columnText(statement, 7)) ?? .sensitive
+    let label = SensitivityLabel(rawValue: try columnText(statement, 8)) ?? .sensitive
     return AudioMemoryRecord(
       id: try columnText(statement, 0),
       capturedAt: try columnText(statement, 1),
@@ -1029,6 +1273,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       transcript: try columnText(statement, 4),
       summary: try columnText(statement, 5),
       retentionClass: try columnText(statement, 6),
+      expiresAt: try optionalColumnText(statement, 7),
       sensitivityLabel: label,
       embedding: embedding
     )
@@ -1123,6 +1368,15 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       .split { !$0.isLetter && !$0.isNumber }
       .map(String.init)
       .filter { !$0.isEmpty }
+  }
+
+  private static func defaultExpiry(for capturedAt: String) -> String {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let capturedDate = fractional.date(from: capturedAt)
+      ?? ISO8601DateFormatter().date(from: capturedAt)
+      ?? Date()
+    return ScreenMemoryRetentionPeriod.sevenDays.expiryDate(for: capturedDate).protocolTimestamp
   }
 
   private func captureError(_ body: () throws -> Void) {

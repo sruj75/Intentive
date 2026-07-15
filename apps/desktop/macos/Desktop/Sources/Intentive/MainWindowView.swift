@@ -39,6 +39,7 @@ final class DesktopViewModel: ObservableObject {
   @Published var captureRunning = false
   @Published var compilerSettings: CompilerSettings
   @Published var excludedAppsText: String
+  @Published var privacySnapshot: ScreenMemoryPrivacySnapshot
   @Published var screenRecordingPermissionGranted: Bool
   @Published var accessibilityPermissionGranted: Bool
   @Published var microphonePermissionStatus: DesktopMicrophonePermissionStatus
@@ -52,6 +53,7 @@ final class DesktopViewModel: ObservableObject {
   let messageStore = MessageStore()
   let screenMemory: SwitchableScreenMemoryStore
   private let settingsStore: any ScreenMemorySettingsStore
+  private let privacyPolicy: ScreenMemoryPrivacyPolicy
   private let permissionGateway: any ScreenRecordingPermissionGateway
   private let accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway
   private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
@@ -96,7 +98,8 @@ final class DesktopViewModel: ObservableObject {
     compiler: compiler,
     screenMemory: screenMemory,
     publisher: publisher,
-    archiveProvider: { [weak self] in self?.screenMemory.activeArchive }
+    archiveProvider: { [weak self] in self?.screenMemory.activeArchive },
+    privacyPolicy: privacyPolicy
   )
   private lazy var ambientAudio = AmbientAudioCoordinator(
     audioMemory: screenMemory,
@@ -106,7 +109,10 @@ final class DesktopViewModel: ObservableObject {
     coordinator: capture,
     source: captureSource,
     settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
-    permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
+    permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
+    privacySnapshotProvider: { [weak self] in
+      self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+    }
   )
   private lazy var ambientAudioLoop = AmbientAudioCaptureLoop(
     coordinator: ambientAudio,
@@ -115,10 +121,40 @@ final class DesktopViewModel: ObservableObject {
     transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient),
     settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
     permissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
+    privacySnapshotProvider: { [weak self] in
+      self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+    },
     activeWindowProvider: { [weak self] in
       guard let self else { return nil }
       return try self.captureSource.activeWindowContext()
     }
+  )
+  private lazy var screenPrivateModeGate = RememberingScreenMemorySensingGate(
+    isRunning: { [weak self] in self?.captureLoop.state.isRunning ?? false },
+    pause: { [weak self] in
+      self?.captureLoop.stop()
+      self?.captureRunning = false
+    },
+    resume: { [weak self] in self?.startCaptureAfterPrivateMode() }
+  )
+  private lazy var microphonePrivateModeGate = RememberingScreenMemorySensingGate(
+    isRunning: { [weak self] in self?.ambientAudioLoop.state.isRunning ?? false },
+    pause: { [weak self] in self?.ambientAudioLoop.stop() },
+    resume: { [weak self] in self?.reconcileAmbientAudioCapture() }
+  )
+  private lazy var systemAudioPrivateModeGate = RememberingScreenMemorySensingGate(
+    isRunning: { false },
+    pause: {},
+    resume: {}
+  )
+  private lazy var privacyCoordinator = ScreenMemoryPrivacyCoordinator(
+    policy: privacyPolicy,
+    archiveProvider: { [weak self] in self?.screenMemory.activeArchive },
+    sensingGates: [
+      screenPrivateModeGate,
+      microphonePrivateModeGate,
+      systemAudioPrivateModeGate,
+    ]
   )
 
   var messages: [ChatMessage] {
@@ -154,7 +190,13 @@ final class DesktopViewModel: ObservableObject {
     self.accessibilityPermissionGateway = accessibilityPermissionGateway
     self.microphonePermissionGateway = microphonePermissionGateway
     self.onboardingStore = onboardingStore
-    let settings = settingsStore.load()
+    var settings = settingsStore.load()
+    let privacyPolicy = ScreenMemoryPrivacyPolicy(
+      persistence: UserDefaultsScreenMemoryPrivacyPersistence(),
+      legacyExcludedAppNames: settings.excludedApps
+    )
+    self.privacyPolicy = privacyPolicy
+    settings.excludedApps = []
     let progress = onboardingStore.load()
     let usesCaptureBoundary = composition.activeSystemBoundaries.contains(.capture)
     let screenRecordingPermissionGranted = usesCaptureBoundary
@@ -167,7 +209,10 @@ final class DesktopViewModel: ObservableObject {
       ? microphonePermissionGateway.authorizationStatus()
       : Self.microphonePermissionStatus(from: composition.permissions.microphone)
     compilerSettings = settings
-    excludedAppsText = Self.renderExcludedApps(settings.excludedApps)
+    excludedAppsText = Self.renderExcludedApps(
+      Set(privacyPolicy.snapshot.excludedApplications.map(\.displayName))
+    )
+    privacySnapshot = privacyPolicy.snapshot
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
     self.accessibilityPermissionGranted = accessibilityPermissionGranted
     self.microphonePermissionStatus = microphonePermissionStatus
@@ -198,6 +243,7 @@ final class DesktopViewModel: ObservableObject {
     floatingBarManager.configure(controller: floatingBarController)
     floatingBarManager.registerGlobalShortcut()
     reconcileAmbientAudioCapture()
+    privacyCoordinator.enforcePersistedState()
   }
 
   func restoreRuntimeSessionIfNeeded() async {
@@ -672,6 +718,35 @@ final class DesktopViewModel: ObservableObject {
     reconcileAmbientAudioCapture()
   }
 
+  func enterPrivateMode() async {
+    do {
+      try await privacyCoordinator.enterPrivateMode()
+      privacySnapshot = privacyCoordinator.snapshot
+      captureRunning = false
+      status = "Private Mode — all sensing paused"
+    } catch {
+      status = "Could not enter Private Mode: \(error.localizedDescription)"
+    }
+  }
+
+  func resumeFromPrivateMode() {
+    do {
+      try privacyCoordinator.resume()
+      privacySnapshot = privacyCoordinator.snapshot
+      status = "Private Mode ended"
+    } catch {
+      status = "Could not resume sensing: \(error.localizedDescription)"
+    }
+  }
+
+  private func startCaptureAfterPrivateMode() {
+    guard !captureLoop.state.isRunning,
+          compilerSettings.captureEnabled,
+          screenRecordingPermissionGranted
+    else { return }
+    toggleCapture()
+  }
+
   func setAmbientAudioCaptureEnabled(_ enabled: Bool) {
     var settings = compilerSettings
     settings.ambientAudioCaptureEnabled = enabled
@@ -702,9 +777,12 @@ final class DesktopViewModel: ObservableObject {
 
   func updateExcludedAppsText(_ text: String) {
     excludedAppsText = text
-    var settings = compilerSettings
-    settings.excludedApps = Self.parseExcludedApps(text)
-    applyCompilerSettings(settings)
+    do {
+      try privacyPolicy.replaceExcludedDisplayNames(Self.parseExcludedApps(text))
+      privacySnapshot = privacyPolicy.snapshot
+    } catch {
+      status = "Privacy Zones save failed: \(error.localizedDescription)"
+    }
   }
 
   private func applyCompilerSettings(_ settings: CompilerSettings) {
@@ -1026,6 +1104,19 @@ struct MainWindowView: View {
       .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 260)
     } detail: {
       VStack(spacing: 0) {
+        if model.privacySnapshot.isPrivateMode {
+          HStack(spacing: 10) {
+            Image(systemName: "hand.raised.fill")
+            Text("Private Mode is on. Screen, microphone, and system-audio sensing are paused.")
+              .fontWeight(.semibold)
+            Spacer()
+            Button("Resume Sensing", action: model.resumeFromPrivateMode)
+          }
+          .padding(.horizontal, 18)
+          .frame(minHeight: 44)
+          .foregroundStyle(.white)
+          .background(Color.red.opacity(0.9))
+        }
         topBar
         Divider()
         content
@@ -1065,7 +1156,11 @@ struct MainWindowView: View {
       } label: {
         Label(model.captureRunning ? "Stop Capture" : "Start Capture", systemImage: model.captureRunning ? "stop.circle" : "camera.viewfinder")
       }
-      .disabled(!model.compilerSettings.captureEnabled || !model.screenRecordingPermissionGranted)
+      .disabled(
+        model.privacySnapshot.isPrivateMode
+          || !model.compilerSettings.captureEnabled
+          || !model.screenRecordingPermissionGranted
+      )
       .keyboardShortcut("n", modifiers: [.command])
     }
     .padding(.horizontal, 18)
@@ -1080,7 +1175,7 @@ struct MainWindowView: View {
         capture: model.toggleCapture,
         openFloatingBar: model.openFloatingBar,
         captureRunning: model.captureRunning,
-        captureEnabled: model.compilerSettings.captureEnabled,
+        captureEnabled: model.compilerSettings.captureEnabled && !model.privacySnapshot.isPrivateMode,
         screenRecordingPermissionGranted: model.screenRecordingPermissionGranted
       )
     case .screenMemory:
@@ -1257,6 +1352,21 @@ private struct SettingsView: View {
 
       Section("Privacy") {
         HStack {
+          Label(
+            model.privacySnapshot.isPrivateMode ? "Private Mode On" : "Private Mode Off",
+            systemImage: model.privacySnapshot.isPrivateMode ? "hand.raised.fill" : "hand.raised"
+          )
+          Spacer()
+          if model.privacySnapshot.isPrivateMode {
+            Button("Resume Sensing", action: model.resumeFromPrivateMode)
+          } else {
+            Button("Enter Private Mode") {
+              Task { await model.enterPrivateMode() }
+            }
+          }
+        }
+
+        HStack {
           Label("Screen Recording", systemImage: "rectangle.on.rectangle")
           Spacer()
           Label(
@@ -1279,7 +1389,7 @@ private struct SettingsView: View {
         }
 
         TextField(
-          "Excluded apps",
+          "Privacy Zones",
           text: Binding(
             get: { model.excludedAppsText },
             set: model.updateExcludedAppsText

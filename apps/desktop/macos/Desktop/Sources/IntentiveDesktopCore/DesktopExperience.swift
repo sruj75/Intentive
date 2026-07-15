@@ -273,17 +273,20 @@ public final class CaptureCoordinator {
   private let screenMemory: ScreenMemoryStore
   private let publisher: PerceptionPublisher
   private let archiveProvider: () -> ScreenMemoryArchive?
+  private let privacyPolicy: ScreenMemoryPrivacyPolicy?
 
   public init(
     compiler: ContextCompiler,
     screenMemory: ScreenMemoryStore,
     publisher: PerceptionPublisher,
-    archiveProvider: @escaping () -> ScreenMemoryArchive? = { nil }
+    archiveProvider: @escaping () -> ScreenMemoryArchive? = { nil },
+    privacyPolicy: ScreenMemoryPrivacyPolicy? = nil
   ) {
     self.compiler = compiler
     self.screenMemory = screenMemory
     self.publisher = publisher
     self.archiveProvider = archiveProvider
+    self.privacyPolicy = privacyPolicy
   }
 
   public func accept(frame: CapturedFrame) throws -> [PerceptionEvent] {
@@ -294,6 +297,9 @@ public final class CaptureCoordinator {
     frame: CapturedFrame,
     storesSearchableRecord: Bool
   ) throws -> [PerceptionEvent] {
+    guard privacyPolicy?.allows(appBundleID: frame.appBundleID, appName: frame.appName) ?? true else {
+      return []
+    }
     let artifacts = try compiler.compile(frame: frame)
     var events: [PerceptionEvent] = []
     for artifact in artifacts {
@@ -325,11 +331,17 @@ public final class CaptureCoordinator {
   public func captureOnce(from source: DesktopCaptureSource) async throws -> [PerceptionEvent] {
     if let contextSource = source as? DesktopWindowContextSource {
       let context = try contextSource.activeWindowContext()
-      guard compiler.currentSettings.captureEnabled, !compiler.currentSettings.isExcluded(appName: context.appName) else {
+      guard compiler.currentSettings.captureEnabled,
+            !compiler.currentSettings.isExcluded(appName: context.appName),
+            privacyPolicy?.allows(appBundleID: context.appBundleID, appName: context.appName) ?? true
+      else {
         return []
       }
     }
     let frame = try await source.captureFrame()
+    guard privacyPolicy?.allows(appBundleID: frame.appBundleID, appName: frame.appName) ?? true else {
+      return []
+    }
     if let imageData = frame.rawFrameBytes, let archive = archiveProvider() {
       let outcome = try await archive.ingest(
         ScreenMemoryCaptureInput(
@@ -537,6 +549,7 @@ public final class ScreenMemoryCaptureLoop {
   private let source: DesktopCaptureSource
   private let settingsProvider: () -> CompilerSettings
   private let permissionProvider: () -> Bool
+  private let privacySnapshotProvider: () -> ScreenMemoryPrivacySnapshot
   private let now: () -> Date
   private let intervalSeconds: TimeInterval
   private var cadenceGate: DesktopCaptureCadenceGate
@@ -549,6 +562,9 @@ public final class ScreenMemoryCaptureLoop {
     source: DesktopCaptureSource,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
+    privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
+      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
+    },
     now: @escaping () -> Date = { Date() },
     intervalSeconds: TimeInterval = ScreenMemoryCaptureLoop.defaultIntervalSeconds,
     cadenceGate: DesktopCaptureCadenceGate = DesktopCaptureCadenceGate(),
@@ -558,6 +574,7 @@ public final class ScreenMemoryCaptureLoop {
     self.source = source
     self.settingsProvider = settingsProvider
     self.permissionProvider = permissionProvider
+    self.privacySnapshotProvider = privacySnapshotProvider
     self.now = now
     self.intervalSeconds = max(0.2, intervalSeconds)
     self.cadenceGate = cadenceGate
@@ -596,6 +613,10 @@ public final class ScreenMemoryCaptureLoop {
 
   public func captureTick() async -> ScreenMemoryCaptureLoopEvent {
     let settings = settingsProvider()
+    let privacy = privacySnapshotProvider()
+    guard !privacy.isPrivateMode else {
+      return recordSkip("Private Mode")
+    }
     guard settings.captureEnabled else {
       return recordSkip("capture disabled")
     }
@@ -610,7 +631,9 @@ public final class ScreenMemoryCaptureLoop {
       do {
         let context = try contextSource.activeWindowContext()
         windowContext = context
-        guard !settings.isExcluded(appName: context.appName) else {
+        guard !settings.isExcluded(appName: context.appName),
+              privacy.allows(appBundleID: context.appBundleID, appName: context.appName)
+        else {
           return recordSkip("current app skipped")
         }
         switch cadenceGate.decision(for: context, at: captureStartedAt, settings: settings) {
@@ -709,6 +732,7 @@ public final class AmbientAudioCaptureLoop {
   private let transcription: LocalTranscriptionService
   private let settingsProvider: () -> CompilerSettings
   private let permissionProvider: () -> Bool
+  private let privacySnapshotProvider: () -> ScreenMemoryPrivacySnapshot
   private let activeWindowProvider: (() throws -> DesktopWindowContext?)?
   private let now: () -> Date
   private let intervalSeconds: TimeInterval
@@ -724,6 +748,9 @@ public final class AmbientAudioCaptureLoop {
     transcription: LocalTranscriptionService,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
+    privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
+      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
+    },
     activeWindowProvider: (() throws -> DesktopWindowContext?)? = nil,
     now: @escaping () -> Date = { Date() },
     intervalSeconds: TimeInterval = AmbientAudioCaptureLoop.defaultIntervalSeconds,
@@ -736,6 +763,7 @@ public final class AmbientAudioCaptureLoop {
     self.transcription = transcription
     self.settingsProvider = settingsProvider
     self.permissionProvider = permissionProvider
+    self.privacySnapshotProvider = privacySnapshotProvider
     self.activeWindowProvider = activeWindowProvider
     self.now = now
     self.intervalSeconds = max(1, intervalSeconds)
@@ -774,6 +802,10 @@ public final class AmbientAudioCaptureLoop {
 
   public func captureTick() async -> AmbientAudioCaptureLoopEvent {
     let settings = settingsProvider()
+    let privacy = privacySnapshotProvider()
+    guard !privacy.isPrivateMode else {
+      return recordSkip("Private Mode")
+    }
     guard settings.captureEnabled else {
       return recordSkip("capture disabled")
     }
@@ -785,8 +817,12 @@ public final class AmbientAudioCaptureLoop {
     }
 
     do {
-      if let context = try activeWindowProvider?(), settings.isExcluded(appName: context.appName) {
-        return recordSkip("current app skipped")
+      if let context = try activeWindowProvider?() {
+        guard !settings.isExcluded(appName: context.appName),
+              privacy.allows(appBundleID: context.appBundleID, appName: context.appName)
+        else {
+          return recordSkip("current app skipped")
+        }
       }
     } catch {
       return recordFailure(error.localizedDescription)
@@ -799,6 +835,9 @@ public final class AmbientAudioCaptureLoop {
         return recordSkip("no speech detected")
       }
       let rawTranscriptText = try await transcription.transcribe(pcm16k)
+      guard !privacySnapshotProvider().isPrivateMode else {
+        return recordSkip("Private Mode")
+      }
       let transcriptText = rawTranscriptText.trimmingCharacters(in: .whitespacesAndNewlines)
       let capturedAtDate = now()
       guard cadenceGate.shouldEmit(transcript: transcriptText, capturedAt: capturedAtDate) else {

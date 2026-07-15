@@ -139,6 +139,36 @@ public actor OmiVideoArchiveStorage: ScreenMemoryVideoArchiving {
     frameCache.removeAllObjects()
   }
 
+  /// Omi's physical video deletion/cache invalidation adapted to opaque chunk
+  /// IDs. Unlike recovery discard, user/retention deletion surfaces I/O errors
+  /// so the durable deletion journal can retry on next launch.
+  public func deleteChunk(_ chunkID: ScreenMemoryVideoChunkID) async throws {
+    await encoder.discardChunk(chunkID)
+    for url in [stagedURL(for: chunkID), finalizedURL(for: chunkID)] {
+      if fileManager.fileExists(atPath: url.path) {
+        try fileManager.removeItem(at: url)
+      }
+    }
+    corruptedChunks.remove(chunkID)
+    frameCache.removeAllObjects()
+  }
+
+  public func deleteAllMedia() async throws {
+    if let active = await encoder.activeChunkID() {
+      await encoder.discardChunk(active)
+    }
+    frameCache.removeAllObjects()
+    corruptedChunks.removeAll()
+    guard fileManager.fileExists(atPath: videosDirectory.path) else { return }
+    for url in try fileManager.contentsOfDirectory(
+      at: videosDirectory,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    ) {
+      try fileManager.removeItem(at: url)
+    }
+  }
+
   private func extractFrame(from url: URL, sampleOrdinal: Int) async throws -> NSImage {
     guard sampleOrdinal >= 0 else { throw OmiScreenMemoryVideoArchiveError.frameNotFound }
     let asset = AVURLAsset(url: url)
