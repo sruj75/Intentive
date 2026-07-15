@@ -6,7 +6,7 @@
     "version": "0.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "runtimeVersion": "0.0.0",
     "updates": {
@@ -27,7 +27,6 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-image",
       "expo-notifications",
       [
         "@sentry/react-native/expo",

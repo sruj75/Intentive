@@ -1,53 +1,21 @@
-// RN component test runner (the `test:rn` script). Split from the pure-core
-// node:test path by axis: jest only picks up `*.rn.test.tsx` so it never runs
-// the `.mjs` resolver tests, and node:test never loads React Native.
-//
-// The `test:rn` script runs jest with `--forceExit` (see package.json). That is
-// not masking a leak in our code: `@assistant-ui/tap`'s reactive scheduler —
-// pulled in transitively by `@assistant-ui/react-native` (companion-chat.tsx) —
-// creates a single module-scoped `MessageChannel` at import time and uses it as
-// its macrotask queue. It is a private singleton with no teardown API, and its
-// port must stay ref'd (it carries the scheduler's `onmessage` listener) for the
-// store→React flush to work, so no test-level cleanup or `unref` can release it.
-// `--detectOpenHandles` confirms it as the lone open handle (a ref'd MESSAGEPORT).
-// Without `--forceExit`, Jest hangs indefinitely after every test passes
-// ("Jest did not exit one second after the test run has completed") — a CI
-// footgun. `--forceExit` lets the process return promptly once the suite is done.
+// RN component tests stay separate from the pure node:test adapter suite.
 const expoPreset = require("jest-expo/jest-preset");
 
-// `@assistant-ui/*` and `assistant-stream` ship ESM-only and live under a nested
-// `node_modules/@assistant-ui/...` segment (pnpm), which jest-expo's default
-// transformIgnorePatterns excludes from Babel. Whitelist them so the Chat
-// Primitive Engine (#22) is transformed like react-native/expo are. Derived
-// from the preset's first pattern so it survives preset updates.
 const [pnpmPattern, ...restPatterns] = expoPreset.transformIgnorePatterns;
 
 module.exports = {
   preset: "jest-expo",
   testMatch: ["**/test/**/*.rn.test.tsx"],
-  // These are full React-Native render + gate-walk tests (many `waitFor`s per
-  // test). They finish in well under a second locally, but on shared CI runners
-  // they contend with the parallel Rust build and can breach Jest's 5s default
-  // (the launch-flow gate walk was observed timing out at 5000ms in CI while
-  // passing in ~0.5s locally). A generous ceiling absorbs that load without
-  // masking a real hang — a genuinely stuck test still fails, just later.
+  setupFilesAfterEnv: ["<rootDir>/jest/jest-setup.js"],
   testTimeout: 30_000,
   transformIgnorePatterns: [
-    // Whitelist our own workspace packages alongside the ESM-only vendor ones:
-    // `@intentive/*` ship built ESM `dist/`, which jest must transform like app
-    // code (e.g. the launch-state source imports `@intentive/api-contract`).
-    pnpmPattern.replace("(.pnpm|", "(.pnpm|@intentive|@assistant-ui|assistant-stream|nanoid|"),
+    // Workspace packages ship ESM dist and must be transformed for Jest.
+    pnpmPattern.replace("(.pnpm|", "(.pnpm|@intentive|"),
     ...restPatterns,
   ],
   moduleNameMapper: {
-    // TS-style explicit `.js` extensions on relative imports (required by the
-    // node:test ESM build) → strip for jest's resolver, which maps to the `.ts`
-    // source. jest-expo's resolver doesn't do this rewrite itself.
+    "^react-native-reanimated$": "<rootDir>/jest/reanimated-mock.js",
+    // Pure modules use explicit `.js` extensions for their emitted ESM build.
     "^(\\.{1,2}/.*)\\.js$": "$1",
-    // `@assistant-ui/core` eagerly requires its cloud thread-history adapter,
-    // which imports the (uninstalled, unused) `assistant-cloud` integration.
-    // Stub it — the Intentive path uses the local runtime, not assistant cloud.
-    // Same stub Metro aliases (see metro.config.js) so both paths behave alike.
-    "^assistant-cloud$": "<rootDir>/assistant-cloud-stub.js",
   },
 };

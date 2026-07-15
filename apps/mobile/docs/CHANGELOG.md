@@ -6,8 +6,13 @@ All notable changes to the Intentive Mobile Client (`apps/mobile/`). Format foll
 
 ## [Unreleased]
 
-Everything below is on the foundation lane (`#18`–`#22`) and has not shipped to
-TestFlight or the App Store. Entries are grouped by issue where that mapping is clear.
+### Rebuilt
+
+- **Huracán frontend foundation** ([ADR 0022](adr/0022-mobile-scene-driven-local-frontend-foundation.md)) — replaced the mounted route-per-gate and assistant-ui presentation with one scene-driven, locally simulated Expo experience. E and K now render as `welcome` and `ready` modes of the same chat surface. Added configurable content/theme, five education scenes, drawer/settings overlays, keyboard composer behavior, and deterministic L1-L4 response phases.
+- Added pure controller coverage and a 390×844 React Native journey that verifies B2/F/G/K2/L1-L4 and zero auth, permission, network, WebSocket, notification, or durable-storage calls.
+- Parked the stable auth, Control Plane, Protocol runtime, Message Store, notification, and telemetry modules as dormant production adapters. Removed obsolete visual assets, route groups, presentation tests, Manrope, assistant-ui, and their Babel/Metro/Jest workarounds.
+
+The historical foundation-lane entries below describe the superseded presentation and the dormant adapters that remain source-controlled. Nothing in those entries should be read as mounted capability during the Local Experience phase.
 
 ### Added
 
