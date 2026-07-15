@@ -250,23 +250,19 @@ public final class RecordingOverlaySink: DesktopOverlaySink {
 }
 
 public final class EffectRunner {
-  private let notifications: DesktopNotificationSink
   private let overlay: DesktopOverlaySink
   private let runtimeClient: RuntimeChatClient
 
   public init(
-    notifications: DesktopNotificationSink,
     overlay: DesktopOverlaySink,
     runtimeClient: RuntimeChatClient
   ) {
-    self.notifications = notifications
     self.overlay = overlay
     self.runtimeClient = runtimeClient
   }
 
   public func handle(_ message: CompanionMessage) throws {
     guard message.viaPostMessageBack else { return }
-    notifications.deliver(title: "Intentive", body: message.body)
     overlay.showNudge(body: message.body)
     try runtimeClient.acknowledge(messageId: message.messageId)
   }

@@ -40,17 +40,21 @@ apps/desktop/
 - Runtime judgment lives in `services/agent-runtime`. The Desktop Client provides senses and hands.
 - Screen Memory stores local records and local embeddings. It does not store Conversation History.
 - Effect Runner behavior is deterministic local execution of an already-chosen Runtime output.
+- The Floating Bar is the only Desktop conversation surface and accepts text only.
+- Passive audio sensing is a local perception source, not a conversation-input path; its restored pipeline is deferred to Slice 8.
+- Product nudges are presented in-app for Post-Message-Back messages. Ordinary replies do not interrupt and no duplicate macOS banner is emitted.
 
 ## Core Modules
 
 - `ProtocolEvents.swift`: strict Codable forms for shared Protocol fixtures and outbound Desktop events.
+- `DesktopLaunchConfiguration.swift`: immutable production and deterministic launch policy plus the observable assembled surface/system-boundary contract consumed by the executable composition root.
 - `RuntimeBridge.swift`: desktop WebSocket adapter, generation guard, outbound FIFO, message reducer, delivery acknowledgements.
 - `AuthControlPlane.swift`: native auth seam, dev auth provider, hosted auth callback boundary, typed Control Plane client.
 - `ScreenMemory.swift`: local Screen Memory records, local ambient audio transcript records, FTS-first search, and deterministic local embedding seam.
 - `DesktopLocalProfile.swift`: shared local profile paths for active Screen Memory storage and explicit Omi-era import sources.
 - `LegacyScreenMemoryImporter`: read-only bridge from Omi-era screenshot rows into the active Screen Memory store, checkpointed by source fingerprint so unchanged legacy databases are not re-imported every launch.
 - `ContextCompiler.swift`: deterministic screen and ambient audio analyzers plus `perception_event` publisher with the raw-frame egress guard.
-- `DesktopExperience.swift`: floating-bar chat, push-to-talk pipeline seam, spoken reply turn coordinator, ambient audio capture loop, Omi-style context-gated capture cadence, capture coordinator, and Effect Runner. Voice capture fails closed unless a real local transcription adapter is injected; the default path must not fabricate transcripts.
+- `DesktopExperience.swift`: floating-bar chat, capture coordination, deferred passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Legacy dictation/PTT primitives remain compiled only as renovation assets until the later cleanup slice and are not assembled into the product surface.
 
 ## Verification
 

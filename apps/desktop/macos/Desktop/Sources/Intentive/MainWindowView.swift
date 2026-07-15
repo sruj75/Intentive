@@ -6,8 +6,6 @@ import SwiftUI
 enum DesktopSection: String, CaseIterable, Identifiable {
   case home = "Home"
   case screenMemory = "Screen Memory"
-  case chat = "Floating Chat"
-  case effects = "Effects"
   case settings = "Settings"
 
   var id: String { rawValue }
@@ -16,15 +14,23 @@ enum DesktopSection: String, CaseIterable, Identifiable {
     switch self {
     case .home: return "rectangle.grid.2x2"
     case .screenMemory: return "clock.arrow.circlepath"
-    case .chat: return "text.bubble"
-    case .effects: return "bell.badge"
     case .settings: return "gearshape"
+    }
+  }
+
+  init(_ section: DesktopMainWindowSection) {
+    switch section {
+    case .home: self = .home
+    case .screenMemory: self = .screenMemory
+    case .settings: self = .settings
     }
   }
 }
 
 @MainActor
 final class DesktopViewModel: ObservableObject {
+  let launchConfiguration: DesktopLaunchConfiguration
+  let composition: DesktopApplicationComposition
   @Published var selected: DesktopSection = .home
   @Published var query = ""
   @Published var input = ""
@@ -50,7 +56,6 @@ final class DesktopViewModel: ObservableObject {
   private let accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway
   private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
   private let onboardingStore: any DesktopOnboardingProgressStore
-  private let notificationSink = UserNotificationDesktopSink()
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
   private let runAnywhereVoiceClient = DefaultRunAnywhereVoiceClient()
@@ -133,12 +138,16 @@ final class DesktopViewModel: ObservableObject {
   }
 
   init(
+    launchConfiguration: DesktopLaunchConfiguration,
+    composition: DesktopApplicationComposition,
     settingsStore: any ScreenMemorySettingsStore = UserDefaultsScreenMemorySettingsStore(),
     permissionGateway: any ScreenRecordingPermissionGateway = NativeScreenRecordingPermissionGateway(),
     accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway = NativeAccessibilityPermissionGateway(),
     microphonePermissionGateway: any DesktopMicrophonePermissionGateway = NativeMicrophonePermissionGateway(),
     onboardingStore: any DesktopOnboardingProgressStore = UserDefaultsDesktopOnboardingProgressStore()
   ) {
+    self.launchConfiguration = launchConfiguration
+    self.composition = composition
     self.settingsStore = settingsStore
     self.permissionGateway = permissionGateway
     self.accessibilityPermissionGateway = accessibilityPermissionGateway
@@ -146,34 +155,62 @@ final class DesktopViewModel: ObservableObject {
     self.onboardingStore = onboardingStore
     let settings = settingsStore.load()
     let progress = onboardingStore.load()
-    let screenRecordingPermissionGranted = permissionGateway.hasScreenRecordingPermission()
-    let accessibilityPermissionGranted = accessibilityPermissionGateway.hasAccessibilityPermission()
-    let microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
+    let usesCaptureBoundary = composition.activeSystemBoundaries.contains(.capture)
+    let screenRecordingPermissionGranted = usesCaptureBoundary
+      ? permissionGateway.hasScreenRecordingPermission()
+      : composition.permissions.screenRecording == .granted
+    let accessibilityPermissionGranted = usesCaptureBoundary
+      ? accessibilityPermissionGateway.hasAccessibilityPermission()
+      : false
+    let microphonePermissionStatus = usesCaptureBoundary
+      ? microphonePermissionGateway.authorizationStatus()
+      : Self.microphonePermissionStatus(from: composition.permissions.microphone)
     compilerSettings = settings
     excludedAppsText = Self.renderExcludedApps(settings.excludedApps)
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
     self.accessibilityPermissionGranted = accessibilityPermissionGranted
     self.microphonePermissionStatus = microphonePermissionStatus
     onboardingProgress = progress
-    showOnboarding =
-      !DesktopOnboardingRequirements(
+    showOnboarding = composition.setupSurface == .onboarding
+      && !DesktopOnboardingRequirements(
         progress: progress,
         screenRecordingPermissionGranted: screenRecordingPermissionGranted,
         accessibilityPermissionGranted: accessibilityPermissionGranted,
         microphonePermissionGranted: microphonePermissionStatus.isGranted
       ).isComplete
 
-    let initialScreenMemory = Self.makeScreenMemoryStore(userID: nil)
+    let launchUserID: String?
+    switch composition.authentication {
+    case .signedOut:
+      launchUserID = nil
+    case .signedIn(let userID):
+      launchUserID = userID
+    }
+    let initialScreenMemory = Self.makeScreenMemoryStore(
+      userID: launchUserID,
+      baseApplicationSupportURL: launchConfiguration.profileRoot
+    )
     screenMemory = SwitchableScreenMemoryStore(initialScreenMemory.store)
+    screenMemoryProfileUserID = DesktopLocalProfile.sanitizedUserID(launchUserID)
     status = initialScreenMemory.status
     configureRuntimeSocketCallbacks()
-    configurePushToTalkShortcutMonitor()
     floatingBarManager.configure(controller: floatingBarController)
     floatingBarManager.registerGlobalShortcut()
     reconcileAmbientAudioCapture()
   }
 
   func restoreRuntimeSessionIfNeeded() async {
+    guard composition.activeSystemBoundaries.contains(.network) else {
+      switch composition.authentication {
+      case .signedOut:
+        runtimeState = .signedOut
+        status = "Sign in required"
+      case .signedIn:
+        runtimeState = composition.runtime == .connected ? .connected : .retry(retryAfterSeconds: nil)
+        status = composition.runtime == .connected ? "Runtime fixture connected" : "Runtime offline"
+      }
+      return
+    }
     guard !runtimeRestoreAttempted else { return }
     runtimeRestoreAttempted = true
     await restoreRuntimeSession()
@@ -186,12 +223,20 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func signInAndConnectRuntime() async {
+    guard composition.activeSystemBoundaries.contains(.network) else {
+      status = "Runtime network is disabled for this launch"
+      return
+    }
     status = "Connecting Runtime..."
     let state = await runtimeSession.signInAndConnect()
     applyRuntimeState(state)
   }
 
   func captureCurrentScreen() async {
+    guard composition.activeSystemBoundaries.contains(.capture) else {
+      status = "Capture is disabled for this launch"
+      return
+    }
     guard compilerSettings.captureEnabled else {
       status = "Screen Memory is off"
       return
@@ -209,6 +254,11 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func toggleCapture() {
+    guard composition.activeSystemBoundaries.contains(.capture) else {
+      captureRunning = false
+      status = "Capture is disabled for this launch"
+      return
+    }
     if captureLoop.state.isRunning {
       captureLoop.stop()
       captureRunning = false
@@ -257,8 +307,13 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func openFloatingBar() {
-    floatingBarManager.show()
+    floatingBarManager.showComposer()
     status = "Floating bar open"
+  }
+
+  func openSetup() {
+    selected = .settings
+    status = "Desktop setup"
   }
 
   func presentOnboarding() {
@@ -367,7 +422,7 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func reviewVoiceDemo() {
-    selected = .chat
+    selected = .settings
     markOnboardingStepReviewed(.voiceDemo)
     status =
       microphonePermissionStatus.isGranted
@@ -625,15 +680,10 @@ final class DesktopViewModel: ObservableObject {
   }
 
   private func reconcileAmbientAudioCapture() {
-    guard compilerSettings.ambientAudioCaptureEnabled, microphonePermissionStatus.isGranted else {
-      ambientAudioLoop.stop()
-      return
-    }
-    _ = ambientAudioLoop.start { [weak self] event in
-      Task { @MainActor [weak self] in
-        self?.handleAmbientAudioEvent(event)
-      }
-    }
+    // Passive microphone/system-audio sensing is restored behind its dedicated
+    // local pipeline in Slice 8. The walking skeleton must not start the legacy
+    // RunAnywhere ambient path merely because an old preference remains set.
+    ambientAudioLoop.stop()
   }
 
   private func handleAmbientAudioEvent(_ event: AmbientAudioCaptureLoopEvent) {
@@ -754,7 +804,6 @@ final class DesktopViewModel: ObservableObject {
     statusMessage: String
   ) {
     let runner = EffectRunner(
-      notifications: notificationSink,
       overlay: FloatingBarOverlaySink(manager: floatingBarManager),
       runtimeClient: runtimeClient
     )
@@ -802,7 +851,10 @@ final class DesktopViewModel: ObservableObject {
     let sanitizedUserID = DesktopLocalProfile.sanitizedUserID(userID)
     guard sanitizedUserID != screenMemoryProfileUserID else { return nil }
 
-    let newScreenMemory = Self.makeScreenMemoryStore(userID: userID)
+    let newScreenMemory = Self.makeScreenMemoryStore(
+      userID: userID,
+      baseApplicationSupportURL: launchConfiguration.profileRoot
+    )
     screenMemory.replace(with: newScreenMemory.store)
     screenMemoryProfileUserID = sanitizedUserID
     return newScreenMemory.status
@@ -846,9 +898,15 @@ final class DesktopViewModel: ObservableObject {
     apps.sorted().joined(separator: ", ")
   }
 
-  private static func makeScreenMemoryStore(userID: String?) -> (store: ScreenMemoryStore, status: String) {
+  private static func makeScreenMemoryStore(
+    userID: String?,
+    baseApplicationSupportURL: URL
+  ) -> (store: ScreenMemoryStore, status: String) {
     do {
-      let databaseURL = try SQLiteScreenMemoryStore.applicationSupportURL(userID: userID)
+      let databaseURL = try SQLiteScreenMemoryStore.applicationSupportURL(
+        userID: userID,
+        baseApplicationSupportURL: baseApplicationSupportURL
+      )
       let store = try SQLiteScreenMemoryStore(databaseURL: databaseURL)
       do {
         let importResult = try LegacyScreenMemoryImporter()
@@ -863,6 +921,17 @@ final class DesktopViewModel: ObservableObject {
       }
     } catch {
       return (InMemoryScreenMemoryStore(), "Screen Memory fallback: \(error.localizedDescription)")
+    }
+  }
+
+  private static func microphonePermissionStatus(
+    from state: DesktopPermissionState
+  ) -> DesktopMicrophonePermissionStatus {
+    switch state {
+    case .notDetermined: return .notDetermined
+    case .granted: return .granted
+    case .denied: return .denied
+    case .restricted: return .restricted
     }
   }
 }
@@ -937,23 +1006,20 @@ private enum DesktopRuntimeConfiguration {
 
 struct MainWindowView: View {
   @StateObject private var model: DesktopViewModel
+  let composition: DesktopApplicationComposition
   @FocusState private var searchFocused: Bool
 
   @MainActor
-  init() {
-    _model = StateObject(wrappedValue: DesktopViewModel())
-  }
-
-  @MainActor
-  init(model: DesktopViewModel) {
+  init(model: DesktopViewModel, composition: DesktopApplicationComposition) {
     _model = StateObject(wrappedValue: model)
+    self.composition = composition
   }
 
   var body: some View {
     NavigationSplitView {
       List(selection: $model.selected) {
         Section("Desktop") {
-          ForEach(DesktopSection.allCases) { section in
+          ForEach(composition.mainWindowSections.map(DesktopSection.init)) { section in
             Label(section.rawValue, systemImage: section.symbol)
               .tag(section)
           }
@@ -972,32 +1038,6 @@ struct MainWindowView: View {
       model.selected = .screenMemory
       searchFocused = true
     }
-    .sheet(isPresented: $model.showOnboarding) {
-      DesktopOnboardingSheet(
-        progress: model.onboardingProgress,
-        requirements: model.onboardingRequirements,
-        screenRecordingPermissionGranted: model.screenRecordingPermissionGranted,
-        accessibilityPermissionGranted: model.accessibilityPermissionGranted,
-        microphonePermissionStatus: model.microphonePermissionStatus,
-        markStepReviewed: model.markOnboardingStepReviewed,
-        requestScreenRecordingPermission: model.requestOnboardingScreenRecordingPermission,
-        openScreenRecordingSettings: model.openOnboardingScreenRecordingSettings,
-        requestAccessibilityPermission: model.requestAccessibilityPermission,
-        openAccessibilitySettings: model.openAccessibilitySettings,
-        requestMicrophonePermission: {
-          Task {
-            await model.requestMicrophonePermission()
-          }
-        },
-        openMicrophoneSettings: model.openMicrophoneSettings,
-        refreshPermissions: model.refreshDesktopPermissions,
-        previewNotification: model.triggerEffect,
-        openFloatingBar: model.openFloatingBarFromOnboarding,
-        reviewVoiceDemo: model.reviewVoiceDemo,
-        finishLater: model.finishOnboardingLater,
-        finish: model.finishOnboarding
-      )
-    }
     .task {
       await model.restoreRuntimeSessionIfNeeded()
     }
@@ -1011,9 +1051,7 @@ struct MainWindowView: View {
       Text(model.status)
         .font(.caption)
         .foregroundStyle(.secondary)
-      Button {
-        model.presentOnboarding()
-      } label: {
+      Button(action: model.openSetup) {
         Label("Setup", systemImage: "checklist")
       }
       Button {
@@ -1049,10 +1087,6 @@ struct MainWindowView: View {
       )
     case .screenMemory:
       ScreenMemoryView(model: model, searchFocused: $searchFocused)
-    case .chat:
-      FloatingChatView(model: model)
-    case .effects:
-      EffectsView(model: model)
     case .settings:
       SettingsView(model: model)
     }
@@ -1221,9 +1255,6 @@ private struct SettingsView: View {
             set: model.setCaptureEnabled
           )
         )
-        Button(action: model.presentOnboarding) {
-          Label("Open Desktop Setup", systemImage: "checklist")
-        }
       }
 
       Section("Privacy") {
@@ -1245,54 +1276,6 @@ private struct SettingsView: View {
             Label("Open System Settings", systemImage: "gearshape")
           }
           Button(action: model.refreshScreenRecordingPermission) {
-            Label("Refresh", systemImage: "arrow.clockwise")
-          }
-        }
-
-        HStack {
-          Label("Accessibility", systemImage: "keyboard.badge.checkmark")
-          Spacer()
-          Label(
-            model.accessibilityPermissionGranted ? "Granted" : "Required",
-            systemImage: model.accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-          )
-          .foregroundStyle(model.accessibilityPermissionGranted ? .green : .orange)
-        }
-
-        HStack {
-          Button(action: model.requestAccessibilityPermission) {
-            Label("Request Access", systemImage: "option")
-          }
-          Button(action: model.openAccessibilitySettings) {
-            Label("Open System Settings", systemImage: "gearshape")
-          }
-          Button(action: model.refreshDesktopPermissions) {
-            Label("Refresh", systemImage: "arrow.clockwise")
-          }
-        }
-
-        HStack {
-          Label("Microphone", systemImage: "mic")
-          Spacer()
-          Label(
-            model.microphonePermissionStatus.label,
-            systemImage: model.microphonePermissionStatus.systemImage
-          )
-          .foregroundStyle(model.microphonePermissionStatus.isGranted ? .green : .orange)
-        }
-
-        HStack {
-          Button {
-            Task {
-              await model.requestMicrophonePermission()
-            }
-          } label: {
-            Label("Request Access", systemImage: "mic")
-          }
-          Button(action: model.openMicrophoneSettings) {
-            Label("Open System Settings", systemImage: "gearshape")
-          }
-          Button(action: model.refreshDesktopPermissions) {
             Label("Refresh", systemImage: "arrow.clockwise")
           }
         }

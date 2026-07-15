@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by [ADR 0007](0007-bidirectional-voice-v2.md).
+Superseded by [ADR 0009](0009-desktop-v1-surface-and-runtime-boundary.md). ADR 0007 was the intermediate dictation decision.
 
 ## Decision
 

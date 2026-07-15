@@ -21,17 +21,19 @@ The Desktop Client's WebSocket adapter for the shared Protocol. It connects with
 _Avoid_: desktop channel, Mac-only protocol
 
 **Effect Runner**:
-The local executor for Agent Runtime decisions that target the Mac, starting with Post-Message-Back reuse: notifications, floating-bar nudges, and approved overlays.
+The local presenter for Agent Runtime decisions that target the Mac. Post-Message-Back can reveal the Floating Bar and approved overlays; ordinary replies update the existing conversation without interrupting.
 _Avoid_: action robot, local agent, click executor
 
 **Floating Bar**:
-The compact desktop chat and voice surface that joins the one Companion conversation. It is not a second conversation.
+The compact, text-only desktop chat surface that joins the one Companion conversation. It is the only Desktop conversation surface and never exposes dictation, tool calls, or subagent controls.
 _Avoid_: chat lab, agent pill, delegation bar
 
 ## Boundaries
 
-- Raw frames, recordings, and audio do not leave the Mac by default.
-- Scoped frame upload is an explicit future exception: policy-gated, audited, and never available by default.
+- Raw frames, recordings, thumbnails, and audio do not leave the Mac in v1.
+- The Desktop Client may synchronize compact text and metadata records only; media sync requires a future explicit decision.
 - Provider API keys never live on the Mac.
 - The Desktop Context Compiler emits evidence and candidate artifacts; the Agent Runtime decides whether to act.
 - Screen Memory is local truth for screen records. Conversation History is Runtime truth.
+- Passive microphone and system-audio sensing is deferred until the Omi-derived local pipeline is restored; it remains separate from conversation input.
+- Post-Message-Back is the only proactive presentation trigger. Intentive does not duplicate a floating nudge with a product macOS notification.

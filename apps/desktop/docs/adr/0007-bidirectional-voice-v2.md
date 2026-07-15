@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Supersedes the earlier "bidirectional voice v2" decision (spoken replies + barge-in) recorded under this number.
+Superseded by [ADR 0009](0009-desktop-v1-surface-and-runtime-boundary.md). This ADR remains as history for the removed RunAnywhere dictation direction.
 
 ## Context
 

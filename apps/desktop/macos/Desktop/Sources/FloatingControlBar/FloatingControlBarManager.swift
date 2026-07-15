@@ -75,18 +75,25 @@ public final class FloatingControlBarManager {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Reveals the text composer without toggling an already-visible bar closed.
+    public func showComposer() {
+        let window = ensureWindow()
+        isEnabled = true
+        window.showAIConversation()
+        window.normalizeForTemporaryShow()
+        window.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak window] in
+            _ = window?.focusInputField()
+        }
+    }
+
     /// ⌘O behavior: toggle the composer. Open + focused if hidden, else hide.
     public func toggleAIInput() {
         let window = ensureWindow()
         if window.isVisible, window.state.showingAIConversation {
             hide()
         } else {
-            window.showAIConversation()
-            window.normalizeForTemporaryShow()
-            window.makeKeyAndOrderFront(nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak window] in
-                _ = window?.focusInputField()
-            }
+            showComposer()
         }
     }
 

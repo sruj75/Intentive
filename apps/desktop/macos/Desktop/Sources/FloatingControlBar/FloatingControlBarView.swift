@@ -479,14 +479,16 @@ struct FloatingControlBarView: View {
                     )
                     .frame(width: NotchAgentStackMetrics.listOrbSlotWidth, alignment: .leading)
 
-                Text("Omi Chat")
+                Text("Intentive")
                     .scaledFont(size: 12, weight: .semibold)
                     .foregroundStyle(.white.opacity(0.94))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 notchShortcutHint("Ask", keys: shortcutSettings.askOmiShortcut.displayTokens)
-                notchShortcutHint(systemImage: "mic.fill", keys: shortcutSettings.pttShortcut.displayTokens)
+                if shortcutSettings.voiceInputEnabled {
+                    notchShortcutHint(systemImage: "mic.fill", keys: shortcutSettings.pttShortcut.displayTokens)
+                }
             }
             .padding(.leading, NotchAgentStackMetrics.listRowLeadingPadding)
             .padding(.trailing, 10)
@@ -510,8 +512,8 @@ struct FloatingControlBarView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Omi Chat")
-        .accessibilityHint("Open Omi Chat")
+        .accessibilityLabel("Intentive chat")
+        .accessibilityHint("Open Intentive chat")
         .accessibilityAddTraits(.isButton)
     }
 
@@ -636,7 +638,7 @@ struct FloatingControlBarView: View {
                     .buttonStyle(.plain)
                     .help("Back to subagents")
 
-                    Text("Omi Chat")
+                    Text("Intentive")
                         .scaledFont(size: 13, weight: .bold)
                         .foregroundColor(.white)
                         .lineLimit(1)
@@ -1070,12 +1072,14 @@ struct FloatingControlBarView: View {
                     .transition(.opacity)
             } else if allowsHoverExpansion {
                 VStack(spacing: 1) {
-                    compactButton(title: "Ask omi / Collapse", keys: shortcutSettings.askOmiShortcut.displayTokens) {
+                    compactButton(title: "Ask Intentive / Collapse", keys: shortcutSettings.askOmiShortcut.displayTokens) {
                         onAskAI()
                     }
 
-                    HStack(spacing: 6) {
-                        compactLabel("Push to talk", keys: shortcutSettings.pttShortcut.displayTokens)
+                    if shortcutSettings.voiceInputEnabled {
+                        HStack(spacing: 6) {
+                            compactLabel("Push to talk", keys: shortcutSettings.pttShortcut.displayTokens)
+                        }
                     }
                 }
                 .padding(.horizontal, 6)

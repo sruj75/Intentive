@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR 0009](0009-desktop-v1-surface-and-runtime-boundary.md).
 
 ## Decision
 

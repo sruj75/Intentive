@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. (Reverses an earlier draft of this ADR that argued for a "strip-and-salvage"
+Accepted for the minimal-diff restoration of Omi's real bar. Its dictation and subagent-compatibility behavior is superseded by [ADR 0009](0009-desktop-v1-surface-and-runtime-boundary.md). (Reverses an earlier draft of this ADR that argued for a "strip-and-salvage"
 rebuild — see [Context](#context).)
 
 ## Context

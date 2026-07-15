@@ -59,11 +59,10 @@ final class VoiceEffectRunnerTests: XCTestCase {
     XCTAssertEqual(transcription.callCount, 0)
   }
 
-  func testEffectRunnerDeliversPostMessageBackAndAcks() throws {
+  func testEffectRunnerDeliversPostMessageBackInAppWithoutProductNotificationAndAcks() throws {
     let runtime = RecordingRuntimeClient()
-    let notifications = RecordingNotificationSink()
     let overlay = RecordingOverlaySink()
-    let runner = EffectRunner(notifications: notifications, overlay: overlay, runtimeClient: runtime)
+    let runner = EffectRunner(overlay: overlay, runtimeClient: runtime)
 
     try runner.handle(
       CompanionMessage(
@@ -74,16 +73,14 @@ final class VoiceEffectRunnerTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(notifications.delivered.first?.body, "Take a reset")
     XCTAssertEqual(overlay.nudges, ["Take a reset"])
     XCTAssertEqual(runtime.acknowledgements, ["pmb-1"])
   }
 
   func testEffectRunnerIgnoresRegularReplies() throws {
     let runtime = RecordingRuntimeClient()
-    let notifications = RecordingNotificationSink()
     let overlay = RecordingOverlaySink()
-    let runner = EffectRunner(notifications: notifications, overlay: overlay, runtimeClient: runtime)
+    let runner = EffectRunner(overlay: overlay, runtimeClient: runtime)
 
     try runner.handle(
       CompanionMessage(
@@ -94,7 +91,6 @@ final class VoiceEffectRunnerTests: XCTestCase {
       )
     )
 
-    XCTAssertTrue(notifications.delivered.isEmpty)
     XCTAssertTrue(overlay.nudges.isEmpty)
     XCTAssertTrue(runtime.acknowledgements.isEmpty)
   }

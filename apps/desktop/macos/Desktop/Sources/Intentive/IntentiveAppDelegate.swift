@@ -62,13 +62,6 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     captureItem.isEnabled = model.screenRecordingPermissionGranted
     menu.addItem(captureItem)
 
-    let ambientItem = NSMenuItem(
-      title: model.compilerSettings.ambientAudioCaptureEnabled ? "Mute Ambient Capture" : "Enable Ambient Capture",
-      action: #selector(toggleAmbient), keyEquivalent: "")
-    ambientItem.target = self
-    ambientItem.isEnabled = model.microphonePermissionStatus.isGranted
-    menu.addItem(ambientItem)
-
     menu.addItem(.separator())
 
     let openItem = NSMenuItem(
@@ -77,11 +70,6 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     menu.addItem(openItem)
 
     menu.addItem(.separator())
-
-    let resetItem = NSMenuItem(
-      title: "Reset Onboarding…", action: #selector(resetOnboarding), keyEquivalent: "")
-    resetItem.target = self
-    menu.addItem(resetItem)
 
     let signOutItem = NSMenuItem(title: "Sign Out", action: #selector(signOut), keyEquivalent: "")
     signOutItem.target = self
@@ -102,17 +90,8 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     model.setCaptureEnabled(!model.compilerSettings.captureEnabled)
   }
 
-  @objc private func toggleAmbient() {
-    guard let model else { return }
-    model.setAmbientAudioCaptureEnabled(!model.compilerSettings.ambientAudioCaptureEnabled)
-  }
-
   @objc private func openApp() {
     NSApp.activate(ignoringOtherApps: true)
-  }
-
-  @objc private func resetOnboarding() {
-    model?.resetOnboarding()
   }
 
   @objc private func signOut() {

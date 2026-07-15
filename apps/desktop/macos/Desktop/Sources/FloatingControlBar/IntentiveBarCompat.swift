@@ -159,6 +159,7 @@ final class ShortcutSettings: ObservableObject {
     @Published var draggableBarEnabled: Bool = false
     @Published var solidBackground: Bool = false
     @Published var selectedModel: String = ModelQoS.Claude.defaultSelection
+    let voiceInputEnabled = false
     let askOmiShortcut = KeyboardShortcut(displayTokens: ["⌘", "O"])
     let pttShortcut = KeyboardShortcut(displayTokens: ["fn"])
 
