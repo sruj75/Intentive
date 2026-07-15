@@ -161,8 +161,22 @@ final class DesktopViewModel: ObservableObject {
     messageStore.messages
   }
 
-  var searchResults: [ScreenMemorySearchResult] {
-    screenMemory.search(query, limit: 24)
+  /// Screen Memory results for the current `query`, refreshed on query change
+  /// rather than per-render so the on-device semantic pass runs at most once per
+  /// keystroke. Renovated from Omi's `RewindViewModel.performSearch`.
+  @Published var screenMemoryResults: [ScreenMemoryRankedResult] = []
+
+  /// Recompute Screen Memory search through the active archive's hybrid local
+  /// search (FTS-first, on-device vector recall appended). Falls back to the
+  /// store's lexical search when no archive is mounted yet.
+  func refreshScreenMemorySearch() {
+    if let archive = screenMemory.activeArchive {
+      screenMemoryResults = archive.semanticSearch(query, limit: 24)
+    } else {
+      screenMemoryResults = screenMemory.search(query, limit: 24).map {
+        ScreenMemoryRankedResult(record: $0.record, matchedLexically: true, semanticSimilarity: nil)
+      }
+    }
   }
 
   var onboardingRequirements: DesktopOnboardingRequirements {
@@ -1222,7 +1236,7 @@ private struct ScreenMemoryView: View {
   var searchFocused: FocusState<Bool>.Binding
 
   var body: some View {
-    let results = model.searchResults
+    let results = model.screenMemoryResults
     VStack(alignment: .leading, spacing: 14) {
       HStack {
         Image(systemName: "magnifyingglass")
@@ -1230,6 +1244,7 @@ private struct ScreenMemoryView: View {
         TextField("Search Screen Memory", text: $model.query)
           .textFieldStyle(.plain)
           .focused(searchFocused)
+          .accessibilityIdentifier(ScreenMemoryAccessibilityID.searchField)
       }
       .padding(10)
       .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -1242,12 +1257,21 @@ private struct ScreenMemoryView: View {
           systemImage: "clock.arrow.circlepath"
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier(ScreenMemoryAccessibilityID.emptyState)
       } else {
         List(results, id: \.record.id) { result in
           VStack(alignment: .leading, spacing: 4) {
             HStack {
               Text(result.record.appName)
                 .font(.headline)
+              if !result.matchedLexically {
+                Text("Related")
+                  .font(.caption2.weight(.semibold))
+                  .foregroundStyle(.secondary)
+                  .padding(.horizontal, 6)
+                  .padding(.vertical, 1)
+                  .background(.quaternary, in: Capsule())
+              }
               Spacer()
               Text(result.record.capturedAt)
                 .font(.caption)
@@ -1257,10 +1281,14 @@ private struct ScreenMemoryView: View {
               .foregroundStyle(.secondary)
           }
           .padding(.vertical, 6)
+          .accessibilityIdentifier(result.recordID.map(ScreenMemoryAccessibilityID.frame) ?? result.record.id)
         }
+        .accessibilityIdentifier(ScreenMemoryAccessibilityID.filmstrip)
       }
     }
     .padding(18)
+    .onAppear { model.refreshScreenMemorySearch() }
+    .onChange(of: model.query) { model.refreshScreenMemorySearch() }
   }
 }
 

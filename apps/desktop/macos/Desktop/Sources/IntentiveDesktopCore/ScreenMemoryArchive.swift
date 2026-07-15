@@ -275,6 +275,7 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
   private let store: SQLiteScreenMemoryStore
   private let ingestCoordinator: ScreenMemoryIngestCoordinator
   private let retentionPersistence: any ScreenMemoryRetentionPersisting
+  private let semanticEmbedder: any LocalSemanticEmbedding
   private let now: @Sendable () -> Date
 
   public var userID: String { profile.userID }
@@ -285,12 +286,14 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     idFactory: @escaping @Sendable () -> UUID = { UUID() },
     secretDetector: HardSecretDetector = HardSecretDetector(),
     embeddingService: LocalEmbeddingService = LocalEmbeddingService(),
+    semanticEmbedder: any LocalSemanticEmbedding = AppleNaturalLanguageSemanticEmbedder(),
     videoArchive: (any ScreenMemoryVideoArchiving)? = nil,
     staleVideoChunkDelay: TimeInterval = 70,
     retentionPersistence: (any ScreenMemoryRetentionPersisting)? = nil,
     now: @escaping @Sendable () -> Date = { Date() }
   ) throws {
     self.profile = profile
+    self.semanticEmbedder = semanticEmbedder
     self.now = now
     let resolvedRetentionPersistence = retentionPersistence
       ?? UserDefaultsScreenMemoryRetentionPersistence(userID: profile.userID)
@@ -307,6 +310,7 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
       idFactory: idFactory,
       secretDetector: secretDetector,
       embeddingService: embeddingService,
+      semanticEmbedder: semanticEmbedder,
       store: openedStore,
       videoArchive: videoArchive,
       staleVideoChunkDelay: staleVideoChunkDelay,
@@ -378,6 +382,27 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     try await ingestCoordinator.videoFrames(from: start, through: end)
   }
 
+  /// Evenly-sampled records for a calendar day, oldest first — the timeline's
+  /// day view. Renovated from Omi's `getScreenshotsSampled`.
+  public func records(
+    on day: Date,
+    targetCount: Int = 500,
+    calendar: Calendar = .current
+  ) -> [ScreenMemoryRecord] {
+    let startOfDay = calendar.startOfDay(for: day)
+    guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return [] }
+    return (try? store.sampledRecords(
+      from: startOfDay.protocolTimestamp,
+      through: endOfDay.protocolTimestamp,
+      targetCount: targetCount
+    )) ?? []
+  }
+
+  /// Distinct app names for the timeline's app filter — Omi's `getUniqueAppNames`.
+  public func appNames() -> [String] {
+    (try? store.uniqueAppNames()) ?? []
+  }
+
   public func record(_ recordID: ScreenMemoryRecordID) -> ScreenMemorySearchResult? {
     guard let record = try? store.record(id: recordID.value.uuidString) else { return nil }
     return ScreenMemorySearchResult(record: record, rank: 0)
@@ -415,6 +440,41 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
 
   public func search(_ query: String, limit: Int) -> [ScreenMemorySearchResult] {
     store.search(query, limit: limit)
+  }
+
+  /// Hybrid local search renovated from Omi's `RewindViewModel.performSearch`:
+  /// full-text results lead, then on-device vector matches above the recall
+  /// threshold are appended for anything FTS missed. When the embedding model is
+  /// unavailable, vector recall is skipped and search falls back to FTS alone.
+  public func semanticSearch(_ query: String, limit: Int) -> [ScreenMemoryRankedResult] {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, limit > 0 else { return [] }
+
+    let lexical = store.search(trimmed, limit: max(limit, 100))
+    var results = lexical.map {
+      ScreenMemoryRankedResult(record: $0.record, matchedLexically: true, semanticSimilarity: nil)
+    }
+
+    guard semanticEmbedder.isAvailable, let queryVector = semanticEmbedder.embed(trimmed) else {
+      return Array(results.prefix(limit))
+    }
+
+    let lexicalIDs = Set(lexical.map { $0.record.id })
+    let candidates = (try? store.semanticSearchCandidates(limit: 5000)) ?? []
+    let recalled = candidates
+      .map { (record: $0.record, similarity: cosineSimilarity(queryVector, $0.vector)) }
+      .filter { $0.similarity > screenMemorySemanticRecallThreshold && !lexicalIDs.contains($0.record.id) }
+      .sorted { $0.similarity > $1.similarity }
+    for match in recalled {
+      results.append(
+        ScreenMemoryRankedResult(
+          record: match.record,
+          matchedLexically: false,
+          semanticSimilarity: match.similarity
+        )
+      )
+    }
+    return Array(results.prefix(limit))
   }
 
   public func delete(id: String) {
@@ -488,6 +548,7 @@ private actor ScreenMemoryIngestCoordinator {
   private let idFactory: @Sendable () -> UUID
   private let secretDetector: HardSecretDetector
   private let embeddingService: LocalEmbeddingService
+  private let semanticEmbedder: any LocalSemanticEmbedding
   private let store: SQLiteScreenMemoryStore
   private let videoArchive: (any ScreenMemoryVideoArchiving)?
   private let staleVideoChunkDelay: TimeInterval
@@ -509,6 +570,7 @@ private actor ScreenMemoryIngestCoordinator {
     idFactory: @escaping @Sendable () -> UUID,
     secretDetector: HardSecretDetector,
     embeddingService: LocalEmbeddingService,
+    semanticEmbedder: any LocalSemanticEmbedding,
     store: SQLiteScreenMemoryStore,
     videoArchive: (any ScreenMemoryVideoArchiving)?,
     staleVideoChunkDelay: TimeInterval,
@@ -524,6 +586,7 @@ private actor ScreenMemoryIngestCoordinator {
     self.idFactory = idFactory
     self.secretDetector = secretDetector
     self.embeddingService = embeddingService
+    self.semanticEmbedder = semanticEmbedder
     self.store = store
     self.videoArchive = videoArchive
     self.staleVideoChunkDelay = max(0, staleVideoChunkDelay)
@@ -563,6 +626,18 @@ private actor ScreenMemoryIngestCoordinator {
         text: ocr.fullText
       )
     let embedding = hasSecret ? nil : try embeddingService.embed(summary)
+    // Local semantic index: Omi embedded "[app] title\nocr" for retrieval. We keep
+    // that text but run it through the on-device embedder so nothing leaves the Mac,
+    // and never index suppressed secret content.
+    let semanticVector: [Float]? = hasSecret
+      ? nil
+      : semanticEmbedder.embed(
+        semanticEmbedder.formatForEmbedding(
+          ocrText: ocr.fullText,
+          appName: input.appName,
+          windowTitle: input.windowTitle
+        )
+      )
     guard let capturedDate = Self.captureDate(input.capturedAt) else {
       throw ScreenMemoryArchiveError.invalidCaptureTimestamp
     }
@@ -582,7 +657,7 @@ private actor ScreenMemoryIngestCoordinator {
         embedding: embedding
       )
     let videoWrite = try await appendVideoFrameIfConfigured(input)
-    try store.addRecord(record, videoWrite: videoWrite)
+    try store.addRecord(record, videoWrite: videoWrite, semanticVector: semanticVector)
     await scheduleStaleFinalizationIfNeeded()
     latestStoredRecordID = recordID
     return .stored(recordID)

@@ -390,16 +390,17 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
 
   public func addRecord(_ record: ScreenMemoryRecord) throws {
     try withTransaction {
-      try addRecordStatements(record)
+      try addRecordStatements(record, semanticVector: nil)
     }
   }
 
   func addRecord(
     _ record: ScreenMemoryRecord,
-    videoWrite: ScreenMemoryVideoWriteOutcome?
+    videoWrite: ScreenMemoryVideoWriteOutcome?,
+    semanticVector: [Float]? = nil
   ) throws {
     try withTransaction {
-      try addRecordStatements(record)
+      try addRecordStatements(record, semanticVector: semanticVector)
       guard let videoWrite else { return }
       switch videoWrite {
       case .rejected:
@@ -443,18 +444,23 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     }
   }
 
-  private func addRecordStatements(_ record: ScreenMemoryRecord) throws {
+  private func addRecordStatements(
+    _ record: ScreenMemoryRecord,
+    semanticVector: [Float]?
+  ) throws {
     let embeddingJSON = try record.embedding.map { embedding in
       String(data: try encoder.encode(embedding), encoding: .utf8) ?? ""
     }
     let ocrBlocksJSON = String(data: try encoder.encode(record.ocrBlocks), encoding: .utf8) ?? "[]"
     let perceptualHash = record.perceptualHash.map { String(format: "%016llx", $0) }
+    let semanticBlob = semanticVector.map(semanticVectorData)
     try execute(
       """
       INSERT INTO screen_memory_records (
         id, captured_at, app_bundle_id, app_name, window_title, summary, ocr_text,
-        ocr_blocks_json, perceptual_hash, retention_class, expires_at, sensitivity_label, embedding_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ocr_blocks_json, perceptual_hash, retention_class, expires_at, sensitivity_label,
+        embedding_json, semantic_embedding
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         captured_at = excluded.captured_at,
         app_bundle_id = excluded.app_bundle_id,
@@ -467,7 +473,8 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         retention_class = excluded.retention_class,
         expires_at = excluded.expires_at,
         sensitivity_label = excluded.sensitivity_label,
-        embedding_json = excluded.embedding_json
+        embedding_json = excluded.embedding_json,
+        semantic_embedding = excluded.semantic_embedding
       """,
       bindings: [
         .text(record.id),
@@ -483,6 +490,7 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         record.expiresAt.map(SQLiteBinding.text) ?? .text(Self.defaultExpiry(for: record.capturedAt)),
         .text(record.sensitivityLabel.rawValue),
         embeddingJSON.map(SQLiteBinding.text) ?? .null,
+        semanticBlob.map(SQLiteBinding.blob) ?? .null,
       ]
     )
 
@@ -499,6 +507,50 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         .text(record.summary),
         .text(record.ocrText),
       ]
+    )
+  }
+
+  /// Records captured within a time range, oldest first. Renovated from Omi's
+  /// day-scoped timeline load.
+  public func records(from start: String, through end: String, limit: Int) throws -> [ScreenMemoryRecord] {
+    try queryRecords(
+      """
+      SELECT id, captured_at, app_bundle_id, app_name, window_title, summary, ocr_text,
+             ocr_blocks_json, perceptual_hash, retention_class, expires_at, sensitivity_label, embedding_json
+      FROM screen_memory_records
+      WHERE captured_at >= ? AND captured_at <= ?
+      ORDER BY captured_at ASC
+      LIMIT ?
+      """,
+      bindings: [.text(start), .text(end), .int(max(0, limit))]
+    )
+  }
+
+  /// Evenly sampled records across a time range, oldest first — Omi's
+  /// `getScreenshotsSampled`: return all when under `targetCount`, else pick
+  /// every Nth so a dense day stays scrubbable without loading every frame.
+  public func sampledRecords(
+    from start: String,
+    through end: String,
+    targetCount: Int
+  ) throws -> [ScreenMemoryRecord] {
+    let all = try records(from: start, through: end, limit: Int.max)
+    guard all.count > targetCount, targetCount > 0 else { return all }
+    let step = Double(all.count) / Double(targetCount)
+    var sampled: [ScreenMemoryRecord] = []
+    var cursor = 0.0
+    while Int(cursor) < all.count, sampled.count < targetCount {
+      sampled.append(all[Int(cursor)])
+      cursor += step
+    }
+    return sampled
+  }
+
+  /// Distinct app names present in the archive, alphabetically — Omi's
+  /// `getUniqueAppNames`, used to populate the timeline's app filter.
+  public func uniqueAppNames() throws -> [String] {
+    try queryStrings(
+      "SELECT DISTINCT app_name FROM screen_memory_records WHERE app_name != '' ORDER BY app_name ASC"
     )
   }
 
@@ -1118,6 +1170,11 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       column: "expires_at",
       definition: "TEXT"
     )
+    try ensureColumn(
+      table: "screen_memory_records",
+      column: "semantic_embedding",
+      definition: "BLOB"
+    )
     try execute(
       """
       UPDATE screen_memory_records
@@ -1211,7 +1268,57 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       )
       """
     )
-    try execute("PRAGMA user_version = 4")
+    try execute("PRAGMA user_version = 5")
+  }
+
+  /// Records that carry a local semantic embedding, scoped to a time range and
+  /// read in most-recent-first order. Adapted from Omi's `readEmbeddingBatch`;
+  /// the vectors never leave the Mac.
+  func semanticSearchCandidates(
+    from start: String? = nil,
+    through end: String? = nil,
+    limit: Int
+  ) throws -> [(record: ScreenMemoryRecord, vector: [Float])] {
+    var predicate = "WHERE records.semantic_embedding IS NOT NULL"
+    var bindings: [SQLiteBinding] = []
+    if let start {
+      predicate += " AND records.captured_at >= ?"
+      bindings.append(.text(start))
+    }
+    if let end {
+      predicate += " AND records.captured_at <= ?"
+      bindings.append(.text(end))
+    }
+    bindings.append(.int(max(0, limit)))
+    return try withStatement(
+      """
+      SELECT records.id, records.captured_at, records.app_bundle_id, records.app_name,
+             records.window_title, records.summary, records.ocr_text, records.ocr_blocks_json,
+             records.perceptual_hash, records.retention_class, records.expires_at,
+             records.sensitivity_label, records.embedding_json, records.semantic_embedding
+      FROM screen_memory_records AS records
+      \(predicate)
+      ORDER BY records.captured_at DESC
+      LIMIT ?
+      """,
+      bindings: bindings
+    ) { statement in
+      var candidates: [(record: ScreenMemoryRecord, vector: [Float])] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          let record = try decodeRecord(statement)
+          guard let blob = columnBlob(statement, 13), let vector = semanticVector(from: blob) else {
+            continue
+          }
+          candidates.append((record, vector))
+        } else if result == SQLITE_DONE {
+          return candidates
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
   }
 
   private func queryRecords(_ sql: String, bindings: [SQLiteBinding] = []) throws -> [ScreenMemoryRecord] {
@@ -1340,7 +1447,11 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       case .text(let value):
         result = sqlite3_bind_text(statement, position, value, -1, SQLITE_TRANSIENT)
       case .int(let value):
-        result = sqlite3_bind_int(statement, position, Int32(value))
+        result = sqlite3_bind_int(statement, position, Int32(clamping: value))
+      case .blob(let value):
+        result = value.withUnsafeBytes { raw in
+          sqlite3_bind_blob(statement, position, raw.baseAddress, Int32(raw.count), SQLITE_TRANSIENT)
+        }
       case .null:
         result = sqlite3_bind_null(statement, position)
       }
@@ -1360,6 +1471,14 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
   private func optionalColumnText(_ statement: OpaquePointer, _ index: Int32) throws -> String? {
     guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
     return try columnText(statement, index)
+  }
+
+  private func columnBlob(_ statement: OpaquePointer, _ index: Int32) -> Data? {
+    guard sqlite3_column_type(statement, index) != SQLITE_NULL,
+          let pointer = sqlite3_column_blob(statement, index) else { return nil }
+    let count = Int(sqlite3_column_bytes(statement, index))
+    guard count > 0 else { return nil }
+    return Data(bytes: pointer, count: count)
   }
 
   private func searchTerms(_ query: String) -> [String] {
@@ -1445,6 +1564,7 @@ struct PersistedScreenMemoryVideoFrame {
 private enum SQLiteBinding {
   case text(String)
   case int(Int)
+  case blob(Data)
   case null
 }
 
