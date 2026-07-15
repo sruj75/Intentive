@@ -1,5 +1,4 @@
 import Foundation
-import SQLite3
 @testable import IntentiveDesktopCore
 import XCTest
 
@@ -11,7 +10,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       baseApplicationSupportURL: base
     )
 
-    XCTAssertEqual(url.lastPathComponent, "screen-memory.sqlite")
+    XCTAssertEqual(url.lastPathComponent, "intentive.db")
     XCTAssertEqual(url.deletingLastPathComponent().lastPathComponent, "local-dev-user")
     XCTAssertEqual(url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent, "users")
     XCTAssertEqual(
@@ -22,25 +21,6 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
   }
 
-  func testDesktopLocalProfileKeepsOmiPathAsExplicitLegacyImportSourceOnly() throws {
-    let base = try temporaryDirectory()
-
-    let legacy = try DesktopLocalProfile.legacyOmiUserSupportURL(
-      userID: "omi-user",
-      baseApplicationSupportURL: base
-    )
-    let current = try DesktopLocalProfile.userSupportURL(
-      userID: "omi-user",
-      baseApplicationSupportURL: base
-    )
-
-    XCTAssertEqual(legacy.lastPathComponent, "omi-user")
-    XCTAssertEqual(legacy.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent, "Omi")
-    XCTAssertEqual(current.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent, "Intentive")
-    XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: current.path))
-  }
-
   func testSQLiteScreenMemoryStoreDefaultDatabaseURLUsesLocalProfile() throws {
     let base = try temporaryDirectory()
     let url = try SQLiteScreenMemoryStore.applicationSupportURL(
@@ -48,159 +28,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       baseApplicationSupportURL: base
     )
 
-    XCTAssertEqual(url.path, base.appendingPathComponent("Intentive/users/user-example.com/screen-memory.sqlite").path)
-  }
-
-  func testLegacyScreenMemoryImporterImportsIndexedOmiRowsIntoCurrentStore() throws {
-    let base = try temporaryDirectory()
-    let legacyDatabase = try createLegacyOmiDatabase(
-      baseApplicationSupportURL: base,
-      userID: "user@example.com",
-      rows: [
-        LegacyScreenshotFixture(
-          id: 7,
-          capturedAt: "2026-07-05T10:00:00.000Z",
-          appName: "Code",
-          windowTitle: "Intentive plan",
-          ocrText: "handoff compiler local history",
-          isIndexed: true
-        ),
-        LegacyScreenshotFixture(
-          id: 8,
-          capturedAt: "2026-07-05T10:01:00.000Z",
-          appName: "Mail",
-          windowTitle: "Inbox",
-          ocrText: "unindexed row",
-          isIndexed: false
-        ),
-        LegacyScreenshotFixture(
-          id: 9,
-          capturedAt: "2026-07-05T10:02:00.000Z",
-          appName: "Safari",
-          windowTitle: "Blank",
-          ocrText: "   ",
-          isIndexed: true
-        ),
-      ]
-    )
-    let store = try SQLiteScreenMemoryStore(databaseURL: temporaryDatabaseURL())
-
-    let result = try LegacyScreenMemoryImporter(baseApplicationSupportURL: base)
-      .importFirstAvailableSource(userID: "user@example.com", into: store, limit: 10)
-
-    XCTAssertEqual(result.sourceDatabaseURL?.path, legacyDatabase.path)
-    XCTAssertEqual(result.importedCount, 1)
-    XCTAssertEqual(result.skippedCount, 2)
-    let imported = try XCTUnwrap(try store.searchRecords("handoff compiler", limit: 10).first?.record)
-    XCTAssertEqual(imported.id, "legacy-screen-memory-screenshot-7")
-    XCTAssertEqual(imported.appName, "Code")
-    XCTAssertEqual(imported.retentionClass, "screen_memory_30d")
-    XCTAssertEqual(imported.sensitivityLabel, .normal)
-    XCTAssertNotNil(imported.embedding)
-  }
-
-  func testLegacyScreenMemoryImporterFallsBackToRootOmiDatabase() throws {
-    let base = try temporaryDirectory()
-    let root = try DesktopLocalProfile.legacyOmiApplicationSupportURL(baseApplicationSupportURL: base)
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    let rootDatabase = try createLegacyDatabase(
-      at: root.appendingPathComponent("omi.db"),
-      rows: [
-        LegacyScreenshotFixture(
-          id: 11,
-          capturedAt: "2026-07-05T10:00:00Z",
-          appName: "Notes",
-          windowTitle: "Daily plan",
-          ocrText: "root legacy source",
-          isIndexed: true
-        )
-      ]
-    )
-    let store = InMemoryScreenMemoryStore()
-
-    let result = try LegacyScreenMemoryImporter(baseApplicationSupportURL: base)
-      .importFirstAvailableSource(userID: "missing-user", into: store, limit: 10)
-
-    XCTAssertEqual(result.sourceDatabaseURL?.path, rootDatabase.path)
-    XCTAssertEqual(result.importedCount, 1)
-    XCTAssertEqual(store.search("legacy source", limit: 10).first?.record.id, "legacy-screen-memory-screenshot-11")
-  }
-
-  func testLegacyScreenMemoryImporterDoesNothingWhenNoOmiDatabaseExists() throws {
-    let base = try temporaryDirectory()
-    let store = InMemoryScreenMemoryStore()
-
-    let result = try LegacyScreenMemoryImporter(baseApplicationSupportURL: base)
-      .importFirstAvailableSource(userID: "user@example.com", into: store, limit: 10)
-
-    XCTAssertNil(result.sourceDatabaseURL)
-    XCTAssertEqual(result.importedCount, 0)
-    XCTAssertEqual(result.skippedCount, 0)
-    XCTAssertTrue(store.recent(limit: 10).isEmpty)
-  }
-
-  func testLegacyScreenMemoryImporterKeepsSecretRowsLocalButSuppressesSummaryAndEmbedding() throws {
-    let base = try temporaryDirectory()
-    let legacyDatabase = try createLegacyOmiDatabase(
-      baseApplicationSupportURL: base,
-      userID: "user@example.com",
-      rows: [
-        LegacyScreenshotFixture(
-          id: 12,
-          capturedAt: "2026-07-05 10:00:00.000",
-          appName: "Terminal",
-          windowTitle: "deploy",
-          ocrText: "export API_KEY=abc123",
-          isIndexed: true
-        )
-      ]
-    )
-    let store = InMemoryScreenMemoryStore()
-
-    let result = try LegacyScreenMemoryImporter(baseApplicationSupportURL: base)
-      .importDatabase(at: legacyDatabase, into: store, limit: 10)
-
-    XCTAssertEqual(result.importedCount, 1)
-    let imported = try XCTUnwrap(store.search("API_KEY", limit: 10).first?.record)
-    XCTAssertEqual(imported.capturedAt, "2026-07-05T10:00:00.000Z")
-    XCTAssertEqual(imported.summary, "Secret-like content was detected and suppressed.")
-    XCTAssertEqual(imported.sensitivityLabel, .secretDetected)
-    XCTAssertNil(imported.embedding)
-  }
-
-  func testLegacyScreenMemoryImporterSkipsUnchangedSQLiteSourceAfterCheckpoint() throws {
-    let base = try temporaryDirectory()
-    let legacyDatabase = try createLegacyOmiDatabase(
-      baseApplicationSupportURL: base,
-      userID: "user@example.com",
-      rows: [
-        LegacyScreenshotFixture(
-          id: 13,
-          capturedAt: "2026-07-05T10:00:00.000Z",
-          appName: "Code",
-          windowTitle: "Migration",
-          ocrText: "one time legacy import",
-          isIndexed: true
-        )
-      ]
-    )
-    let store = try SQLiteScreenMemoryStore(databaseURL: temporaryDatabaseURL())
-    let importer = LegacyScreenMemoryImporter(baseApplicationSupportURL: base)
-
-    let first = try importer.importDatabase(at: legacyDatabase, into: store, limit: 10)
-    let second = try importer.importDatabase(at: legacyDatabase, into: store, limit: 10)
-
-    XCTAssertEqual(first.importedCount, 1)
-    XCTAssertFalse(first.skippedBecauseUnchanged)
-    XCTAssertEqual(second.sourceDatabaseURL?.path, legacyDatabase.path)
-    XCTAssertEqual(second.importedCount, 0)
-    XCTAssertEqual(second.skippedCount, 0)
-    XCTAssertTrue(second.skippedBecauseUnchanged)
-    XCTAssertEqual(try store.searchRecords("one time legacy", limit: 10).count, 1)
-
-    let checkpoint = try XCTUnwrap(try store.legacyImportCheckpoint(for: legacyDatabase.standardizedFileURL.path))
-    XCTAssertEqual(checkpoint.importedCount, 1)
-    XCTAssertEqual(checkpoint.skippedCount, 0)
+    XCTAssertEqual(url.path, base.appendingPathComponent("Intentive/users/user-example.com/intentive.db").path)
   }
 
   func testScreenMemorySearchRanksMatchingRecords() throws {
@@ -797,7 +625,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
   }
 
   private func temporaryDatabaseURL() throws -> URL {
-    try temporaryDirectory().appendingPathComponent("screen-memory.sqlite")
+    try temporaryDirectory().appendingPathComponent("intentive.db")
   }
 
   private func screenArtifact(id: String) -> CompiledPerceptionArtifact {
@@ -824,109 +652,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     return directory
   }
 
-  private func createLegacyOmiDatabase(
-    baseApplicationSupportURL: URL,
-    userID: String,
-    rows: [LegacyScreenshotFixture]
-  ) throws -> URL {
-    let legacyUserDirectory = try DesktopLocalProfile.legacyOmiUserSupportURL(
-      userID: userID,
-      baseApplicationSupportURL: baseApplicationSupportURL
-    )
-    try FileManager.default.createDirectory(at: legacyUserDirectory, withIntermediateDirectories: true)
-    return try createLegacyDatabase(at: legacyUserDirectory.appendingPathComponent("omi.db"), rows: rows)
-  }
-
-  private func createLegacyDatabase(at url: URL, rows: [LegacyScreenshotFixture]) throws -> URL {
-    var handle: OpaquePointer?
-    guard
-      sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil)
-        == SQLITE_OK,
-      let handle
-    else {
-      let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown SQLite open error"
-      sqlite3_close(handle)
-      throw LegacyTestDatabaseError.openFailed(message)
-    }
-    defer { sqlite3_close(handle) }
-
-    try executeLegacySQL(
-      """
-      CREATE TABLE screenshots (
-        id INTEGER PRIMARY KEY,
-        timestamp TEXT NOT NULL,
-        appName TEXT NOT NULL,
-        windowTitle TEXT,
-        ocrText TEXT,
-        isIndexed INTEGER NOT NULL DEFAULT 0
-      )
-      """,
-      handle: handle
-    )
-
-    for row in rows {
-      try insertLegacyScreenshot(row, handle: handle)
-    }
-
-    return url
-  }
-
-  private func executeLegacySQL(_ sql: String, handle: OpaquePointer) throws {
-    var error: UnsafeMutablePointer<CChar>?
-    guard sqlite3_exec(handle, sql, nil, nil, &error) == SQLITE_OK else {
-      let message = error.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(handle))
-      sqlite3_free(error)
-      throw LegacyTestDatabaseError.execFailed(message)
-    }
-  }
-
-  private func insertLegacyScreenshot(_ row: LegacyScreenshotFixture, handle: OpaquePointer) throws {
-    var statement: OpaquePointer?
-    guard
-      sqlite3_prepare_v2(
-        handle,
-        """
-        INSERT INTO screenshots (id, timestamp, appName, windowTitle, ocrText, isIndexed)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        -1,
-        &statement,
-        nil
-      ) == SQLITE_OK,
-      let statement
-    else {
-      throw LegacyTestDatabaseError.execFailed(String(cString: sqlite3_errmsg(handle)))
-    }
-    defer { sqlite3_finalize(statement) }
-
-    sqlite3_bind_int64(statement, 1, row.id)
-    sqlite3_bind_text(statement, 2, row.capturedAt, -1, TEST_SQLITE_TRANSIENT)
-    sqlite3_bind_text(statement, 3, row.appName, -1, TEST_SQLITE_TRANSIENT)
-    sqlite3_bind_text(statement, 4, row.windowTitle, -1, TEST_SQLITE_TRANSIENT)
-    sqlite3_bind_text(statement, 5, row.ocrText, -1, TEST_SQLITE_TRANSIENT)
-    sqlite3_bind_int(statement, 6, row.isIndexed ? 1 : 0)
-
-    guard sqlite3_step(statement) == SQLITE_DONE else {
-      throw LegacyTestDatabaseError.execFailed(String(cString: sqlite3_errmsg(handle)))
-    }
-  }
 }
-
-private struct LegacyScreenshotFixture {
-  var id: Int64
-  var capturedAt: String
-  var appName: String
-  var windowTitle: String
-  var ocrText: String
-  var isIndexed: Bool
-}
-
-private enum LegacyTestDatabaseError: Error {
-  case openFailed(String)
-  case execFailed(String)
-}
-
-private let TEST_SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 @MainActor
 final class ScreenMemoryCaptureLoopTests: XCTestCase {

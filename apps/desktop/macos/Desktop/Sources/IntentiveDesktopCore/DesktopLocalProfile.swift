@@ -2,7 +2,6 @@ import Foundation
 
 public enum DesktopLocalProfile {
   public static let applicationSupportDirectoryName = "Intentive"
-  public static let legacyOmiApplicationSupportDirectoryName = "Omi"
   public static let anonymousUserID = "anonymous"
 
   public static func applicationSupportURL(
@@ -19,7 +18,7 @@ public enum DesktopLocalProfile {
   }
 
   public static func userSupportURL(
-    userID: String? = nil,
+    userID: String,
     fileManager: FileManager = .default,
     baseApplicationSupportURL: URL? = nil
   ) throws -> URL {
@@ -35,7 +34,7 @@ public enum DesktopLocalProfile {
   }
 
   public static func screenMemoryDatabaseURL(
-    userID: String? = nil,
+    userID: String,
     fileManager: FileManager = .default,
     baseApplicationSupportURL: URL? = nil
   ) throws -> URL {
@@ -44,31 +43,7 @@ public enum DesktopLocalProfile {
       fileManager: fileManager,
       baseApplicationSupportURL: baseApplicationSupportURL
     )
-    .appendingPathComponent("screen-memory.sqlite")
-  }
-
-  public static func legacyOmiApplicationSupportURL(
-    fileManager: FileManager = .default,
-    baseApplicationSupportURL: URL? = nil
-  ) throws -> URL {
-    let base = try resolveApplicationSupportBase(
-      fileManager: fileManager,
-      baseApplicationSupportURL: baseApplicationSupportURL
-    )
-    return base.appendingPathComponent(legacyOmiApplicationSupportDirectoryName, isDirectory: true)
-  }
-
-  public static func legacyOmiUserSupportURL(
-    userID: String? = nil,
-    fileManager: FileManager = .default,
-    baseApplicationSupportURL: URL? = nil
-  ) throws -> URL {
-    try legacyOmiApplicationSupportURL(
-      fileManager: fileManager,
-      baseApplicationSupportURL: baseApplicationSupportURL
-    )
-    .appendingPathComponent("users", isDirectory: true)
-    .appendingPathComponent(sanitizedUserID(userID), isDirectory: true)
+    .appendingPathComponent("intentive.db")
   }
 
   public static func sanitizedUserID(_ userID: String?) -> String {

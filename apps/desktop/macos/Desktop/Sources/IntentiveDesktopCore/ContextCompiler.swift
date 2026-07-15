@@ -3,6 +3,7 @@ import Foundation
 public struct CapturedFrame: Equatable, Sendable {
   public var id: String
   public var capturedAt: String
+  public var appBundleID: String
   public var appName: String
   public var windowTitle: String
   public var ocrText: String
@@ -11,6 +12,7 @@ public struct CapturedFrame: Equatable, Sendable {
   public init(
     id: String,
     capturedAt: String,
+    appBundleID: String = "",
     appName: String,
     windowTitle: String,
     ocrText: String,
@@ -18,6 +20,7 @@ public struct CapturedFrame: Equatable, Sendable {
   ) {
     self.id = id
     self.capturedAt = capturedAt
+    self.appBundleID = appBundleID
     self.appName = appName
     self.windowTitle = windowTitle
     self.ocrText = ocrText
@@ -28,6 +31,7 @@ public struct CapturedFrame: Equatable, Sendable {
     CapturedFrame(
       id: id,
       capturedAt: capturedAt,
+      appBundleID: appBundleID,
       appName: appName,
       windowTitle: windowTitle,
       ocrText: ocrText,
@@ -41,10 +45,12 @@ public protocol DesktopCaptureSource {
 }
 
 public struct DesktopWindowContext: Equatable, Sendable {
+  public var appBundleID: String
   public var appName: String
   public var windowTitle: String
 
-  public init(appName: String, windowTitle: String = "") {
+  public init(appBundleID: String = "", appName: String, windowTitle: String = "") {
+    self.appBundleID = appBundleID
     self.appName = appName
     self.windowTitle = windowTitle
   }
@@ -229,7 +235,7 @@ public struct SearchableScreenRecordAnalyzer {
       retentionClass: retentionClass,
       sensitivityLabel: hasSecret ? .secretDetected : .normal,
       confidence: hasSecret ? 0.5 : 0.88,
-      localRecordRef: "screen-memory://records/\(frame.id)",
+      localRecordRef: frame.id,
       embedding: hasSecret ? nil : try embeddingService.embed(summary),
       rawFrameBytes: nil
     )

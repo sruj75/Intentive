@@ -3,7 +3,6 @@ import CoreGraphics
 import Foundation
 import IntentiveDesktopCore
 import ScreenCaptureKit
-import Vision
 
 public enum NativeScreenCaptureError: Error, Equatable, LocalizedError {
   case permissionDenied
@@ -11,7 +10,6 @@ public enum NativeScreenCaptureError: Error, Equatable, LocalizedError {
   case noActiveWindow
   case windowUnavailable
   case captureFailed(String)
-  case ocrFailed(String)
 
   public var errorDescription: String? {
     switch self {
@@ -25,8 +23,6 @@ public enum NativeScreenCaptureError: Error, Equatable, LocalizedError {
       return "The active window disappeared before it could be captured."
     case .captureFailed(let message):
       return "Screen capture failed: \(message)"
-    case .ocrFailed(let message):
-      return "Screen Memory OCR failed: \(message)"
     }
   }
 }
@@ -82,27 +78,30 @@ public final class NativeScreenCaptureSource: DesktopWindowContextSource {
 
     let activeWindow = try resolveActiveWindow()
     let image = try await captureImage(windowID: activeWindow.windowID)
-    let ocrText = try await extractText(from: image)
+    let imageData = try encodeCapturedImage(image)
 
     return CapturedFrame(
       id: idFactory(),
       capturedAt: now().protocolTimestamp,
+      appBundleID: activeWindow.appBundleID,
       appName: activeWindow.appName,
       windowTitle: activeWindow.windowTitle ?? "",
-      ocrText: ocrText,
-      rawFrameBytes: nil
+      ocrText: "",
+      rawFrameBytes: imageData
     )
   }
 
   public func activeWindowContext() throws -> DesktopWindowContext {
     let activeWindow = try resolveActiveWindow()
     return DesktopWindowContext(
+      appBundleID: activeWindow.appBundleID,
       appName: activeWindow.appName,
       windowTitle: activeWindow.windowTitle ?? ""
     )
   }
 
   private struct ActiveWindow {
+    var appBundleID: String
     var appName: String
     var windowTitle: String?
     var windowID: CGWindowID
@@ -146,7 +145,12 @@ public final class NativeScreenCaptureSource: DesktopWindowContextSource {
       throw NativeScreenCaptureError.noActiveWindow
     }
 
-    return ActiveWindow(appName: appName, windowTitle: window.title, windowID: window.id)
+    return ActiveWindow(
+      appBundleID: frontApp.bundleIdentifier ?? "",
+      appName: appName,
+      windowTitle: window.title,
+      windowID: window.id
+    )
   }
 
   private func captureImage(windowID: CGWindowID) async throws -> CGImage {
@@ -193,22 +197,16 @@ public final class NativeScreenCaptureSource: DesktopWindowContextSource {
     }
   }
 
-  private func extractText(from image: CGImage) async throws -> String {
-    do {
-      return try await Task.detached(priority: .userInitiated) {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["en-US"]
-
-        let handler = VNImageRequestHandler(cgImage: image, options: [:])
-        try handler.perform([request])
-        return (request.results ?? [])
-          .compactMap { $0.topCandidates(1).first?.string }
-          .joined(separator: "\n")
-      }.value
-    } catch {
-      throw NativeScreenCaptureError.ocrFailed(error.localizedDescription)
+  private func encodeCapturedImage(_ image: CGImage) throws -> Data {
+    let representation = NSBitmapImageRep(cgImage: image)
+    guard
+      let data = representation.representation(
+        using: .jpeg,
+        properties: [.compressionFactor: 0.9]
+      )
+    else {
+      throw NativeScreenCaptureError.captureFailed("captured image could not be encoded")
     }
+    return data
   }
 }

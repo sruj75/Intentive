@@ -272,26 +272,37 @@ public final class CaptureCoordinator {
   private let compiler: ContextCompiler
   private let screenMemory: ScreenMemoryStore
   private let publisher: PerceptionPublisher
+  private let archiveProvider: () -> ScreenMemoryArchive?
 
   public init(
     compiler: ContextCompiler,
     screenMemory: ScreenMemoryStore,
-    publisher: PerceptionPublisher
+    publisher: PerceptionPublisher,
+    archiveProvider: @escaping () -> ScreenMemoryArchive? = { nil }
   ) {
     self.compiler = compiler
     self.screenMemory = screenMemory
     self.publisher = publisher
+    self.archiveProvider = archiveProvider
   }
 
   public func accept(frame: CapturedFrame) throws -> [PerceptionEvent] {
+    try accept(frame: frame, storesSearchableRecord: true)
+  }
+
+  private func accept(
+    frame: CapturedFrame,
+    storesSearchableRecord: Bool
+  ) throws -> [PerceptionEvent] {
     let artifacts = try compiler.compile(frame: frame)
     var events: [PerceptionEvent] = []
     for artifact in artifacts {
-      if artifact.artifactType == .searchableScreenRecord {
+      if storesSearchableRecord, artifact.artifactType == .searchableScreenRecord {
         screenMemory.add(
           ScreenMemoryRecord(
             id: artifact.id,
             capturedAt: artifact.capturedAt,
+            appBundleID: frame.appBundleID,
             appName: frame.appName,
             windowTitle: frame.windowTitle,
             summary: artifact.summary,
@@ -319,6 +330,38 @@ public final class CaptureCoordinator {
       }
     }
     let frame = try await source.captureFrame()
+    if let imageData = frame.rawFrameBytes, let archive = archiveProvider() {
+      let outcome = try await archive.ingest(
+        ScreenMemoryCaptureInput(
+          userID: archive.userID,
+          imageData: imageData,
+          capturedAt: frame.capturedAt,
+          appBundleID: frame.appBundleID,
+          appName: frame.appName,
+          windowTitle: frame.windowTitle
+        )
+      )
+      switch outcome {
+      case .duplicate:
+        return []
+      case .stored(let recordID):
+        guard let record = archive.record(recordID), let archivedRecordID = record.recordID else { return [] }
+        return try accept(
+          frame: CapturedFrame(
+            id: archivedRecordID.value.uuidString,
+            capturedAt: record.capturedAt,
+            appBundleID: record.appBundleID,
+            appName: record.appName,
+            windowTitle: record.windowTitle,
+            ocrText: record.ocrText
+          ),
+          storesSearchableRecord: false
+        )
+      }
+    }
+    if frame.rawFrameBytes != nil, frame.ocrText.isEmpty {
+      return []
+    }
     return try accept(frame: frame.withoutRawFrameBytes())
   }
 }

@@ -95,7 +95,8 @@ final class DesktopViewModel: ObservableObject {
   private lazy var capture = CaptureCoordinator(
     compiler: compiler,
     screenMemory: screenMemory,
-    publisher: publisher
+    publisher: publisher,
+    archiveProvider: { [weak self] in self?.screenMemory.activeArchive }
   )
   private lazy var ambientAudio = AmbientAudioCoordinator(
     audioMemory: screenMemory,
@@ -902,23 +903,19 @@ final class DesktopViewModel: ObservableObject {
     userID: String?,
     baseApplicationSupportURL: URL
   ) -> (store: ScreenMemoryStore, status: String) {
+    guard let userID, !userID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return (InMemoryScreenMemoryStore(), "Sign in to start Screen Memory")
+    }
     do {
-      let databaseURL = try SQLiteScreenMemoryStore.applicationSupportURL(
+      let profile = try ScreenMemoryProfile(
         userID: userID,
-        baseApplicationSupportURL: baseApplicationSupportURL
+        rootURL: baseApplicationSupportURL
       )
-      let store = try SQLiteScreenMemoryStore(databaseURL: databaseURL)
-      do {
-        let importResult = try LegacyScreenMemoryImporter()
-          .importFirstAvailableSource(userID: userID, into: store, limit: 2_000)
-        let status =
-          importResult.importedCount > 0
-          ? "Local Screen Memory ready · imported \(importResult.importedCount) local history record(s)"
-          : "Local Screen Memory ready"
-        return (store, status)
-      } catch {
-        return (store, "Local Screen Memory ready · legacy import skipped: \(error.localizedDescription)")
-      }
+      let archive = try ScreenMemoryArchive(
+        profile: profile,
+        imageAnalyzer: OmiScreenMemoryOCRAdapter()
+      )
+      return (archive, "Local Screen Memory ready")
     } catch {
       return (InMemoryScreenMemoryStore(), "Screen Memory fallback: \(error.localizedDescription)")
     }
