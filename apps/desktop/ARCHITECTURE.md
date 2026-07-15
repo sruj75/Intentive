@@ -26,6 +26,7 @@ apps/desktop/
     Desktop/Package.swift
     Desktop/Sources/IntentiveDesktopCore/
     Desktop/Sources/Intentive/
+    Desktop/Sources/Rewind/Core/       # surgically compiled Omi archive encoder/storage
     Desktop/Tests/
     scripts/build-app-bundle.sh
     scripts/verify-app-bundle.sh
@@ -50,8 +51,9 @@ apps/desktop/
 - `DesktopLaunchConfiguration.swift`: immutable production and deterministic launch policy plus the observable assembled surface/system-boundary contract consumed by the executable composition root.
 - `RuntimeBridge.swift`: desktop WebSocket adapter, generation guard, outbound FIFO, message reducer, delivery acknowledgements.
 - `AuthControlPlane.swift`: native auth seam, dev auth provider, hosted auth callback boundary, typed Control Plane client.
-- `ScreenMemoryArchive.swift`: the signed-in per-user ingest/search seam, OCR/dHash deduplication orchestration, and outbound-safe content projection.
+- `ScreenMemoryArchive.swift`: the signed-in per-user ingest/search/video-retrieval seam, OCR/dHash deduplication orchestration, finalized-chunk recovery, and outbound-safe content projection.
 - `ScreenMemory.swift`: versioned `intentive.db` persistence, local Screen Memory and ambient-audio records, FTS search, and the deferred local embedding seam.
+- `Rewind/Core/{VideoChunkEncoder,RewindStorage}.swift`: the surgically compiled Omi-derived HEVC/MP4 writer, staged publication, AVAssetReader sample extraction, and bounded still cache behind the source-neutral Core video boundary. Other Rewind database, service, and UI assets remain excluded until their owning renovation slices.
 - `DesktopLocalProfile.swift`: shared Intentive profile paths. The Desktop Client does not import Omi user data.
 - `ContextCompiler.swift`: deterministic screen and ambient audio analyzers plus `perception_event` publisher with the raw-frame egress guard.
 - `DesktopExperience.swift`: floating-bar chat, capture coordination, deferred passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Legacy dictation/PTT primitives remain compiled only as renovation assets until the later cleanup slice and are not assembled into the product surface.

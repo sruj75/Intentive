@@ -913,7 +913,8 @@ final class DesktopViewModel: ObservableObject {
       )
       let archive = try ScreenMemoryArchive(
         profile: profile,
-        imageAnalyzer: OmiScreenMemoryOCRAdapter()
+        imageAnalyzer: OmiScreenMemoryOCRAdapter(),
+        videoArchive: try OmiScreenMemoryVideoArchive(profile: profile)
       )
       return (archive, "Local Screen Memory ready")
     } catch {

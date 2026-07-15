@@ -61,6 +61,7 @@ public protocol ScreenMemoryImageAnalyzing: Sendable {
 public struct ScreenMemoryProfile: Equatable, Sendable {
   public let userID: String
   public let databaseURL: URL
+  public let videoArchiveURL: URL
 
   public init(
     userID: String,
@@ -77,6 +78,13 @@ public struct ScreenMemoryProfile: Equatable, Sendable {
       fileManager: fileManager,
       baseApplicationSupportURL: rootURL
     )
+    videoArchiveURL = try DesktopLocalProfile.userSupportURL(
+      userID: trimmedUserID,
+      fileManager: fileManager,
+      baseApplicationSupportURL: rootURL
+    )
+    .appendingPathComponent("Videos", isDirectory: true)
+    try fileManager.createDirectory(at: videoArchiveURL, withIntermediateDirectories: true)
   }
 }
 
@@ -108,6 +116,87 @@ public struct ScreenMemoryCaptureInput: Equatable, Sendable {
 public enum ScreenMemoryIngestOutcome: Equatable, Sendable {
   case stored(ScreenMemoryRecordID)
   case duplicate(existingRecordID: ScreenMemoryRecordID)
+}
+
+public struct ScreenMemoryVideoChunkID: Codable, Equatable, Hashable, Sendable {
+  public let value: UUID
+
+  public init(_ value: UUID) {
+    self.value = value
+  }
+}
+
+public struct ScreenMemoryVideoFrameLocation: Equatable, Hashable, Sendable {
+  public let chunkID: ScreenMemoryVideoChunkID
+  public let sampleOrdinal: Int
+
+  public init(chunkID: ScreenMemoryVideoChunkID, sampleOrdinal: Int) {
+    self.chunkID = chunkID
+    self.sampleOrdinal = sampleOrdinal
+  }
+}
+
+public struct ScreenMemoryVideoChunkFinalization: Equatable, Sendable {
+  public let chunkID: ScreenMemoryVideoChunkID
+  public let sampleCount: Int
+
+  public init(chunkID: ScreenMemoryVideoChunkID, sampleCount: Int) {
+    self.chunkID = chunkID
+    self.sampleCount = sampleCount
+  }
+}
+
+public enum ScreenMemoryVideoWriteOutcome: Equatable, Sendable {
+  case rejected
+  case accepted(
+    location: ScreenMemoryVideoFrameLocation,
+    finalizedChunks: [ScreenMemoryVideoChunkFinalization]
+  )
+}
+
+public enum ScreenMemoryVideoChunkRecoveryState: Equatable, Sendable {
+  case staged
+  case finalized(sampleCount: Int)
+  case missingOrInvalid
+}
+
+/// Source-neutral native-video boundary owned by Screen Memory. Implementations
+/// keep AVFoundation types and filesystem locations on the native side.
+public protocol ScreenMemoryVideoArchiving: Sendable {
+  func appendFrame(imageData: Data, capturedAt: Date) async throws -> ScreenMemoryVideoWriteOutcome
+  func activeChunkID() async -> ScreenMemoryVideoChunkID?
+  func finalizeActiveChunk() async throws -> ScreenMemoryVideoChunkFinalization?
+  func loadFrame(at location: ScreenMemoryVideoFrameLocation) async throws -> Data
+  func recoveryState(
+    for chunkID: ScreenMemoryVideoChunkID,
+    expectedSampleCount: Int
+  ) async -> ScreenMemoryVideoChunkRecoveryState
+  func discardChunk(_ chunkID: ScreenMemoryVideoChunkID) async
+}
+
+public struct ScreenMemoryVideoFrame: Equatable, Sendable {
+  public let recordID: ScreenMemoryRecordID
+  public let capturedAt: String
+  public let appBundleID: String
+  public let appName: String
+  public let windowTitle: String
+  public let imageData: Data
+
+  public init(
+    recordID: ScreenMemoryRecordID,
+    capturedAt: String,
+    appBundleID: String,
+    appName: String,
+    windowTitle: String,
+    imageData: Data
+  ) {
+    self.recordID = recordID
+    self.capturedAt = capturedAt
+    self.appBundleID = appBundleID
+    self.appName = appName
+    self.windowTitle = windowTitle
+    self.imageData = imageData
+  }
 }
 
 public enum ScreenMemoryOutboundContentState: Equatable, Sendable {
@@ -152,6 +241,8 @@ public struct ScreenMemoryOutboundRepresentation: Equatable, Sendable {
 public enum ScreenMemoryArchiveError: Error, Equatable, LocalizedError {
   case signedInProfileRequired
   case profileMismatch
+  case invalidCaptureTimestamp
+  case videoFinalizationMismatch
 
   public var errorDescription: String? {
     switch self {
@@ -159,6 +250,10 @@ public enum ScreenMemoryArchiveError: Error, Equatable, LocalizedError {
       return "A signed-in user profile is required for Screen Memory."
     case .profileMismatch:
       return "The captured screen does not belong to the active Screen Memory profile."
+    case .invalidCaptureTimestamp:
+      return "Screen Memory received an invalid capture timestamp."
+    case .videoFinalizationMismatch:
+      return "Screen Memory video finalization did not match the active chunk."
     }
   }
 }
@@ -177,26 +272,46 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     imageAnalyzer: any ScreenMemoryImageAnalyzing,
     idFactory: @escaping @Sendable () -> UUID = { UUID() },
     secretDetector: HardSecretDetector = HardSecretDetector(),
-    embeddingService: LocalEmbeddingService = LocalEmbeddingService()
+    embeddingService: LocalEmbeddingService = LocalEmbeddingService(),
+    videoArchive: (any ScreenMemoryVideoArchiving)? = nil,
+    staleVideoChunkDelay: TimeInterval = 70
   ) throws {
     self.profile = profile
     let openedStore = try SQLiteScreenMemoryStore(databaseURL: profile.databaseURL)
     store = openedStore
     let latest = try openedStore.latestPerceptualRecord()
-    ingestCoordinator = ScreenMemoryIngestCoordinator(
+    let coordinator = ScreenMemoryIngestCoordinator(
       profileUserID: profile.userID,
       imageAnalyzer: imageAnalyzer,
       idFactory: idFactory,
       secretDetector: secretDetector,
       embeddingService: embeddingService,
       store: openedStore,
+      videoArchive: videoArchive,
+      staleVideoChunkDelay: staleVideoChunkDelay,
       lastObservedHash: latest?.hash,
       latestStoredRecordID: latest.flatMap { UUID(uuidString: $0.id) }.map(ScreenMemoryRecordID.init)
     )
+    ingestCoordinator = coordinator
+    if videoArchive != nil {
+      Task { try? await coordinator.prepareVideoArchive() }
+    }
   }
 
   public func ingest(_ input: ScreenMemoryCaptureInput) async throws -> ScreenMemoryIngestOutcome {
     try await ingestCoordinator.ingest(input)
+  }
+
+  public func finalizeActiveVideoChunk() async throws {
+    try await ingestCoordinator.finalizeActiveVideoChunk()
+  }
+
+  public func videoFrame(for recordID: ScreenMemoryRecordID) async throws -> ScreenMemoryVideoFrame? {
+    try await ingestCoordinator.videoFrame(for: recordID)
+  }
+
+  public func videoFrames(from start: Date, through end: Date) async throws -> [ScreenMemoryVideoFrame] {
+    try await ingestCoordinator.videoFrames(from: start, through: end)
   }
 
   public func record(_ recordID: ScreenMemoryRecordID) -> ScreenMemorySearchResult? {
@@ -271,8 +386,12 @@ private actor ScreenMemoryIngestCoordinator {
   private let secretDetector: HardSecretDetector
   private let embeddingService: LocalEmbeddingService
   private let store: SQLiteScreenMemoryStore
+  private let videoArchive: (any ScreenMemoryVideoArchiving)?
+  private let staleVideoChunkDelay: TimeInterval
   private var lastObservedHash: UInt64?
   private var latestStoredRecordID: ScreenMemoryRecordID?
+  private var didRecoverVideoArchive = false
+  private var staleFinalizationTask: Task<Void, Never>?
 
   init(
     profileUserID: String,
@@ -281,6 +400,8 @@ private actor ScreenMemoryIngestCoordinator {
     secretDetector: HardSecretDetector,
     embeddingService: LocalEmbeddingService,
     store: SQLiteScreenMemoryStore,
+    videoArchive: (any ScreenMemoryVideoArchiving)?,
+    staleVideoChunkDelay: TimeInterval,
     lastObservedHash: UInt64?,
     latestStoredRecordID: ScreenMemoryRecordID?
   ) {
@@ -290,11 +411,14 @@ private actor ScreenMemoryIngestCoordinator {
     self.secretDetector = secretDetector
     self.embeddingService = embeddingService
     self.store = store
+    self.videoArchive = videoArchive
+    self.staleVideoChunkDelay = max(0, staleVideoChunkDelay)
     self.lastObservedHash = lastObservedHash
     self.latestStoredRecordID = latestStoredRecordID
   }
 
   func ingest(_ input: ScreenMemoryCaptureInput) async throws -> ScreenMemoryIngestOutcome {
+    try await recoverVideoArchiveIfNeeded()
     guard input.userID == profileUserID else {
       throw ScreenMemoryArchiveError.profileMismatch
     }
@@ -321,8 +445,7 @@ private actor ScreenMemoryIngestCoordinator {
         text: ocr.fullText
       )
     let embedding = hasSecret ? nil : try embeddingService.embed(summary)
-    try store.addRecord(
-      ScreenMemoryRecord(
+    let record = ScreenMemoryRecord(
         id: recordID.value.uuidString,
         capturedAt: input.capturedAt,
         appBundleID: input.appBundleID,
@@ -335,9 +458,115 @@ private actor ScreenMemoryIngestCoordinator {
         sensitivityLabel: hasSecret ? .secretDetected : .normal,
         embedding: embedding
       )
-    )
+    let videoWrite = try await appendVideoFrameIfConfigured(input)
+    try store.addRecord(record, videoWrite: videoWrite)
+    await scheduleStaleFinalizationIfNeeded()
     latestStoredRecordID = recordID
     return .stored(recordID)
+  }
+
+  func prepareVideoArchive() async throws {
+    try await recoverVideoArchiveIfNeeded()
+  }
+
+  func finalizeActiveVideoChunk() async throws {
+    try await recoverVideoArchiveIfNeeded()
+    staleFinalizationTask?.cancel()
+    staleFinalizationTask = nil
+    guard let videoArchive, let chunkID = await videoArchive.activeChunkID() else { return }
+    try store.markVideoChunkFinalizing(chunkID)
+    guard let finalized = try await videoArchive.finalizeActiveChunk(), finalized.chunkID == chunkID else {
+      throw ScreenMemoryArchiveError.videoFinalizationMismatch
+    }
+    guard try store.markVideoChunkFinalized(finalized) else {
+      throw ScreenMemoryArchiveError.videoFinalizationMismatch
+    }
+  }
+
+  func videoFrame(for recordID: ScreenMemoryRecordID) async throws -> ScreenMemoryVideoFrame? {
+    try await recoverVideoArchiveIfNeeded()
+    guard let videoArchive, let persisted = try store.videoFrame(recordID: recordID) else { return nil }
+    let imageData = try await videoArchive.loadFrame(at: persisted.location)
+    return persisted.publicFrame(imageData: imageData)
+  }
+
+  func videoFrames(from start: Date, through end: Date) async throws -> [ScreenMemoryVideoFrame] {
+    try await recoverVideoArchiveIfNeeded()
+    guard start <= end, let videoArchive else { return [] }
+    let persisted = try store.videoFrames(from: start.protocolTimestamp, through: end.protocolTimestamp)
+    var frames: [ScreenMemoryVideoFrame] = []
+    frames.reserveCapacity(persisted.count)
+    for frame in persisted {
+      let imageData = try await videoArchive.loadFrame(at: frame.location)
+      frames.append(frame.publicFrame(imageData: imageData))
+    }
+    return frames
+  }
+
+  private func appendVideoFrameIfConfigured(
+    _ input: ScreenMemoryCaptureInput
+  ) async throws -> ScreenMemoryVideoWriteOutcome? {
+    guard let videoArchive else { return nil }
+    guard let capturedAt = Self.captureDate(input.capturedAt) else {
+      throw ScreenMemoryArchiveError.invalidCaptureTimestamp
+    }
+    return try await videoArchive.appendFrame(imageData: input.imageData, capturedAt: capturedAt)
+  }
+
+  private func scheduleStaleFinalizationIfNeeded() async {
+    staleFinalizationTask?.cancel()
+    staleFinalizationTask = nil
+    guard let videoArchive, await videoArchive.activeChunkID() != nil else { return }
+    let delay = staleVideoChunkDelay
+    staleFinalizationTask = Task { [weak self] in
+      if delay > 0 {
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      }
+      guard !Task.isCancelled else { return }
+      try? await self?.finalizeActiveVideoChunk()
+    }
+  }
+
+  private func recoverVideoArchiveIfNeeded() async throws {
+    guard !didRecoverVideoArchive else { return }
+    guard let videoArchive else {
+      didRecoverVideoArchive = true
+      return
+    }
+
+    for candidate in try store.videoRecoveryCandidates() {
+      switch candidate.state {
+      case .active:
+        await videoArchive.discardChunk(candidate.chunkID)
+        try store.clearVideoMappings(chunkID: candidate.chunkID)
+      case .finalizing:
+        let state = await videoArchive.recoveryState(
+          for: candidate.chunkID,
+          expectedSampleCount: candidate.expectedSampleCount
+        )
+        if case .finalized(let sampleCount) = state,
+           sampleCount >= candidate.expectedSampleCount {
+          try store.markVideoChunkFinalized(
+            ScreenMemoryVideoChunkFinalization(
+              chunkID: candidate.chunkID,
+              sampleCount: sampleCount
+            )
+          )
+        } else {
+          await videoArchive.discardChunk(candidate.chunkID)
+          try store.clearVideoMappings(chunkID: candidate.chunkID)
+        }
+      case .finalized:
+        break
+      }
+    }
+    didRecoverVideoArchive = true
+  }
+
+  private static func captureDate(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
   }
 
   private func compactSummary(appName: String, windowTitle: String, text: String) -> String {

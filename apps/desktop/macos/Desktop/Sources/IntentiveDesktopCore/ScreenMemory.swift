@@ -383,6 +383,61 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
   }
 
   public func addRecord(_ record: ScreenMemoryRecord) throws {
+    try withTransaction {
+      try addRecordStatements(record)
+    }
+  }
+
+  func addRecord(
+    _ record: ScreenMemoryRecord,
+    videoWrite: ScreenMemoryVideoWriteOutcome?
+  ) throws {
+    try withTransaction {
+      try addRecordStatements(record)
+      guard let videoWrite else { return }
+      switch videoWrite {
+      case .rejected:
+        break
+      case .accepted(let location, let finalizedChunks):
+        try execute(
+          """
+          INSERT INTO screen_memory_video_chunks (chunk_id, state, created_at, finalized_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(chunk_id) DO UPDATE SET
+            state = excluded.state,
+            finalized_at = NULL
+          """,
+          bindings: [
+            .text(location.chunkID.value.uuidString),
+            .text(ScreenMemoryVideoChunkState.active.rawValue),
+            .text(record.capturedAt),
+            .null,
+          ]
+        )
+        try execute(
+          """
+          INSERT INTO screen_memory_video_frames (record_id, chunk_id, sample_ordinal, captured_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(record_id) DO UPDATE SET
+            chunk_id = excluded.chunk_id,
+            sample_ordinal = excluded.sample_ordinal,
+            captured_at = excluded.captured_at
+          """,
+          bindings: [
+            .text(record.id),
+            .text(location.chunkID.value.uuidString),
+            .int(location.sampleOrdinal),
+            .text(record.capturedAt),
+          ]
+        )
+        for finalized in finalizedChunks {
+          _ = try markVideoChunkFinalizedStatements(finalized)
+        }
+      }
+    }
+  }
+
+  private func addRecordStatements(_ record: ScreenMemoryRecord) throws {
     let embeddingJSON = try record.embedding.map { embedding in
       String(data: try encoder.encode(embedding), encoding: .utf8) ?? ""
     }
@@ -524,6 +579,183 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       """,
       bindings: [.text(id)]
     ).first
+  }
+
+  func markVideoChunkFinalizing(_ chunkID: ScreenMemoryVideoChunkID) throws {
+    try withTransaction {
+      try execute(
+        """
+        UPDATE screen_memory_video_chunks
+        SET state = ?, finalized_at = NULL
+        WHERE chunk_id = ? AND state = ?
+        """,
+        bindings: [
+          .text(ScreenMemoryVideoChunkState.finalizing.rawValue),
+          .text(chunkID.value.uuidString),
+          .text(ScreenMemoryVideoChunkState.active.rawValue),
+        ]
+      )
+    }
+  }
+
+  @discardableResult
+  func markVideoChunkFinalized(_ finalized: ScreenMemoryVideoChunkFinalization) throws -> Bool {
+    var didFinalize = false
+    try withTransaction {
+      didFinalize = try markVideoChunkFinalizedStatements(finalized)
+    }
+    return didFinalize
+  }
+
+  private func markVideoChunkFinalizedStatements(
+    _ finalized: ScreenMemoryVideoChunkFinalization
+  ) throws -> Bool {
+    try execute(
+      """
+      UPDATE screen_memory_video_chunks
+      SET state = ?, finalized_at = ?
+      WHERE chunk_id = ?
+        AND ? >= (
+          SELECT COALESCE(MAX(sample_ordinal), -1) + 1
+          FROM screen_memory_video_frames
+          WHERE chunk_id = ?
+        )
+      """,
+      bindings: [
+        .text(ScreenMemoryVideoChunkState.finalized.rawValue),
+        .text(Date().protocolTimestamp),
+        .text(finalized.chunkID.value.uuidString),
+        .int(finalized.sampleCount),
+        .text(finalized.chunkID.value.uuidString),
+      ]
+    )
+    guard let db else { throw ScreenMemoryStoreError.closed }
+    return sqlite3_changes(db) > 0
+  }
+
+  func clearVideoMappings(chunkID: ScreenMemoryVideoChunkID) throws {
+    try withTransaction {
+      try execute(
+        "DELETE FROM screen_memory_video_frames WHERE chunk_id = ?",
+        bindings: [.text(chunkID.value.uuidString)]
+      )
+      try execute(
+        "DELETE FROM screen_memory_video_chunks WHERE chunk_id = ?",
+        bindings: [.text(chunkID.value.uuidString)]
+      )
+    }
+  }
+
+  func videoRecoveryCandidates() throws -> [ScreenMemoryVideoRecoveryCandidate] {
+    try withStatement(
+      """
+      SELECT chunks.chunk_id, chunks.state, COALESCE(MAX(frames.sample_ordinal), -1) + 1
+      FROM screen_memory_video_chunks AS chunks
+      LEFT JOIN screen_memory_video_frames AS frames ON frames.chunk_id = chunks.chunk_id
+      WHERE chunks.state != ?
+      GROUP BY chunks.chunk_id, chunks.state
+      ORDER BY chunks.created_at ASC
+      """,
+      bindings: [.text(ScreenMemoryVideoChunkState.finalized.rawValue)]
+    ) { statement in
+      var candidates: [ScreenMemoryVideoRecoveryCandidate] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          guard
+            let uuid = UUID(uuidString: try columnText(statement, 0)),
+            let state = ScreenMemoryVideoChunkState(rawValue: try columnText(statement, 1))
+          else {
+            throw ScreenMemoryStoreError.invalidText
+          }
+          candidates.append(
+            ScreenMemoryVideoRecoveryCandidate(
+              chunkID: ScreenMemoryVideoChunkID(uuid),
+              state: state,
+              expectedSampleCount: Int(sqlite3_column_int(statement, 2))
+            )
+          )
+        } else if result == SQLITE_DONE {
+          return candidates
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
+  }
+
+  func videoFrame(recordID: ScreenMemoryRecordID) throws -> PersistedScreenMemoryVideoFrame? {
+    try queryVideoFrames(
+      """
+      WHERE records.id = ? AND chunks.state = ?
+      LIMIT 1
+      """,
+      bindings: [
+        .text(recordID.value.uuidString),
+        .text(ScreenMemoryVideoChunkState.finalized.rawValue),
+      ]
+    ).first
+  }
+
+  func videoFrames(from start: String, through end: String) throws -> [PersistedScreenMemoryVideoFrame] {
+    try queryVideoFrames(
+      """
+      WHERE frames.captured_at >= ? AND frames.captured_at <= ? AND chunks.state = ?
+      ORDER BY frames.captured_at ASC, frames.sample_ordinal ASC
+      """,
+      bindings: [
+        .text(start),
+        .text(end),
+        .text(ScreenMemoryVideoChunkState.finalized.rawValue),
+      ]
+    )
+  }
+
+  private func queryVideoFrames(
+    _ predicate: String,
+    bindings: [SQLiteBinding]
+  ) throws -> [PersistedScreenMemoryVideoFrame] {
+    try withStatement(
+      """
+      SELECT records.id, records.captured_at, records.app_bundle_id, records.app_name,
+             records.window_title, frames.chunk_id, frames.sample_ordinal
+      FROM screen_memory_video_frames AS frames
+      JOIN screen_memory_records AS records ON records.id = frames.record_id
+      JOIN screen_memory_video_chunks AS chunks ON chunks.chunk_id = frames.chunk_id
+      \(predicate)
+      """,
+      bindings: bindings
+    ) { statement in
+      var frames: [PersistedScreenMemoryVideoFrame] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          guard
+            let recordUUID = UUID(uuidString: try columnText(statement, 0)),
+            let chunkUUID = UUID(uuidString: try columnText(statement, 5))
+          else {
+            throw ScreenMemoryStoreError.invalidText
+          }
+          frames.append(
+            PersistedScreenMemoryVideoFrame(
+              recordID: ScreenMemoryRecordID(recordUUID),
+              capturedAt: try columnText(statement, 1),
+              appBundleID: try columnText(statement, 2),
+              appName: try columnText(statement, 3),
+              windowTitle: try columnText(statement, 4),
+              location: ScreenMemoryVideoFrameLocation(
+                chunkID: ScreenMemoryVideoChunkID(chunkUUID),
+                sampleOrdinal: Int(sqlite3_column_int(statement, 6))
+              )
+            )
+          )
+        } else if result == SQLITE_DONE {
+          return frames
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
   }
 
   public func addAudioMemoryRecord(_ record: AudioMemoryRecord) throws {
@@ -712,6 +944,31 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       )
       """
     )
+    try execute(
+      """
+      CREATE TABLE IF NOT EXISTS screen_memory_video_chunks (
+        chunk_id TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK(state IN ('active', 'finalizing', 'finalized')),
+        created_at TEXT NOT NULL,
+        finalized_at TEXT
+      )
+      """
+    )
+    try execute(
+      """
+      CREATE TABLE IF NOT EXISTS screen_memory_video_frames (
+        record_id TEXT PRIMARY KEY REFERENCES screen_memory_records(id) ON DELETE CASCADE,
+        chunk_id TEXT NOT NULL REFERENCES screen_memory_video_chunks(chunk_id) ON DELETE CASCADE,
+        sample_ordinal INTEGER NOT NULL CHECK(sample_ordinal >= 0),
+        captured_at TEXT NOT NULL,
+        UNIQUE(chunk_id, sample_ordinal)
+      )
+      """
+    )
+    try execute(
+      "CREATE INDEX IF NOT EXISTS screen_memory_video_frames_captured_at ON screen_memory_video_frames(captured_at)"
+    )
+    try execute("PRAGMA user_version = 3")
   }
 
   private func queryRecords(_ sql: String, bindings: [SQLiteBinding] = []) throws -> [ScreenMemoryRecord] {
@@ -783,6 +1040,17 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       guard result == SQLITE_DONE || result == SQLITE_ROW else {
         throw ScreenMemoryStoreError.stepFailed(errorMessage)
       }
+    }
+  }
+
+  private func withTransaction(_ body: () throws -> Void) throws {
+    try execute("BEGIN IMMEDIATE")
+    do {
+      try body()
+      try execute("COMMIT")
+    } catch {
+      try? execute("ROLLBACK")
+      throw error
     }
   }
 
@@ -885,6 +1153,38 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
   private var errorMessage: String {
     guard let db else { return "database closed" }
     return String(cString: sqlite3_errmsg(db))
+  }
+}
+
+enum ScreenMemoryVideoChunkState: String {
+  case active
+  case finalizing
+  case finalized
+}
+
+struct ScreenMemoryVideoRecoveryCandidate {
+  let chunkID: ScreenMemoryVideoChunkID
+  let state: ScreenMemoryVideoChunkState
+  let expectedSampleCount: Int
+}
+
+struct PersistedScreenMemoryVideoFrame {
+  let recordID: ScreenMemoryRecordID
+  let capturedAt: String
+  let appBundleID: String
+  let appName: String
+  let windowTitle: String
+  let location: ScreenMemoryVideoFrameLocation
+
+  func publicFrame(imageData: Data) -> ScreenMemoryVideoFrame {
+    ScreenMemoryVideoFrame(
+      recordID: recordID,
+      capturedAt: capturedAt,
+      appBundleID: appBundleID,
+      appName: appName,
+      windowTitle: windowTitle,
+      imageData: imageData
+    )
   }
 }
 

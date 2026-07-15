@@ -1,106 +1,121 @@
 import AppKit
 import AVFoundation
+import IntentiveDesktopCore
+import IntentiveDesktopNativeAdapters
+@testable import IntentiveDesktopOmiArchive
 import XCTest
 
-@testable import Omi_Computer
-
 final class RewindStorageVideoFrameExtractionTests: XCTestCase {
-  private var testUserId: String!
-  private var userDir: URL!
-
-  override func setUp() async throws {
-    try await super.setUp()
-
-    testUserId = "video-frame-test-\(UUID().uuidString)"
-    RewindDatabase.currentUserId = testUserId
-    try await RewindStorage.shared.initialize()
-
-    let appSupport = FileManager.default
-      .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-    userDir =
-      appSupport
-      .appendingPathComponent("Omi", isDirectory: true)
-      .appendingPathComponent("users", isDirectory: true)
-      .appendingPathComponent(testUserId, isDirectory: true)
-  }
-
-  override func tearDown() async throws {
-    if let userDir { try? FileManager.default.removeItem(at: userDir) }
-    RewindDatabase.currentUserId = nil
-    await RewindStorage.shared.reset()
-    try await super.tearDown()
-  }
-
-  func testLoadVideoFrameExtractsRequestedFrameOffsetFromMP4Chunk() async throws {
-    let relativePath = "2026-07-04/chunk_frame_selection.mp4"
-    let fullPath = try await createChunk(relativePath: relativePath, colors: [.red, .green, .blue], frameRate: 2.0)
-
-    XCTAssertTrue(FileManager.default.fileExists(atPath: fullPath.path), "precondition: MP4 chunk written")
-
-    let frame = try await RewindStorage.shared.loadVideoFrame(videoPath: relativePath, frameOffset: 1)
-    let center = try XCTUnwrap(centerPixel(in: frame))
-
-    XCTAssertGreaterThan(center.green, center.red)
-    XCTAssertGreaterThan(center.green, center.blue)
-  }
-
-  func testLoadVideoFrameUsesSampleOrdinalForLowCadenceChunks() async throws {
-    let relativePath = "2026-07-04/chunk_low_cadence_frame_selection.mp4"
-    let fullPath = try await createChunk(relativePath: relativePath, colors: [.red, .green, .blue], frameRate: 1.0 / 3.0)
-
-    XCTAssertTrue(FileManager.default.fileExists(atPath: fullPath.path), "precondition: MP4 chunk written")
-
-    let frame = try await RewindStorage.shared.loadVideoFrame(videoPath: relativePath, frameOffset: 1)
-    let center = try XCTUnwrap(centerPixel(in: frame))
-
-    XCTAssertGreaterThan(center.green, center.red)
-    XCTAssertGreaterThan(center.green, center.blue)
-  }
-
-  func testLoadVideoFrameReturnsNotFoundWhenFrameOffsetIsPastEnd() async throws {
-    let relativePath = "2026-07-04/chunk_missing_frame.mp4"
-    _ = try await createChunk(relativePath: relativePath, colors: [.red, .green, .blue], frameRate: 2.0)
-
-    do {
-      _ = try await RewindStorage.shared.loadVideoFrame(videoPath: relativePath, frameOffset: 99)
-      XCTFail("Expected missing frame offset to be reported as screenshotNotFound")
-    } catch RewindError.screenshotNotFound {
-      // Expected: mirrors ffmpeg select=eq(n,offset) producing no frame.
-    } catch {
-      XCTFail("Expected screenshotNotFound, got \(error)")
+  func testFailedPublicationClearsEncoderStateAndRemovesStagedMedia() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("VideoChunkEncoderFinalizationTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+    let encoder = try VideoChunkEncoder(
+      videosDirectory: root,
+      fileManager: FailingFinalizedMoveFileManager()
+    )
+    let firstWrite = try await encoder.addFrame(
+      image: try solidImage(color: .red),
+      timestamp: Date(timeIntervalSince1970: 1_000)
+    )
+    guard case .accepted(let firstLocation, _) = firstWrite else {
+      return XCTFail("Expected the fixture frame to be accepted")
     }
-  }
-
-  private func createChunk(relativePath: String, colors: [NSColor], frameRate: Double) async throws -> URL {
-    let maybeVideosDir = await RewindStorage.shared.getVideosDirectory()
-    let videosDir = try XCTUnwrap(maybeVideosDir)
-    let outputURL = videosDir.appendingPathComponent(relativePath)
-    try FileManager.default.createDirectory(
-      at: outputURL.deletingLastPathComponent(),
-      withIntermediateDirectories: true
+    let stagedURL = root.appendingPathComponent(
+      "\(firstLocation.chunkID.value.uuidString.lowercased()).partial.mp4"
     )
 
+    do {
+      _ = try await encoder.flushCurrentChunk()
+      XCTFail("Expected the injected publication failure")
+    } catch FinalizedMoveFixtureError.failed {
+      // Expected.
+    }
+
+    let activeAfterFailure = await encoder.activeChunkID()
+    XCTAssertNil(activeAfterFailure)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: stagedURL.path))
+
+    let retryWrite = try await encoder.addFrame(
+      image: try solidImage(color: .green),
+      timestamp: Date(timeIntervalSince1970: 1_001)
+    )
+    guard case .accepted(let retryLocation, _) = retryWrite else {
+      return XCTFail("Expected a new chunk after failed finalization")
+    }
+    XCTAssertNotEqual(retryLocation.chunkID, firstLocation.chunkID)
+    await encoder.discardChunk(retryLocation.chunkID)
+  }
+
+  func testNativeArchiveExtractsRequestedSampleOrdinalFromMP4() async throws {
+    try await assertSelectedMiddleFrame(frameRate: 2)
+  }
+
+  func testNativeArchiveUsesSampleOrdinalForLowCadenceMP4() async throws {
+    try await assertSelectedMiddleFrame(frameRate: 1.0 / 3.0)
+  }
+
+  func testNativeArchiveReturnsNotFoundPastLastSample() async throws {
+    let fixture = try await makeFixture(frameRate: 2)
+    do {
+      _ = try await fixture.archive.loadFrame(
+        at: ScreenMemoryVideoFrameLocation(chunkID: fixture.chunkID, sampleOrdinal: 99)
+      )
+      XCTFail("Expected an out-of-range sample ordinal to be unavailable")
+    } catch OmiScreenMemoryVideoArchiveError.frameNotFound {
+      // Expected.
+    }
+  }
+
+  private func assertSelectedMiddleFrame(frameRate: Double) async throws {
+    let fixture = try await makeFixture(frameRate: frameRate)
+    let data = try await fixture.archive.loadFrame(
+      at: ScreenMemoryVideoFrameLocation(chunkID: fixture.chunkID, sampleOrdinal: 1)
+    )
+    let center = try XCTUnwrap(centerPixel(in: data))
+    XCTAssertGreaterThan(center.green, center.red)
+    XCTAssertGreaterThan(center.green, center.blue)
+  }
+
+  private func makeFixture(
+    frameRate: Double
+  ) async throws -> (archive: OmiScreenMemoryVideoArchive, chunkID: ScreenMemoryVideoChunkID) {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RewindStorageVideoFrameExtractionTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+    let profile = try ScreenMemoryProfile(userID: "native-frame-fixture", rootURL: root)
+    let archive = try OmiScreenMemoryVideoArchive(profile: profile)
+    let chunkID = ScreenMemoryVideoChunkID(UUID())
+    let url = profile.videoArchiveURL.appendingPathComponent(
+      "\(chunkID.value.uuidString.lowercased()).mp4"
+    )
+    try await writeChunk(url: url, colors: [.red, .green, .blue], frameRate: frameRate)
+    return (archive, chunkID)
+  }
+
+  private func writeChunk(url: URL, colors: [NSColor], frameRate: Double) async throws {
     let width = 96
     let height = 64
-    let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-    writer.shouldOptimizeForNetworkUse = true
-
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-      AVVideoCodecKey: AVVideoCodecType.hevc,
-      AVVideoWidthKey: width,
-      AVVideoHeightKey: height,
-      AVVideoCompressionPropertiesKey: [
-        AVVideoExpectedSourceFrameRateKey: max(1, Int(ceil(frameRate))),
-        AVVideoAllowFrameReorderingKey: false,
-      ],
-    ])
+    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+    let input = AVAssetWriterInput(
+      mediaType: .video,
+      outputSettings: [
+        AVVideoCodecKey: AVVideoCodecType.hevc,
+        AVVideoWidthKey: width,
+        AVVideoHeightKey: height,
+        AVVideoCompressionPropertiesKey: [
+          AVVideoExpectedSourceFrameRateKey: max(1, Int(ceil(frameRate))),
+          AVVideoAllowFrameReorderingKey: false,
+        ],
+      ]
+    )
     input.expectsMediaDataInRealTime = true
-
     guard writer.canAdd(input) else {
-      throw XCTSkip("HEVC writer input is unavailable on this runner")
+      throw XCTSkip("System HEVC writer input is unavailable")
     }
     writer.add(input)
-
     let adaptor = AVAssetWriterInputPixelBufferAdaptor(
       assetWriterInput: input,
       sourcePixelBufferAttributes: [
@@ -110,9 +125,8 @@ final class RewindStorageVideoFrameExtractionTests: XCTestCase {
         kCVPixelBufferIOSurfacePropertiesKey as String: [:],
       ]
     )
-
     guard writer.startWriting() else {
-      throw RewindError.storageError("Failed to start test writer: \(writer.error?.localizedDescription ?? "unknown")")
+      throw XCTSkip("System HEVC encoder is unavailable: \(writer.error?.localizedDescription ?? "unknown")")
     }
     writer.startSession(atSourceTime: .zero)
 
@@ -120,44 +134,51 @@ final class RewindStorageVideoFrameExtractionTests: XCTestCase {
       while !input.isReadyForMoreMediaData {
         try await Task.sleep(nanoseconds: 10_000_000)
       }
-
-      let pixelBuffer = try createPixelBuffer(
+      let buffer = try pixelBuffer(
         width: width,
         height: height,
         color: color,
         adaptor: adaptor
       )
-      let time = CMTime(seconds: Double(index) / frameRate, preferredTimescale: 600)
-      guard adaptor.append(pixelBuffer, withPresentationTime: time) else {
-        throw RewindError.storageError("Failed to append test frame: \(writer.error?.localizedDescription ?? "unknown")")
+      guard adaptor.append(
+        buffer,
+        withPresentationTime: CMTime(
+          seconds: Double(index) / frameRate,
+          preferredTimescale: 600
+        )
+      ) else {
+        throw OmiScreenMemoryVideoArchiveError.writerFailed(
+          writer.error?.localizedDescription ?? "fixture append failed"
+        )
       }
     }
 
     input.markAsFinished()
-    let writerBox = TestAssetWriterBox(writer)
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      writerBox.writer.finishWriting {
-        if writerBox.writer.status == .completed {
+    let box = TestAssetWriterBox(writer)
+    try await withCheckedThrowingContinuation { continuation in
+      box.writer.finishWriting {
+        if box.writer.status == .completed {
           continuation.resume()
         } else {
-          let error = writerBox.writer.error?.localizedDescription ?? "unknown"
-          continuation.resume(throwing: RewindError.storageError("Failed to finish test writer: \(error)"))
+          continuation.resume(
+            throwing: OmiScreenMemoryVideoArchiveError.writerFailed(
+              box.writer.error?.localizedDescription ?? "fixture finalize failed"
+            )
+          )
         }
       }
     }
-
-    return outputURL
   }
 
-  private func createPixelBuffer(
+  private func pixelBuffer(
     width: Int,
     height: Int,
     color: NSColor,
     adaptor: AVAssetWriterInputPixelBufferAdaptor
   ) throws -> CVPixelBuffer {
-    var pixelBuffer: CVPixelBuffer?
+    var buffer: CVPixelBuffer?
     if let pool = adaptor.pixelBufferPool {
-      CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+      CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
     } else {
       CVPixelBufferCreate(
         nil,
@@ -165,46 +186,64 @@ final class RewindStorageVideoFrameExtractionTests: XCTestCase {
         height,
         kCVPixelFormatType_32BGRA,
         [kCVPixelBufferIOSurfacePropertiesKey as String: [:]] as CFDictionary,
-        &pixelBuffer
+        &buffer
       )
     }
-
-    let buffer = try XCTUnwrap(pixelBuffer)
-    CVPixelBufferLockBaseAddress(buffer, [])
-    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-
-    let context = try XCTUnwrap(CGContext(
-      data: CVPixelBufferGetBaseAddress(buffer),
-      width: width,
-      height: height,
-      bitsPerComponent: 8,
-      bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-      space: CGColorSpaceCreateDeviceRGB(),
-      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-    ))
-
+    let pixelBuffer = try XCTUnwrap(buffer)
+    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+    let context = try XCTUnwrap(
+      CGContext(
+        data: CVPixelBufferGetBaseAddress(pixelBuffer),
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+          | CGBitmapInfo.byteOrder32Little.rawValue
+      )
+    )
     context.setFillColor(color.cgColor)
     context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-    return buffer
+    return pixelBuffer
   }
 
-  private func centerPixel(in image: NSImage) -> (red: Int, green: Int, blue: Int)? {
-    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-      return nil
-    }
+  private func solidImage(color: NSColor) throws -> CGImage {
+    let size = NSSize(width: 96, height: 64)
+    let image = NSImage(size: size)
+    image.lockFocus()
+    color.setFill()
+    NSRect(origin: .zero, size: size).fill()
+    image.unlockFocus()
+    return try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+  }
 
+  private func centerPixel(in data: Data) -> (red: Int, green: Int, blue: Int)? {
+    guard
+      let image = NSImage(data: data),
+      let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    else { return nil }
     let bitmap = NSBitmapImageRep(cgImage: cgImage)
-    let x = max(0, bitmap.pixelsWide / 2)
-    let y = max(0, bitmap.pixelsHigh / 2)
-    guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
-      return nil
-    }
-
+    guard
+      let color = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?
+        .usingColorSpace(.deviceRGB)
+    else { return nil }
     return (
-      red: Int(color.redComponent * 255),
-      green: Int(color.greenComponent * 255),
-      blue: Int(color.blueComponent * 255)
+      Int(color.redComponent * 255),
+      Int(color.greenComponent * 255),
+      Int(color.blueComponent * 255)
     )
+  }
+}
+
+private enum FinalizedMoveFixtureError: Error {
+  case failed
+}
+
+private final class FailingFinalizedMoveFileManager: FileManager, @unchecked Sendable {
+  override func moveItem(at _: URL, to _: URL) throws {
+    throw FinalizedMoveFixtureError.failed
   }
 }
 

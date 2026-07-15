@@ -11,6 +11,7 @@ let package = Package(
     .library(name: "IntentiveDesktopCore", targets: ["IntentiveDesktopCore"]),
     .library(name: "IntentiveDesktopNativeAdapters", targets: ["IntentiveDesktopNativeAdapters"]),
     .library(name: "IntentiveDesktopNativeAssets", targets: ["IntentiveDesktopNativeAssets"]),
+    .library(name: "IntentiveDesktopOmiArchive", targets: ["IntentiveDesktopOmiArchive"]),
   ],
   dependencies: [
     .package(
@@ -28,9 +29,38 @@ let package = Package(
       path: "Sources/IntentiveDesktopCore"
     ),
     .target(
+      name: "IntentiveDesktopOmiArchive",
+      dependencies: ["IntentiveDesktopCore"],
+      path: "Sources/Rewind/Core",
+      exclude: [
+        "ActionItemModels.swift",
+        "ActionItemStorage.swift",
+        "GoalRecord.swift",
+        "GoalStorage.swift",
+        "MemoryModels.swift",
+        "MemoryStorage.swift",
+        "ObservationRecord.swift",
+        "ProactiveModels.swift",
+        "ProactiveStorage.swift",
+        "RewindDatabase.swift",
+        "RewindModels.swift",
+        "RewindOCRService.swift",
+        "StagedTaskStorage.swift",
+        "TableDocumented.swift",
+        "TaskChatMessageStorage.swift",
+        "TranscriptionModels.swift",
+        "TranscriptionStorage.swift",
+      ],
+      sources: [
+        "VideoChunkEncoder.swift",
+        "RewindStorage.swift",
+      ]
+    ),
+    .target(
       name: "IntentiveDesktopNativeAdapters",
       dependencies: [
         "IntentiveDesktopCore",
+        "IntentiveDesktopOmiArchive",
         .product(name: "RunAnywhere", package: "runanywhere-sdks"),
         .product(name: "RunAnywhereONNX", package: "runanywhere-sdks"),
         .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
@@ -90,7 +120,12 @@ let package = Package(
         "Resources/microphone-settings.png",
         "Resources/permissions.gif",
         "Resources/tray_icon.png",
-        "Rewind",
+        // The renovated Omi encoder/storage files compile in the dedicated
+        // IntentiveDesktopOmiArchive target above. The remaining database/UI/
+        // brain assets stay shelved until their bounded renovation slices.
+        "Rewind/Core",
+        "Rewind/Services",
+        "Rewind/UI",
         "ScreenActivitySyncService.swift",
         "SileroPushToTalkVADPredictor.swift",
         "TranscriptionRetryService.swift",
@@ -148,6 +183,7 @@ let package = Package(
         "IntentiveDesktopCore",
         "IntentiveDesktopNativeAdapters",
         "IntentiveDesktopNativeAssets",
+        "IntentiveDesktopOmiArchive",
       ],
       path: "Sources/Intentive"
     ),
@@ -157,6 +193,7 @@ let package = Package(
         "IntentiveDesktopCore",
         "IntentiveDesktopNativeAdapters",
         "IntentiveDesktopNativeAssets",
+        "IntentiveDesktopOmiArchive",
       ],
       path: "Tests",
       exclude: [
@@ -172,7 +209,6 @@ let package = Package(
         "RewindEncoderDiagnosticsSourceTests.swift",
         "RewindOCRQualityTests.swift",
         "RewindRetentionCleanupTests.swift",
-        "RewindStorageVideoFrameExtractionTests.swift",
         "ScreenCaptureWebPTests.swift",
         "ScreenPrivacyExclusionTests.swift",
         "ShortcutSettingsTests.swift",
