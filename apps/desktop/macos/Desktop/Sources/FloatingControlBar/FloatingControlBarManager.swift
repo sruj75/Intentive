@@ -20,8 +20,7 @@ import SwiftUI
 public final class FloatingControlBarManager {
     public static let shared = FloatingControlBarManager()
 
-    /// Preserved so the salvaged view's "snooze 2h" affordance keeps type-checking;
-    /// snoozing itself is inert in Intentive (see `snooze(for:)`).
+    /// Omi's bounded notification snooze interval, retained for proactive PMB.
     public static let snoozeTwoHoursDuration: TimeInterval = 2 * 60 * 60
 
     private var window: FloatingControlBarWindow?
@@ -37,6 +36,16 @@ public final class FloatingControlBarManager {
     /// the *next* companion message (this question's answer), never the previous
     /// turn's answer already sitting in the store.
     private var lastCompanionReplyId: String?
+    private let proactiveSnooze = ProactivePresentationSnooze()
+
+    public var isConversationEngaged: Bool {
+        guard let window else { return false }
+        return window.isVisible && window.state.showingAIConversation
+    }
+
+    public var isProactivePresentationSnoozed: Bool {
+        proactiveSnooze.isActive
+    }
 
     /// The floating bar's transcript view. Fed from Core's `MessageStore` via
     /// `refreshMessages()`; the salvaged view reads it through `sharedFloatingProvider`.
@@ -157,9 +166,16 @@ public final class FloatingControlBarManager {
             message: body,
             assistantId: "intentive"
         )
+        // Preserve Omi's real four-window, click-through edge glow around the
+        // app the user was working in before Intentive takes key focus.
+        OverlayService.shared.showGlowAroundActiveWindow(colorMode: .focused)
         window.normalizeForTemporaryShow()
         window.makeKeyAndOrderFront(nil)
-        window.showNotification(notification)
+        // Resolve the Omi resize synchronously before applying Intentive's
+        // contextual top-right anchor; an in-flight top-anchor animation would
+        // otherwise race the final placement back toward the old pill origin.
+        window.showNotification(notification, animated: false)
+        window.positionProactiveNudgeTopRight()
     }
 
     // MARK: - Window lifecycle
@@ -315,15 +331,14 @@ public final class FloatingControlBarManager {
         )
     }
 
-    // MARK: - Inert presentation hooks (referenced by salvaged view/window/state)
+    // MARK: - Preserved presentation hooks
 
-    // Intentive has no snooze, no queued-notification carousel, and no streaming
-    // agent turns to re-observe. These keep Omi's real chrome compiling and behave
-    // as no-ops; the affordances that call them are removed in the CP5 tidy pass.
-
-    func snooze(for duration: TimeInterval) {}
+    func snooze(for duration: TimeInterval) {
+        proactiveSnooze.snooze(for: duration)
+        dismissCurrentNotification()
+    }
     func dismissCurrentNotification() {
-        window?.state.currentNotification = nil
+        window?.dismissNotification()
     }
     func flushQueuedNotificationsIfPossible() {}
     func cancelChat(keepVoiceAlive: Bool = false, stopProvider: Bool = false) {}
@@ -356,6 +371,14 @@ public final class FloatingBarOverlaySink: DesktopOverlaySink {
 
     public init(manager: FloatingControlBarManager) {
         self.manager = manager
+    }
+
+    public var isEngaged: Bool {
+        MainActor.assumeIsolated { manager.isConversationEngaged }
+    }
+
+    public var isSnoozed: Bool {
+        MainActor.assumeIsolated { manager.isProactivePresentationSnoozed }
     }
 
     public func showNudge(body: String) {

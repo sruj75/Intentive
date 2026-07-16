@@ -1806,6 +1806,21 @@ class FloatingControlBarWindow: NSPanel, NSWindowDelegate {
         resizeAnchored(to: targetSize, makeResizable: false, animated: animated, anchorTop: true)
     }
 
+    /// PMB contextual presentation uses Omi's notification chrome but anchors it
+    /// at the working screen's top-right rather than turning the menu-bar notch
+    /// into a second notification center.
+    func positionProactiveNudgeTopRight() {
+        guard let screen = screenForPlacement else { return }
+        setFrame(
+            FloatingControlBarGeometry.proactiveNudgeFrame(
+                size: frame.size,
+                visibleFrame: screen.visibleFrame,
+                margin: 20
+            ),
+            display: true
+        )
+    }
+
     func dismissNotification(animated: Bool = true) {
         guard state.currentNotification != nil else { return }
         state.currentNotification = nil

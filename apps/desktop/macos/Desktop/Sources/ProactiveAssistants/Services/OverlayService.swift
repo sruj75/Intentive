@@ -15,15 +15,9 @@ class OverlayService {
   /// Show the glow effect around the currently active window
   /// - Parameter colorMode: The color mode for the glow (focused = green, distracted = red)
   func showGlowAroundActiveWindow(colorMode: GlowColorMode = .focused) {
-    // Check if glow overlay is enabled in settings
-    guard AssistantSettings.shared.glowOverlayEnabled else {
-      log("Glow overlay disabled in settings, skipping")
-      return
-    }
-
     // Get the active window's frame
     guard let windowFrame = getActiveWindowFrame() else {
-      log("Could not get active window frame for glow effect")
+      NSLog("Intentive PMB: could not resolve active window for edge glow")
       return
     }
 
@@ -36,14 +30,6 @@ class OverlayService {
   ///   - colorMode: The color mode for the glow (focused = green, distracted = red)
   ///   - isPreview: If true, bypasses the settings check (for preview mode)
   func showGlow(around frame: NSRect, colorMode: GlowColorMode, isPreview: Bool = false) {
-    // Check if glow overlay is enabled in settings (unless this is a preview)
-    if !isPreview {
-      guard AssistantSettings.shared.glowOverlayEnabled else {
-        log("Glow overlay disabled in settings, skipping")
-        return
-      }
-    }
-
     // Dismiss any existing overlay
     dismissOverlay()
 
@@ -55,7 +41,7 @@ class OverlayService {
 
       // Create the SwiftUI glow view for this edge
       let glowView = GlowEdgeView(edge: edge, colorMode: colorMode)
-      let hostingView = NSHostingView(rootView: glowView.withFontScaling())
+      let hostingView = NSHostingView(rootView: glowView)
       hostingView.frame = edgeWindow.contentView?.bounds ?? .zero
       hostingView.autoresizingMask = [.width, .height]
 
@@ -68,9 +54,7 @@ class OverlayService {
       edgeWindows[edge] = edgeWindow
     }
 
-    log(
-      "Showing \(colorMode == .focused ? "green" : "red") edge glow effect around window at \(frame)\(isPreview ? " (preview)" : "")"
-    )
+    NSLog("Intentive PMB: showing edge glow around %@", NSStringFromRect(frame))
 
     // Auto-dismiss after animation completes
     dismissTask = Task {
@@ -132,7 +116,7 @@ class OverlayService {
 
     guard focusResult == .success, let windowElement = focusedWindow else {
       if focusResult == .apiDisabled || focusResult == .cannotComplete {
-        log(
+        NSLog(
           "ACCESSIBILITY_AX: getWindowFrameViaAccessibility failed with \(focusResult.rawValue) — permission may be stuck"
         )
       }

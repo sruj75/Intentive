@@ -187,6 +187,33 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertEqual(received.first?.viaPostMessageBack, true)
   }
 
+  func testCompanionMessageAcknowledgesAfterLiveRenderSchedulingHandler() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    var sentTypesObservedByHandler: [String] = []
+    adapter.onCompanionMessage = { _ in
+      sentTypesObservedByHandler = socket.sentTypes
+    }
+    try adapter.connect(routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "jwt"))
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        CompanionMessage(
+          messageId: "pmb-render-order",
+          body: "Schedule me first",
+          emittedAt: Date().protocolTimestamp,
+          viaPostMessageBack: true
+        )
+      )
+    )
+
+    XCTAssertFalse(sentTypesObservedByHandler.contains("delivery_ack"))
+    XCTAssertEqual(socket.sentTypes.last, "delivery_ack")
+  }
+
   func testPresenceUpdateMatchesStrictProtocolShape() throws {
     let socket = FakeRuntimeSocket()
     let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")

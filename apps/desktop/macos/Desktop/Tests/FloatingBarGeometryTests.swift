@@ -20,6 +20,16 @@ final class FloatingBarGeometryTests: XCTestCase {
         XCTAssertEqual(frame.size, compactSize)
     }
 
+    func testProactiveNudgeFrameIsContextualTopRightInsideVisibleFrame() {
+        let frame = FloatingControlBarGeometry.proactiveNudgeFrame(
+            size: NSSize(width: 430, height: 156),
+            visibleFrame: visibleFrame,
+            margin: 20
+        )
+
+        XCTAssertEqual(frame, NSRect(x: 990, y: 724, width: 430, height: 156))
+    }
+
     func testPTTExpansionKeepsCompactPillCenter() {
         let compactFrame = FloatingControlBarGeometry.defaultPillFrame(
             size: compactSize,

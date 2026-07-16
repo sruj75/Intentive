@@ -1,14 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Which edge of the target window this glow window represents
-enum GlowEdge {
-  case top
-  case bottom
-  case left
-  case right
-}
-
 /// A transparent, click-through window that displays glow on one edge of a target window.
 /// By using 4 separate edge windows positioned AROUND (not on top of) the target window,
 /// we avoid blocking hover events in the target window's content area.

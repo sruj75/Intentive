@@ -255,8 +255,8 @@ public final class RuntimeAdapter: RuntimeChatClient {
       messageStore.prependServerPage(response.sessionSnapshot)
     case .companionMessage(let companion):
       messageStore.appendCompanion(companion)
-      try acknowledge(messageId: companion.messageId)
       onCompanionMessage?(companion)
+      try acknowledge(messageId: companion.messageId)
     case .runtimeError(let error):
       status = .failed(error.message)
     }

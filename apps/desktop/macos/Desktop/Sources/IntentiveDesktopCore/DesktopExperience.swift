@@ -266,6 +266,8 @@ public protocol DesktopNotificationSink: AnyObject {
 }
 
 public protocol DesktopOverlaySink: AnyObject {
+  var isEngaged: Bool { get }
+  var isSnoozed: Bool { get }
   func showNudge(body: String)
 }
 
@@ -281,11 +283,34 @@ public final class RecordingNotificationSink: DesktopNotificationSink {
 
 public final class RecordingOverlaySink: DesktopOverlaySink {
   public private(set) var nudges: [String] = []
+  public var isEngaged: Bool
+  public var isSnoozed: Bool
 
-  public init() {}
+  public init(isEngaged: Bool = false, isSnoozed: Bool = false) {
+    self.isEngaged = isEngaged
+    self.isSnoozed = isSnoozed
+  }
 
   public func showNudge(body: String) {
     nudges.append(body)
+  }
+}
+
+public final class ProactivePresentationSnooze {
+  private let now: () -> Date
+  private var snoozedUntil: Date?
+
+  public init(now: @escaping () -> Date = Date.init) {
+    self.now = now
+  }
+
+  public var isActive: Bool {
+    guard let snoozedUntil else { return false }
+    return now() < snoozedUntil
+  }
+
+  public func snooze(for duration: TimeInterval) {
+    snoozedUntil = now().addingTimeInterval(max(0, duration))
   }
 }
 
@@ -303,7 +328,9 @@ public final class EffectRunner {
 
   public func handle(_ message: CompanionMessage) throws {
     guard message.viaPostMessageBack else { return }
-    overlay.showNudge(body: message.body)
+    if !overlay.isEngaged, !overlay.isSnoozed {
+      overlay.showNudge(body: message.body)
+    }
     try runtimeClient.acknowledge(messageId: message.messageId)
   }
 }
