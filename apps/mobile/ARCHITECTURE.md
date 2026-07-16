@@ -1,85 +1,75 @@
 # Mobile Client Architecture
 
-## Current composition
+## Bird's-eye Overview
 
-The Mobile Client currently mounts one scene-driven Expo experience. It is a real frontend chassis with local interaction behavior and replaceable visuals, but intentionally has no production electronics behind it.
+The Mobile Client is an iPhone-first Expo deployable with two orthogonal structures:
+
+- Expo Router owns navigation zones: `(onboarding)` serves A–D at `/`; `(main)` serves E–L at `/chat`.
+- Layered domains own product behavior through `types → config → repo → service → runtime → ui`.
+
+The mounted frontend is local and in-memory. It preserves the A–L interaction contract while production auth, Control Plane, notifications, telemetry, and Agent Runtime adapters remain unmounted.
 
 ```text
-Expo Router root
-      │
-      ▼
-ExperienceProvider ── owns one LocalExperienceController per cold launch
-      │
-      ▼
-ExperienceApp
-      ├── auth
-      ├── name (+ validation variant)
-      ├── friends intro
-      ├── permissions intro
-      ├── education deck (five states)
-      └── chat
-           ├── welcome mode (E)
-           ├── ready mode (K/L)
-           ├── drawer overlay (F)
-           └── settings overlay (G)
+app/(onboarding) ──> OnboardingEntry ──> auth + onboarding
+                                            │
+                                            └── ProfileStore ──────────┐
+                                                                      │
+app/(main)/chat ──> ChatEntry ──> welcome | education | ready <──────┘
+                                      │
+                                      ├── Account settings UI
+                                      └── ConversationSession
+                                              └── local runtime adapter
 ```
 
-E and K are deliberately one `chat` scene. Education changes `chatMode` from `welcome` to `ready`; it does not navigate to a second chat implementation.
+`(onboarding)` and `(main)` are navigation zones, not business domains. B2, K2, education pages, drawer/settings, F/G overlays, and L1–L4 remain component or domain-session state rather than routes.
 
-## Deep frontend module
+## Codemap
 
-`src/experience/controller.ts` hides scene transitions, name validation, overlays, session settings, education navigation, composer state, deterministic response timing, reset, and cleanup behind:
+- `app/_layout.tsx` — root gesture and in-memory profile composition.
+- `app/(onboarding)/` — headerless `/` route for A–D.
+- `app/(main)/` — headerless `/chat` route for E–L.
+- `src/entrypoints/` — cross-domain composition and Router replacement callbacks only.
+- `src/domains/auth/` — local authentication presentation for A; production adapters remain in its service layer but are unmounted.
+- `src/domains/onboarding/` — B–D journey types, copy, validation/controller, Education Deck, and UI.
+- `src/domains/chat/` — Conversation Timeline Item, local conversation contract/runtime, drawer, composer, and shared E/K/L surface.
+- `src/domains/account/` — settings copy and session-only settings/logout presentation.
+- `src/domains/notifications/` — dormant notification registration types, ports, and services.
+- `src/providers/profile/` — one non-durable Profile Store shared across Router zones.
+- `src/providers/account-state/`, `launch-state/`, `telemetry/` — dormant production provider seams.
+- `src/design/` — global theme, brand identity, and prop-only visual primitives.
+- `test/` — pure domain/session tests, Router boundary tests, dormant-adapter tests, and the unchanged 19-snapshot A–L journey.
 
-```ts
-interface ExperienceController {
-  getSnapshot(): ExperienceSnapshot;
-  subscribe(listener: () => void): () => void;
-  dispatch(event: ExperienceEvent): void;
-  dispose(): void;
-}
-```
+## Architectural Invariants
 
-Screens know only the immutable snapshot and events. They do not own journey sequencing or timers.
+- Within a domain, imports depend only on the same or a lower layer in `types → config → repo → service → runtime → ui`.
+- Cross-domain access targets public `types/` contracts or is composed from `src/entrypoints/`; one domain never reaches into another domain's internal service/runtime/UI.
+- Allowed Mobile `src/` roots are exactly `domains`, `providers`, `entrypoints`, `design`, and `index.ts`. Domain layers are exactly `types`, `config`, `repo`, `service`, `runtime`, `ui`, plus an explicit domain-local `providers` seam.
+- `app/` contains routes and layouts only. Routes render an entrypoint and own no journey behavior.
+- E and K are `welcome` and `ready` modes of one conversation surface. Education is a mode between them, not a second chat implementation.
+- `ConversationTimelineItem` is UI-owned. Protocol or server records must be translated before reaching visual components.
+- `ConversationSession` is the chat runtime seam: `getSnapshot`, `subscribe`, `send`, and `dispose`. Timers are cancellable on replacement turns and disposal.
+- Profile and account settings are memory-only. Cold launch always starts at A; logout resets profile state and replaces to `/`.
+- Mounted code performs no auth, permissions, Contacts, notification, HTTP, WebSocket, SecureStore, durable storage, telemetry, Control Plane, or Agent Runtime calls.
+- A–L copy, interactions, test IDs, and 390×844 snapshots are regression contracts during this architecture-only refactor.
 
-The UI timeline uses `ConversationTimelineItem`, a frontend union for capability cards, suggestion groups, user messages, Companion messages, and activity indicators. Future Protocol or Runtime Adapter data must be translated at an adapter seam into this model; Protocol shapes must not leak into visual components.
+These rules are enforced by the Intentive architecture ESLint plugin, including `mobile-source-structure`, layer direction, cross-domain/deployable checks, and Providers-only cross-cutting access.
 
-## Replaceable layer
+## Boundaries
 
-- `content.ts` owns authentication copy, intro copy, education definitions, drawer/settings labels, suggestions, capability content, and scripted responses.
-- `theme.ts` owns the light iPhone typography, colors, spacing, radii, shadows, and motion values.
-- `ui/` owns reusable primitives, scenes, overlays, education, and the shared conversation surface.
+- Router boundary: onboarding completion writes the in-memory Profile Store and calls `router.replace("/chat")`; logout resets it and calls `router.replace("/")`.
+- Profile boundary: `ProfileStore` exposes `getSnapshot`, `subscribe`, `setName`, and `reset`; it has no persistence adapter.
+- Onboarding boundary: `OnboardingJourneyController` owns B–D transitions and name validation; `EducationDeckController` owns slide navigation, skip, completion, and reset.
+- Conversation boundary: chat UI owns composer text, focus, gestures, and overlays; the injected `ConversationSession` owns timeline projection and local reply timing.
+- Account boundary: account UI owns settings copy and session-only preferences; composition passes only callbacks and the proactive-suggestions presentation value.
+- Design boundary: `src/design/` is domain-agnostic and accepts props; domain-specific copy stays in each domain's `config/` layer.
+- Production boundary: existing auth, Runtime Adapter, Control Plane, notification, and telemetry modules remain source-controlled and tested but unreachable from the mounted route-to-entrypoint tree.
 
-Changing Huracán/Genie into Aventador/Intentive should primarily replace the content/theme/media layer and extend adapter inputs, not rewrite controller or scene composition.
+Future production reconnection must supply adapters at the existing domain/provider seams and translate Runtime data into `ConversationTimelineItem`. It must not bypass Providers, add durable Mobile Conversation History, or put product logic in routes.
 
-## Local behavior boundary
+## Cross-cutting Concerns
 
-The mounted tree may perform only local, in-memory work:
-
-- validate and normalize a full name;
-- transition scenes and overlays;
-- update session-only settings;
-- populate and submit the composer;
-- advance through thinking, composing, and scripted reply phases with cancellable timers.
-
-It must not import or call auth providers, permissions, Contacts, notifications, fetch, WebSocket, SecureStore, persistence, telemetry, Control Plane, or Agent Runtime modules.
-
-## Dormant production adapters
-
-The following existing modules remain source-controlled and tested where their tests are pure, but are unmounted:
-
-- auth services and Neon client;
-- launch/account Control Plane sources and projections;
-- Protocol Runtime Adapter and development transport;
-- message store, conversation reducer, and routing client;
-- notification registration modules;
-- telemetry provider.
-
-Reconnection will require an explicit adapter translating production state and Runtime events into `ExperienceSnapshot` and `ConversationTimelineItem`. It must preserve the controller/UI boundary and must not revive route-per-gate coupling.
-
-## Test axes
-
-- `node:test`: pure controller and dormant production adapters.
-- Jest + React Native Testing Library: complete 390×844 journey, overlays, variants, keyboard/composer behavior, local timers, reset, and zero-call capability assertions.
-- Simulator: final visual/gesture/keyboard walkthrough for the reference states.
-
-The final mechanical gate is `pnpm harness --scope apps/mobile`.
+- Auth, telemetry, and feature flags enter through `packages/providers/` or an explicit deployable/domain provider seam; mounted Huracán code initializes none of them.
+- Safe areas, keyboard behavior, gestures, and motion use Expo-compatible React Native primitives and remain responsive across iPhone sizes.
+- Disabled capabilities remain visible and accessibility-disabled until a separately approved integration mounts them.
+- Pure behavior runs under `node:test`; Router/UI behavior and golden output run under Jest with React Native Testing Library.
+- Required gates use Node 24 or newer: `pnpm lint:architecture:test`, `pnpm docs:check`, `pnpm lint`, and `pnpm harness --scope apps/mobile`.

@@ -1,6 +1,6 @@
 # Scene-driven local frontend foundation
 
-Status: accepted
+Status: superseded by [ADR 0023](0023-mobile-two-zone-layered-frontend.md)
 
 Date: 2026-07-15
 
@@ -21,6 +21,8 @@ Do not mount authentication, Control Plane, permissions, Contacts, notifications
 Remove the obsolete route groups, presentation components, visual assets, assistant-ui dependency/workarounds, Manrope stack, and tests that asserted the superseded UI.
 
 ## Consequences
+
+The behavior and presentation decisions below remain historical rationale. ADR 0023 supersedes the single-controller catch-all ownership model with layered domains and two navigation zones.
 
 - The complete A-to-L experience is deterministic, resettable, and testable without external systems.
 - Future Intentive work can replace content/theme/media without rebuilding the journey chassis.

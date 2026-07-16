@@ -1,42 +1,40 @@
 # Mobile Client
 
-The iPhone-first Expo client at `apps/mobile/`. For monorepo-wide language, read [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md).
+The iPhone-first client at `apps/mobile/`. For monorepo-wide language, read [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md).
 
-## Current phase
+## Mounted frontend language
 
-The mounted product is the **Local Experience**: a Genie-inspired frontend foundation used to approve the A-to-L journey before Intentive content and production wiring return. Everything is in-memory and reconstructs from A on cold launch.
+**Mobile Client**:
+The iPhone-first Intentive client owned by this deployable. Expo is its framework, not its product name.
+_Avoid_: Expo app, mobile app
 
-Existing auth, Control Plane, Protocol, notification, telemetry, and Agent Runtime adapter modules are **Dormant Production Adapters**. Their vocabulary below remains canonical for later reconnection, but they are not capabilities of the mounted experience.
+**Navigation Zone**:
+An Expo Router grouping that selects a top-level journey without claiming business ownership. The Mobile Client has `(onboarding)` for A–D and `(main)` for E–L.
+_Avoid_: route domain, screen domain
 
-## Mounted-experience language
+**Onboarding Journey**:
+The in-memory B–D sequence after local authentication selection: full name, friends introduction, and permissions introduction. Its controller owns validation and transitions; the route does not.
+_Avoid_: onboarding router, route-per-gate flow
 
-**Local Experience**:
-The scene-driven, frontend-only A-to-L journey mounted by `app/index.tsx`. It renders real controls and local interactions but performs no authentication, permissions, Contacts, network, notification, persistence, or Runtime work.
-_Avoid_: demo screens, cardboard prototype, mock app
-
-**Experience Controller**:
-The deep local module that maps **Experience Events** into an immutable **Experience Snapshot**. It owns sequencing, validation, overlays, session settings, education progress, composer state, response timers, reset, and cleanup.
-_Avoid_: navigation state, screen reducer, onboarding router
-
-**Experience Snapshot**:
-The complete in-memory UI state exposed by the **Experience Controller**: scene, chat mode, name, education index, overlay, settings, composer, timeline, and chat phase. It is never durable.
-_Avoid_: session state, app state, backend state
-
-**Experience Event**:
-A user or local-timer intent dispatched to the **Experience Controller**. Visual components dispatch events instead of choosing the next scene themselves.
-_Avoid_: route action, API action
+**Profile Store**:
+The non-durable provider seam carrying normalized full name, first name, and initials between Navigation Zones. Logout resets it; cold launch reconstructs it empty.
+_Avoid_: user database, persisted profile
 
 **Chat Mode**:
-The two states of the single chat scene: `welcome` is reference E and `ready` is reference K/L. Education changes the mode; it does not replace the chat surface.
-_Avoid_: welcome screen, second chat screen, chat route
+The presentation state of the shared chat surface: `welcome`, `education`, or `ready`. Reference E and K are the `welcome` and `ready` modes of the same component.
+_Avoid_: second chat screen, ready route
 
 **Education Deck**:
-Five configurable frontend scenes explaining context, social reminders, memory, taste, and messages. It supports Continue, skip, and horizontal swipe. Settings can replay it.
-_Avoid_: onboarding gate, feature routes
+Five configurable frontend scenes explaining context, social reminders, memory, taste, and messages. It supports Continue, skip, horizontal swipe, and settings replay.
+_Avoid_: feature routes, onboarding gate
 
 **Conversation Timeline Item**:
-The UI-owned union rendered by the conversation surface: capability card, suggestion group, user message, Companion message, or activity indicator. Future Runtime events must translate into this union.
+The UI-owned union rendered by the conversation surface: capability card, suggestion group, user message, Companion message, or activity indicator. Runtime data must translate into this union.
 _Avoid_: Protocol message in UI, server record in UI
+
+**Conversation Session**:
+The replaceable chat runtime contract exposing `getSnapshot`, `subscribe`, `send`, and `dispose`. The mounted implementation is deterministic and in-memory.
+_Avoid_: global controller, chat singleton
 
 **Composer**:
 The persistent bottom message control in the shared chat surface. Suggestions populate it and keyboard Send submits locally. Attachment and microphone affordances are visible but disabled.
@@ -46,44 +44,36 @@ _Avoid_: input bar, footer, text box
 The deterministic frontend sequence `user_sent → thinking → composing → replied`. Its timers are cancellable and it never calls the Agent Runtime.
 _Avoid_: fake Runtime, simulated API call
 
-**Replaceable Content**:
-The typed Genie-facing manifest in `src/experience/content.ts`: copy, education definitions, suggestions, capability content, and local replies.
-_Avoid_: hard-coded screen copy
-
-**Replaceable Theme**:
-The light iPhone token set in `src/experience/theme.ts`: color, typography, spacing, radii, shadow intent, and motion.
-_Avoid_: per-screen styles, Genie skin
+**Dormant Production Adapters**:
+Stable auth, Control Plane, Protocol, notification, and telemetry modules retained for later reconnection but unreachable from mounted entrypoints. Their presence does not imply a mounted capability.
+_Avoid_: dead code, active production wiring
 
 ## Dormant production language
-
-**Dormant Production Adapters**:
-Stable source modules retained for later reconnection but unreachable from the mounted `app/` → `src/experience/` import tree. Their presence does not imply the capability works.
-_Avoid_: dead code, active backend wiring
 
 **Auth Adapter**:
 The dormant boundary that hides concrete authentication providers and exposes sign-in, sign-out, and User JWT access.
 
 **Launch State Resolver**:
-The dormant pure function that maps Control-Plane-owned Pre-Chat Gate truth to a Launch Destination. It is not mounted during the Local Experience phase.
+The dormant pure function that maps Control-Plane-owned Pre-Chat Gate truth to a Launch Destination.
 
 **Runtime Adapter**:
 The dormant Mobile-internal Protocol WebSocket module. It owns handshake, ordering, reconnect recovery, delivery reconciliation, and the in-memory Message Store.
 
 **Message Store**:
-The dormant Runtime Adapter’s transient projection of server-truth Conversation History. It remains non-durable.
+The dormant Runtime Adapter's transient projection of server-truth Conversation History. It remains non-durable.
 
 **Control Plane Source**:
 A dormant account or Launch State reader backed by Control Plane HTTP contracts.
 
 **Telemetry**:
-The dormant errors-only Sentry provider seam. The Local Experience does not initialize it.
+The dormant errors-only Sentry provider seam. The mounted Huracán frontend does not initialize it.
 
 ## Relationships
 
-- Expo Router mounts one **Local Experience** and owns no journey decisions.
-- The **Experience Controller** publishes one **Experience Snapshot**; UI components render it and dispatch **Experience Events**.
-- Reference E and K share one component and differ only by **Chat Mode**.
-- The **Education Deck** transitions `welcome` to `ready`; replay does not create another chat surface.
-- The conversation surface renders only **Conversation Timeline Item** values.
-- **Replaceable Content** and **Replaceable Theme** are the intended Huracán-to-Intentive renovation seams.
-- **Dormant Production Adapters** may be reconnected only through a future translation boundary into the controller/timeline model.
+- Expo Router selects a Navigation Zone; entrypoints compose domains and own no validation, timers, persistence, or domain records.
+- The Onboarding Journey writes the Profile Store before replacing to `/chat`.
+- The Education Deck changes Chat Mode without creating a route or second chat surface.
+- Chat UI owns composer and overlay presentation; Conversation Session owns timeline phases and timer cleanup.
+- Account UI owns session-only preferences and logout presentation.
+- The conversation surface renders only Conversation Timeline Item values.
+- Dormant Production Adapters may be reconnected only through explicit provider/runtime translation seams.

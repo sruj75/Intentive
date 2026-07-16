@@ -1,19 +1,24 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { expoClient } from "@better-auth/expo/client";
+import * as Sentry from "@sentry/react-native";
 import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { createAuthClient } from "better-auth/client";
 import { Dimensions } from "react-native";
+import { useState } from "react";
 import { GestureHandlerRootView, State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { createLocalExperienceController } from "../src/experience/controller";
-import { ExperienceApp } from "../src/experience/ui/experience-app";
-import { ExperienceProvider } from "../src/experience/ui/experience-provider";
+import { ChatEntry } from "../src/entrypoints/chat-entry";
+import { OnboardingEntry } from "../src/entrypoints/onboarding-entry";
+import { createLocalConversationSession } from "../src/domains/chat/runtime/local-conversation-session";
+import { ProfileProvider } from "../src/providers/profile/profile-provider";
+import { createProfileStore } from "../src/providers/profile/profile-store";
 
 jest.mock("@better-auth/expo/client", () => ({ expoClient: jest.fn() }));
 jest.mock("better-auth/client", () => ({ createAuthClient: jest.fn() }));
+jest.mock("@sentry/react-native", () => ({ init: jest.fn(), captureException: jest.fn() }));
 jest.mock("expo-notifications", () => ({
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
@@ -66,18 +71,29 @@ const metrics = {
 
 const acceptedWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
 
-const createTestController = () =>
-  createLocalExperienceController({
-    delays: { thinkingMs: 40, composingMs: 90, replyMs: 140 },
+const createTestSession = (firstName: string) =>
+  createLocalConversationSession({
+    firstName,
+    delays: { thinkingMs: 40, composingMs: 220, replyMs: 500 },
   });
 
+function JourneyHarness() {
+  const [zone, setZone] = useState<"onboarding" | "main">("onboarding");
+  return zone === "onboarding" ? (
+    <OnboardingEntry onComplete={() => setZone("main")} />
+  ) : (
+    <ChatEntry createSession={createTestSession} onLogout={() => setZone("onboarding")} />
+  );
+}
+
 function renderExperience() {
+  const profile = createProfileStore();
   return render(
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={metrics}>
-        <ExperienceProvider createController={createTestController}>
-          <ExperienceApp />
-        </ExperienceProvider>
+        <ProfileProvider store={profile}>
+          <JourneyHarness />
+        </ProfileProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>,
   );
@@ -88,6 +104,8 @@ function expectNoCapabilityCalls() {
   expect(globalThis.WebSocket).not.toHaveBeenCalled();
   expect(createAuthClient).not.toHaveBeenCalled();
   expect(expoClient).not.toHaveBeenCalled();
+  expect(Sentry.init).not.toHaveBeenCalled();
+  expect(Sentry.captureException).not.toHaveBeenCalled();
   expect(Notifications.getPermissionsAsync).not.toHaveBeenCalled();
   expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
   expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
@@ -247,11 +265,20 @@ describe("Huracán local experience", () => {
     await waitFor(() => expect(screen.getByTestId("education-slide-2")).toBeTruthy());
     fireEvent.press(screen.getByTestId("skip-education"));
 
+    fireEvent.changeText(screen.getByTestId("composer-input"), "Draft survives replay");
     fireEvent.press(screen.getByTestId("identity-control"));
     fireEvent.press(screen.getByTestId("open-settings"));
     fireEvent.press(screen.getByTestId("replay-education"));
     expect(screen.getByTestId("education-slide-1")).toBeTruthy();
     fireEvent.press(screen.getByTestId("skip-education"));
+    expect(screen.getByTestId("composer-input")).toHaveDisplayValue("Draft survives replay");
+    fireEvent(screen.getByTestId("composer-input"), "submitEditing");
+    expect(screen.getByText("Draft survives replay")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("identity-control"));
+    fireEvent.press(screen.getByTestId("open-settings"));
+    fireEvent.press(screen.getByTestId("replay-education"));
+    fireEvent.press(screen.getByTestId("skip-education"));
+    expect(screen.queryByText("Draft survives replay")).toBeNull();
     fireEvent.press(screen.getByTestId("identity-control"));
     fireEvent.press(screen.getByTestId("open-settings"));
     fireEvent.press(screen.getByTestId("log-out"));

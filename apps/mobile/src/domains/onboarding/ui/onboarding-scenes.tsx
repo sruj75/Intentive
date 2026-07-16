@@ -1,6 +1,5 @@
 import {
   KeyboardAvoidingView,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,60 +8,20 @@ import {
   useWindowDimensions,
 } from "react-native";
 
-import { experienceContent as content } from "../content";
-import { experienceTheme as theme } from "../theme";
-import { useExperience } from "./experience-provider";
-import { CircleButton, MediaSlot, PrimaryButton } from "./primitives";
+import { CircleButton, MediaSlot, PrimaryButton } from "../../../design/primitives";
+import { mobileTheme as theme } from "../../../design/theme";
+import { onboardingContent as content } from "../config/content";
+import type { OnboardingJourneySnapshot } from "../types/journey";
 
-export function AuthScene() {
-  const { dispatch } = useExperience();
-  const { height } = useWindowDimensions();
-
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={[
-        styles.authContent,
-        {
-          minHeight: Math.max(
-            theme.component.auth.contentMinHeight,
-            height - theme.component.auth.windowInset,
-          ),
-        },
-      ]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.authHero}>
-        <Text selectable style={styles.authGreeting}>
-          {content.auth.greetingLead}
-          <Text style={styles.authAccent}>{content.auth.greetingAccent}</Text>
-        </Text>
-      </View>
-      <View style={styles.authActions}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => dispatch({ type: "authentication_selected", method: "apple" })}
-          style={({ pressed }) => [styles.appleButton, pressed && styles.pressed]}
-          testID="continue-with-apple"
-        >
-          <Text style={styles.appleMark}>●</Text>
-          <Text style={styles.appleLabel}>{content.auth.apple}</Text>
-        </Pressable>
-        <PrimaryButton
-          label={content.auth.phone}
-          onPress={() => dispatch({ type: "authentication_selected", method: "phone" })}
-          testID="continue-with-phone"
-        />
-        <Text selectable style={styles.legal}>
-          {content.auth.legal}
-        </Text>
-      </View>
-    </ScrollView>
-  );
-}
-
-export function NameScene() {
-  const { snapshot, dispatch } = useExperience();
+export function NameScene({
+  snapshot,
+  onNameEdited,
+  onNameSubmitted,
+}: {
+  readonly snapshot: OnboardingJourneySnapshot;
+  readonly onNameEdited: (value: string) => void;
+  readonly onNameSubmitted: () => void;
+}) {
   const { height } = useWindowDimensions();
 
   return (
@@ -105,8 +64,8 @@ export function NameScene() {
               autoCorrect={false}
               autoFocus
               enterKeyHint="next"
-              onChangeText={(value) => dispatch({ type: "name_edited", value })}
-              onSubmitEditing={() => dispatch({ type: "name_submitted" })}
+              onChangeText={onNameEdited}
+              onSubmitEditing={onNameSubmitted}
               placeholder={content.name.placeholder}
               placeholderTextColor={theme.color.mutedInk}
               returnKeyType="next"
@@ -117,7 +76,7 @@ export function NameScene() {
             <CircleButton
               accessibilityLabel={content.name.continue}
               label="↑"
-              onPress={() => dispatch({ type: "name_submitted" })}
+              onPress={onNameSubmitted}
               testID="submit-name"
               tone="dark"
             />
@@ -128,8 +87,7 @@ export function NameScene() {
   );
 }
 
-export function FriendsIntroScene() {
-  const { dispatch } = useExperience();
+export function FriendsIntroScene({ onAdvance }: { readonly onAdvance: () => void }) {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -167,15 +125,14 @@ export function FriendsIntroScene() {
       </View>
       <PrimaryButton
         label={content.friends.action}
-        onPress={() => dispatch({ type: "advance" })}
+        onPress={onAdvance}
         testID="add-friends-intro"
       />
     </ScrollView>
   );
 }
 
-export function PermissionsIntroScene() {
-  const { dispatch } = useExperience();
+export function PermissionsIntroScene({ onAdvance }: { readonly onAdvance: () => void }) {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -207,7 +164,7 @@ export function PermissionsIntroScene() {
       </Text>
       <PrimaryButton
         label={content.permissions.action}
-        onPress={() => dispatch({ type: "advance" })}
+        onPress={onAdvance}
         testID="enable-permissions"
       />
     </ScrollView>
@@ -216,46 +173,6 @@ export function PermissionsIntroScene() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  pressed: { opacity: theme.component.auth.pressedOpacity },
-  authContent: {
-    paddingHorizontal: theme.space.xl,
-    paddingTop: theme.space.xxl,
-    paddingBottom: theme.space.xl,
-    justifyContent: "space-between",
-    gap: theme.space.xl,
-  },
-  authHero: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: theme.component.auth.heroMinHeight,
-  },
-  authGreeting: {
-    ...theme.component.auth.greeting,
-    color: theme.color.ink,
-    textAlign: "center",
-  },
-  authAccent: { color: theme.color.accent },
-  authActions: { gap: theme.space.sm },
-  appleButton: {
-    minHeight: theme.component.auth.appleButtonMinHeight,
-    borderWidth: theme.stroke.hairline,
-    borderColor: theme.color.hairline,
-    borderRadius: theme.radius.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.space.sm,
-  },
-  appleMark: { color: theme.color.ink, fontSize: theme.component.auth.appleMarkSize },
-  appleLabel: { ...theme.type.label, color: theme.color.ink },
-  legal: {
-    ...theme.type.caption,
-    color: theme.color.secondaryInk,
-    textAlign: "center",
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.xs,
-  },
   nameContent: {
     justifyContent: "flex-end",
     paddingHorizontal: theme.space.md,

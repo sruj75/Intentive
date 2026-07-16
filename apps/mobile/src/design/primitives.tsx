@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
-import { experienceContent as content } from "../content";
-import { experienceTheme as theme } from "../theme";
+import { brandIdentity } from "./brand";
+import { mobileTheme as theme } from "./theme";
 
 export function PrimaryButton({
   label,
@@ -74,24 +74,26 @@ export function CircleButton({
 }
 
 export function IdentityControl({
+  accessibilityLabel,
   initials,
   onPress,
   testID = "identity-control",
 }: {
+  readonly accessibilityLabel: string;
   readonly initials: string;
   readonly onPress: () => void;
   readonly testID?: string;
 }) {
   return (
     <Pressable
-      accessibilityLabel={content.identity.openMenu}
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
       onPress={onPress}
       testID={testID}
       style={({ pressed }) => [styles.identityControl, pressed && styles.identityControlPressed]}
     >
       <View style={styles.identityBadge}>
-        <Text style={styles.identityText}>{initials || content.identity.initialsFallback}</Text>
+        <Text style={styles.identityText}>{initials || brandIdentity.initialsFallback}</Text>
       </View>
       <Text style={styles.ellipsis}>⋮</Text>
     </Pressable>
@@ -103,7 +105,7 @@ export function OrbitalMark({ compact = false }: { readonly compact?: boolean })
   const dot = compact ? 8 : 18;
   return (
     <View
-      accessibilityLabel={content.identity.mark}
+      accessibilityLabel={brandIdentity.mark}
       style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
     >
       {[

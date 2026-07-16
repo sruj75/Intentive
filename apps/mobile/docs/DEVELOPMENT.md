@@ -22,6 +22,33 @@ verification conventions (DerivedData wipes, visual checks) see
 Builds run **locally on the Mac** via `eas build --local` (Xcode + fastlane) — no
 EAS cloud, and simulator builds need **no Apple credentials**.
 
+## Simulator lanes on this Mac
+
+Use the two maintained iPhone lanes already installed in CoreSimulator:
+
+| Lane          | Runtime  | Device        | Use                                                        |
+| ------------- | -------- | ------------- | ---------------------------------------------------------- |
+| Latest        | iOS 26.2 | iPhone 17 Pro | Default development, screenshots, and final smoke          |
+| Compatibility | iOS 18.5 | iPhone 16     | Compatibility smoke after navigation, layout, or native UI changes |
+
+The latest lane is the default. Do not boot iPhone 16 merely because an older example
+names it. Re-check `xcrun simctl list runtimes` and `xcrun simctl list devices
+available` when Xcode or the installed runtimes change, then update this table.
+
+CoreSimulator runtime images can remain installed while their profiles are temporarily
+unmounted after an Xcode switch or service restart. If `simctl` reports the devices as
+unavailable or says `runtime profile not found`, re-discover the existing local images
+without downloading or duplicating them:
+
+```bash
+xcrun simctl runtime scan-and-mount
+xcrun simctl list runtimes
+xcrun simctl list devices available
+```
+
+Do not run `simctl runtime add` for an image already shown by `simctl runtime list -v`;
+that creates an unusable duplicate instead of repairing the registry.
+
 ---
 
 ## Agent runbook
@@ -51,9 +78,13 @@ xcframeworks between runs, and also installs to the sim and starts Metro. Reach 
 # 0. (one-time / when shared contracts change) build the workspace deps Metro needs
 pnpm --filter "@intentive/mobile^..." build
 
-# 1. boot a simulator (skip if one is already booted)
-xcrun simctl boot "iPhone 16"             # or any available device; UDID also works
-open -a Simulator
+# 1. discover installed runtimes, then boot the latest lane (skip boot if already running)
+xcrun simctl runtime scan-and-mount
+xcrun simctl list runtimes
+xcrun simctl list devices available
+LATEST_DEVICE="iPhone 17 Pro"             # iOS 26.2; see Simulator lanes above
+xcrun simctl boot "$LATEST_DEVICE"         # UDID also works
+open "$(xcode-select -p)/Applications/Simulator.app"
 
 # 2. generate the native iOS project from app.json (CNG — ios/ is git-ignored, see ADR-0017)
 cd apps/mobile
@@ -62,7 +93,7 @@ npx expo prebuild -p ios                  # skip if ios/ exists & nothing native
 # 3. CACHED in-place build + install on the booted sim + start Metro, all in one.
 #    Reuses ios/Pods, Xcode DerivedData, and the RN xcframeworks → seconds-to-minutes
 #    after the first cold build. bundle id: com.heyintentive.expo
-pnpm ios --device "iPhone 16"             # = expo run:ios; --device targets a booted sim by name or UDID
+pnpm ios --device "$LATEST_DEVICE"         # = expo run:ios; targets the booted latest lane
 
 # 4. confirm it rendered
 xcrun simctl io booted screenshot /tmp/intentive-sim.png
@@ -76,6 +107,19 @@ pnpm --dir apps/mobile dev                # = expo start, serves http://localhos
 # 6. launch the dev client and point it at Metro
 xcrun simctl launch booted com.heyintentive.expo
 xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
+```
+
+For navigation, layout, or native UI changes, repeat the install/launch smoke on the
+compatibility lane after the latest lane passes:
+
+```bash
+xcrun simctl shutdown "$LATEST_DEVICE"
+COMPAT_DEVICE="iPhone 16"                  # iOS 18.5
+xcrun simctl boot "$COMPAT_DEVICE"
+xcrun simctl bootstatus "$COMPAT_DEVICE" -b
+# `pnpm ios` can install the cached build on this booted target; no clean prebuild.
+pnpm ios --device "$COMPAT_DEVICE"
+xcrun simctl io booted screenshot /tmp/intentive-sim-compat.png
 ```
 
 A successful run shows `iOS Bundled <N>ms … (NNNN modules)` in the Metro log and the

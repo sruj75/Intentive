@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import type { ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -10,21 +11,22 @@ import {
 } from "react-native";
 import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
 
-import { experienceContent as content } from "../content";
-import { experienceTheme as theme } from "../theme";
-import type { ConversationTimelineItem } from "../types";
-import { useExperience } from "./experience-provider";
-import { ExperienceOverlays } from "./overlays";
-import { IdentityControl, OrbitalMark, PrimaryButton } from "./primitives";
+import { IdentityControl, OrbitalMark, PrimaryButton } from "../../../design/primitives";
+import { mobileTheme as theme } from "../../../design/theme";
+import { chatContent as content } from "../config/content";
+import type { AccountSettingsActions } from "../../account/types/settings";
+import type { ConversationSession, ConversationTimelineItem } from "../types/conversation-timeline";
+import { DrawerOverlay } from "./drawer-overlay";
 
 function SuggestionGroup({
   suggestions,
   disabled,
+  onSelect,
 }: {
   readonly suggestions: readonly string[];
   readonly disabled: boolean;
+  readonly onSelect: (suggestion: string) => void;
 }) {
-  const { dispatch } = useExperience();
   return (
     <View style={styles.suggestionGroup}>
       {suggestions.map((suggestion) => (
@@ -33,7 +35,7 @@ function SuggestionGroup({
           accessibilityRole="button"
           accessibilityState={{ disabled }}
           disabled={disabled}
-          onPress={() => dispatch({ type: "suggestion_selected", value: suggestion })}
+          onPress={() => onSelect(suggestion)}
           style={({ pressed }) => [styles.suggestion, pressed && styles.suggestionPressed]}
         >
           <Text selectable style={styles.suggestionText}>
@@ -45,7 +47,13 @@ function SuggestionGroup({
   );
 }
 
-function TimelineRow({ item }: { readonly item: ConversationTimelineItem }) {
+function TimelineRow({
+  item,
+  onSuggestionSelected,
+}: {
+  readonly item: ConversationTimelineItem;
+  readonly onSuggestionSelected: (suggestion: string) => void;
+}) {
   if (item.kind === "capability_card") {
     return (
       <Animated.View entering={FadeInUp} layout={LinearTransition} style={styles.capabilityCard}>
@@ -69,7 +77,13 @@ function TimelineRow({ item }: { readonly item: ConversationTimelineItem }) {
   }
 
   if (item.kind === "suggestion_group") {
-    return <SuggestionGroup disabled={false} suggestions={item.suggestions} />;
+    return (
+      <SuggestionGroup
+        disabled={false}
+        onSelect={onSuggestionSelected}
+        suggestions={item.suggestions}
+      />
+    );
   }
 
   if (item.kind === "user_message") {
@@ -101,7 +115,7 @@ function TimelineRow({ item }: { readonly item: ConversationTimelineItem }) {
   return (
     <Animated.View
       accessibilityLabel={
-        item.phase === "thinking" ? content.chat.thinkingLabel : content.chat.composingLabel
+        item.phase === "thinking" ? content.thinkingLabel : content.composingLabel
       }
       entering={FadeInUp}
       layout={LinearTransition}
@@ -121,28 +135,37 @@ function TimelineRow({ item }: { readonly item: ConversationTimelineItem }) {
   );
 }
 
-function Composer({ disabled }: { readonly disabled: boolean }) {
-  const { snapshot, dispatch } = useExperience();
+function Composer({
+  disabled,
+  onChange,
+  onSubmit,
+  value,
+}: {
+  readonly disabled: boolean;
+  readonly onChange: (value: string) => void;
+  readonly onSubmit: () => void;
+  readonly value: string;
+}) {
   return (
     <View style={styles.composerRow}>
       <OrbitalMark compact />
       <View style={[styles.composer, disabled && styles.composerDisabled]}>
         <TextInput
-          accessibilityLabel={content.chat.composerLabel}
+          accessibilityLabel={content.composerLabel}
           blurOnSubmit={false}
           editable={!disabled}
           enterKeyHint="send"
-          onChangeText={(value) => dispatch({ type: "composer_edited", value })}
-          onSubmitEditing={() => dispatch({ type: "composer_submitted" })}
-          placeholder={content.chat.composerPlaceholder}
+          onChangeText={onChange}
+          onSubmitEditing={onSubmit}
+          placeholder={content.composerPlaceholder}
           placeholderTextColor={theme.color.mutedInk}
           returnKeyType="send"
           style={styles.composerInput}
           testID="composer-input"
-          value={snapshot.composerValue}
+          value={value}
         />
         <Pressable
-          accessibilityLabel={content.chat.attachmentUnavailable}
+          accessibilityLabel={content.attachmentUnavailable}
           accessibilityRole="button"
           accessibilityState={{ disabled: true }}
           disabled
@@ -151,7 +174,7 @@ function Composer({ disabled }: { readonly disabled: boolean }) {
           <Text style={styles.composerIcon}>+</Text>
         </Pressable>
         <Pressable
-          accessibilityLabel={content.chat.microphoneUnavailable}
+          accessibilityLabel={content.microphoneUnavailable}
           accessibilityRole="button"
           accessibilityState={{ disabled: true }}
           disabled
@@ -164,10 +187,44 @@ function Composer({ disabled }: { readonly disabled: boolean }) {
   );
 }
 
-export function ConversationScene() {
-  const { snapshot, dispatch } = useExperience();
+export function ConversationScene({
+  composerValue,
+  firstName,
+  initials,
+  mode,
+  onBeginEducation,
+  onComposerChange,
+  onLogout,
+  onReplayEducation,
+  proactiveSuggestions,
+  renderSettings,
+  session,
+}: {
+  readonly composerValue: string;
+  readonly firstName: string;
+  readonly initials: string;
+  readonly mode: "welcome" | "ready";
+  readonly onBeginEducation: () => void;
+  readonly onComposerChange: (value: string) => void;
+  readonly onLogout: () => void;
+  readonly onReplayEducation: () => void;
+  readonly proactiveSuggestions: boolean;
+  readonly renderSettings: (actions: AccountSettingsActions) => ReactNode;
+  readonly session: ConversationSession;
+}) {
+  const snapshot = useSyncExternalStore(
+    session.subscribe,
+    session.getSnapshot,
+    session.getSnapshot,
+  );
+  const [overlay, setOverlay] = useState<"none" | "drawer" | "settings">("none");
   const scrollRef = useRef<ScrollView>(null);
-  const isWelcome = snapshot.chatMode === "welcome";
+  const isWelcome = mode === "welcome";
+  const submitComposer = () => {
+    if (isWelcome || composerValue.trim().length === 0) return;
+    session.send(composerValue);
+    onComposerChange("");
+  };
 
   return (
     <KeyboardAvoidingView
@@ -177,8 +234,9 @@ export function ConversationScene() {
     >
       <View style={styles.header}>
         <IdentityControl
-          initials={snapshot.initials}
-          onPress={() => dispatch({ type: "overlay_opened", overlay: "drawer" })}
+          accessibilityLabel={content.openMenu}
+          initials={initials}
+          onPress={() => setOverlay("drawer")}
         />
       </View>
       <ScrollView
@@ -199,7 +257,7 @@ export function ConversationScene() {
             </Text>
             <PrimaryButton
               label={content.welcome.action}
-              onPress={() => dispatch({ type: "advance" })}
+              onPress={onBeginEducation}
               style={styles.welcomeButton}
               testID="get-started"
             />
@@ -207,21 +265,49 @@ export function ConversationScene() {
         ) : (
           <View style={styles.timeline} testID="chat-ready-state">
             {snapshot.timeline.map((item) => {
-              if (item.kind === "suggestion_group" && !snapshot.settings.proactiveSuggestions) {
+              if (item.kind === "suggestion_group" && !proactiveSuggestions) {
                 return null;
               }
-              return <TimelineRow item={item} key={item.id} />;
+              return (
+                <TimelineRow item={item} key={item.id} onSuggestionSelected={onComposerChange} />
+              );
             })}
           </View>
         )}
       </ScrollView>
       {isWelcome ? (
         <View style={styles.welcomeSuggestions}>
-          <SuggestionGroup disabled suggestions={content.chat.suggestions} />
+          <SuggestionGroup disabled onSelect={() => undefined} suggestions={content.suggestions} />
         </View>
       ) : null}
-      <Composer disabled={isWelcome} />
-      <ExperienceOverlays />
+      <Composer
+        disabled={isWelcome}
+        onChange={onComposerChange}
+        onSubmit={submitComposer}
+        value={composerValue}
+      />
+      {overlay === "drawer" ? (
+        <DrawerOverlay
+          firstName={firstName}
+          initials={initials}
+          onClose={() => setOverlay("none")}
+          onOpenSettings={() => setOverlay("settings")}
+        />
+      ) : null}
+      {overlay === "settings"
+        ? renderSettings({
+            openDrawerLabel: content.openMenu,
+            onOpenDrawer: () => setOverlay("drawer"),
+            onReplayEducation: () => {
+              setOverlay("none");
+              onReplayEducation();
+            },
+            onLogout: () => {
+              setOverlay("none");
+              onLogout();
+            },
+          })
+        : null}
     </KeyboardAvoidingView>
   );
 }

@@ -1,5 +1,3 @@
-import type { ConversationTimelineItem } from "./types.js";
-
 export interface EducationSlide {
   readonly eyebrow: string;
   readonly title: string;
@@ -11,14 +9,7 @@ export interface EducationSlide {
   }[];
 }
 
-export const experienceContent = {
-  auth: {
-    greetingLead: "Where have you been?",
-    greetingAccent: " Hi, I’m Genie.",
-    apple: "Continue with Apple",
-    phone: "Continue with Phone Number",
-    legal: "By tapping the button above, you agree to our Terms of Service and Privacy Policy.",
-  },
+export const onboardingContent = {
   name: {
     label: "Full Name",
     placeholder: "First and last name",
@@ -46,10 +37,6 @@ export const experienceContent = {
         "Happy anniversary! See, good things happen when you actually listen to my advice. I’m already thinking about what you and Max can do next.",
       composerPlaceholder: "Say hi…",
     },
-  },
-  welcome: {
-    title: "Welcome to Genie, let’s learn how to Genie.",
-    action: "Get Started",
   },
   education: [
     {
@@ -116,68 +103,4 @@ export const experienceContent = {
     continue: "Continue",
     finish: "Get Started",
   },
-  drawer: {
-    rows: ["Tasks", "Messages", "Friends"] as const,
-    recent: "Recent",
-    empty: "Nothing here yet",
-    home: "Genie",
-  },
-  settings: {
-    title: "Settings",
-    replay: "Get started",
-    proactive: "Proactive Suggestions",
-    privacy: "Privacy",
-    privacyPlaceholder: "eg. ‘keep my work private’",
-    privacyHint: "Additional Privacy Rules",
-    logout: "Log out",
-    open: "Open settings",
-    addPhotoUnavailable: "Add profile photo unavailable",
-    profileFallback: "Genie User",
-  },
-  chat: {
-    capabilityTitle: "Friends",
-    capabilityBody:
-      "Connect with friends to let Genie help you stay close to the people in your life.",
-    capabilityAction: "Add Friends",
-    suggestions: [
-      "What can you do for me?",
-      "Lunch spots open nearby now?",
-      "Remind me to call someone?",
-    ],
-    composerPlaceholder: "Follow up",
-    composerLabel: "Message Genie",
-    attachmentUnavailable: "Add attachment unavailable",
-    microphoneUnavailable: "Microphone unavailable",
-    thinkingLabel: "Genie is thinking",
-    composingLabel: "Genie is composing",
-    replyNameFallback: "there",
-    firstReply: "Hey {firstName}. Good to see you. How’s your day looking—anything on your mind?",
-    laterReply:
-      "I’m right here. This local prototype can keep the conversation moving while we shape the real experience.",
-  },
-  identity: {
-    openMenu: "Open profile menu",
-    mark: "Genie abstract mark",
-    closeMenu: "Close menu",
-    initialsFallback: "G",
-    nameFallback: "Genie",
-  },
 } as const;
-
-export function createReadyTimeline(): readonly ConversationTimelineItem[] {
-  return [
-    {
-      id: "capability-friends",
-      kind: "capability_card",
-      title: experienceContent.chat.capabilityTitle,
-      body: experienceContent.chat.capabilityBody,
-      actionLabel: experienceContent.chat.capabilityAction,
-      disabled: true,
-    },
-    {
-      id: "suggestions",
-      kind: "suggestion_group",
-      suggestions: experienceContent.chat.suggestions,
-    },
-  ];
-}

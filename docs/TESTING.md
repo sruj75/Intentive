@@ -143,8 +143,8 @@ pnpm --dir packages/providers test
 ## Mobile Client
 
 ```bash
-pnpm --dir apps/mobile test       # build + Node tests (Local Experience controller plus dormant auth, launch, Control Plane, Runtime Adapter, message-store, reducer, routing, and notification adapters)
-pnpm --dir apps/mobile test:rn    # Jest / React Native harness (A-to-L Local Experience journey, UI golden snapshots, zero-call boundaries, and dormant Account State projection)
+pnpm --dir apps/mobile test       # build + Node tests (onboarding, education, profile, local Conversation Session, plus dormant production adapters)
+pnpm --dir apps/mobile test:rn    # Jest / React Native harness (two-zone A-to-L journey, Router boundaries, 19 golden snapshots, zero-call boundaries, and dormant Account State projection)
 pnpm --dir apps/mobile typecheck
 ```
 
@@ -167,7 +167,7 @@ Simulator (e.g. via XcodeBuildMCP `build_run_sim` or `expo run:ios`):
 2. **Repo path must contain no spaces** — CocoaPods/Ruby resolves the real path and a
    space (e.g. the old `Desktop/Hey Intentive`) breaks `pod install` and the build. The
    working tree is now `Desktop/Intentive`; keep it space-free.
-3. **Walk the complete Local Experience** — start at A, exercise invalid and
+3. **Walk the complete A-to-L journey** — start at A, exercise invalid and
    valid name entry, advance through C/D, confirm E is the welcome state of the
    shared chat surface, open F/G, complete or skip all five education states,
    then confirm K is the ready state of that same chat surface. Focus and submit
@@ -248,7 +248,7 @@ vertical slices land.
 
 ## Scaffold Deployables
 
-`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` exercises the Local Experience controller plus dormant auth, launch-state, Control Plane, Runtime Adapter, Message Store, reducer, routing, and notification modules through Node tests. Its RN axis owns the A-to-L Local Experience journey and golden states plus the dormant Account State projection.
+`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` exercises onboarding, education, Profile Store, and the local Conversation Session plus dormant auth, launch-state, Control Plane, Runtime Adapter, Message Store, reducer, routing, and notification modules through Node tests. Its RN axis owns the two-zone A-to-L journey, Router replacements, golden states, and dormant Account State projection.
 
 ## CI Expectations
 

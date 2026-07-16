@@ -1,4 +1,4 @@
-export const experienceTheme = {
+export const mobileTheme = {
   color: {
     canvas: "#FFFFFF",
     ink: "#151515",

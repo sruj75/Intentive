@@ -6,13 +6,18 @@ All notable changes to the Intentive Mobile Client (`apps/mobile/`). Format foll
 
 ## [Unreleased]
 
+### Reassembled
+
+- **Two-zone layered frontend** ([ADR 0023](adr/0023-mobile-two-zone-layered-frontend.md)) — preserved the Huracán A–L output while moving authentication, onboarding, education, chat, account settings, profile state, and design primitives from the catch-all frontend directory into layered domain owners, explicit entrypoints, and an in-memory Profile Store.
+- Added `/` and `/chat` Router zones, a replaceable local `ConversationSession`, split controller/session tests, Router replacement coverage, and hard Mobile source-root/domain-layer lint enforcement.
+
 ### Rebuilt
 
 - **Huracán frontend foundation** ([ADR 0022](adr/0022-mobile-scene-driven-local-frontend-foundation.md)) — replaced the mounted route-per-gate and assistant-ui presentation with one scene-driven, locally simulated Expo experience. E and K now render as `welcome` and `ready` modes of the same chat surface. Added configurable content/theme, five education scenes, drawer/settings overlays, keyboard composer behavior, and deterministic L1-L4 response phases.
 - Added pure controller coverage and a 390×844 React Native journey that verifies B2/F/G/K2/L1-L4 and zero auth, permission, network, WebSocket, notification, or durable-storage calls.
 - Parked the stable auth, Control Plane, Protocol runtime, Message Store, notification, and telemetry modules as dormant production adapters. Removed obsolete visual assets, route groups, presentation tests, Manrope, assistant-ui, and their Babel/Metro/Jest workarounds.
 
-The historical foundation-lane entries below describe the superseded presentation and the dormant adapters that remain source-controlled. Nothing in those entries should be read as mounted capability during the Local Experience phase.
+The historical foundation-lane entries below describe superseded presentations and the dormant adapters that remain source-controlled. Nothing in those entries should be read as mounted capability.
 
 ### Added
 
@@ -124,7 +129,7 @@ The historical foundation-lane entries below describe the superseded presentatio
 - **Monorepo import** — Mobile Client brought into the Intentive workspace as
   `@intentive/mobile` (Expo SDK 56, React Native, TypeScript, `expo-router`). Domain
   layout under `src/domains/{auth,onboarding,chat,…}/` with layer-direction lint;
-  mobile-specific `CONTEXT.md`, `ARCHITECTURE.md`, `docs/DESIGN.md`, and ADRs
+  mobile-specific `CONTEXT.md`, `ARCHITECTURE.md`, the historical DESIGN.md, and ADRs
   `0001`–`0011` (product direction: chat-first surface, remote Agent Runtime,
   navigation vs capability axes, in-memory Launch State, Liquid Glass shell intent).
 
@@ -210,7 +215,7 @@ The historical foundation-lane entries below describe the superseded presentatio
 
 - **Onboarding production-polish pass** ([ADR 0021](adr/0021-mobile-onboarding-visual-subsystem.md))
   — onboarding is now a sanctioned always-dark visual sub-system, reconciled with
-  [`DESIGN.md`](DESIGN.md) instead of silently contradicting it:
+  the then-current DESIGN.md instead of silently contradicting it:
   - **Manrope brand typeface** (onboarding-scoped; chat stays SF Pro) — loaded in
     `app/_layout.tsx` via `@expo-google-fonts/manrope` + `expo-font`, gated behind
     first render. New deps: `expo-font`, `@expo/vector-icons`, `@expo-google-fonts/manrope`.

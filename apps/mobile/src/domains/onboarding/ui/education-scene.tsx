@@ -3,10 +3,9 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { FadeInRight } from "react-native-reanimated";
 
-import { experienceContent as content, type EducationSlide } from "../content";
-import { experienceTheme as theme } from "../theme";
-import { useExperience } from "./experience-provider";
-import { CircleButton, PrimaryButton } from "./primitives";
+import { CircleButton, PrimaryButton } from "../../../design/primitives";
+import { mobileTheme as theme } from "../../../design/theme";
+import { onboardingContent as content, type EducationSlide } from "../config/content";
 
 function EducationExample({ slide }: { readonly slide: EducationSlide }) {
   return (
@@ -50,10 +49,19 @@ function EducationExample({ slide }: { readonly slide: EducationSlide }) {
   );
 }
 
-export function EducationScene() {
-  const { snapshot, dispatch } = useExperience();
-  const slide = content.education[snapshot.educationIndex] ?? content.education[0]!;
-  const isLast = snapshot.educationIndex === content.education.length - 1;
+export function EducationScene({
+  index,
+  onNext,
+  onPrevious,
+  onSkip,
+}: {
+  readonly index: number;
+  readonly onNext: () => void;
+  readonly onPrevious: () => void;
+  readonly onSkip: () => void;
+}) {
+  const slide = content.education[index] ?? content.education[0]!;
+  const isLast = index === content.education.length - 1;
   const gesture = useMemo(
     () =>
       Gesture.Pan()
@@ -62,20 +70,20 @@ export function EducationScene() {
         .activeOffsetX([-20, 20])
         .failOffsetY([-20, 20])
         .onEnd((event) => {
-          if (event.translationX <= -60) dispatch({ type: "education_next" });
-          if (event.translationX >= 60) dispatch({ type: "education_previous" });
+          if (event.translationX <= -60) onNext();
+          if (event.translationX >= 60) onPrevious();
         }),
-    [dispatch],
+    [onNext, onPrevious],
   );
 
   return (
     <GestureDetector gesture={gesture}>
-      <View style={styles.screen} testID={`education-slide-${snapshot.educationIndex + 1}`}>
+      <View style={styles.screen} testID={`education-slide-${index + 1}`}>
         <View style={styles.closeRow}>
           <CircleButton
             accessibilityLabel={content.educationControls.skip}
             label="×"
-            onPress={() => dispatch({ type: "education_skipped" })}
+            onPress={onSkip}
             testID="skip-education"
           />
         </View>
@@ -85,7 +93,7 @@ export function EducationScene() {
           showsVerticalScrollIndicator={false}
         >
           <Animated.View
-            key={snapshot.educationIndex}
+            key={index}
             entering={FadeInRight.duration(theme.motion.standard)}
             style={styles.slide}
           >
@@ -102,19 +110,19 @@ export function EducationScene() {
         </ScrollView>
         <View style={styles.footer}>
           <View
-            accessibilityLabel={`Page ${snapshot.educationIndex + 1} of ${content.education.length}`}
+            accessibilityLabel={`Page ${index + 1} of ${content.education.length}`}
             style={styles.dots}
           >
-            {content.education.map((item, index) => (
+            {content.education.map((item, slideIndex) => (
               <View
                 key={item.title}
-                style={[styles.dot, index === snapshot.educationIndex && styles.dotActive]}
+                style={[styles.dot, slideIndex === index && styles.dotActive]}
               />
             ))}
           </View>
           <PrimaryButton
             label={isLast ? content.educationControls.finish : content.educationControls.continue}
-            onPress={() => dispatch({ type: "education_next" })}
+            onPress={onNext}
             testID="education-continue"
           />
         </View>
