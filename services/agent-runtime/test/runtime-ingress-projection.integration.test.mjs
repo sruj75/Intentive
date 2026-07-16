@@ -33,6 +33,7 @@ const runtimeTurnsBundleVersionMigration = path.join(
   "0004_runtime_turns_bundle_version.sql",
 );
 const perceptionRecordsMigration = path.join(migrationsDir, "0010_perception_records.sql");
+const perceptionExpiryMigration = path.join(migrationsDir, "0011_perception_expiry_tombstone.sql");
 
 let branchId;
 let sql;
@@ -51,6 +52,7 @@ before(async () => {
   await applyMigrationFile(branch.connectionUri, runtimeTurnsMigration);
   await applyMigrationFile(branch.connectionUri, runtimeTurnsBundleVersionMigration);
   await applyMigrationFile(branch.connectionUri, perceptionRecordsMigration);
+  await applyMigrationFile(branch.connectionUri, perceptionExpiryMigration);
   sql = await connect(branch.connectionUri);
   ledger = createEventLedger(sql);
   conversation = createConversationRepo(sql);
@@ -356,6 +358,7 @@ function perceptionEvent(eventId, summary) {
     sensitivity_label: "normal",
     retention_class: "screen_memory_30d",
     confidence: 0.91,
+    expires_at: "2099-06-09T00:00:00.000Z",
     local_record_ref: `screen-memory://${eventId}`,
   };
 }

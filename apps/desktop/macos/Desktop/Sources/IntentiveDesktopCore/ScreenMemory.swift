@@ -116,12 +116,16 @@ public protocol PerceptionEventOutbox: AnyObject {
   func enqueuePerceptionEvent(_ event: PerceptionEvent) throws
   func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent]
   func removePerceptionEvent(eventId: String) throws
+  func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws
+  func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone]
+  func removePerceptionTombstone(tombstoneId: String) throws
 }
 
 public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore, PerceptionEventOutbox {
   private var records: [ScreenMemoryRecord] = []
   private var audioRecords: [AudioMemoryRecord] = []
   private var perceptionOutbox: [PerceptionEvent] = []
+  private var tombstoneOutbox: [PerceptionTombstone] = []
 
   public init(records: [ScreenMemoryRecord] = []) {
     self.records = records
@@ -206,6 +210,22 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStor
   public func removePerceptionEvent(eventId: String) throws {
     perceptionOutbox.removeAll { $0.eventId == eventId }
   }
+
+  public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
+    if let index = tombstoneOutbox.firstIndex(where: { $0.tombstoneId == tombstone.tombstoneId }) {
+      tombstoneOutbox[index] = tombstone
+    } else {
+      tombstoneOutbox.append(tombstone)
+    }
+  }
+
+  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
+    Array(tombstoneOutbox.prefix(max(0, limit)))
+  }
+
+  public func removePerceptionTombstone(tombstoneId: String) throws {
+    tombstoneOutbox.removeAll { $0.tombstoneId == tombstoneId }
+  }
 }
 
 public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore, PerceptionEventOutbox {
@@ -260,19 +280,38 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
     try (store as? PerceptionEventOutbox)?.removePerceptionEvent(eventId: eventId)
   }
 
+  public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
+    try (store as? PerceptionEventOutbox)?.enqueuePerceptionTombstone(tombstone)
+  }
+
+  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
+    try (store as? PerceptionEventOutbox)?.pendingPerceptionTombstones(limit: limit) ?? []
+  }
+
+  public func removePerceptionTombstone(tombstoneId: String) throws {
+    try (store as? PerceptionEventOutbox)?.removePerceptionTombstone(tombstoneId: tombstoneId)
+  }
+
   private func carryPendingPerceptionEvents(to replacement: ScreenMemoryStore) {
     guard
       let currentOutbox = store as? PerceptionEventOutbox,
-      let replacementOutbox = replacement as? PerceptionEventOutbox,
-      let pending = try? currentOutbox.pendingPerceptionEvents(limit: 10_000)
+      let replacementOutbox = replacement as? PerceptionEventOutbox
     else {
       return
     }
 
-    for event in pending {
+    for event in (try? currentOutbox.pendingPerceptionEvents(limit: 10_000)) ?? [] {
       do {
         try replacementOutbox.enqueuePerceptionEvent(event)
         try currentOutbox.removePerceptionEvent(eventId: event.eventId)
+      } catch {
+        continue
+      }
+    }
+    for tombstone in (try? currentOutbox.pendingPerceptionTombstones(limit: 10_000)) ?? [] {
+      do {
+        try replacementOutbox.enqueuePerceptionTombstone(tombstone)
+        try currentOutbox.removePerceptionTombstone(tombstoneId: tombstone.tombstoneId)
       } catch {
         continue
       }
@@ -1128,6 +1167,62 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     try execute("DELETE FROM perception_event_outbox WHERE event_id = ?", bindings: [.text(eventId)])
   }
 
+  public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
+    let encoded = try ProtocolEventCodec.encode(tombstone)
+    guard let encodedText = String(data: encoded, encoding: .utf8) else {
+      throw ScreenMemoryStoreError.invalidText
+    }
+    try execute(
+      """
+      INSERT INTO perception_tombstone_outbox (tombstone_id, tombstone_json, enqueued_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(tombstone_id) DO UPDATE SET
+        tombstone_json = excluded.tombstone_json,
+        enqueued_at = excluded.enqueued_at
+      """,
+      bindings: [
+        .text(tombstone.tombstoneId),
+        .text(encodedText),
+        .text(Date().protocolTimestamp),
+      ]
+    )
+  }
+
+  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
+    try withStatement(
+      """
+      SELECT tombstone_json
+      FROM perception_tombstone_outbox
+      ORDER BY enqueued_at ASC, tombstone_id ASC
+      LIMIT ?
+      """,
+      bindings: [.int(max(0, limit))]
+    ) { statement in
+      var tombstones: [PerceptionTombstone] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+          let tombstoneJSON = try columnText(statement, 0)
+          guard let tombstoneData = tombstoneJSON.data(using: .utf8) else {
+            throw ScreenMemoryStoreError.invalidText
+          }
+          tombstones.append(try ProtocolEventCodec.decodePerceptionTombstone(tombstoneData))
+        } else if result == SQLITE_DONE {
+          return tombstones
+        } else {
+          throw ScreenMemoryStoreError.stepFailed(errorMessage)
+        }
+      }
+    }
+  }
+
+  public func removePerceptionTombstone(tombstoneId: String) throws {
+    try execute(
+      "DELETE FROM perception_tombstone_outbox WHERE tombstone_id = ?",
+      bindings: [.text(tombstoneId)]
+    )
+  }
+
   private func migrate() throws {
     try execute("PRAGMA journal_mode = WAL")
     try execute("PRAGMA foreign_keys = ON")
@@ -1202,6 +1297,15 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
       CREATE TABLE IF NOT EXISTS perception_event_outbox (
         event_id TEXT PRIMARY KEY,
         event_json TEXT NOT NULL,
+        enqueued_at TEXT NOT NULL
+      )
+      """
+    )
+    try execute(
+      """
+      CREATE TABLE IF NOT EXISTS perception_tombstone_outbox (
+        tombstone_id TEXT PRIMARY KEY,
+        tombstone_json TEXT NOT NULL,
         enqueued_at TEXT NOT NULL
       )
       """

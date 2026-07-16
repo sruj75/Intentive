@@ -167,6 +167,7 @@ public protocol RuntimeChatClient: AnyObject {
   @discardableResult
   func sendUserMessage(_ body: String) throws -> ChatMessage
   func sendPerceptionEvent(_ event: PerceptionEvent) throws
+  func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws
   func acknowledge(messageId: String) throws
 }
 
@@ -188,6 +189,7 @@ public final class DisconnectedRuntimeChatClient: RuntimeChatClient {
   }
 
   public func sendPerceptionEvent(_ event: PerceptionEvent) throws {}
+  public func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {}
   public func acknowledge(messageId: String) throws {}
 }
 
@@ -280,6 +282,10 @@ public final class RuntimeAdapter: RuntimeChatClient {
 
   public func sendPerceptionEvent(_ event: PerceptionEvent) throws {
     try sendOrQueue(ProtocolEventCodec.encode(event))
+  }
+
+  public func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
+    try sendOrQueue(ProtocolEventCodec.encode(tombstone))
   }
 
   public func sendPresence(foreground: Bool) throws {

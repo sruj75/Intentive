@@ -96,10 +96,36 @@ export const perception_event = z
     sensitivity_label: perceptionSensitivityLabel,
     retention_class: z.string().min(1),
     confidence: z.number().min(0).max(1),
+    // Retention expiry is authoritative and required: the Runtime enforces it on
+    // read (never returns an expired row) and Desktop drops already-expired
+    // records before they are ever sent. See docs/adr and the renovation plan.
+    expires_at: z.string().datetime(),
+    // Opaque local record UUID — never a filesystem path. The Runtime stores it
+    // to correlate tombstones and never dereferences it.
     local_record_ref: z.string().min(1),
   })
   .strict();
 export type PerceptionEvent = z.infer<typeof perception_event>;
+
+// Why a perception record is being deleted. `clear_all` wipes every row for the
+// authenticated user; `manual_delete` and `retention_expiry` name the specific
+// `event_id`s in `event_refs`. The Runtime deletes only the authenticated user's
+// rows (tenant-scoped) and treats redelivery as idempotent.
+export const perceptionTombstoneReason = z.enum(["manual_delete", "retention_expiry", "clear_all"]);
+export type PerceptionTombstoneReason = z.infer<typeof perceptionTombstoneReason>;
+
+export const perception_tombstone = z
+  .object({
+    type: z.literal("perception_tombstone"),
+    tombstone_id: z.string().min(1),
+    reason: perceptionTombstoneReason,
+    // The `event_id`s to delete. Empty (and ignored) when `reason` is
+    // `clear_all`; the Runtime enforces that semantic on ingest.
+    event_refs: z.array(z.string().min(1)),
+    emitted_at: z.string().datetime(),
+  })
+  .strict();
+export type PerceptionTombstone = z.infer<typeof perception_tombstone>;
 
 export const session_end_marker = z
   .object({
@@ -130,6 +156,7 @@ export const clientToRuntimeEvent = z.discriminatedUnion("type", [
   presence_update,
   delivery_ack,
   perception_event,
+  perception_tombstone,
   session_end_marker,
   history_backfill_request,
 ]);

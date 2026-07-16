@@ -185,6 +185,54 @@ test("perception_event accepts ambient audio summaries", () => {
   assert.equal(result.data.artifact_type, "ambient_audio_summary");
 });
 
+test("perception_event requires an authoritative expires_at", () => {
+  const { expires_at, ...withoutExpiry } = readJsonFixture("perception-event.json");
+  const missing = protocol.perception_event.safeParse(withoutExpiry);
+  assert.equal(missing.success, false);
+
+  const badFormat = protocol.perception_event.safeParse({
+    ...readJsonFixture("perception-event.json"),
+    expires_at: "not-a-timestamp",
+  });
+  assert.equal(badFormat.success, false);
+});
+
+test("perception_tombstone validates the committed wire fixture", () => {
+  const fixture = readJsonFixture("perception-tombstone.json");
+  const result = protocol.clientToRuntimeEvent.safeParse(fixture);
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.type, "perception_tombstone");
+  assert.equal(result.data.reason, "manual_delete");
+  assert.deepEqual(result.data.event_refs, ["perception_2026-07-05T10-00-00Z_001"]);
+});
+
+test("perception_tombstone accepts a clear_all wipe with no event_refs", () => {
+  const result = protocol.clientToRuntimeEvent.safeParse({
+    type: "perception_tombstone",
+    tombstone_id: "tombstone-clear-1",
+    reason: "clear_all",
+    event_refs: [],
+    emitted_at: "2026-07-05T11:00:00.000Z",
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.data.reason, "clear_all");
+});
+
+test("perception_tombstone rejects unknown reasons and extra keys", () => {
+  const badReason = protocol.clientToRuntimeEvent.safeParse({
+    ...readJsonFixture("perception-tombstone.json"),
+    reason: "purge_everything",
+  });
+  assert.equal(badReason.success, false);
+
+  const extraKey = protocol.clientToRuntimeEvent.safeParse({
+    ...readJsonFixture("perception-tombstone.json"),
+    local_record_ref: "screen-memory://records/2026-07-05/001",
+  });
+  assert.equal(extraKey.success, false);
+});
+
 test("perception_event rejects stale context_snapshot fields and bad embedding dimensions", () => {
   const staleSnapshot = protocol.clientToRuntimeEvent.safeParse({
     type: "context_snapshot",

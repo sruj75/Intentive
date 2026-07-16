@@ -40,8 +40,10 @@ import { createInternalApp } from "./domains/internal/ui/app.js";
 import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
 import {
   createPerceptionRecordsRepo,
+  embeddingText,
   toPerceptionRecord,
 } from "./domains/perception/repo/perception-records.js";
+import { createOpenRouterPerceptionEmbedder } from "./domains/perception/service/perception-embedder.js";
 import { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
@@ -113,7 +115,11 @@ const resilientRegistry = {
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const sensoryBuffer = createSensoryBufferReader(sql);
-const perceptionRecords = createPerceptionRecordsRepo(sql);
+const perceptionEmbedder = createOpenRouterPerceptionEmbedder({
+  apiKey: config.model.apiKey,
+  baseUrl: config.model.baseUrl,
+});
+const perceptionRecords = createPerceptionRecordsRepo(sql, perceptionEmbedder);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
 const cronJobs = createCronJobsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
@@ -218,10 +224,32 @@ channel = createPerUserChannel({
     if (event.type === "perception_event") {
       queries.push(perceptionRecords.appendQuery(toPerceptionRecord(session.userId, event)));
     }
+    if (event.type === "perception_tombstone") {
+      queries.push(perceptionRecords.tombstoneQuery(session.userId, event));
+    }
     return queries;
   },
   runTurn,
-  onPerceptionArrived: (session) => {
+  onPerceptionArrived: (session, event) => {
+    if (event.type === "perception_event") {
+      const text = embeddingText(event);
+      const { event_id: eventId } = event;
+      // Best-effort, out-of-transaction: compute Agent Runtime's own vector for the
+      // freshly-ingested record so hybrid search can recall it. A degraded
+      // embedder (null) or a since-tombstoned row simply leaves it FTS-only.
+      channel.enqueueBestEffort(session.userId, async () => {
+        const vector = await perceptionEmbedder.embed(text);
+        if (!vector) return;
+        await retryTransientDb(() =>
+          perceptionRecords.storeEmbedding({
+            userId: session.userId,
+            eventId,
+            modelId: perceptionEmbedder.modelId,
+            vector,
+          }),
+        );
+      });
+    }
     channel.enqueueBestEffort(session.userId, () =>
       monitoringTurn(session.userId, "perception_event"),
     );

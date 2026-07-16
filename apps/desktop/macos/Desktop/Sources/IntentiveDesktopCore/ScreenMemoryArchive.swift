@@ -501,6 +501,18 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     try store.removePerceptionEvent(eventId: eventId)
   }
 
+  public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
+    try store.enqueuePerceptionTombstone(tombstone)
+  }
+
+  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
+    try store.pendingPerceptionTombstones(limit: limit)
+  }
+
+  public func removePerceptionTombstone(tombstoneId: String) throws {
+    try store.removePerceptionTombstone(tombstoneId: tombstoneId)
+  }
+
   private static func storageReport(profile: ScreenMemoryProfile) throws -> ScreenMemoryStorageReport {
     let fileManager = FileManager.default
     let userDirectory = profile.databaseURL.deletingLastPathComponent()
@@ -776,9 +788,43 @@ private actor ScreenMemoryIngestCoordinator {
     }
 
     try store.commitDeletionPlan(plan)
+    try enqueueDeletionTombstone(for: plan)
     return ScreenMemoryDeletionResult(
       recordIDs: Array(Set(plan.recordIDs + plan.audioRecordIDs)).sorted(),
       reason: plan.reason
+    )
+  }
+
+  /// Propagate a local deletion to the Runtime. Any outbound event still pending
+  /// for a deleted record is dropped first (never ship content for a record the
+  /// user just removed), then a tenant-scoped tombstone is durably queued.
+  private func enqueueDeletionTombstone(for plan: ScreenMemoryDeletionPlan) throws {
+    if plan.clearsAll {
+      for event in (try? store.pendingPerceptionEvents(limit: 100_000)) ?? [] {
+        try? store.removePerceptionEvent(eventId: event.eventId)
+      }
+      try store.enqueuePerceptionTombstone(
+        PerceptionTombstone(
+          tombstoneId: UUID().uuidString,
+          reason: .clearAll,
+          eventRefs: [],
+          emittedAt: now().protocolTimestamp
+        )
+      )
+      return
+    }
+    let refs = plan.recordIDs
+    guard !refs.isEmpty else { return }
+    for eventId in refs {
+      try? store.removePerceptionEvent(eventId: eventId)
+    }
+    try store.enqueuePerceptionTombstone(
+      PerceptionTombstone(
+        tombstoneId: UUID().uuidString,
+        reason: plan.reason == .manual ? .manualDelete : .retentionExpiry,
+        eventRefs: refs,
+        emittedAt: now().protocolTimestamp
+      )
     )
   }
 

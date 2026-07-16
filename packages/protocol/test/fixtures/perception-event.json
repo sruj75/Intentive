@@ -20,5 +20,6 @@
   "sensitivity_label": "normal",
   "retention_class": "screen_memory_30d",
   "confidence": 0.92,
+  "expires_at": "2026-08-04T10:00:00.000Z",
   "local_record_ref": "screen-memory://records/2026-07-05/001"
 }

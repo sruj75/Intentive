@@ -429,19 +429,34 @@ public final class ContextCompiler {
   }
 }
 
+/// The durable perception outbox driver.
+///
+/// Renovated from Omi's `ScreenActivitySyncService` (a resumable, batched
+/// uploader) and its WAL reconcile pattern (enqueue → deliver → confirm →
+/// remove). Intentive's changes: the transport is the WS Protocol
+/// `perception_event` / `perception_tombstone` rather than HTTP to a rust
+/// backend; durability is the crash-safe SQLite outbox keyed by `event_id` /
+/// `tombstone_id` rather than a UserDefaults high-water mark; a record already
+/// past its `expires_at` is dropped before it is ever sent; and tenant-scoped
+/// tombstones propagate local deletion. Nothing is removed from the outbox until
+/// the send succeeds, so an outage never loses a record and redelivery upserts
+/// idempotently on the Runtime.
 public final class PerceptionPublisher {
   private let runtimeClient: RuntimeChatClient
   private let outbox: PerceptionEventOutbox?
   private let isRuntimeConnected: () -> Bool
+  private let now: () -> Date
 
   public init(
     runtimeClient: RuntimeChatClient,
     outbox: PerceptionEventOutbox? = nil,
-    isRuntimeConnected: @escaping () -> Bool = { true }
+    isRuntimeConnected: @escaping () -> Bool = { true },
+    now: @escaping () -> Date = Date.init
   ) {
     self.runtimeClient = runtimeClient
     self.outbox = outbox
     self.isRuntimeConnected = isRuntimeConnected
+    self.now = now
   }
 
   @discardableResult
@@ -461,6 +476,7 @@ public final class PerceptionPublisher {
       sensitivityLabel: artifact.sensitivityLabel,
       retentionClass: artifact.retentionClass,
       confidence: artifact.confidence,
+      expiresAt: Self.expiry(capturedAt: artifact.capturedAt, retentionClass: artifact.retentionClass),
       localRecordRef: artifact.localRecordRef
     )
     try outbox?.enqueuePerceptionEvent(event)
@@ -472,15 +488,63 @@ public final class PerceptionPublisher {
     return event
   }
 
+  /// Durably queue a tenant-scoped deletion for propagation to the Runtime.
+  public func publishTombstone(_ tombstone: PerceptionTombstone) throws {
+    try outbox?.enqueuePerceptionTombstone(tombstone)
+    guard isRuntimeConnected() else { return }
+    try runtimeClient.sendPerceptionTombstone(tombstone)
+    try outbox?.removePerceptionTombstone(tombstoneId: tombstone.tombstoneId)
+  }
+
   @discardableResult
   public func flushPendingPerceptionEvents(limit: Int = 100) throws -> Int {
-    guard isRuntimeConnected(), let outbox else { return 0 }
+    guard let outbox else { return 0 }
+    // Drop already-expired unsent records first — an expired record must never
+    // leave the Mac, even on reconnect.
+    let cutoff = now()
     var flushedCount = 0
     for event in try outbox.pendingPerceptionEvents(limit: limit) {
+      if let expiry = Self.parseTimestamp(event.expiresAt), expiry <= cutoff {
+        try outbox.removePerceptionEvent(eventId: event.eventId)
+        continue
+      }
+      guard isRuntimeConnected() else { break }
       try runtimeClient.sendPerceptionEvent(event)
       try outbox.removePerceptionEvent(eventId: event.eventId)
       flushedCount += 1
     }
     return flushedCount
+  }
+
+  @discardableResult
+  public func flushPendingPerceptionTombstones(limit: Int = 100) throws -> Int {
+    guard isRuntimeConnected(), let outbox else { return 0 }
+    var flushedCount = 0
+    for tombstone in try outbox.pendingPerceptionTombstones(limit: limit) {
+      try runtimeClient.sendPerceptionTombstone(tombstone)
+      try outbox.removePerceptionTombstone(tombstoneId: tombstone.tombstoneId)
+      flushedCount += 1
+    }
+    return flushedCount
+  }
+
+  /// Authoritative expiry = `captured_at` + the retention window encoded in the
+  /// retention class (e.g. `screen_memory_7d` → 7 days), defaulting to 7 days.
+  static func expiry(capturedAt: String, retentionClass: String) -> String {
+    let captured = parseTimestamp(capturedAt) ?? Date()
+    let days = retentionDays(from: retentionClass)
+    return captured.addingTimeInterval(TimeInterval(days) * 24 * 60 * 60).protocolTimestamp
+  }
+
+  private static func retentionDays(from retentionClass: String) -> Int {
+    for component in retentionClass.split(separator: "_") where component.hasSuffix("d") {
+      if let value = Int(component.dropLast()) { return value }
+    }
+    return 7
+  }
+
+  private static func parseTimestamp(_ value: String) -> Date? {
+    ISO8601DateFormatter.intentiveProtocol.date(from: value)
+      ?? ISO8601DateFormatter().date(from: value)
   }
 }

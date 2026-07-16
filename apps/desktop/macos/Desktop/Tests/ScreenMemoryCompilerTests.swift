@@ -105,6 +105,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       sensitivityLabel: .normal,
       retentionClass: "screen_memory_30d",
       confidence: 0.9,
+      expiresAt: "2099-07-05T10:00:00.000Z",
       localRecordRef: "screen-memory://records/carry-pending"
     )
     try first.enqueuePerceptionEvent(event)
@@ -305,6 +306,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       sensitivityLabel: .normal,
       retentionClass: "screen_memory_30d",
       confidence: 0.9,
+      expiresAt: "2099-07-05T10:00:00.000Z",
       localRecordRef: "screen-memory://records/durable-outbox"
     )
 
@@ -1060,6 +1062,11 @@ final class RecordingRuntimeClient: RuntimeChatClient {
 
   func sendPerceptionEvent(_ event: PerceptionEvent) throws {
     perceptionEvents.append(event)
+  }
+
+  private(set) var tombstones: [PerceptionTombstone] = []
+  func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
+    tombstones.append(tombstone)
   }
 
   func acknowledge(messageId: String) throws {

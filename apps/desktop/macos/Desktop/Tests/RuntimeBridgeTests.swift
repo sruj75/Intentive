@@ -359,5 +359,6 @@ private final class RecordingFloatingBarRuntimeClient: RuntimeChatClient {
   }
 
   func sendPerceptionEvent(_ event: PerceptionEvent) throws {}
+  func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {}
   func acknowledge(messageId: String) throws {}
 }

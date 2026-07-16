@@ -126,7 +126,6 @@ let package = Package(
         "Rewind/Core",
         "Rewind/Services",
         "Rewind/UI",
-        "ScreenActivitySyncService.swift",
         "SileroPushToTalkVADPredictor.swift",
         "TranscriptionRetryService.swift",
         "UpdaterViewModel.swift",

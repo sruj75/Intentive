@@ -68,10 +68,16 @@ export {
 } from "./domains/memory/repo/memory-backend.js";
 export {
   createPerceptionRecordsRepo,
+  embeddingText,
   toPerceptionRecord,
 } from "./domains/perception/repo/perception-records.js";
+export {
+  createOpenRouterPerceptionEmbedder,
+  nullPerceptionEmbedder,
+} from "./domains/perception/service/perception-embedder.js";
 export { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
 export type {
+  PerceptionEmbedder,
   PerceptionRecord,
   PerceptionRecordsRepo,
   ScreenContextSearchInput,

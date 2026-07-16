@@ -111,6 +111,9 @@ function ingressAttrs(
     attrs.artifact_type = event.artifact_type;
     attrs.sensitivity_label = event.sensitivity_label;
   }
+  if (event.type === "perception_tombstone") {
+    attrs.reason = event.reason;
+  }
   if (event.type === "session_end_marker") {
     attrs.reason = event.reason;
   }
@@ -147,6 +150,8 @@ function dedupKeyFor(event: RuntimeIngressEvent, newDedupKey: () => string): str
       return event.message_id;
     case "perception_event":
       return event.event_id;
+    case "perception_tombstone":
+      return event.tombstone_id;
     case "session_end_marker":
       return newDedupKey();
   }

@@ -933,7 +933,10 @@ final class DesktopViewModel: ObservableObject {
     guard case .connected = state else { return nil }
     do {
       let flushed = try publisher.flushPendingPerceptionEvents()
-      return flushed > 0 ? "synced \(flushed) queued perception event(s)" : nil
+      // Propagate any locally-queued deletions on the same durable channel.
+      let tombstoned = try publisher.flushPendingPerceptionTombstones()
+      let synced = flushed + tombstoned
+      return synced > 0 ? "synced \(synced) queued perception update(s)" : nil
     } catch {
       return "perception sync pending: \(error.localizedDescription)"
     }

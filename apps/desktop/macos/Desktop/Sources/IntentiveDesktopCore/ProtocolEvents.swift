@@ -131,6 +131,9 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
   public var sensitivityLabel: SensitivityLabel
   public var retentionClass: String
   public var confidence: Double
+  /// Authoritative retention expiry. Desktop drops already-expired records
+  /// before they are ever sent; the Runtime never returns an expired row.
+  public var expiresAt: String
   public var localRecordRef: String
 
   public init(
@@ -146,6 +149,7 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
     sensitivityLabel: SensitivityLabel,
     retentionClass: String,
     confidence: Double,
+    expiresAt: String,
     localRecordRef: String
   ) {
     self.type = "perception_event"
@@ -161,6 +165,7 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
     self.sensitivityLabel = sensitivityLabel
     self.retentionClass = retentionClass
     self.confidence = confidence
+    self.expiresAt = expiresAt
     self.localRecordRef = localRecordRef
   }
 
@@ -178,7 +183,46 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
     case sensitivityLabel = "sensitivity_label"
     case retentionClass = "retention_class"
     case confidence
+    case expiresAt = "expires_at"
     case localRecordRef = "local_record_ref"
+  }
+}
+
+public enum PerceptionTombstoneReason: String, Codable, Equatable, Sendable {
+  case manualDelete = "manual_delete"
+  case retentionExpiry = "retention_expiry"
+  case clearAll = "clear_all"
+}
+
+/// A tenant-scoped deletion request the Runtime honours by dropping only the
+/// authenticated user's matching rows. `clearAll` wipes everything; the other
+/// reasons name specific `event_id`s in `eventRefs`. See the renovation plan.
+public struct PerceptionTombstone: Codable, Equatable, Sendable {
+  public let type: String
+  public var tombstoneId: String
+  public var reason: PerceptionTombstoneReason
+  public var eventRefs: [String]
+  public var emittedAt: String
+
+  public init(
+    tombstoneId: String,
+    reason: PerceptionTombstoneReason,
+    eventRefs: [String],
+    emittedAt: String
+  ) {
+    self.type = "perception_tombstone"
+    self.tombstoneId = tombstoneId
+    self.reason = reason
+    self.eventRefs = eventRefs
+    self.emittedAt = emittedAt
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case tombstoneId = "tombstone_id"
+    case reason
+    case eventRefs = "event_refs"
+    case emittedAt = "emitted_at"
   }
 }
 
@@ -455,6 +499,15 @@ public struct ProtocolEventCodec {
       allowed: Set(PerceptionEvent.CodingKeys.allCases.map(\.stringValue))
     )
     return try decoder.decode(PerceptionEvent.self, from: data)
+  }
+
+  public static func decodePerceptionTombstone(_ data: Data) throws -> PerceptionTombstone {
+    try validateAllowedKeys(
+      data: data,
+      type: "perception_tombstone",
+      allowed: Set(PerceptionTombstone.CodingKeys.allCases.map(\.stringValue))
+    )
+    return try decoder.decode(PerceptionTombstone.self, from: data)
   }
 
   public static func decodeRuntimeToClientEvent(_ data: Data) throws -> RuntimeToClientEvent {
