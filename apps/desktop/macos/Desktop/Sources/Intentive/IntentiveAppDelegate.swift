@@ -83,6 +83,12 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     openItem.target = self
     menu.addItem(openItem)
 
+    let updateItem = NSMenuItem(
+      title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+    updateItem.target = self
+    updateItem.isEnabled = model.launchConfiguration.systemBoundaries.updatesEnabled
+    menu.addItem(updateItem)
+
     menu.addItem(.separator())
 
     let signOutItem = NSMenuItem(title: "Sign Out", action: #selector(signOut), keyEquivalent: "")
@@ -110,6 +116,10 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
   @objc private func openFloatingConversation() {
     model?.openFloatingConversation()
+  }
+
+  @objc private func checkForUpdates() {
+    model?.checkForUpdates()
   }
 
   @objc private func signOut() {

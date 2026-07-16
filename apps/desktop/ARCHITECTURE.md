@@ -71,4 +71,4 @@ The monorepo gate for this deployable is:
 pnpm harness --scope apps/desktop
 ```
 
-The harness includes a debug bundle smoke that assembles `Intentive.app` and verifies the production bundle contract: app identity, auth callback URL scheme, privacy strings, Sparkle metadata, app icon, executable, and the SwiftPM native-assets bundle in `Contents/Resources` used by local VAD.
+The harness includes a debug bundle smoke that assembles `Intentive.app` and verifies the production bundle contract: app identity, auth callback URL scheme, privacy strings, signed Sparkle metadata, embedded Sparkle/Sentry frameworks, telemetry configuration, app icon, executable, and the SwiftPM native-assets bundle in `Contents/Resources` used by local VAD. `UpdaterClient`, `TelemetryClient`, and `DiagnosticsStore` are framework-neutral Core seams; the executable adapts Sparkle, Sentry, and PostHog while a privacy filter denies user-content telemetry and a rotating JSONL store enforces the 14-day/100-MB local diagnostics budget.

@@ -11,6 +11,9 @@ APP_BUILD="${INTENTIVE_APP_BUILD:-1}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
 SPARKLE_FEED_URL="${INTENTIVE_SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${INTENTIVE_SPARKLE_PUBLIC_ED_KEY:-}"
+SENTRY_DSN="${INTENTIVE_SENTRY_DSN:-}"
+POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-}"
+POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
 APP_ICON_SOURCE="$PACKAGE_PATH/Sources/Resources/AppIcon.icns"
 NATIVE_ASSETS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAssets.bundle"
 
@@ -32,6 +35,9 @@ APP_BUILD_XML="$(xml_escape "$APP_BUILD")"
 AUTH_CALLBACK_SCHEME_XML="$(xml_escape "$AUTH_CALLBACK_SCHEME")"
 SPARKLE_FEED_URL_XML="$(xml_escape "$SPARKLE_FEED_URL")"
 SPARKLE_PUBLIC_ED_KEY_XML="$(xml_escape "$SPARKLE_PUBLIC_ED_KEY")"
+SENTRY_DSN_XML="$(xml_escape "$SENTRY_DSN")"
+POSTHOG_PROJECT_KEY_XML="$(xml_escape "$POSTHOG_PROJECT_KEY")"
+POSTHOG_HOST_XML="$(xml_escape "$POSTHOG_HOST")"
 
 "$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH"
 BUILD_DIR="$("$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH" --show-bin-path)"
@@ -39,8 +45,15 @@ APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 NATIVE_ASSETS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ASSETS_BUNDLE_NAME"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Frameworks"
 cp "$BUILD_DIR/Intentive" "$APP_BUNDLE/Contents/MacOS/Intentive"
+for framework in Sparkle.framework Sentry.framework; do
+  if [[ ! -d "$BUILD_DIR/$framework" ]]; then
+    echo "Missing release framework: $BUILD_DIR/$framework" >&2
+    exit 1
+  fi
+  cp -R "$BUILD_DIR/$framework" "$APP_BUNDLE/Contents/Frameworks/$framework"
+done
 cp "$APP_ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 if [[ ! -d "$NATIVE_ASSETS_BUNDLE_SOURCE" ]]; then
   echo "Missing native assets bundle: $NATIVE_ASSETS_BUNDLE_SOURCE" >&2
@@ -110,6 +123,22 @@ if [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
   <false/>
   <key>SUScheduledCheckInterval</key>
   <integer>3600</integer>
+PLIST
+fi
+
+if [[ -n "$SENTRY_DSN" ]]; then
+  cat >> "$APP_BUNDLE/Contents/Info.plist" <<PLIST
+  <key>IntentiveSentryDSN</key>
+  <string>$SENTRY_DSN_XML</string>
+PLIST
+fi
+
+if [[ -n "$POSTHOG_PROJECT_KEY" ]]; then
+  cat >> "$APP_BUNDLE/Contents/Info.plist" <<PLIST
+  <key>IntentivePostHogProjectKey</key>
+  <string>$POSTHOG_PROJECT_KEY_XML</string>
+  <key>IntentivePostHogHost</key>
+  <string>$POSTHOG_HOST_XML</string>
 PLIST
 fi
 

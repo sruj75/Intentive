@@ -8,7 +8,11 @@ pnpm --dir apps/desktop test
 apps/desktop/macos/run.sh
 ```
 
-Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, and `INTENTIVE_SPARKLE_PUBLIC_ED_KEY` when assembling a release candidate outside GitHub Actions.
+Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, `INTENTIVE_SPARKLE_PUBLIC_ED_KEY`, `INTENTIVE_SENTRY_DSN`, `INTENTIVE_POSTHOG_PROJECT_KEY`, and optionally `INTENTIVE_POSTHOG_HOST` when assembling a release candidate outside GitHub Actions. Sparkle's feed and Ed25519 key are required for signed updates; missing telemetry values disable their respective transport without changing local diagnostics.
+
+Product analytics is consent-controlled and deny-by-default: only the typed operational property allow-list can reach PostHog. Sentry errors use category/code metadata rather than raw error descriptions. Screenshots, OCR, app/window titles, audio transcripts, conversation text, tokens, and local paths must never be added to either payload. Local JSONL diagnostics rotate at 14 days or 100 MB and can be exported or cleared from Diagnostics.
+
+Tagged GitHub releases require `DESKTOP_SENTRY_DSN` and `DESKTOP_POSTHOG_PROJECT_KEY` repository secrets in addition to the Apple/Sparkle signing secrets. Workflow-dispatch smoke builds may omit them; the transports then stay disabled.
 
 All active SwiftPM commands go through `macos/scripts/swiftpm.sh`. On this Mac it
 fails closed unless T9 is mounted, and gives every Conductor workspace an isolated

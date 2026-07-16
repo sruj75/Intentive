@@ -82,7 +82,9 @@ Confirm the generated `Info.plist` contains:
 4. `CFBundleShortVersionString` and `CFBundleVersion` matching the release tag/build.
 5. `NSScreenCaptureUsageDescription`, `NSAppleEventsUsageDescription`, `NSMicrophoneUsageDescription`, and `NSAudioCaptureUsageDescription`.
 6. `SUFeedURL` and `SUPublicEDKey` when Sparkle update metadata is provided.
-7. `Contents/Resources/IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx` for SwiftPM `Bundle.module` lookup.
+7. `IntentiveSentryDSN`, `IntentivePostHogProjectKey`, and `IntentivePostHogHost` when release telemetry metadata is provided.
+8. `Contents/Frameworks/Sparkle.framework` and `Contents/Frameworks/Sentry.framework` for the production release boundaries.
+9. `Contents/Resources/IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx` for SwiftPM `Bundle.module` lookup.
 
 For the mechanical local check:
 

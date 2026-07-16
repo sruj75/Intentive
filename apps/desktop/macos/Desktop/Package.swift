@@ -14,6 +14,11 @@ let package = Package(
     .library(name: "IntentiveDesktopOmiArchive", targets: ["IntentiveDesktopOmiArchive"]),
   ],
   dependencies: [
+    // Omi's production release boundaries, renovated behind Intentive-owned
+    // UpdaterClient / TelemetryClient seams (Slice 13).
+    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "8.58.0"),
+    .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     .package(
       url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
       exact: "1.24.2"
@@ -199,6 +204,9 @@ let package = Package(
         "IntentiveDesktopNativeAdapters",
         "IntentiveDesktopNativeAssets",
         "IntentiveDesktopOmiArchive",
+        .product(name: "Sparkle", package: "Sparkle"),
+        .product(name: "Sentry", package: "sentry-cocoa"),
+        .product(name: "PostHog", package: "posthog-ios"),
       ],
       path: "Sources/Intentive"
     ),

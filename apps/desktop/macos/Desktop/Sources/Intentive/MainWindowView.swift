@@ -79,6 +79,7 @@ final class DesktopViewModel: ObservableObject {
   @Published var onboardingProgress: DesktopOnboardingProgress
   @Published var onboardingRetentionPeriod: ScreenMemoryRetentionPeriod = .sevenDays
   @Published var utilitySettings: DesktopUtilitySettings
+  @Published var updateSnapshot = UpdateSnapshot()
   @Published var showOnboarding: Bool
   @Published var voiceCaptureRunning = false
   @Published var voiceStatus = "Ready for a local push-to-talk turn"
@@ -93,6 +94,7 @@ final class DesktopViewModel: ObservableObject {
   private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
   private let onboardingStore: any DesktopOnboardingProgressStore
   private let utilitySettingsCoordinator: DesktopUtilitySettingsCoordinator
+  private var publicReleaseOperations: DesktopPublicReleaseOperations!
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
   // On-device passive-audio stack (replaces RunAnywhere): Silero VAD gates
@@ -385,6 +387,13 @@ final class DesktopViewModel: ObservableObject {
     floatingBarManager.configure(controller: floatingBarController)
     floatingBarManager.setShortcutPreset(loadedUtilitySettings.floatingBarShortcut)
     floatingBarManager.registerGlobalShortcut()
+    publicReleaseOperations = DesktopPublicReleaseOperations(
+      profileRoot: launchConfiguration.profileRoot,
+      updatesEnabled: composition.activeSystemBoundaries.contains(.updates),
+      telemetryEnabled: composition.activeSystemBoundaries.contains(.telemetry),
+      analyticsConsent: { [weak self] in self?.utilitySettings.analyticsEnabled ?? false },
+      onUpdateSnapshot: { [weak self] snapshot in self?.updateSnapshot = snapshot }
+    )
     reconcileAmbientAudioCapture()
     privacyCoordinator.enforcePersistedState()
   }
@@ -430,6 +439,7 @@ final class DesktopViewModel: ObservableObject {
   func requestQuit() {
     captureLifecycle?.stop(reason: .quit)
     captureRunning = false
+    publicReleaseOperations.shutdown()
   }
 
   func restoreRuntimeSession() async {
@@ -560,6 +570,7 @@ final class DesktopViewModel: ObservableObject {
   func setAnalyticsEnabled(_ enabled: Bool) {
     utilitySettings.analyticsEnabled = enabled
     persistUtilitySettings()
+    publicReleaseOperations.setAnalyticsEnabled(enabled)
     status = enabled ? "Anonymous product analytics enabled" : "Product analytics disabled"
   }
 
@@ -577,7 +588,38 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func exportDiagnostics() {
-    status = "Diagnostics export is ready for the rotating log boundary in Slice 13"
+    let destination = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+      ?? launchConfiguration.profileRoot
+    do {
+      let export = try publicReleaseOperations.exportDiagnostics(to: destination)
+      NSWorkspace.shared.activateFileViewerSelecting([export])
+      status = "Diagnostics exported"
+    } catch {
+      status = "Diagnostics export failed: \(error.localizedDescription)"
+    }
+  }
+
+  func clearDiagnostics() {
+    do {
+      try publicReleaseOperations.clearDiagnostics()
+      status = "Diagnostics cleared"
+    } catch {
+      status = "Diagnostics could not be cleared: \(error.localizedDescription)"
+    }
+  }
+
+  func checkForUpdates() {
+    guard composition.activeSystemBoundaries.contains(.updates) else {
+      status = "Updates are disabled for this deterministic launch"
+      return
+    }
+    publicReleaseOperations.checkForUpdates()
+    status = "Checking for updates"
+  }
+
+  func installDownloadedUpdate() {
+    publicReleaseOperations.resumeDeferredInstall()
+    status = "Installing update"
   }
 
   func clearLocalData() {
@@ -1665,10 +1707,18 @@ private struct UtilitySettingsView: View {
       if section == .updates {
         Section("Updates") {
           LabeledContent("Application", value: "Intentive Desktop")
-          Text(
-            "Signed Sparkle checks and install state are provided by the release boundary in Slice 13."
-          )
-          .foregroundStyle(.secondary)
+          LabeledContent("Status", value: model.updateSnapshot.phase.displayName)
+          if let version = model.updateSnapshot.availableVersion {
+            LabeledContent("Available version", value: version)
+          }
+          if let failure = model.updateSnapshot.failureMessage {
+            Text(failure).foregroundStyle(.red)
+          }
+          Button("Check for Updates", action: model.checkForUpdates)
+            .disabled(model.updateSnapshot.phase == .checking)
+          if model.updateSnapshot.phase == .downloadedAwaitingInstall {
+            Button("Install Downloaded Update", action: model.installDownloadedUpdate)
+          }
         }
       }
 
@@ -1681,9 +1731,23 @@ private struct UtilitySettingsView: View {
           LabeledContent("Capture", value: model.captureRunning ? "Running" : "Stopped")
           LabeledContent("Runtime", value: String(describing: model.runtimeState))
           Button("Export Logs", action: model.exportDiagnostics)
+          Button("Clear Logs", role: .destructive, action: model.clearDiagnostics)
         }
       }
     }
     .padding(24)
+  }
+}
+
+private extension UpdatePhase {
+  var displayName: String {
+    switch self {
+    case .idle: return "Up to date"
+    case .checking: return "Checking"
+    case .downloading: return "Downloading"
+    case .downloadedAwaitingInstall: return "Ready to install"
+    case .installing: return "Installing"
+    case .failed: return "Needs attention"
+    }
   }
 }

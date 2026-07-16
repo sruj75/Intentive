@@ -10,6 +10,9 @@ APP_BUILD="${INTENTIVE_APP_BUILD:-901}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
 SPARKLE_FEED_URL="${INTENTIVE_SPARKLE_FEED_URL:-https://github.com/intentive-ai/intentive/releases/latest/download/appcast.xml}"
 SPARKLE_PUBLIC_ED_KEY="${INTENTIVE_SPARKLE_PUBLIC_ED_KEY:-desktop-bundle-smoke-public-ed-key}"
+SENTRY_DSN="${INTENTIVE_SENTRY_DSN:-https://public@example.invalid/1}"
+POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-phc_desktop_bundle_smoke}"
+POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
 NATIVE_ASSETS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAssets.bundle"
 
 fail() {
@@ -44,6 +47,9 @@ APP_BUNDLE="$(
     INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
     INTENTIVE_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
     INTENTIVE_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+    INTENTIVE_SENTRY_DSN="$SENTRY_DSN" \
+    INTENTIVE_POSTHOG_PROJECT_KEY="$POSTHOG_PROJECT_KEY" \
+    INTENTIVE_POSTHOG_HOST="$POSTHOG_HOST" \
     "$BUILD_SCRIPT" | tail -n 1
 )"
 
@@ -54,12 +60,16 @@ EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Intentive"
 APP_ICON="$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 NATIVE_ASSETS_BUNDLE="$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
 VAD_MODEL="$NATIVE_ASSETS_BUNDLE/silero_vad.onnx"
+SPARKLE_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
 
 [[ -f "$PLIST" ]] || fail "Info.plist missing"
 [[ -x "$EXECUTABLE" ]] || fail "executable missing or not executable: $EXECUTABLE"
 [[ -s "$APP_ICON" ]] || fail "AppIcon.icns missing or empty"
 [[ -d "$NATIVE_ASSETS_BUNDLE" ]] || fail "native assets bundle missing: $NATIVE_ASSETS_BUNDLE"
 [[ -s "$VAD_MODEL" ]] || fail "silero_vad.onnx missing from native assets bundle"
+[[ -d "$SPARKLE_FRAMEWORK" ]] || fail "Sparkle.framework missing"
+[[ -d "$SENTRY_FRAMEWORK" ]] || fail "Sentry.framework missing"
 
 plutil -lint "$PLIST" >/dev/null
 
@@ -77,6 +87,9 @@ assert_eq "SUPublicEDKey" "$SPARKLE_PUBLIC_ED_KEY"
 assert_eq "SUEnableAutomaticChecks" "true"
 assert_eq "SUAutomaticallyUpdate" "false"
 assert_eq "SUScheduledCheckInterval" "3600"
+assert_eq "IntentiveSentryDSN" "$SENTRY_DSN"
+assert_eq "IntentivePostHogProjectKey" "$POSTHOG_PROJECT_KEY"
+assert_eq "IntentivePostHogHost" "$POSTHOG_HOST"
 
 assert_nonempty_plist "NSScreenCaptureUsageDescription"
 assert_nonempty_plist "NSAppleEventsUsageDescription"

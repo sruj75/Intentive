@@ -57,6 +57,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
           SPARKLE_EDDSA_SIGNATURE: ${{ secrets.SPARKLE_EDDSA_SIGNATURE }}
+          DESKTOP_SENTRY_DSN: ${{ secrets.DESKTOP_SENTRY_DSN }}
+          DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
         run: |
           if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
             echo "Workflow-dispatch smoke builds may be unsigned."
@@ -73,7 +75,9 @@ jobs:
             APPLE_APP_SPECIFIC_PASSWORD \
             APPLE_TEAM_ID \
             SPARKLE_PUBLIC_ED_KEY \
-            SPARKLE_EDDSA_SIGNATURE; do
+            SPARKLE_EDDSA_SIGNATURE \
+            DESKTOP_SENTRY_DSN \
+            DESKTOP_POSTHOG_PROJECT_KEY; do
             if [[ -z "${!secret_name:-}" ]]; then
               missing+=("$secret_name")
             fi
@@ -92,6 +96,8 @@ jobs:
       - name: Build app bundle
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          DESKTOP_SENTRY_DSN: ${{ secrets.DESKTOP_SENTRY_DSN }}
+          DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
         run: |
           APP_BUNDLE="$(
             CONFIGURATION=release \
@@ -101,6 +107,9 @@ jobs:
               INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
               INTENTIVE_SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" \
               INTENTIVE_SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
+              INTENTIVE_SENTRY_DSN="${DESKTOP_SENTRY_DSN:-}" \
+              INTENTIVE_POSTHOG_PROJECT_KEY="${DESKTOP_POSTHOG_PROJECT_KEY:-}" \
+              INTENTIVE_POSTHOG_HOST="https://us.i.posthog.com" \
               apps/desktop/macos/scripts/build-app-bundle.sh | tail -n 1
           )"
           [[ -d "$APP_BUNDLE" ]] || { echo "Missing app bundle: $APP_BUNDLE" >&2; exit 1; }
