@@ -3,7 +3,7 @@ import AVFoundation
 @testable import IntentiveDesktopNativeAdapters
 import XCTest
 
-final class NativeVoiceAdapterTests: XCTestCase {
+final class PassiveAudioNativeAdapterTests: XCTestCase {
   func testFloat32MonoBufferEncodesLittleEndianPCM16() throws {
     let format = try XCTUnwrap(
       AVAudioFormat(
@@ -86,7 +86,7 @@ final class NativeVoiceAdapterTests: XCTestCase {
       + Array(repeating: Float(0.9), count: 3)
       + Array(repeating: Float(0), count: 7)
     let vad = FakeVADPredictor(probabilities: probabilities)
-    let gate = PushToTalkVoiceActivityGate(vad: vad)
+    let gate = SileroVoiceActivityGate(vad: vad)
 
     let hasSpeech = await gate.containsSpeech(pcm16kFrames(12))
 
@@ -97,7 +97,7 @@ final class NativeVoiceAdapterTests: XCTestCase {
 
   func testVoiceActivityGateRejectsSilenceFrames() async {
     let vad = FakeVADPredictor(probabilities: Array(repeating: Float(0.1), count: 12))
-    let gate = PushToTalkVoiceActivityGate(vad: vad)
+    let gate = SileroVoiceActivityGate(vad: vad)
 
     let hasSpeech = await gate.containsSpeech(pcm16kFrames(12))
 
@@ -129,7 +129,7 @@ private func pcm16kFrames(_ frameCount: Int) -> Data {
   return data
 }
 
-private final class FakeVADPredictor: PushToTalkVADPredictor {
+private final class FakeVADPredictor: AudioActivityPredicting {
   private let probabilities: [Float]
   private var index = 0
   private(set) var resetCount = 0

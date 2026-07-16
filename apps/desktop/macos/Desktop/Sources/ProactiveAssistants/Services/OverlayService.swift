@@ -156,7 +156,7 @@ class OverlayService {
       return nil
     }
 
-    return SpatialOverlayGeometry.globalAppKitFrame(
+    return GlowGeometry.globalAppKitFrame(
       topLeftFrame: CGRect(origin: position, size: size)
     )
   }
@@ -196,13 +196,8 @@ class OverlayService {
       return nil
     }
 
-    return SpatialOverlayGeometry.globalAppKitFrame(
+    return GlowGeometry.globalAppKitFrame(
       topLeftFrame: CGRect(x: largest.x, y: largest.y, width: largest.width, height: largest.height)
     )
   }
 }
-
-// MARK: - Backward Compatibility Alias
-
-/// Alias for backward compatibility
-typealias GlowOverlayController = OverlayService

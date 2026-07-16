@@ -65,7 +65,6 @@ final class DesktopViewModel: ObservableObject {
   let composition: DesktopApplicationComposition
   @Published var selected: DesktopSection = .screenMemory
   @Published var query = ""
-  @Published var input = ""
   @Published var status: String
   @Published var effectLog: [String] = []
   @Published var captureRunning = false
@@ -73,7 +72,6 @@ final class DesktopViewModel: ObservableObject {
   @Published var excludedAppsText: String
   @Published var privacySnapshot: ScreenMemoryPrivacySnapshot
   @Published var screenRecordingPermissionGranted: Bool
-  @Published var accessibilityPermissionGranted: Bool
   @Published var microphonePermissionStatus: DesktopMicrophonePermissionStatus
   @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
   @Published var onboardingProgress: DesktopOnboardingProgress
@@ -81,34 +79,25 @@ final class DesktopViewModel: ObservableObject {
   @Published var utilitySettings: DesktopUtilitySettings
   @Published var updateSnapshot = UpdateSnapshot()
   @Published var showOnboarding: Bool
-  @Published var voiceCaptureRunning = false
-  @Published var voiceStatus = "Ready for a local push-to-talk turn"
-  @Published var voiceShortcutState: PushToTalkShortcutState = .idle
 
   let messageStore = MessageStore()
   let screenMemory: SwitchableScreenMemoryStore
   private let settingsStore: any ScreenMemorySettingsStore
   private let privacyPolicy: ScreenMemoryPrivacyPolicy
   private let permissionGateway: any ScreenRecordingPermissionGateway
-  private let accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway
   private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
   private let onboardingStore: any DesktopOnboardingProgressStore
   private let utilitySettingsCoordinator: DesktopUtilitySettingsCoordinator
   private var publicReleaseOperations: DesktopPublicReleaseOperations!
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
-  // On-device passive-audio stack (replaces RunAnywhere): Silero VAD gates
-  // microphone turns; FluidAudio/Parakeet transcribes on the Neural Engine. Shared
-  // so the ONNX session and the Parakeet model load once across every consumer.
-  private let sileroVAD = SileroPushToTalkVADPredictor()
+  // On-device passive-audio stack: Silero VAD gates microphone segments and
+  // FluidAudio/Parakeet transcribes on the Neural Engine. Shared so the ONNX
+  // session and Parakeet model load once across every passive-audio consumer.
+  private let sileroVAD = SileroAudioActivityPredictor()
   private let localTranscription = FluidAudioTranscriptionService()
-  private let pushToTalkRecorder = NativePushToTalkAudioRecorder()
-  private let pushToTalkShortcutMonitor = NativePushToTalkShortcutMonitor()
   private var runtimeRestoreAttempted = false
   private var screenMemoryProfileUserID = DesktopLocalProfile.anonymousUserID
-  private var pushToTalkShortcutStateMachine = PushToTalkShortcutStateMachine()
-  private var pendingPushToTalkAudio: Data?
-  private var pendingPushToTalkLockTask: Task<Void, Never>?
   private lazy var runtime = RuntimeAdapter(
     socket: runtimeSocket,
     messageStore: messageStore,
@@ -124,11 +113,6 @@ final class DesktopViewModel: ObservableObject {
   private lazy var floatingBarController = FloatingBarController(
     runtimeClient: runtime, messageStore: messageStore)
   private let floatingBarManager = FloatingControlBarManager.shared
-  private lazy var pushToTalk = PushToTalkManager(
-    audioCapture: NativeMicrophoneAudioCaptureService(),
-    voiceGate: PushToTalkVoiceActivityGate(vad: sileroVAD),
-    transcription: localTranscription
-  )
   private lazy var compiler = ContextCompiler(settings: compilerSettings)
   private lazy var publisher = PerceptionPublisher(
     runtimeClient: runtime,
@@ -172,7 +156,7 @@ final class DesktopViewModel: ObservableObject {
   private lazy var ambientAudioLoop = AmbientAudioCaptureLoop(
     coordinator: ambientAudio,
     audioCapture: NativeMicrophoneAudioCaptureService(captureDuration: 4.0),
-    voiceGate: PushToTalkVoiceActivityGate(vad: sileroVAD),
+    voiceGate: SileroVoiceActivityGate(vad: sileroVAD),
     transcription: localTranscription,
     settingsProvider: { [weak self] in
       self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
@@ -253,10 +237,6 @@ final class DesktopViewModel: ObservableObject {
   }()
   private var didRunLaunchReconciliation = false
 
-  var messages: [ChatMessage] {
-    messageStore.messages
-  }
-
   func openFloatingConversation() {
     floatingBarManager.showComposer()
   }
@@ -300,8 +280,6 @@ final class DesktopViewModel: ObservableObject {
     settingsStore: any ScreenMemorySettingsStore = UserDefaultsScreenMemorySettingsStore(),
     permissionGateway: any ScreenRecordingPermissionGateway =
       NativeScreenRecordingPermissionGateway(),
-    accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway =
-      NativeAccessibilityPermissionGateway(),
     microphonePermissionGateway: any DesktopMicrophonePermissionGateway =
       NativeMicrophonePermissionGateway(),
     onboardingStore: any DesktopOnboardingProgressStore =
@@ -313,7 +291,6 @@ final class DesktopViewModel: ObservableObject {
     self.composition = composition
     self.settingsStore = settingsStore
     self.permissionGateway = permissionGateway
-    self.accessibilityPermissionGateway = accessibilityPermissionGateway
     self.microphonePermissionGateway = microphonePermissionGateway
     self.onboardingStore = onboardingStore
     let utilitySettingsCoordinator = DesktopUtilitySettingsCoordinator(store: utilitySettingsStore)
@@ -333,10 +310,6 @@ final class DesktopViewModel: ObservableObject {
       usesCaptureBoundary
       ? permissionGateway.hasScreenRecordingPermission()
       : composition.permissions.screenRecording == .granted
-    let accessibilityPermissionGranted =
-      usesCaptureBoundary
-      ? accessibilityPermissionGateway.hasAccessibilityPermission()
-      : false
     let microphonePermissionStatus =
       usesCaptureBoundary
       ? microphonePermissionGateway.authorizationStatus()
@@ -349,7 +322,6 @@ final class DesktopViewModel: ObservableObject {
     )
     privacySnapshot = privacyPolicy.snapshot
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
-    self.accessibilityPermissionGranted = accessibilityPermissionGranted
     self.microphonePermissionStatus = microphonePermissionStatus
     onboardingProgress = progress
     let launchUserID: String?
@@ -513,22 +485,6 @@ final class DesktopViewModel: ObservableObject {
       }
       captureRunning = captureLoop.state.isRunning
       objectWillChange.send()
-    }
-  }
-
-  func sendMessage() {
-    let body = input.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !body.isEmpty else { return }
-    do {
-      _ = try runtime.sendUserMessage(body)
-      input = ""
-      status =
-        runtime.status == .connected
-        ? "Message sent to Runtime Bridge"
-        : "Message queued until Runtime connects"
-      objectWillChange.send()
-    } catch {
-      status = "Send failed: \(error.localizedDescription)"
     }
   }
 
@@ -730,21 +686,6 @@ final class DesktopViewModel: ObservableObject {
     }
   }
 
-  func requestAccessibilityPermission() {
-    let requested = accessibilityPermissionGateway.requestAccessibilityPermission()
-    accessibilityPermissionGranted =
-      requested || accessibilityPermissionGateway.hasAccessibilityPermission()
-    status =
-      accessibilityPermissionGranted
-      ? "Accessibility permission granted"
-      : "Accessibility permission required for global push-to-talk"
-  }
-
-  func openAccessibilitySettings() {
-    accessibilityPermissionGateway.openAccessibilitySettings()
-    status = "Opened Accessibility settings"
-  }
-
   func requestMicrophonePermission() async {
     microphonePermissionStatus = await microphonePermissionGateway.requestAccess()
     status =
@@ -785,7 +726,6 @@ final class DesktopViewModel: ObservableObject {
 
   func refreshDesktopPermissions() {
     refreshScreenRecordingPermission()
-    accessibilityPermissionGranted = accessibilityPermissionGateway.hasAccessibilityPermission()
     microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
     reconcileAmbientAudioCapture()
   }
@@ -793,220 +733,6 @@ final class DesktopViewModel: ObservableObject {
   func openFloatingBarFromOnboarding() {
     openFloatingBar()
     markOnboardingStepReviewed(.textChatShortcut)
-  }
-
-  func runPushToTalkTurn() async {
-    guard !voiceCaptureRunning else { return }
-    refreshDesktopPermissions()
-    guard microphonePermissionStatus.isGranted else {
-      voiceStatus = "Microphone permission is required"
-      status = "Microphone permission required for voice"
-      return
-    }
-
-    voiceCaptureRunning = true
-    voiceStatus = "Capturing a push-to-talk turn..."
-    status = "Capturing voice"
-    defer { voiceCaptureRunning = false }
-
-    do {
-      let transcript = try await pushToTalk.captureTranscript()
-      applyDictation(transcript)
-      objectWillChange.send()
-    } catch {
-      voiceStatus = error.localizedDescription
-      status = "Voice turn failed: \(error.localizedDescription)"
-    }
-  }
-
-  /// Places a dictated transcript into the composer for review instead of
-  /// sending it. The user edits and sends normally (ADR-0007). A nil transcript
-  /// means the turn contained no speech.
-  private func applyDictation(_ transcript: String?) {
-    guard let transcript else {
-      voiceStatus = "No speech detected"
-      status = "Voice turn ignored because no speech was detected"
-      return
-    }
-    let existing = input.trimmingCharacters(in: .whitespacesAndNewlines)
-    input = existing.isEmpty ? transcript : existing + " " + transcript
-    voiceStatus = "Dictated: \(transcript)"
-    status = "Dictation added to the composer for review"
-  }
-
-  /// The global push-to-talk shortcut is the "talk to the companion from
-  /// anywhere" affordance, so its transcript is staged in the floating bar's
-  /// composer for review (never sent — ADR-0007) rather than the main-window
-  /// composer. A nil/empty transcript means the turn contained no speech.
-  private func stageShortcutDictationInFloatingBar(_ transcript: String?) {
-    guard let transcript,
-      !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else {
-      voiceStatus = "No speech detected"
-      status = "Voice turn ignored because no speech was detected"
-      return
-    }
-    floatingBarManager.receiveDictation(transcript)
-    voiceStatus = "Dictated: \(transcript)"
-    status = "Dictation added to the floating bar for review"
-  }
-
-  private func configurePushToTalkShortcutMonitor() {
-    pushToTalkShortcutMonitor.onShortcutEvent = { [weak self] event in
-      Task { @MainActor [weak self] in
-        self?.handlePushToTalkShortcutEvent(event)
-      }
-    }
-    pushToTalkShortcutMonitor.start()
-  }
-
-  private func handlePushToTalkShortcutEvent(_ event: NativePushToTalkShortcutEvent) {
-    let now = ProcessInfo.processInfo.systemUptime
-    let actions: [PushToTalkShortcutAction]
-    switch event {
-    case .down:
-      actions = pushToTalkShortcutStateMachine.shortcutDown(at: now)
-    case .up:
-      actions = pushToTalkShortcutStateMachine.shortcutUp(at: now)
-    }
-    voiceShortcutState = pushToTalkShortcutStateMachine.state
-    performPushToTalkShortcutActions(actions)
-  }
-
-  private func performPushToTalkShortcutActions(_ actions: [PushToTalkShortcutAction]) {
-    for action in actions {
-      switch action {
-      case .startRecording:
-        startShortcutVoiceRecording()
-      case .stopRecordingAndSend:
-        stopShortcutVoiceRecordingAndSend()
-      case .stopRecordingAndHoldForLock:
-        stopShortcutVoiceRecordingForLockDecision()
-      case .sendPendingRecording:
-        sendPendingShortcutVoiceRecording()
-      case .discardPendingRecording:
-        pendingPushToTalkAudio = nil
-      case .schedulePendingLockTimeout(let delay):
-        schedulePendingPushToTalkLockTimeout(delay: delay)
-      case .cancelPendingLockTimeout:
-        pendingPushToTalkLockTask?.cancel()
-        pendingPushToTalkLockTask = nil
-      }
-    }
-    voiceShortcutState = pushToTalkShortcutStateMachine.state
-  }
-
-  private func startShortcutVoiceRecording() {
-    refreshDesktopPermissions()
-    guard accessibilityPermissionGranted else {
-      voiceStatus = "Accessibility permission is required for the global Option shortcut"
-      status = "Accessibility permission required for global push-to-talk"
-      performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
-      return
-    }
-    guard microphonePermissionStatus.isGranted else {
-      voiceStatus = "Microphone permission is required"
-      status = "Microphone permission required for voice"
-      performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
-      return
-    }
-
-    voiceCaptureRunning = true
-    voiceStatus =
-      pushToTalkShortcutStateMachine.state == .lockedListening
-      ? "Voice locked. Tap Option again to send."
-      : "Hold Option to talk..."
-    status = "Capturing voice"
-
-    Task { @MainActor [weak self] in
-      guard let self else { return }
-      do {
-        try await pushToTalkRecorder.start()
-      } catch {
-        voiceCaptureRunning = false
-        voiceStatus = error.localizedDescription
-        status = "Voice turn failed: \(error.localizedDescription)"
-        performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
-      }
-    }
-  }
-
-  private func stopShortcutVoiceRecordingAndSend() {
-    pendingPushToTalkLockTask?.cancel()
-    pendingPushToTalkLockTask = nil
-    voiceStatus = "Finalizing voice turn..."
-    voiceCaptureRunning = false
-
-    Task { @MainActor [weak self] in
-      guard let self else { return }
-      do {
-        let audio = try pushToTalkRecorder.stop()
-        await processCapturedPushToTalkAudio(audio)
-      } catch {
-        finishPushToTalkShortcutAfterFailure(error)
-      }
-    }
-  }
-
-  private func stopShortcutVoiceRecordingForLockDecision() {
-    voiceStatus = "Tap Option again to lock, or wait to send."
-    voiceCaptureRunning = false
-
-    Task { @MainActor [weak self] in
-      guard let self else { return }
-      do {
-        pendingPushToTalkAudio = try pushToTalkRecorder.stop()
-      } catch {
-        finishPushToTalkShortcutAfterFailure(error)
-      }
-    }
-  }
-
-  private func sendPendingShortcutVoiceRecording() {
-    pendingPushToTalkLockTask?.cancel()
-    pendingPushToTalkLockTask = nil
-    guard let audio = pendingPushToTalkAudio else {
-      finishPushToTalkShortcutAfterFailure(NativeMicrophoneAudioCaptureError.noAudioCaptured)
-      return
-    }
-    pendingPushToTalkAudio = nil
-    voiceStatus = "Finalizing voice turn..."
-
-    Task { @MainActor [weak self] in
-      await self?.processCapturedPushToTalkAudio(audio)
-    }
-  }
-
-  private func schedulePendingPushToTalkLockTimeout(delay: TimeInterval) {
-    pendingPushToTalkLockTask?.cancel()
-    pendingPushToTalkLockTask = Task { @MainActor [weak self] in
-      let nanoseconds = UInt64(max(0, delay) * 1_000_000_000)
-      try? await Task.sleep(nanoseconds: nanoseconds)
-      guard let self, !Task.isCancelled else { return }
-      performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.pendingLockTimeout())
-    }
-  }
-
-  private func processCapturedPushToTalkAudio(_ audio: Data) async {
-    do {
-      let transcript = try await pushToTalk.transcript(fromPCM16k: audio)
-      stageShortcutDictationInFloatingBar(transcript)
-      pushToTalkShortcutStateMachine.finishProcessing()
-      voiceShortcutState = pushToTalkShortcutStateMachine.state
-      voiceCaptureRunning = false
-      objectWillChange.send()
-    } catch {
-      finishPushToTalkShortcutAfterFailure(error)
-    }
-  }
-
-  private func finishPushToTalkShortcutAfterFailure(_ error: Error) {
-    pushToTalkRecorder.cancel()
-    pendingPushToTalkAudio = nil
-    performPushToTalkShortcutActions(pushToTalkShortcutStateMachine.cancel())
-    voiceCaptureRunning = false
-    voiceStatus = error.localizedDescription
-    status = "Voice turn failed: \(error.localizedDescription)"
   }
 
   func triggerEffect() {

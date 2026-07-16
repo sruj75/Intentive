@@ -74,8 +74,8 @@ public struct FloatingConversationSnapshot: Equatable, Sendable {
   }
 }
 
-public protocol AudioCaptureService {
-  func capturePushToTalkAudio() async throws -> Data
+public protocol AmbientAudioSegmentCapturing {
+  func captureSegment() async throws -> Data
 }
 
 public protocol VoiceActivityGate {
@@ -84,181 +84,6 @@ public protocol VoiceActivityGate {
 
 public protocol LocalTranscriptionService {
   func transcribe(_ pcm16k: Data) async throws -> String
-}
-
-public enum PushToTalkTranscriptionError: Error, Equatable, LocalizedError {
-  case unavailable
-
-  public var errorDescription: String? {
-    switch self {
-    case .unavailable:
-      return "Local push-to-talk transcription is not configured."
-    }
-  }
-}
-
-public struct EnergyVoiceActivityGate: VoiceActivityGate {
-  public var rmsThreshold: Int
-
-  public init(threshold: Float = 0.01) {
-    rmsThreshold = Int(threshold * 32_768)
-  }
-
-  public init(rmsThreshold: Int) {
-    self.rmsThreshold = rmsThreshold
-  }
-
-  public func containsSpeech(_ pcm16k: Data) async -> Bool {
-    PushToTalkTurnGate.audioEnergy(pcm16k: pcm16k).rms > rmsThreshold
-  }
-}
-
-public struct PushToTalkVoiceActivityGate: VoiceActivityGate {
-  private let vad: PushToTalkVADPredictor?
-
-  public init(vad: PushToTalkVADPredictor? = nil) {
-    self.vad = vad
-  }
-
-  public func containsSpeech(_ pcm16k: Data) async -> Bool {
-    PushToTalkTurnGate.turnHasSpeech(pcm16k: pcm16k, vad: vad)
-  }
-}
-
-public struct UnavailableLocalTranscriptionService: LocalTranscriptionService {
-  public init() {}
-
-  public func transcribe(_ pcm16k: Data) async throws -> String {
-    throw PushToTalkTranscriptionError.unavailable
-  }
-}
-
-/// Push-to-talk dictation. Captures a microphone turn, screens it with the
-/// voice-activity gate, and transcribes it on device. The transcript is
-/// returned for the caller to place in the composer for review — dictation
-/// never sends on its own. This is why the manager holds no runtime client:
-/// the "fill the composer, do not send" decision lives entirely at the call
-/// site (see ADR-0007; contrast ADR-0004's captured-audio → user_message path).
-/// Returns nil when the turn contains no speech or transcribes to empty text.
-public final class PushToTalkManager {
-  private let audioCapture: AudioCaptureService
-  private let voiceGate: VoiceActivityGate
-  private let transcription: LocalTranscriptionService
-
-  public init(
-    audioCapture: AudioCaptureService,
-    voiceGate: VoiceActivityGate = PushToTalkVoiceActivityGate(),
-    transcription: LocalTranscriptionService = UnavailableLocalTranscriptionService()
-  ) {
-    self.audioCapture = audioCapture
-    self.voiceGate = voiceGate
-    self.transcription = transcription
-  }
-
-  public func captureTranscript() async throws -> String? {
-    let pcm16k = try await audioCapture.capturePushToTalkAudio()
-    return try await transcript(fromPCM16k: pcm16k)
-  }
-
-  public func transcript(fromPCM16k pcm16k: Data) async throws -> String? {
-    guard await voiceGate.containsSpeech(pcm16k) else { return nil }
-    let transcript = try await transcription.transcribe(pcm16k)
-    let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
-  }
-}
-
-public enum PushToTalkShortcutState: Equatable, Sendable {
-  case idle
-  case listening
-  case pendingLockDecision
-  case lockedListening
-  case finalizing
-}
-
-public enum PushToTalkShortcutAction: Equatable, Sendable {
-  case startRecording
-  case stopRecordingAndSend
-  case stopRecordingAndHoldForLock
-  case sendPendingRecording
-  case discardPendingRecording
-  case schedulePendingLockTimeout(after: TimeInterval)
-  case cancelPendingLockTimeout
-}
-
-public struct PushToTalkShortcutStateMachine: Sendable {
-  public private(set) var state: PushToTalkShortcutState
-  public var doubleTapThreshold: TimeInterval
-  public var tapToLockMaxHoldDuration: TimeInterval
-  public var doubleTapForLock: Bool
-
-  private var lastDownAt: TimeInterval?
-
-  public init(
-    state: PushToTalkShortcutState = .idle,
-    doubleTapThreshold: TimeInterval = 0.4,
-    tapToLockMaxHoldDuration: TimeInterval = 0.22,
-    doubleTapForLock: Bool = true
-  ) {
-    self.state = state
-    self.doubleTapThreshold = doubleTapThreshold
-    self.tapToLockMaxHoldDuration = tapToLockMaxHoldDuration
-    self.doubleTapForLock = doubleTapForLock
-  }
-
-  public mutating func shortcutDown(at now: TimeInterval) -> [PushToTalkShortcutAction] {
-    switch state {
-    case .idle:
-      lastDownAt = now
-      state = .listening
-      return [.startRecording]
-    case .pendingLockDecision:
-      lastDownAt = now
-      state = .lockedListening
-      return [.cancelPendingLockTimeout, .discardPendingRecording, .startRecording]
-    case .lockedListening:
-      state = .finalizing
-      return [.stopRecordingAndSend]
-    case .listening, .finalizing:
-      return []
-    }
-  }
-
-  public mutating func shortcutUp(at now: TimeInterval) -> [PushToTalkShortcutAction] {
-    switch state {
-    case .listening:
-      let holdDuration = now - (lastDownAt ?? now)
-      lastDownAt = nil
-      if doubleTapForLock && holdDuration < tapToLockMaxHoldDuration {
-        state = .pendingLockDecision
-        return [
-          .stopRecordingAndHoldForLock,
-          .schedulePendingLockTimeout(after: doubleTapThreshold),
-        ]
-      }
-      state = .finalizing
-      return [.stopRecordingAndSend]
-    case .idle, .pendingLockDecision, .lockedListening, .finalizing:
-      return []
-    }
-  }
-
-  public mutating func pendingLockTimeout() -> [PushToTalkShortcutAction] {
-    guard state == .pendingLockDecision else { return [] }
-    state = .finalizing
-    return [.sendPendingRecording]
-  }
-
-  public mutating func finishProcessing() {
-    state = .idle
-    lastDownAt = nil
-  }
-
-  public mutating func cancel() -> [PushToTalkShortcutAction] {
-    state = .idle
-    lastDownAt = nil
-    return [.cancelPendingLockTimeout, .discardPendingRecording]
-  }
 }
 
 public protocol DesktopNotificationSink: AnyObject {
@@ -480,10 +305,10 @@ public final class AmbientAudioCoordinator {
   }
 }
 
-public struct EmptyAudioCaptureService: AudioCaptureService {
+public struct EmptyAmbientAudioSegmentCapture: AmbientAudioSegmentCapturing {
   public init() {}
 
-  public func capturePushToTalkAudio() async throws -> Data {
+  public func captureSegment() async throws -> Data {
     Data()
   }
 }
@@ -804,7 +629,7 @@ public enum AmbientAudioCaptureLoopEvent: Equatable, Sendable {
 public final class AmbientAudioCaptureLoop {
   public nonisolated static let defaultIntervalSeconds: TimeInterval = 15
 
-  private let audioCapture: AudioCaptureService
+  private let audioCapture: AmbientAudioSegmentCapturing
   private let settingsProvider: () -> CompilerSettings
   private let permissionProvider: () -> Bool
   private let privacySnapshotProvider: () -> ScreenMemoryPrivacySnapshot
@@ -817,7 +642,7 @@ public final class AmbientAudioCaptureLoop {
 
   public init(
     coordinator: AmbientAudioCoordinator,
-    audioCapture: AudioCaptureService,
+    audioCapture: AmbientAudioSegmentCapturing,
     voiceGate: VoiceActivityGate,
     transcription: LocalTranscriptionService,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
@@ -903,7 +728,7 @@ public final class AmbientAudioCaptureLoop {
 
     let pcm16k: Data
     do {
-      pcm16k = try await audioCapture.capturePushToTalkAudio()
+      pcm16k = try await audioCapture.captureSegment()
     } catch {
       return recordFailure(error.localizedDescription)
     }

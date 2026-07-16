@@ -12,7 +12,7 @@ public enum NativeMicrophoneAudioCaptureError: Error, Equatable, LocalizedError 
   public var errorDescription: String? {
     switch self {
     case .microphonePermissionDenied:
-      return "Microphone permission is required for push-to-talk."
+      return "Microphone permission is required for passive audio sensing."
     case .inputUnavailable:
       return "No microphone input is available."
     case .conversionUnavailable:
@@ -25,14 +25,14 @@ public enum NativeMicrophoneAudioCaptureError: Error, Equatable, LocalizedError 
   }
 }
 
-public final class NativeMicrophoneAudioCaptureService: AudioCaptureService {
+public final class NativeMicrophoneAudioCaptureService: AmbientAudioSegmentCapturing {
   private let captureDuration: TimeInterval
 
   public init(captureDuration: TimeInterval = 5.0) {
     self.captureDuration = captureDuration
   }
 
-  public func capturePushToTalkAudio() async throws -> Data {
+  public func captureSegment() async throws -> Data {
     let status = AVCaptureDevice.authorizationStatus(for: .audio)
     if status == .notDetermined {
       let granted = await AVCaptureDevice.requestAccess(for: .audio)
@@ -88,41 +88,6 @@ public final class NativeMicrophoneAudioCaptureService: AudioCaptureService {
       withUnsafeBytes(of: &sample) { data.append(contentsOf: $0) }
     }
     return data
-  }
-}
-
-public final class NativePushToTalkAudioRecorder {
-  private var run: ManualMicrophoneCaptureRun?
-
-  public init() {}
-
-  public func start() async throws {
-    let status = AVCaptureDevice.authorizationStatus(for: .audio)
-    if status == .notDetermined {
-      let granted = await AVCaptureDevice.requestAccess(for: .audio)
-      guard granted else { throw NativeMicrophoneAudioCaptureError.microphonePermissionDenied }
-    } else {
-      guard status == .authorized else {
-        throw NativeMicrophoneAudioCaptureError.microphonePermissionDenied
-      }
-    }
-
-    let next = ManualMicrophoneCaptureRun()
-    try next.start()
-    run = next
-  }
-
-  public func stop() throws -> Data {
-    guard let run else {
-      throw NativeMicrophoneAudioCaptureError.noAudioCaptured
-    }
-    self.run = nil
-    return try run.stop()
-  }
-
-  public func cancel() {
-    run?.cancel()
-    run = nil
   }
 }
 
@@ -236,89 +201,5 @@ private final class MicrophoneCaptureRun {
     case .failure(let error):
       continuation?.resume(throwing: error)
     }
-  }
-}
-
-private final class ManualMicrophoneCaptureRun {
-  private let engine = AVAudioEngine()
-  private let lock = NSLock()
-  private var completed = false
-  private var captured = Data()
-
-  func start() throws {
-    let input = engine.inputNode
-    let inputFormat = input.outputFormat(forBus: 0)
-    guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-      throw NativeMicrophoneAudioCaptureError.inputUnavailable
-    }
-    guard
-      let targetFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: 16_000,
-        channels: 1,
-        interleaved: false
-      ),
-      let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
-    else {
-      throw NativeMicrophoneAudioCaptureError.conversionUnavailable
-    }
-
-    input.installTap(onBus: 0, bufferSize: 1_024, format: inputFormat) { [weak self] buffer, _ in
-      guard let self else { return }
-      do {
-        let data = try NativeMicrophoneAudioCaptureService.pcm16kMonoData(
-          from: buffer,
-          converter: converter,
-          targetFormat: targetFormat
-        )
-        append(data)
-      } catch {
-        cancel()
-      }
-    }
-
-    do {
-      try engine.start()
-    } catch {
-      input.removeTap(onBus: 0)
-      throw error
-    }
-  }
-
-  func stop() throws -> Data {
-    let data = finish()
-    guard !data.isEmpty else {
-      throw NativeMicrophoneAudioCaptureError.noAudioCaptured
-    }
-    return data
-  }
-
-  func cancel() {
-    _ = finish()
-  }
-
-  private func append(_ data: Data) {
-    guard !data.isEmpty else { return }
-    lock.lock()
-    if !completed {
-      captured.append(data)
-    }
-    lock.unlock()
-  }
-
-  private func finish() -> Data {
-    lock.lock()
-    guard !completed else {
-      let data = captured
-      lock.unlock()
-      return data
-    }
-    completed = true
-    let data = captured
-    lock.unlock()
-
-    engine.inputNode.removeTap(onBus: 0)
-    engine.stop()
-    return data
   }
 }

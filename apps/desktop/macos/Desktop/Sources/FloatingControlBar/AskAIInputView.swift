@@ -1,151 +1,69 @@
-import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// "Ask a question..." input panel for the floating control bar.
+/// Omi-derived floating composer narrowed to Intentive's text-only Runtime seam.
 struct AskAIInputView: View {
-    @EnvironmentObject var state: FloatingControlBarState
-    @Binding var userInput: String
-    @State private var localInput: String = ""
-    @State private var textHeight: CGFloat = 40
-    @State private var hasMarkedText = false
-    @State private var attachments: [ChatAttachment] = []
-    @State private var isDropTargeted = false
+  @Binding var userInput: String
+  var onSend: (String) -> Void
+  var onEscape: () -> Void
+  var onHeightChange: (CGFloat) -> Void
 
-    var canClearVisibleConversation: Bool = false
-    var onSend: ((String) -> Void)?
-    var onClearVisibleConversation: (() -> Void)?
-    var onEscape: (() -> Void)?
-    var onHeightChange: ((CGFloat) -> Void)?
+  @State private var textHeight: CGFloat = 40
+  @State private var hasMarkedText = false
 
-    private let minHeight: CGFloat = 40
-    private let maxHeight: CGFloat = 200
-    private var trimmedInput: String { localInput.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var canSend: Bool {
-        !hasMarkedText && (!trimmedInput.isEmpty || !attachments.isEmpty)
-    }
+  private var trimmedInput: String {
+    userInput.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            if canClearVisibleConversation {
-                HStack {
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Text("esc")
-                            .scaledFont(size: 11)
-                            .foregroundColor(.secondary)
-                            .frame(width: 30, height: 16)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(4)
-                        Text("to clear")
-                            .scaledFont(size: 11)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.top, 8)
-                .padding(.trailing, 16)
-            }
-
-            if !attachments.isEmpty {
-                AttachmentPreviewRow(
-                    attachments: attachments,
-                    onRemove: removeAttachment
-                )
-                .environment(\.colorScheme, .dark)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-            }
-
-            HStack(spacing: 6) {
-                ZStack(alignment: .topLeading) {
-                    if localInput.isEmpty && !hasMarkedText {
-                        Text("Ask a question...")
-                            .scaledFont(size: 13)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 8)
-                    }
-
-                    IntentiveTextEditor(
-                        text: $localInput,
-                        lineFragmentPadding: 8,
-                        onSubmit: {
-                            guard canSend else { return }
-                            sendMessage()
-                        },
-                        focusOnAppear: true,
-                        onMarkedTextChange: { hasMarkedText = $0 },
-                        minHeight: minHeight,
-                        maxHeight: maxHeight,
-                        onHeightChange: { newHeight in
-                            if abs(textHeight - newHeight) > 1 {
-                                textHeight = newHeight
-                                onHeightChange?(newHeight)
-                            }
-                        }
-                    )
-                    .onChange(of: localInput) { _, newValue in
-                        userInput = newValue
-                    }
-                    .onAppear {
-                        localInput = userInput
-                    }
-                }
-                .padding(.horizontal, 4)
-                .frame(height: textHeight)
-
-                Button(action: {
-                    guard canSend else { return }
-                    sendMessage()
-                }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .scaledFont(size: 24)
-                        .foregroundColor(
-                            canSend ? .white : .secondary
-                        )
-                }
-                .disabled(!canSend)
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
+  var body: some View {
+    HStack(spacing: 6) {
+      ZStack(alignment: .topLeading) {
+        if userInput.isEmpty && !hasMarkedText {
+          Text("Ask Intentive…")
+            .scaledFont(size: 13)
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
         }
-        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleAttachmentDrop)
-        .onExitCommand {
-            onEscape?()
-        }
-    }
 
-    private func sendMessage() {
-        let text = trimmedInput
-        let staged = attachments
-        guard !text.isEmpty || !staged.isEmpty else { return }
-        localInput = ""
-        userInput = ""
-        attachments = []
-        if !staged.isEmpty {
-            FloatingControlBarManager.shared.sharedFloatingProvider?.addAttachments(staged)
-        }
-        onSend?(text)
-    }
+        IntentiveTextEditor(
+          text: $userInput,
+          lineFragmentPadding: 8,
+          onSubmit: send,
+          focusOnAppear: true,
+          onMarkedTextChange: { hasMarkedText = $0 },
+          minHeight: 40,
+          maxHeight: 200,
+          onHeightChange: { height in
+            guard abs(textHeight - height) > 1 else { return }
+            textHeight = height
+            onHeightChange(height)
+          }
+        )
+      }
+      .padding(.horizontal, 4)
+      .frame(height: textHeight)
 
-    private func handleAttachmentDrop(providers: [NSItemProvider]) -> Bool {
-        ChatAttachmentDropHandler.collectURLs(from: providers) { urls in
-            addAttachmentURLs(urls)
-        }
+      Button(action: send) {
+        Image(systemName: "arrow.up.circle.fill")
+          .scaledFont(size: 24)
+          .foregroundColor(canSend ? .white : .secondary)
+      }
+      .disabled(!canSend)
+      .buttonStyle(.plain)
     }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
+    .onExitCommand(perform: onEscape)
+  }
 
-    private func addAttachmentURLs(_ urls: [URL]) {
-        let remaining = max(0, kMaxChatAttachments - attachments.count)
-        guard remaining > 0 else { return }
-        let staged = urls.prefix(remaining).compactMap(ChatAttachment.from(url:))
-        guard !staged.isEmpty else { return }
-        attachments.append(contentsOf: staged)
-    }
+  private var canSend: Bool {
+    !hasMarkedText && !trimmedInput.isEmpty
+  }
 
-    private func removeAttachment(_ id: String) {
-        attachments.removeAll { $0.id == id }
-    }
+  private func send() {
+    guard canSend else { return }
+    let message = trimmedInput
+    userInput = ""
+    onSend(message)
+  }
 }

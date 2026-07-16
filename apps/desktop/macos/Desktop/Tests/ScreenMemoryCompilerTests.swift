@@ -1074,10 +1074,10 @@ final class RecordingRuntimeClient: RuntimeChatClient {
   }
 }
 
-private struct FixedAmbientAudioCaptureService: AudioCaptureService {
+private struct FixedAmbientAudioCaptureService: AmbientAudioSegmentCapturing {
   var pcm16k: Data
 
-  func capturePushToTalkAudio() async throws -> Data {
+  func captureSegment() async throws -> Data {
     pcm16k
   }
 }

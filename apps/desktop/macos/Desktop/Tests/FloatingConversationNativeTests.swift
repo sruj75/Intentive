@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class FloatingConversationNativeTests: XCTestCase {
-  func testDefaultShortcutUsesOmiCarbonMechanismWithIntentiveCommandODefault() {
+  func testDefaultShortcutUsesCarbonMechanismWithIntentiveCommandODefault() {
     let shortcut = ShortcutSettings.defaultFloatingBarShortcut
 
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_O))
@@ -12,9 +12,7 @@ final class FloatingConversationNativeTests: XCTestCase {
     XCTAssertEqual(shortcut.displayTokens, ["⌘", "O"])
   }
 
-  func testTextOnlyBarKeepsVoiceInputAndAttachmentsUnavailable() {
+  func testTextOnlyBarKeepsVoiceInputUnavailable() {
     XCTAssertFalse(ShortcutSettings.shared.voiceInputEnabled)
-    XCTAssertEqual(kMaxChatAttachments, 0)
-    XCTAssertNil(ChatAttachment.from(url: URL(fileURLWithPath: "/tmp/not-uploaded.txt")))
   }
 }

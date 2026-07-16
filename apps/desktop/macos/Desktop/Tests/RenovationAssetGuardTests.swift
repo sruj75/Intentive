@@ -2,71 +2,68 @@ import Foundation
 import XCTest
 
 final class RenovationAssetGuardTests: XCTestCase {
-  func testSelectiveRestoreAssetsStayInTree() throws {
+  func testCriticalRenovatedOmiMechanismsStayCompiled() throws {
     let root = try repoRoot()
     let requiredPaths = [
-      "apps/desktop/CHANGELOG.md",
       "apps/desktop/macos/Desktop/Sources/Intentive/DesktopOnboardingView.swift",
       "apps/desktop/macos/Desktop/Sources/IntentiveDesktopCore/DesktopOnboarding.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingFlow.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingView.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingStepScaffold.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingTrustStepView.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingPermissionStepView.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingNotificationStepView.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingFloatingBarShortcutStepView.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingFloatingBarDemoView.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingVoiceShortcutStepView.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingVoiceDemoView.swift",
-      "apps/desktop/macos/Desktop/Sources/Rewind/Core/RewindDatabase.swift",
-      "apps/desktop/macos/Desktop/Sources/Rewind/Core/RewindOCRService.swift",
       "apps/desktop/macos/Desktop/Sources/Rewind/Core/RewindStorage.swift",
       "apps/desktop/macos/Desktop/Sources/Rewind/Core/VideoChunkEncoder.swift",
-      "apps/desktop/macos/Desktop/Sources/Rewind/Services/RewindIndexer.swift",
-      "apps/desktop/macos/Desktop/Sources/Rewind/UI/RewindPage.swift",
-      "apps/desktop/macos/Desktop/Sources/MainWindow/RewindOnlyView.swift",
-      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/ProactiveAssistantsPlugin.swift",
-      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Core/CapturedFrame.swift",
-      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Core/ContextDetection.swift",
-      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Core/WindowMonitor.swift",
-      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Services/AssistantSettings.swift",
-      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Services/NotificationService.swift",
       "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Services/OverlayService.swift",
-      "apps/desktop/macos/Desktop/Sources/ScreenCaptureService.swift",
+      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/UI/GlowBorderView.swift",
+      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/UI/GlowEdgeWindow.swift",
+      "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/UI/GlowOverlayWindow.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingBackgroundModifier.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingBarNotchTransition.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarGeometry.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarManager.swift",
       "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift",
       "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarState.swift",
       "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarView.swift",
       "apps/desktop/macos/Desktop/Sources/FloatingControlBar/AskAIInputView.swift",
       "apps/desktop/macos/Desktop/Sources/FloatingControlBar/AIResponseView.swift",
-      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/GlobalShortcutManager.swift",
-      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/PushToTalkManager.swift",
-      "apps/desktop/macos/Desktop/Sources/AudioCaptureService.swift",
       "apps/desktop/macos/Desktop/Sources/SystemAudioCaptureService.swift",
-      "apps/desktop/macos/Desktop/Sources/VADGateService.swift",
-      "apps/desktop/macos/Desktop/Sources/LocalTranscriptionService.swift",
-      "apps/desktop/macos/Desktop/Sources/DesktopUpdatePolicyManager.swift",
-      "apps/desktop/macos/Desktop/Sources/UpdateRelaunchWindowPolicy.swift",
-      "apps/desktop/macos/Desktop/Sources/UpdaterViewModel.swift",
       "apps/desktop/macos/Desktop/Sources/Theme/IntentiveChrome.swift",
       "apps/desktop/macos/Desktop/Sources/Theme/IntentiveColors.swift",
       "apps/desktop/macos/Desktop/Sources/Theme/IntentiveFont.swift",
       "apps/desktop/macos/Desktop/Sources/Theme/IntentiveTextEditor.swift",
-      "apps/desktop/macos/Desktop/Sources/Resources/silero_vad.onnx",
-      "apps/desktop/macos/Desktop/CWebP/module.modulemap",
-      "apps/desktop/macos/Desktop/ObjCExceptionCatcher/include/ObjCExceptionCatcher.h",
-      "marketing/README.md",
-      "marketing/package.json",
-      "marketing/src/Root.tsx",
-      "marketing/src/screen-memory/ScreenMemoryComposition.tsx",
+      "apps/desktop/macos/Desktop/Sources/IntentiveDesktopNativeAdapters/Resources/silero_vad.onnx",
     ]
 
     let missing = requiredPaths.filter { path in
       !FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path)
     }
-    XCTAssertTrue(missing.isEmpty, "Selective Omi restore assets are missing: \(missing)")
+    XCTAssertTrue(missing.isEmpty, "Critical renovated Omi mechanisms are missing: \(missing)")
+
+    let manifest = try String(
+      contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Package.swift"),
+      encoding: .utf8
+    )
+    let requiredCompiledPaths = [
+      "VideoChunkEncoder.swift",
+      "RewindStorage.swift",
+      "FloatingControlBarWindow.swift",
+      "FloatingControlBarState.swift",
+      "FloatingControlBarView.swift",
+      "FloatingBackgroundModifier.swift",
+      "FloatingBarNotchTransition.swift",
+      "FloatingControlBarGeometry.swift",
+      "FloatingControlBarManager.swift",
+      "OnboardingStepScaffold.swift",
+      "OverlayService.swift",
+      "GlowBorderView.swift",
+      "GlowEdgeWindow.swift",
+      "GlowOverlayWindow.swift",
+      "SystemAudioCaptureService.swift",
+    ]
+    let uncompiled = requiredCompiledPaths.filter { !manifest.contains($0) }
+    XCTAssertTrue(uncompiled.isEmpty, "Critical renovated assets left the package graph: \(uncompiled)")
   }
 
-  func testDeletedOmiPlumbingStaysDeleted() throws {
+  func testRejectedCapabilitiesAndMigrationStubsStayDeleted() throws {
     let root = try repoRoot()
     let removedPaths = [
       "apps/desktop/macos/Desktop/Sources/RealtimeOmni",
@@ -79,6 +76,24 @@ final class RenovationAssetGuardTests: XCTestCase {
       "apps/desktop/macos/Desktop/Sources/Providers/AppProvider.swift",
       "apps/desktop/macos/Desktop/Sources/Generated/OmiToolManifest.generated.swift",
       "apps/desktop/macos/Desktop/Sources/LocalAgentAPIServer.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/FloatingBarVoicePlaybackService.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/PTTContextVocabularyProvider.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/PushToTalkManager.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/StreamingPCMPlayer.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/SystemAudioMuteController.swift",
+      "apps/desktop/macos/Desktop/Sources/FloatingControlBar/VoiceWaveformBars.swift",
+      "apps/desktop/macos/Desktop/Sources/IntentiveDesktopCore/PushToTalkTurnGate.swift",
+      "apps/desktop/macos/Desktop/Sources/IntentiveDesktopNativeAdapters/NativePushToTalkShortcutMonitor.swift",
+      "apps/desktop/macos/Desktop/Sources/OnboardingVoiceShortcutStepView.swift",
+      "apps/desktop/macos/Desktop/Sources/OnboardingVoiceDemoView.swift",
+      "apps/desktop/macos/Desktop/Sources/SpatialOverlay/SpatialOverlayDogfood.swift",
+      "apps/desktop/macos/Desktop/Tests/DictationComposerTests.swift",
+      "apps/desktop/macos/Desktop/Tests/PTTSilentMicRecoveryPolicyTests.swift",
+      "apps/desktop/macos/Desktop/Tests/PTTVoiceUserMessageEarlyTests.swift",
+      "apps/desktop/macos/Desktop/Tests/PushToTalkShortcutStateMachineTests.swift",
+      "apps/desktop/macos/Desktop/Tests/PushToTalkSpeechGateTests.swift",
+      "apps/desktop/macos/Desktop/Tests/PushToTalkStateMachineTests.swift",
+      "apps/desktop/macos/Desktop/Tests/SpatialOverlayDogfoodHarnessTests.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingWelcomeStepView.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingLanguageStepView.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingHowDidYouHearStepView.swift",
@@ -112,38 +127,83 @@ final class RenovationAssetGuardTests: XCTestCase {
     XCTAssertTrue(legacyThemeFiles.isEmpty, "Legacy theme filenames came back: \(legacyThemeFiles)")
   }
 
-  func testRestoredOnboardingFlowDoesNotReferenceRejectedOmiSteps() throws {
+  func testPackageManifestHasNoStaleFileOrTestExclusions() throws {
     let root = try repoRoot()
-    let checkedFiles = [
-      "apps/desktop/macos/Desktop/Sources/OnboardingFlow.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingView.swift",
+    let manifest = try String(
+      contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Package.swift"),
+      encoding: .utf8
+    )
+    let forbiddenExclusions = [
+      "ActionItemModels.swift",
+      "FloatingBarVoicePlaybackService.swift",
+      "OnboardingVoiceDemoView.swift",
+      "SpatialOverlayDogfood.swift",
+      "ChatErrorStateTests.swift",
+      "PTTVoiceUserMessageEarlyTests.swift",
+      "TranscriptionStorageRecoveryTests.swift",
     ]
-    let rejectedFragments = [
-      "OnboardingWelcomeStepView",
-      "OnboardingLanguageStepView",
-      "OnboardingHowDidYouHearStepView",
-      "OnboardingFileScanStepView",
-      "OnboardingDataSourcesStepView",
-      "OnboardingExportsStepView",
-      "OnboardingGoalStepView",
-      "OnboardingBYOKStepView",
-      "OnboardingTasksStepView",
-      "OnboardingChatView",
-      "OnboardingPagedIntroCoordinator",
-      "BringYourOwnKeys",
-      "HowDidYouHear",
-      "DataSources",
-      "FileScan",
+    let stale = forbiddenExclusions.filter(manifest.contains)
+    XCTAssertTrue(stale.isEmpty, "Stale production/test exclusions remain: \(stale)")
+  }
+
+  func testCompiledProductHasNoRejectedCapabilityOrUserFacingOmiStrings() throws {
+    let root = try repoRoot()
+    let sourceRoot = root.appendingPathComponent("apps/desktop/macos/Desktop/Sources")
+    let compiledRoots = [
+      sourceRoot.appendingPathComponent("IntentiveDesktopCore"),
+      sourceRoot.appendingPathComponent("IntentiveDesktopNativeAdapters"),
+      sourceRoot.appendingPathComponent("Intentive"),
+      sourceRoot.appendingPathComponent("FloatingControlBar"),
+    ]
+    let forbiddenFragments = [
+      "PushToTalk",
+      "push-to-talk",
+      "DictationComposer",
+      "FloatingBarVoicePlaybackService",
+      "AgentPillsManager",
+      "SpatialOverlayDogfood",
+      "FloatingBarNotificationContext",
+      "onPlayPause",
+      "onShareLink",
+      "flushQueuedNotificationsIfPossible",
+      "clearPendingNotificationContext",
+      "\"Omi Chat\"",
+      "\"Ask Omi\"",
+      "\"Ask omi\"",
     ]
 
-    let offenders = try checkedFiles.flatMap { path in
-      let contents = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-      return rejectedFragments
-        .filter { contents.contains($0) }
-        .map { "\(path):\($0)" }
+    let files = try compiledRoots.flatMap(swiftFilesRecursively)
+    let offenders = try files.flatMap { file in
+      let contents = try String(contentsOf: file, encoding: .utf8)
+      let relativePath = file.path.replacingOccurrences(of: root.path + "/", with: "")
+      return forbiddenFragments
+        .filter(contents.contains)
+        .map { "\(relativePath):\($0)" }
     }
 
-    XCTAssertTrue(offenders.isEmpty, "Rejected onboarding steps are still referenced: \(offenders)")
+    XCTAssertTrue(offenders.isEmpty, "Rejected capability or user-facing Omi strings remain compiled: \(offenders)")
+  }
+
+  func testMainWindowRemainsUtilityOnlyWithFloatingBarAsSoleChatSurface() throws {
+    let root = try repoRoot()
+    let mainWindow = try String(
+      contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Sources/Intentive/MainWindowView.swift"),
+      encoding: .utf8
+    )
+    XCTAssertFalse(mainWindow.contains("ChatView("))
+    XCTAssertFalse(mainWindow.contains("ConversationView("))
+    XCTAssertFalse(mainWindow.contains("OnboardingChatView("))
+  }
+
+  private func swiftFilesRecursively(at root: URL) throws -> [URL] {
+    guard let enumerator = FileManager.default.enumerator(
+      at: root,
+      includingPropertiesForKeys: [.isRegularFileKey]
+    ) else { return [] }
+    return enumerator.compactMap { item in
+      guard let url = item as? URL, url.pathExtension == "swift" else { return nil }
+      return url
+    }
   }
 
   private func repoRoot() throws -> URL {

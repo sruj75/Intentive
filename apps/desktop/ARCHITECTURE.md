@@ -25,7 +25,10 @@ apps/desktop/
   macos/
     Desktop/Package.swift
     Desktop/Sources/IntentiveDesktopCore/
+    Desktop/Sources/IntentiveDesktopNativeAdapters/
     Desktop/Sources/Intentive/
+    Desktop/Sources/FloatingControlBar/ # renovated Omi panel, glass, notch, and Carbon shortcut
+    Desktop/Sources/ProactiveAssistants/ # renovated Omi edge-glow presentation only
     Desktop/Sources/Rewind/Core/       # surgically compiled Omi archive encoder/storage
     Desktop/Tests/
     scripts/build-app-bundle.sh
@@ -42,7 +45,7 @@ apps/desktop/
 - Screen Memory stores local records and local embeddings. It does not store Conversation History.
 - Effect Runner behavior is deterministic local execution of an already-chosen Runtime output.
 - The Floating Bar is the only Desktop conversation surface and accepts text only.
-- Passive audio sensing is a local perception source, not a conversation-input path; its restored pipeline is deferred to Slice 8.
+- Passive audio sensing is a local perception source, not a conversation-input path. Its active microphone path uses Omi-derived Silero VAD through ONNX Runtime and FluidAudio/Parakeet transcription behind source-neutral Core seams.
 - Product nudges are presented in-app for Post-Message-Back messages. Ordinary replies do not interrupt and no duplicate macOS banner is emitted.
 
 ## Core Modules
@@ -53,7 +56,7 @@ apps/desktop/
 - `AuthControlPlane.swift`: native auth seam, dev auth provider, hosted auth callback boundary, typed Control Plane client.
 - `ScreenMemoryArchive.swift`: the signed-in per-user ingest/search/video-retrieval seam, OCR/dHash deduplication orchestration, finalized-chunk recovery, and outbound-safe content projection.
 - `ScreenMemory.swift`: versioned `intentive.db` persistence, local Screen Memory and ambient-audio records, FTS search, and the deferred local embedding seam.
-- `Rewind/Core/{VideoChunkEncoder,RewindStorage}.swift`: the surgically compiled Omi-derived HEVC/MP4 writer, staged publication, AVAssetReader sample extraction, and bounded still cache behind the source-neutral Core video boundary. Other Rewind database, service, and UI assets remain excluded until their owning renovation slices.
+- `Rewind/Core/{VideoChunkEncoder,RewindStorage}.swift`: the surgically compiled Omi-derived HEVC/MP4 writer, staged publication, AVAssetReader sample extraction, and bounded still cache behind the source-neutral Core video boundary. Superseded Rewind database, service, and UI copies are absent from the package and source tree.
 - `DesktopLocalProfile.swift`: shared Intentive profile paths. The Desktop Client does not import Omi user data.
 - `ContextCompiler.swift`: deterministic screen and ambient audio analyzers plus `perception_event` publisher with the raw-frame egress guard.
 - `DesktopExperience.swift`: Runtime-truth floating conversation projection, capture coordination, passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Omi's window/geometry/composer/response and Carbon shortcut mechanisms are preserved behind the text-only `FloatingBarController`; conversation is never persisted locally.

@@ -115,31 +115,4 @@ enum FloatingControlBarGeometry {
         }
     }
 
-    /// PTT is a transient compact-bar state. Expanded voice UI grows from the
-    /// compact pill center; collapse either preserves the user's dragged center or
-    /// snaps back to the canonical default pill when dragging is disabled.
-    static func pushToTalkFrame(
-        currentFrame: NSRect,
-        expanded: Bool,
-        draggable: Bool,
-        visibleFrame: NSRect,
-        topInset: CGFloat,
-        compactSize: NSSize,
-        voiceSize: NSSize
-    ) -> NSRect {
-        let compactPlacement: CompactPlacement = draggable ? .preservingCurrentCenter : .canonical
-        let compactSourceFrame = compactFrame(
-            currentFrame: currentFrame,
-            placement: compactPlacement,
-            visibleFrame: visibleFrame,
-            topInset: topInset,
-            compactSize: compactSize
-        )
-
-        if expanded {
-            return centerAnchoredFrame(currentFrame: compactSourceFrame, targetSize: voiceSize)
-        }
-
-        return compactSourceFrame
-    }
 }

@@ -96,11 +96,11 @@ final class SileroVADModel {
   #endif
 }
 
-/// Adapts the Silero VAD model to the Core `PushToTalkVADPredictor` seam so the
-/// `PushToTalkVoiceActivityGate` can screen microphone turns with the real model.
+/// Adapts the Silero VAD model to the Core passive-audio activity seam so the
+/// microphone pipeline can screen captured segments with the real model.
 /// Falls back (returns nil) when the model cannot load, leaving the gate's
 /// energy/zero-crossing heuristic as the safe default.
-public final class SileroPushToTalkVADPredictor: PushToTalkVADPredictor {
+public final class SileroAudioActivityPredictor: AudioActivityPredicting {
   private let model: SileroVADModel
 
   public init?() {

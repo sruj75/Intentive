@@ -1,38 +1,11 @@
 import Foundation
 
-public struct PTTSilentMicRecoveryPolicy: Sendable {
-  public static let deadMicPeakThreshold = 5
-  public static let minDeadTurnSeconds: TimeInterval = 0.25
-  public static let consecutiveDeadTurnThreshold = 2
-
-  public private(set) var consecutiveDeadMicTurns = 0
-
-  public init() {}
-
-  public mutating func recordDiscardedTurn(totalSec: TimeInterval, peak: Int) -> Bool {
-    if totalSec >= Self.minDeadTurnSeconds && peak <= Self.deadMicPeakThreshold {
-      consecutiveDeadMicTurns += 1
-    } else {
-      consecutiveDeadMicTurns = 0
-    }
-    return consecutiveDeadMicTurns >= Self.consecutiveDeadTurnThreshold
-  }
-
-  public mutating func recordSuccessfulTurn() {
-    consecutiveDeadMicTurns = 0
-  }
-
-  public mutating func recordCaptureRebuild() {
-    consecutiveDeadMicTurns = 0
-  }
-}
-
-public protocol PushToTalkVADPredictor: AnyObject {
+public protocol AudioActivityPredicting: AnyObject {
   func resetStates()
   func predict(_ samples: [Float]) -> Float
 }
 
-public enum PushToTalkTurnGate {
+public enum PassiveAudioActivityGate {
   public static let speechLikeRMSThreshold: Double = 260
   public static let maxSpeechZeroCrossingRate: Double = 0.24
   public static let minTurnAudioSeconds: Double = 0.35
@@ -86,7 +59,7 @@ public enum PushToTalkTurnGate {
     return (peak, Int((sumSquares / Double(samples.count)).squareRoot()))
   }
 
-  public static func turnHasSpeech(pcm16k data: Data, vad: PushToTalkVADPredictor? = nil) -> Bool {
+  public static func containsSpeech(pcm16k data: Data, vad: AudioActivityPredicting? = nil) -> Bool {
     let samples = pcm16Samples(from: data)
     guard Double(samples.count) / 16_000.0 >= minTurnAudioSeconds else { return false }
 
@@ -129,5 +102,17 @@ public enum PushToTalkTurnGate {
       }
       return samples
     }
+  }
+}
+
+public struct SileroVoiceActivityGate: VoiceActivityGate {
+  private let vad: AudioActivityPredicting?
+
+  public init(vad: AudioActivityPredicting? = nil) {
+    self.vad = vad
+  }
+
+  public func containsSpeech(_ pcm16k: Data) async -> Bool {
+    PassiveAudioActivityGate.containsSpeech(pcm16k: pcm16k, vad: vad)
   }
 }

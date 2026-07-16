@@ -4,11 +4,11 @@ import XCTest
 @testable import IntentiveDesktopCore
 
 @MainActor
-final class PushToTalkSpeechGateTests: XCTestCase {
+final class PassiveAudioActivityGateTests: XCTestCase {
   func testTurnGateRejectsSilence() {
     let audio = pcm16k(seconds: 1.0) { _ in 0 }
 
-    XCTAssertFalse(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
+    XCTAssertFalse(PassiveAudioActivityGate.containsSpeech(pcm16k: audio))
   }
 
   func testTurnGateRejectsBroadbandNoise() {
@@ -19,31 +19,31 @@ final class PushToTalkSpeechGateTests: XCTestCase {
       return Int16(max(-12000, min(12000, Int(normalized * 12000))))
     }
 
-    XCTAssertFalse(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
+    XCTAssertFalse(PassiveAudioActivityGate.containsSpeech(pcm16k: audio))
   }
 
   func testTurnGateRejectsTooShortVoicedAudio() {
     let audio = sinePCM16k(seconds: 0.12, frequency: 220, amplitude: 3500)
 
-    XCTAssertFalse(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
+    XCTAssertFalse(PassiveAudioActivityGate.containsSpeech(pcm16k: audio))
   }
 
   func testTurnGateAcceptsSustainedVoicedAudio() {
     let audio = sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)
 
-    XCTAssertTrue(PushToTalkTurnGate.turnHasSpeech(pcm16k: audio))
+    XCTAssertTrue(PassiveAudioActivityGate.containsSpeech(pcm16k: audio))
   }
 
   func testSpeechLikeProfileRejectsNoiseEvenWhenRmsIsHigh() {
     let voicedTone = sinePCM16k(seconds: 0.7, frequency: 220, amplitude: 3500)
-    let voiced = PushToTalkTurnGate.speechLikeAudioSeconds(pcm16k: voicedTone)
+    let voiced = PassiveAudioActivityGate.speechLikeAudioSeconds(pcm16k: voicedTone)
 
     var state: UInt64 = 0xbeef
     let noise = pcm16k(seconds: 0.7) { _ in
       state = state &* 2862933555777941757 &+ 3037000493
       return Int16(Int(state % 24001) - 12000)
     }
-    let noisy = PushToTalkTurnGate.speechLikeAudioSeconds(pcm16k: noise)
+    let noisy = PassiveAudioActivityGate.speechLikeAudioSeconds(pcm16k: noise)
 
     XCTAssertGreaterThanOrEqual(voiced.speechLike, 0.16)
     XCTAssertLessThan(noisy.speechLike, 0.16)

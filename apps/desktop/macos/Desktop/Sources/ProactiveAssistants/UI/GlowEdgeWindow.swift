@@ -48,7 +48,7 @@ class GlowEdgeWindow: NSWindow {
 
   /// Calculate the frame for this edge window based on the target window's bounds
   func calculateFrame(for targetRect: NSRect) -> NSRect {
-    SpatialOverlayGeometry.glowEdgeFrame(
+    GlowGeometry.edgeFrame(
       for: edge,
       around: targetRect,
       thickness: Self.glowThickness,
