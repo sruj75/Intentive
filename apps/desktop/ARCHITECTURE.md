@@ -56,7 +56,7 @@ apps/desktop/
 - `Rewind/Core/{VideoChunkEncoder,RewindStorage}.swift`: the surgically compiled Omi-derived HEVC/MP4 writer, staged publication, AVAssetReader sample extraction, and bounded still cache behind the source-neutral Core video boundary. Other Rewind database, service, and UI assets remain excluded until their owning renovation slices.
 - `DesktopLocalProfile.swift`: shared Intentive profile paths. The Desktop Client does not import Omi user data.
 - `ContextCompiler.swift`: deterministic screen and ambient audio analyzers plus `perception_event` publisher with the raw-frame egress guard.
-- `DesktopExperience.swift`: floating-bar chat, capture coordination, deferred passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Legacy dictation/PTT primitives remain compiled only as renovation assets until the later cleanup slice and are not assembled into the product surface.
+- `DesktopExperience.swift`: Runtime-truth floating conversation projection, capture coordination, passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Omi's window/geometry/composer/response and Carbon shortcut mechanisms are preserved behind the text-only `FloatingBarController`; conversation is never persisted locally.
 
 ## Verification
 

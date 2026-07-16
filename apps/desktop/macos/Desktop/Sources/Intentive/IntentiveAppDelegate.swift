@@ -73,6 +73,11 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
     menu.addItem(.separator())
 
+    let conversationItem = NSMenuItem(
+      title: "Open Floating Conversation", action: #selector(openFloatingConversation), keyEquivalent: "")
+    conversationItem.target = self
+    menu.addItem(conversationItem)
+
     let openItem = NSMenuItem(
       title: "Open Intentive", action: #selector(openApp), keyEquivalent: "o")
     openItem.target = self
@@ -101,6 +106,10 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
   @objc private func openApp() {
     NSApp.activate(ignoringOtherApps: true)
+  }
+
+  @objc private func openFloatingConversation() {
+    model?.openFloatingConversation()
   }
 
   @objc private func signOut() {

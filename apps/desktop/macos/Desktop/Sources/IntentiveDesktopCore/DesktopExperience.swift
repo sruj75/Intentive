@@ -24,6 +24,10 @@ public final class FloatingBarController {
     messageStore.messages
   }
 
+  public var conversation: FloatingConversationSnapshot {
+    FloatingConversationSnapshot(messages: messageStore.messages)
+  }
+
   @discardableResult
   public func submit(_ body: String) throws -> ChatMessage {
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,6 +35,42 @@ public final class FloatingBarController {
       throw FloatingBarSubmissionError.emptyMessage
     }
     return try runtimeClient.sendUserMessage(trimmed)
+  }
+}
+
+public struct FloatingConversationExchange: Equatable, Sendable {
+  public var question: ChatMessage?
+  public var answer: ChatMessage?
+
+  public init(question: ChatMessage?, answer: ChatMessage?) {
+    self.question = question
+    self.answer = answer
+  }
+}
+
+/// Read-only projection of Runtime-owned Conversation History for the native
+/// floating bar. This is deliberately derived on demand: Desktop never creates
+/// a second durable transcript or a bar-specific conversation.
+public struct FloatingConversationSnapshot: Equatable, Sendable {
+  public var exchanges: [FloatingConversationExchange]
+
+  public init(messages: [ChatMessage]) {
+    var projected: [FloatingConversationExchange] = []
+    for message in messages {
+      switch message.author {
+      case .user:
+        projected.append(FloatingConversationExchange(question: message, answer: nil))
+      case .companion:
+        if let lastIndex = projected.indices.last,
+           projected[lastIndex].answer == nil
+        {
+          projected[lastIndex].answer = message
+        } else {
+          projected.append(FloatingConversationExchange(question: nil, answer: message))
+        }
+      }
+    }
+    exchanges = projected
   }
 }
 

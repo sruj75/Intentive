@@ -49,6 +49,7 @@ public final class FloatingControlBarManager {
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+    private var shortcutObserver: NSObjectProtocol?
 
     /// The Carbon hotkey callback is a bare C function, so it reaches the live
     /// manager through this process-wide weak reference. There is only ever one bar.
@@ -79,6 +80,7 @@ public final class FloatingControlBarManager {
     public func showComposer() {
         let window = ensureWindow()
         isEnabled = true
+        synchronizeConversation(in: window)
         window.showAIConversation()
         window.normalizeForTemporaryShow()
         window.makeKeyAndOrderFront(nil)
@@ -135,13 +137,13 @@ public final class FloatingControlBarManager {
     /// timeline Omi drove. The `lastCompanionReplyId` guard, seeded at send time,
     /// ensures only a genuinely new reply — not a prior turn's answer — is shown.
     public func refreshMessages() {
-        guard awaitingReply, let controller, let window else { return }
+        guard let controller, let window else { return }
+        synchronizeConversation(in: window)
+        guard awaitingReply else { return }
         guard let reply = controller.messages.last(where: { $0.author == .companion }),
               reply.id != lastCompanionReplyId else { return }
         awaitingReply = false
         lastCompanionReplyId = reply.id
-        window.state.setLocalAnswerOverride(ChatMessage(id: reply.id, text: reply.body, sender: .ai))
-        window.state.isAILoading = false
         window.resizeToResponseHeightPublic(animated: true)
     }
 
@@ -219,11 +221,27 @@ public final class FloatingControlBarManager {
         Self.hotKeyTarget = self
         installEventHandlerIfNeeded()
 
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+
+        if shortcutObserver == nil {
+            shortcutObserver = NotificationCenter.default.addObserver(
+                forName: ShortcutSettings.floatingBarShortcutChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.registerGlobalShortcut() }
+            }
+        }
+
         let hotKeyID = EventHotKeyID(signature: FourCharCode(0x494E_5456), id: 1)  // "INTV"
+        let shortcut = ShortcutSettings.shared.askOmiShortcut
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(
-            UInt32(kVK_ANSI_O),
-            UInt32(cmdKey),
+            shortcut.keyCode,
+            shortcut.carbonModifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
@@ -232,7 +250,45 @@ public final class FloatingControlBarManager {
         if status == noErr {
             hotKeyRef = ref
         } else {
-            NSLog("FloatingControlBarManager: failed to register ⌘O hotkey (\(status))")
+            NSLog("FloatingControlBarManager: failed to register configured hotkey (\(status))")
+        }
+    }
+
+    /// Rebuilds Omi's viewport anchors from Runtime truth. Closing the panel only
+    /// closes chrome; reopening projects the same MessageStore again.
+    private func synchronizeConversation(in window: FloatingControlBarWindow) {
+        guard let controller else { return }
+        let snapshot = controller.conversation
+        let nativeMessages = snapshot.exchanges.flatMap { exchange -> [ChatMessage] in
+            var messages: [ChatMessage] = []
+            if let question = exchange.question {
+                messages.append(ChatMessage(id: question.id, text: question.body, sender: .user, isSynced: true))
+            }
+            if let answer = exchange.answer {
+                messages.append(ChatMessage(id: answer.id, text: answer.body, sender: .ai, isSynced: true))
+            }
+            return messages
+        }
+        floatingProvider.messages = nativeMessages
+
+        var viewport = FloatingChatViewport()
+        for (index, exchange) in snapshot.exchanges.enumerated() {
+            let pair = FloatingChatExchangePair(
+                questionMessageId: exchange.question?.id,
+                answerMessageId: exchange.answer?.id
+            )
+            if index == snapshot.exchanges.index(before: snapshot.exchanges.endIndex) {
+                viewport.questionMessageId = pair.questionMessageId
+                viewport.answerMessageId = pair.answerMessageId
+            } else {
+                viewport.archivedExchanges.append(pair)
+            }
+        }
+        window.state.chatViewport = viewport
+        if let current = snapshot.exchanges.last {
+            window.state.displayedQuery = current.question?.body ?? ""
+            window.state.isAILoading = current.question != nil && current.answer == nil
+            window.state.markConversationActivity()
         }
     }
 

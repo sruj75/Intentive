@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox.Events
 import Combine
 import SwiftUI
 import UniformTypeIdentifiers
@@ -146,24 +147,50 @@ enum ModelQoS {
     }
 }
 
-// MARK: - Shortcut settings (minimal: the bar reads only a few fields)
+// MARK: - Shortcut settings
 
 @MainActor
 final class ShortcutSettings: ObservableObject {
     static let shared = ShortcutSettings()
+    nonisolated static let floatingBarShortcutChanged = Notification.Name("Intentive.floatingBarShortcutChanged")
 
-    struct KeyboardShortcut {
+    struct KeyboardShortcut: Codable, Equatable {
+        var keyCode: UInt32
+        var carbonModifiers: UInt32
         var displayTokens: [String]
     }
+
+    static let defaultFloatingBarShortcut = KeyboardShortcut(
+        keyCode: UInt32(kVK_ANSI_O),
+        carbonModifiers: UInt32(cmdKey),
+        displayTokens: ["⌘", "O"]
+    )
 
     @Published var draggableBarEnabled: Bool = false
     @Published var solidBackground: Bool = false
     @Published var selectedModel: String = ModelQoS.Claude.defaultSelection
     let voiceInputEnabled = false
-    let askOmiShortcut = KeyboardShortcut(displayTokens: ["⌘", "O"])
-    let pttShortcut = KeyboardShortcut(displayTokens: ["fn"])
+    @Published var askOmiShortcut: KeyboardShortcut {
+        didSet {
+            if let data = try? JSONEncoder().encode(askOmiShortcut) {
+                UserDefaults.standard.set(data, forKey: Self.storageKey)
+            }
+            NotificationCenter.default.post(name: Self.floatingBarShortcutChanged, object: nil)
+        }
+    }
+    let pttShortcut = KeyboardShortcut(keyCode: 0, carbonModifiers: 0, displayTokens: [])
 
-    private init() {}
+    private static let storageKey = "intentive.floatingBarShortcut"
+
+    private init() {
+        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+           let saved = try? JSONDecoder().decode(KeyboardShortcut.self, from: data)
+        {
+            askOmiShortcut = saved
+        } else {
+            askOmiShortcut = Self.defaultFloatingBarShortcut
+        }
+    }
 }
 
 // MARK: - Agent-pill subsystem (inert: no subagents in v1)

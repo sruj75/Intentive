@@ -27,6 +27,50 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertTrue(controller.messages.isEmpty)
   }
 
+  func testFloatingConversationProjectsRuntimeHistoryForCloseAndReopen() {
+    let store = MessageStore()
+    store.replaceServerWindow(
+      SessionSnapshot(
+        messages: [
+          SessionMessage(messageId: "u1", author: .user, body: "First", at: "2026-07-16T00:00:00.000Z"),
+          SessionMessage(messageId: "c1", author: .companion, body: "One", at: "2026-07-16T00:00:01.000Z"),
+          SessionMessage(messageId: "u2", author: .user, body: "Second", at: "2026-07-16T00:00:02.000Z"),
+          SessionMessage(messageId: "c2", author: .companion, body: "Two", at: "2026-07-16T00:00:03.000Z"),
+        ],
+        beforeCursor: "older"
+      )
+    )
+    let controller = FloatingBarController(
+      runtimeClient: RecordingFloatingBarRuntimeClient(messageStore: store),
+      messageStore: store
+    )
+
+    let firstOpen = controller.conversation
+    let reopened = controller.conversation
+
+    XCTAssertEqual(firstOpen, reopened)
+    XCTAssertEqual(firstOpen.exchanges.count, 2)
+    XCTAssertEqual(firstOpen.exchanges[0].question?.id, "u1")
+    XCTAssertEqual(firstOpen.exchanges[0].answer?.id, "c1")
+    XCTAssertEqual(firstOpen.exchanges[1].question?.id, "u2")
+    XCTAssertEqual(firstOpen.exchanges[1].answer?.id, "c2")
+  }
+
+  func testFloatingConversationKeepsPendingQuestionWithoutInventingAnswer() {
+    let store = MessageStore()
+    _ = store.appendPending(
+      UserMessage(messageId: "pending", body: "Still sending", sentAt: "2026-07-16T00:00:00.000Z")
+    )
+    let controller = FloatingBarController(
+      runtimeClient: RecordingFloatingBarRuntimeClient(messageStore: store),
+      messageStore: store
+    )
+
+    XCTAssertEqual(controller.conversation.exchanges.count, 1)
+    XCTAssertEqual(controller.conversation.exchanges[0].question?.id, "pending")
+    XCTAssertNil(controller.conversation.exchanges[0].answer)
+  }
+
   func testQueuesOutboundUntilHelloOkThenFlushesInOrder() throws {
     let socket = FakeRuntimeSocket()
     let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")

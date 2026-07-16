@@ -211,6 +211,10 @@ final class DesktopViewModel: ObservableObject {
     messageStore.messages
   }
 
+  func openFloatingConversation() {
+    floatingBarManager.showComposer()
+  }
+
   /// Screen Memory results for the current `query`, refreshed on query change
   /// rather than per-render so the on-device semantic pass runs at most once per
   /// keystroke. Renovated from Omi's `RewindViewModel.performSearch`.
