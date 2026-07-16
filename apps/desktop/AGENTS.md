@@ -34,4 +34,6 @@ Use the package scripts, which route `xcrun swift` through the per-workspace T9 
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — dev loop
 - [`docs/SMOKE.md`](docs/SMOKE.md) — smoke checklist
 - [`docs/EVAL.md`](docs/EVAL.md) — privacy/reliability eval notes
+- [`docs/PRIVACY.md`](docs/PRIVACY.md) — shipped local-media, egress, retention, and telemetry boundaries
+- [`docs/RELEASE.md`](docs/RELEASE.md) — signed DMG, Sparkle, dedicated-Mac, and Tart acceptance
 - [`docs/adr/`](docs/adr/) — Desktop Client decisions

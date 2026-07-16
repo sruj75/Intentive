@@ -69,6 +69,14 @@ pnpm --dir apps/desktop test
 
 The target monorepo gate is `pnpm harness --scope apps/desktop`.
 
+The final assembled acceptance tracer is:
+
+```bash
+pnpm --dir apps/desktop acceptance:assembled
+```
+
+It runs the accessibility-addressed timeline/search, text-only Floating Bar, PMB, onboarding, and utility-settings journeys plus capture/sync/reconnect/expiry/tombstone behavior and Protocol fixtures. Signed/notarized artifact launch and Tart TCC prompts remain dedicated-Mac release gates; see [`apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
+
 ### Routing session smoke (local)
 
 Exercise the Runtime Bridge without a live Control Plane:

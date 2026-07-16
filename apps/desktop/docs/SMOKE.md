@@ -21,7 +21,7 @@ Confirm:
 2. Without a configured token, the top-bar status reports sign-in is required instead of using a preview chat.
 3. Grant Screen Recording, enable Screen Memory, and start capture.
 4. `Screen Memory` search finds captured rows by words from the summary.
-5. `Effects` can trigger a local Post-Message-Back nudge without creating a second chat surface.
+5. A fixture Runtime Post-Message-Back presents the Floating Bar/edge glow, while an ordinary reply updates silently and no second chat surface appears.
 
 ## Local Stack Smoke
 
@@ -92,8 +92,8 @@ For the mechanical local check:
 pnpm --dir apps/desktop release:smoke
 ```
 
-On a signed release candidate, also verify the DMG opens on a clean Mac and the generated `appcast.xml` points at the GitHub Release asset with numeric `sparkle:version` build metadata.
+On a tagged candidate, the Omi-derived signed-artifact smoke additionally verifies Developer ID Team `24D6NXS6H7`, hardened runtime, arm64-only architecture, Gatekeeper, the DMG notarization ticket and `/Applications` link, embedded-app digest alignment, appcast version/length/URL, and the exact DMG's Sparkle signature. See [`RELEASE.md`](RELEASE.md).
 
 ## Internal Clean-Slate Smoke
 
-For changes to capture readiness or native permission onboarding, have an agent start `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` in the background. In the fresh Tart VM, the person at the keyboard installs the shared `Intentive.app` into `/Applications` and confirms the first-run Screen Recording, Microphone, and Accessibility flow; macOS requires those consent prompts to be handled in the GUI. The agent then runs `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` to stop and delete the guest. Never install or test Intentive in `intentive-base`; that template must remain app-free and permission-free. See [DEVELOPMENT.md](DEVELOPMENT.md#internal-build-clean-macos-permission-slate) for base-VM setup and cleanup behavior.
+For changes to capture readiness or native permission onboarding, have an agent start `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` in the background. In the fresh Tart VM, the person at the keyboard installs the shared `Intentive.app` into `/Applications` and confirms required Screen Recording plus optional microphone/system-audio decisions; macOS requires those consent prompts to be handled in the GUI. The agent then runs `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` to stop and delete the guest. Never install or test Intentive in `intentive-base`; that template must remain app-free and permission-free. See [DEVELOPMENT.md](DEVELOPMENT.md#internal-build-clean-macos-permission-slate) and [RELEASE.md](RELEASE.md#clean-permission-tart-gate).

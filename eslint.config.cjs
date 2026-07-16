@@ -26,7 +26,6 @@ module.exports = [
       "**/.next/**",
       "**/.expo/**",
       "**/target/**",
-      "apps/desktop/src-tauri/target/**",
       "tools/linters/**/test.js",
     ],
   },

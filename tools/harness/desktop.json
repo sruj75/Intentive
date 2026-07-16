@@ -23,6 +23,11 @@
       "args": ["--dir", "apps/desktop", "test"]
     },
     {
+      "label": "Desktop assembled acceptance",
+      "command": "pnpm",
+      "args": ["--dir", "apps/desktop", "acceptance:assembled"]
+    },
+    {
       "label": "Desktop release bundle smoke",
       "command": "pnpm",
       "args": ["--dir", "apps/desktop", "release:smoke"]
@@ -43,7 +48,7 @@
   ],
   "commonFailureModes": [
     "Desktop must not publish raw frames or audio; only compact perception_event records cross the Runtime Bridge.",
-    "Floating-bar chat and push-to-talk must join the one Companion conversation instead of creating a separate desktop chat store.",
+    "The text-only Floating Bar must join the one Companion conversation instead of creating a second desktop chat store.",
     "Swift Codable protocol fixtures must stay aligned with packages/protocol/test/fixtures.",
     "Desktop CI and release jobs are path-sensitive; shared package changes can still affect Desktop assumptions."
   ],

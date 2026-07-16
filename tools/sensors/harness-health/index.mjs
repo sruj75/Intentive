@@ -798,10 +798,6 @@ function isVocabularyPathAllowlisted(file, forbidden, canonical) {
     if (file.includes("/prompt.rs")) return true;
   }
 
-  if (term === "the agent" && file.startsWith("apps/desktop/src-tauri/")) {
-    return true;
-  }
-
   if (term === "the runtime" && (isTestFile(file) || file.includes("/test/"))) {
     return true;
   }

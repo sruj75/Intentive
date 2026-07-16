@@ -7,7 +7,7 @@ How Intentive's four deployables and shared packages connect to the journeys use
 | Deployable         | Path                      | What the user experiences                                                         | Where it runs                       |
 | ------------------ | ------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
 | **Mobile Client**  | `apps/mobile/`            | Sign-in, Pre-Chat Gates, **Companion Chat**, push notifications, Account Surface  | iOS (Expo) → TestFlight / App Store |
-| **Desktop Client** | `apps/desktop/`           | Capture, Screen Memory, floating-bar chat, push-to-talk, desktop effects          | macOS SwiftPM → signed `.dmg`       |
+| **Desktop Client** | `apps/desktop/`           | Capture, Screen Memory, optional passive audio, text-only Floating Bar, PMB effects | macOS SwiftPM → signed `.dmg`     |
 | **Control Plane**  | `services/control-plane/` | Invisible authority: identity, gate state, device registry, Routing, push fan-out | Cloud Run (`us-west1`)              |
 | **Agent Runtime**  | `services/agent-runtime/` | The **Companion**: chat, memory, proactive follow-ups, context from Mac           | GCE VM (`runtime.heyintentive.com`) |
 
@@ -160,7 +160,7 @@ Launch → GET /me → next_gate: null → route to (chat)/
 
 ## 3. Cold launch → capture (Desktop)
 
-**User story:** Installs Mac app, signs in, grants Screen Recording / Accessibility / Microphone, capture starts automatically, menu bar shows status.
+**User story:** Installs the Mac app, signs in, decides required Screen Recording and optional passive-audio access, then accumulates private searchable Screen Memory while the menu bar reflects live capture state.
 
 ### Flow
 
@@ -181,7 +181,7 @@ sequenceDiagram
     CP-->>D: next_gate (consent / sibling / capture_permission_setup)
     U->>D: Complete gates + Capture Permission Setup wizard
   end
-  D->>D: Local readiness check (all 3 macOS grants)
+  D->>D: Local readiness check (live Screen Recording grant; optional audio fails closed)
   D->>CP: GET /agent
   CP->>RT: POST /internal/sessions/start
   D->>RT: WSS connect (client_kind: desktop)
@@ -191,7 +191,7 @@ sequenceDiagram
     CC->>CC: Compact + redact + label sensitivity
     CC->>RT: perception_event (Protocol)
   end
-  U->>D: Send floating-bar chat or PTT transcript
+  U->>D: Send text from the Floating Bar
   D->>RT: user_message
   U->>D: Stop capture
   D->>RT: session_end_marker
@@ -212,11 +212,11 @@ Same Control Plane sequencer; Desktop additionally requires **Capture Permission
 | Capture lifecycle | Desktop Capture Layer                         | —                                            | —                                                               |
 | Local persistence | Screen Memory                                 | —                                            | —                                                               |
 | Context delivery  | Desktop Context Compiler → `perception_event` | —                                            | `sessions/` ledger → `perception_records` → Sensory Buffer/tool |
-| Chat + voice      | Floating Bar / PTT → `user_message`           | —                                            | Conversation History + Interactive Turn                         |
-| Effect Runner     | Notification / floating-bar nudge on PMB      | —                                            | Post-Message-Back delivery                                      |
+| Text conversation | Floating Bar → `user_message`                 | —                                            | Conversation History + Interactive Turn                         |
+| Effect Runner     | Floating Bar + edge glow on PMB               | —                                            | Post-Message-Back delivery                                      |
 | Session end       | Capture stop emits `session_end_marker`       | —                                            | `sessions/` event ledger                                        |
 
-**Desktop joins the one conversation.** Floating-bar chat and PTT send `user_message`; Screen Memory sends `perception_event` and stays out of Conversation History.
+**Desktop joins the one conversation.** Text-only Floating Bar chat sends `user_message`; Screen Memory and passive-audio summaries send `perception_event` and stay out of Conversation History. Raw media remains local.
 
 ---
 
@@ -380,7 +380,7 @@ Business domains per deployable (each follows `types → config → repo → ser
 | Deployable    | Domains                                                                                                                        |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Mobile        | `auth`, `onboarding`, `chat`, `notifications`, `account`                                                                       |
-| Desktop       | Runtime Bridge, Screen Memory, Desktop Context Compiler, Floating Bar, Voice, Effect Runner, Auth, Control Plane client        |
+| Desktop       | Runtime Bridge, Screen Memory, Desktop Context Compiler, Floating Bar, Passive Audio, Effect Runner, Auth, Control Plane client |
 | Control Plane | `identity`, `devices`, `gates`, `agents`, `routing`, `notifications`                                                           |
 | Agent Runtime | `gateway`, `sessions`, `conversation`, `protocol`, `runtime`, `delivery`, `cron`, `heartbeat`, `memory`, `bundles`, `internal` |
 

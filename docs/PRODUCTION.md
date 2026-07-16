@@ -112,23 +112,24 @@ pnpm harness --scope apps/desktop
 ```
 
 - Release workflow: `.github/workflows/desktop-release.yml`
+- Acceptance workflow: `.github/workflows/desktop-release-acceptance.yml` on a dedicated self-hosted Apple Silicon Mac
 - Release trigger: tag `desktop-v*`
 - Release artifact: `Intentive-<version>.dmg`
 - Bundle metadata: `CFBundleShortVersionString` comes from the tag/package version; `CFBundleVersion` comes from the GitHub run number unless the version contains `+<build>`.
-- Update metadata: generated `appcast.xml` uploaded to the GitHub Release. The app bundle points Sparkle at the latest release's `appcast.xml`.
+- Update metadata: Sparkle's `sign_update` signs the exact notarized DMG and the generated `appcast.xml` is uploaded with digest evidence. The app bundle points Sparkle at the latest published release's appcast.
 - Required release secrets for signed/notarized artifacts:
   - `APPLE_DEVELOPER_ID_CERT`
   - `APPLE_DEVELOPER_ID_CERT_PASSWORD`
   - `KEYCHAIN_PASSWORD`
-  - `APPLE_SIGNING_IDENTITY`
   - `APPLE_ID`
   - `APPLE_APP_SPECIFIC_PASSWORD`
   - `APPLE_TEAM_ID`
   - `SPARKLE_PUBLIC_ED_KEY`
-  - `SPARKLE_EDDSA_SIGNATURE`
+  - `SPARKLE_PRIVATE_KEY`
+  - `DESKTOP_POSTHOG_PROJECT_KEY`
+- Required release variable: `DESKTOP_SENTRY_DSN`
 
-Unsigned workflow-dispatch artifacts are allowed only for internal smoke. Public release candidates must be Developer ID signed, notarized, stapled, and verified on a clean Mac.
-Tag-triggered `desktop-v*` releases fail before building artifacts if any required signing, notarization, or Sparkle signing secret is missing.
+The workflow reuses the established pre-Omi Developer ID `Developer ID Application: Srujan Gowda (24D6NXS6H7)` and Team ID `24D6NXS6H7`; Apple credentials remain secret-backed. Unsigned workflow-dispatch artifacts are allowed only for internal smoke. Tag-triggered `desktop-v*` releases fail before building when any required Apple/Sparkle/telemetry setting is missing, then create a draft release. Only the dedicated-Mac acceptance workflow may publish that immutable draft after digest, signed launch, assembled journey, and manual Tart permission evidence are complete. Full procedure: [`../apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
 
 Load balancer inventory:
 

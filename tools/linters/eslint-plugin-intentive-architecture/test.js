@@ -258,8 +258,13 @@ test("plugin exports and recommends provider-only-cross-cutting", () => {
 
 test("root ESLint config enables provider-only-cross-cutting", () => {
   const rootConfig = require("../../../eslint.config.cjs");
-  assert.equal(rootConfig[0].rules["intentive-architecture/provider-only-cross-cutting"], "error");
-  assert.equal(rootConfig[1].rules["intentive-architecture/provider-only-cross-cutting"], "error");
+  const architectureRuleConfigs = rootConfig.filter(
+    (config) => config.rules?.["intentive-architecture/provider-only-cross-cutting"],
+  );
+  assert.equal(architectureRuleConfigs.length, 2);
+  for (const config of architectureRuleConfigs) {
+    assert.equal(config.rules["intentive-architecture/provider-only-cross-cutting"], "error");
+  }
 });
 
 ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {

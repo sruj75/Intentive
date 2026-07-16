@@ -82,9 +82,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSMicrophoneUsageDescription</key>
-    <string>Intentive uses the microphone for local push-to-talk speech recognition and optional ambient audio summaries.</string>
-  <key>NSSpeechRecognitionUsageDescription</key>
-  <string>Intentive performs speech recognition on device for push-to-talk voice turns.</string>
+  <string>Intentive optionally transcribes ambient microphone context on this Mac; raw audio is not retained.</string>
   <key>NSCameraUsageDescription</key>
   <string>Intentive does not use the camera.</string>
   <key>NSScreenCaptureUsageDescription</key>
@@ -92,7 +90,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>NSAppleEventsUsageDescription</key>
   <string>Intentive uses active app metadata to keep Screen Memory accurate without uploading raw frames.</string>
   <key>NSAudioCaptureUsageDescription</key>
-  <string>Intentive uses system audio only for local push-to-talk and meeting transcription features.</string>
+  <string>Intentive optionally transcribes system-audio meeting context on this Mac; raw audio is not retained.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

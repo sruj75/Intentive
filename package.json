@@ -29,7 +29,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml}\"",
     "lint": "pnpm docs:check && eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:architecture:test": "node tools/linters/eslint-plugin-intentive-architecture/test.js && node tools/linters/rust-architecture/test.js",
+    "lint:architecture:test": "node tools/linters/eslint-plugin-intentive-architecture/test.js",
     "test": "turbo run test",
     "coverage": "pnpm --dir apps/desktop test",
     "prepare": "husky",

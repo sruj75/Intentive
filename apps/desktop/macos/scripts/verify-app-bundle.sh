@@ -94,7 +94,6 @@ assert_eq "IntentivePostHogHost" "$POSTHOG_HOST"
 assert_nonempty_plist "NSScreenCaptureUsageDescription"
 assert_nonempty_plist "NSAppleEventsUsageDescription"
 assert_nonempty_plist "NSMicrophoneUsageDescription"
-assert_nonempty_plist "NSSpeechRecognitionUsageDescription"
 assert_nonempty_plist "NSAudioCaptureUsageDescription"
 
 if plutil -p "$PLIST" | rg -q "com\\.omi|Omi|omi-computer"; then

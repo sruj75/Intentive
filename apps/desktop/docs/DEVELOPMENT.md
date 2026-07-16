@@ -12,7 +12,7 @@ Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled
 
 Product analytics is consent-controlled and deny-by-default: only the typed operational property allow-list can reach PostHog. Sentry errors use category/code metadata rather than raw error descriptions. Screenshots, OCR, app/window titles, audio transcripts, conversation text, tokens, and local paths must never be added to either payload. Local JSONL diagnostics rotate at 14 days or 100 MB and can be exported or cleared from Diagnostics.
 
-Tagged GitHub releases require `DESKTOP_SENTRY_DSN` and `DESKTOP_POSTHOG_PROJECT_KEY` repository secrets in addition to the Apple/Sparkle signing secrets. Workflow-dispatch smoke builds may omit them; the transports then stay disabled.
+Tagged GitHub releases reuse the pre-Omi Apple secrets and public Developer ID identity documented in [`RELEASE.md`](RELEASE.md). They additionally require the Sparkle key pair, `DESKTOP_POSTHOG_PROJECT_KEY`, and the public `DESKTOP_SENTRY_DSN` repository variable. Workflow-dispatch smoke builds may omit them; the transports then stay disabled.
 
 All active SwiftPM commands go through `macos/scripts/swiftpm.sh`. On this Mac it
 fails closed unless T9 is mounted, and gives every Conductor workspace an isolated
@@ -23,7 +23,7 @@ fall back to a git-ignored workspace build root.
 
 ## Internal build: clean macOS permission slate
 
-Use an internal build for changes to Desktop Capture Readiness, permission onboarding, or native-bundle behavior. It builds the real SwiftPM `Intentive.app`, then runs it in a disposable [Tart](https://tart.run) macOS VM. Each run clones a pristine base VM, so Screen Recording, Microphone, and Accessibility begin ungranted without changing the host Mac.
+Use an internal build for changes to Desktop Capture Readiness, permission onboarding, or native-bundle behavior. It builds the real SwiftPM `Intentive.app`, then runs it in a disposable [Tart](https://tart.run) macOS VM. Each run clones a pristine base VM, so Screen Recording, Microphone, and system-audio capture begin ungranted without changing the host Mac.
 
 ### Agent operations
 
@@ -37,17 +37,17 @@ Tag this runbook into an agent and use the following phrases. The canonical VM s
 | **"just build the app"** | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:build` | Builds and signs the native `.app` only. |
 | **"rebuild the base"** | `TART_HOME=/Volumes/T9/Tart apps/desktop/macos/scripts/tart-internal-build.sh --create-base <ipsw-url-or-path>` | Creates a new pristine base; complete Setup Assistant before using it. |
 
-> **VM login (OCI base):** username `admin`, password `admin`. macOS will prompt for these when you grant Screen Recording, Microphone, or Accessibility permission inside the VM. The `admin` account is a member of the `admin` group (UID 501) and can authorize TCC prompts. This only applies to clones of the OCI base image (`ghcr.io/cirruslabs/macos-tahoe-base:latest`); a local `intentive-base` created via `--create-base` uses whatever credentials you set during Setup Assistant.
+> **VM login (OCI base):** username `admin`, password `admin`. macOS may prompt for these when you grant Screen Recording, Microphone, or system-audio permission inside the VM. The `admin` account is a member of the `admin` group (UID 501) and can authorize TCC prompts. This only applies to clones of the OCI base image (`ghcr.io/cirruslabs/macos-tahoe-base:latest`); a local `intentive-base` created via `--create-base` uses whatever credentials you set during Setup Assistant.
 
 The normal run is deliberately away-from-keyboard safe: closing the VM window, interrupting its runner, or using **"kill it"** invokes the same stop-and-delete procedure. Tart terminates every process inside the guest before it deletes the guest disk. The script starts no host-side backend, capture daemon, or helper process, so a completed cleanup leaves no internal-build servers running on the host.
 
 ### Why we use a VM
 
-The desktop app relies on native macOS features — screen capture, audio recording, Accessibility, and their associated privacy/TCC prompts. Testing these on the real Mac is unreliable because permissions and preferences persist across runs; you can't tell whether a flow actually triggers a first-time prompt or is silently reusing a grant from a previous test.
+The desktop app relies on native macOS screen and optional audio capture plus their privacy/TCC prompts. Testing these on the real Mac is unreliable because permissions and preferences persist across runs; you can't tell whether a flow actually triggers a first-time prompt or is silently reusing a grant from a previous test.
 
 The VM solves this. It gives us a fresh macOS install with **zero pre-existing permissions**, simulating a brand-new user opening the app for the first time. Every `internal:run` clones a pristine base into a disposable VM, so each test starts from the same clean slate: no TCC grants, no Keychain entries, no Screen Memory, no prior onboarding state. You see exactly what a real first-time user sees.
 
-**What we're validating in the VM:** the first-launch onboarding flow, the screen-capture / audio / Accessibility permission prompts, and the app's behavior when those permissions are granted or denied. This is not a replacement for a signed/notarized release smoke — it's the fast iteration loop for native permission behavior.
+**What we're validating in the VM:** the first-launch onboarding flow, screen/audio permission prompts, and behavior when optional or required access is granted, denied, or deferred. This is not a replacement for a signed/notarized release smoke — it is the fast iteration loop for native permission behavior.
 
 ### How the VM stack works
 
@@ -180,7 +180,7 @@ The target Protocol spine is:
 
 ```text
 capture -> Screen Memory / Desktop Context Compiler -> perception_event -> Agent Runtime
-floating bar / PTT -> user_message -> Agent Runtime
+text-only Floating Bar -> user_message -> Agent Runtime
 Agent Runtime -> companion_message -> Effect Runner / floating bar
 ```
 
