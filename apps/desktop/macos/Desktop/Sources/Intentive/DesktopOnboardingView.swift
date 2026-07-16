@@ -2,36 +2,21 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 import IntentiveDesktopCore
+import IntentiveDesktopNativeAssets
 import SwiftUI
 
 enum DesktopMicrophonePermissionStatus: Equatable {
-  case notDetermined
-  case granted
-  case denied
-  case restricted
-  case unknown
+  case notDetermined, granted, denied, restricted, unknown
 
-  var isGranted: Bool {
-    self == .granted
-  }
-
+  var isGranted: Bool { self == .granted }
   var label: String {
     switch self {
-    case .notDetermined:
-      return "Not Requested"
-    case .granted:
-      return "Granted"
-    case .denied:
-      return "Denied"
-    case .restricted:
-      return "Restricted"
-    case .unknown:
-      return "Unknown"
+    case .notDetermined: "Not requested"
+    case .granted: "Granted"
+    case .denied: "Denied"
+    case .restricted: "Restricted"
+    case .unknown: "Unknown"
     }
-  }
-
-  var systemImage: String {
-    isGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
   }
 }
 
@@ -44,16 +29,11 @@ protocol DesktopMicrophonePermissionGateway {
 struct NativeMicrophonePermissionGateway: DesktopMicrophonePermissionGateway {
   func authorizationStatus() -> DesktopMicrophonePermissionStatus {
     switch AVCaptureDevice.authorizationStatus(for: .audio) {
-    case .notDetermined:
-      return .notDetermined
-    case .authorized:
-      return .granted
-    case .denied:
-      return .denied
-    case .restricted:
-      return .restricted
-    @unknown default:
-      return .unknown
+    case .notDetermined: .notDetermined
+    case .authorized: .granted
+    case .denied: .denied
+    case .restricted: .restricted
+    @unknown default: .unknown
     }
   }
 
@@ -66,13 +46,9 @@ struct NativeMicrophonePermissionGateway: DesktopMicrophonePermissionGateway {
   }
 
   func openMicrophoneSettings() {
-    guard
-      let url = URL(
-        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-      )
-    else {
-      return
-    }
+    guard let url = URL(
+      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+    else { return }
     NSWorkspace.shared.open(url)
   }
 }
@@ -84,9 +60,7 @@ protocol DesktopAccessibilityPermissionGateway {
 }
 
 struct NativeAccessibilityPermissionGateway: DesktopAccessibilityPermissionGateway {
-  func hasAccessibilityPermission() -> Bool {
-    AXIsProcessTrusted()
-  }
+  func hasAccessibilityPermission() -> Bool { AXIsProcessTrusted() }
 
   func requestAccessibilityPermission() -> Bool {
     let options = [
@@ -96,615 +70,219 @@ struct NativeAccessibilityPermissionGateway: DesktopAccessibilityPermissionGatew
   }
 
   func openAccessibilitySettings() {
-    guard
-      let url = URL(
-        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-      )
-    else {
-      return
-    }
+    guard let url = URL(
+      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    else { return }
     NSWorkspace.shared.open(url)
   }
 }
 
+/// Intentive's bounded adaptation of Omi's ordered onboarding scaffold. The
+/// progress rail, focused page, explicit skip actions, and resumable state are
+/// preserved; Omi's provider, notification, voice, PTT, import, and paid steps
+/// are deliberately absent.
 struct DesktopOnboardingSheet: View {
-  let progress: DesktopOnboardingProgress
-  let requirements: DesktopOnboardingRequirements
-  let screenRecordingPermissionGranted: Bool
-  let accessibilityPermissionGranted: Bool
-  let microphonePermissionStatus: DesktopMicrophonePermissionStatus
-  let markStepReviewed: (DesktopOnboardingStep) -> Void
-  let requestScreenRecordingPermission: () -> Void
-  let openScreenRecordingSettings: () -> Void
-  let requestAccessibilityPermission: () -> Void
-  let openAccessibilitySettings: () -> Void
-  let requestMicrophonePermission: () -> Void
-  let openMicrophoneSettings: () -> Void
-  let refreshPermissions: () -> Void
-  let previewNotification: () -> Void
-  let openFloatingBar: () -> Void
-  let reviewVoiceDemo: () -> Void
-  let finishLater: () -> Void
-  let finish: () -> Void
-
-  @State private var selectedStep: DesktopOnboardingStep = .trustPrimer
+  @ObservedObject var model: DesktopViewModel
+  @State private var selectedStep: DesktopOnboardingStep = .valuePrivacy
 
   var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 0) {
-        stepList
-          .frame(width: 248)
-        Divider()
-        selectedStepDetail
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      }
-
-      Divider()
-
-      HStack {
-        Button("Finish Later", action: finishLater)
-        Spacer()
-        Text(requirements.isComplete ? "Ready" : "Setup in progress")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Button("Done", action: finish)
-          .buttonStyle(.borderedProminent)
-          .disabled(!requirements.isComplete)
-      }
-      .padding(16)
-    }
-    .frame(minWidth: 760, minHeight: 520)
+    page
+    .frame(minWidth: 920, minHeight: 620)
+    .interactiveDismissDisabled()
     .onAppear {
-      selectedStep = requirements.nextIncompleteStep ?? .trustPrimer
-      refreshPermissions()
+      selectedStep = model.onboardingRequirements.nextIncompleteStep ?? .ready
+      model.refreshOnboardingPermissions()
     }
   }
 
-  private var stepList: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("Desktop Setup")
-        .font(.title2.bold())
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-
-      VStack(spacing: 4) {
-        ForEach(DesktopOnboardingStep.allCases) { step in
-          Button {
-            selectedStep = step
-          } label: {
-            HStack(spacing: 10) {
-              Image(systemName: requirements.isSatisfied(step) ? "checkmark.circle.fill" : step.symbol)
-                .foregroundStyle(requirements.isSatisfied(step) ? .green : .secondary)
-                .frame(width: 20)
-              VStack(alignment: .leading, spacing: 2) {
-                Text(step.title)
-                  .font(.callout.weight(.medium))
-                Text(step.subtitle)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                  .lineLimit(2)
-              }
-              Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(
-              selectedStep == step
-                ? Color.accentColor.opacity(0.12)
-                : Color.clear,
-              in: RoundedRectangle(cornerRadius: 8)
-            )
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(.horizontal, 10)
-
-      Spacer()
+  private var page: some View {
+    OnboardingStepScaffold(
+      stepIndex: stepIndex,
+      totalSteps: DesktopOnboardingStep.allCases.count,
+      eyebrow: selectedStep.eyebrow,
+      title: selectedStep.title,
+      description: selectedStep.detail,
+      layoutMode: selectedStep == .valuePrivacy || selectedStep == .ready ? .centered : .split,
+      showsSkip: selectedStep == .screenRecording || selectedStep == .audioConsent,
+      onSkip: skipSelectedStep
+    ) {
+      VStack(alignment: .leading, spacing: 22) { stepContent }
+        .frame(maxWidth: 560, alignment: .leading)
     }
   }
 
-  @ViewBuilder
-  private var selectedStepDetail: some View {
+  @ViewBuilder private var stepContent: some View {
     switch selectedStep {
-    case .trustPrimer:
-      TrustPrimerStep(markReviewed: {
-        markStepReviewed(.trustPrimer)
-        advance()
-      })
-    case .permissions:
-      PermissionsStep(
-        screenRecordingPermissionGranted: screenRecordingPermissionGranted,
-        accessibilityPermissionGranted: accessibilityPermissionGranted,
-        microphonePermissionStatus: microphonePermissionStatus,
-        markReviewed: { markStepReviewed(.permissions) },
-        requestScreenRecordingPermission: requestScreenRecordingPermission,
-        openScreenRecordingSettings: openScreenRecordingSettings,
-        requestAccessibilityPermission: requestAccessibilityPermission,
-        openAccessibilitySettings: openAccessibilitySettings,
-        requestMicrophonePermission: requestMicrophonePermission,
-        openMicrophoneSettings: openMicrophoneSettings,
-        refreshPermissions: refreshPermissions
+    case .valuePrivacy:
+      points([
+        ("lock.shield", "Raw screenshots, video, thumbnails, and audio stay on this Mac."),
+        ("brain.head.profile", "Only permitted text, metadata, and compact summaries reach your Companion."),
+        ("hand.raised", "Private Mode stops screen, microphone, and system-audio sensing immediately."),
+      ])
+      primary("Continue") { completeAndAdvance(.valuePrivacy) }
+
+    case .authentication:
+      points([("person.crop.circle.badge.checkmark", "Sign in to join the same Runtime-owned Companion conversation used by your other devices.")])
+      if model.onboardingRequirements.isAuthenticated {
+        primary("Continue") { advance() }
+      } else {
+        primary("Sign In") { Task { await model.signInAndConnectRuntime() } }
+      }
+
+    case .screenRecording:
+      permissionStatus("Screen Recording", granted: model.screenRecordingPermissionGranted)
+      HStack {
+        primary("Request Access") { model.requestOnboardingScreenRecordingPermission() }
+        Button("System Settings", action: model.openOnboardingScreenRecordingSettings)
+        Button("Refresh", action: model.refreshOnboardingPermissions)
+      }
+      decisionButtons(
+        granted: model.screenRecordingPermissionGranted,
+        grant: { model.decideScreenRecording(.granted); advance() },
+        deny: { model.decideScreenRecording(.denied); advance() },
+        deferAction: { model.decideScreenRecording(.deferred); advance() }
       )
-    case .notificationPreview:
-      NotificationPreviewStep(previewNotification: {
-        previewNotification()
-        markStepReviewed(.notificationPreview)
-        advance()
-      })
-    case .floatingBarShortcut:
-      FloatingBarShortcutStep(markReviewed: {
-        markStepReviewed(.floatingBarShortcut)
-        advance()
-      })
-    case .floatingBarDemo:
-      FloatingBarDemoStep(openFloatingBar: {
-        openFloatingBar()
-        markStepReviewed(.floatingBarDemo)
-        advance()
-      })
-    case .voiceShortcut:
-      VoiceShortcutStep(markReviewed: {
-        markStepReviewed(.voiceShortcut)
-        advance()
-      })
-    case .voiceDemo:
-      VoiceDemoStep(
-        microphonePermissionStatus: microphonePermissionStatus,
-        reviewVoiceDemo: {
-          reviewVoiceDemo()
-          markStepReviewed(.voiceDemo)
-          advance()
-        }
+
+    case .audioConsent:
+      points([
+        ("mic", "Passive microphone context is optional and never fills the composer."),
+        ("speaker.wave.2", "System audio is used only for meeting/activity context; raw audio is not retained."),
+      ])
+      permissionStatus("Microphone", granted: model.microphonePermissionStatus.isGranted)
+      HStack {
+        primary("Request Microphone") { Task { await model.requestMicrophonePermission() } }
+        Button("System Settings", action: model.openMicrophoneSettings)
+      }
+      decisionButtons(
+        granted: model.microphonePermissionStatus.isGranted,
+        grant: { model.decideAudio(.granted); advance() },
+        deny: { model.decideAudio(.denied); advance() },
+        deferAction: { model.decideAudio(.deferred); advance() }
       )
-    case .ambientAudioConsent:
-      AmbientAudioConsentStep(markReviewed: {
-        markStepReviewed(.ambientAudioConsent)
-        advance()
-      })
+
+    case .privacyControls:
+      Picker("Keep Screen Memory", selection: Binding(
+        get: { model.onboardingRetentionPeriod.rawValue },
+        set: model.setOnboardingRetentionDays
+      )) {
+        ForEach([3, 7, 14, 30], id: \.self) { Text("\($0) days").tag($0) }
+      }
+      TextField("Excluded apps (comma separated)", text: Binding(
+        get: { model.excludedAppsText }, set: model.updateExcludedAppsText))
+        .textFieldStyle(.roundedBorder)
+      points([("eye.slash", "You can enter Private Mode at any time from Intentive's privacy controls.")])
+      primary("Save Privacy Choices") { completeAndAdvance(.privacyControls) }
+
+    case .textChatShortcut:
+      points([
+        ("keyboard", "Use the configured global shortcut or menu bar to open the text-only Floating Bar."),
+        ("text.bubble", "There is no dictation, voice response, tool-call UI, or second chat window."),
+      ])
+      primary("Try Floating Bar") { model.openFloatingBarFromOnboarding(); advance() }
+
+    case .ready:
+      points([
+        ("checkmark.seal.fill", "Intentive is ready."),
+        ("camera.viewfinder", model.onboardingRequirements.captureReady
+          ? "Screen Memory will follow your saved capture preference."
+          : "Text chat is ready. Screen Memory will remain paused until Screen Recording is granted."),
+      ])
+      primary("Finish Setup", action: model.finishOnboarding)
     }
+  }
+
+  private var stepIndex: Int {
+    DesktopOnboardingStep.allCases.firstIndex(of: selectedStep) ?? 0
   }
 
   private func advance() {
-    guard let currentIndex = DesktopOnboardingStep.allCases.firstIndex(of: selectedStep) else {
-      return
-    }
-    let nextIndex = DesktopOnboardingStep.allCases.index(after: currentIndex)
-    if nextIndex < DesktopOnboardingStep.allCases.endIndex {
-      selectedStep = DesktopOnboardingStep.allCases[nextIndex]
-    }
+    selectedStep = model.onboardingRequirements.nextIncompleteStep ?? .ready
   }
-}
 
-private struct TrustPrimerStep: View {
-  let markReviewed: () -> Void
-
-  var body: some View {
-    StepPane(title: "Trust and Privacy", systemImage: "hand.raised") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "desktopcomputer",
-          title: "Raw screen and audio stay local by default",
-          detail: "Intentive builds Screen Memory on the Mac and sends compact perception events over the shared Protocol."
-        )
-        OnboardingPoint(
-          systemImage: "person.crop.circle.badge.checkmark",
-          title: "The Mac joins your existing Companion",
-          detail: "Floating chat and voice turns enter the same Companion conversation as mobile."
-        )
-        OnboardingPoint(
-          systemImage: "lock.shield",
-          title: "Permissions stay visible",
-          detail: "Screen Recording, Accessibility, and microphone access are macOS grants you can revoke in System Settings."
-        )
-      }
-    } footer: {
-      Button {
-        markReviewed()
-      } label: {
-        Label("I Understand", systemImage: "checkmark")
-      }
-      .buttonStyle(.borderedProminent)
-    }
+  private func completeAndAdvance(_ step: DesktopOnboardingStep) {
+    model.markOnboardingStepReviewed(step)
+    advance()
   }
-}
 
-private struct PermissionsStep: View {
-  let screenRecordingPermissionGranted: Bool
-  let accessibilityPermissionGranted: Bool
-  let microphonePermissionStatus: DesktopMicrophonePermissionStatus
-  let markReviewed: () -> Void
-  let requestScreenRecordingPermission: () -> Void
-  let openScreenRecordingSettings: () -> Void
-  let requestAccessibilityPermission: () -> Void
-  let openAccessibilitySettings: () -> Void
-  let requestMicrophonePermission: () -> Void
-  let openMicrophoneSettings: () -> Void
-  let refreshPermissions: () -> Void
+  private func skipSelectedStep() {
+    switch selectedStep {
+    case .screenRecording: model.decideScreenRecording(.deferred)
+    case .audioConsent: model.decideAudio(.deferred)
+    default: return
+    }
+    advance()
+  }
 
-  var body: some View {
-    StepPane(title: "Mac Permissions", systemImage: "switch.2") {
-      VStack(alignment: .leading, spacing: 14) {
-        PermissionRow(
-          title: "Screen Recording",
-          detail: "Required for Screen Memory and capture-aware perception.",
-          isGranted: screenRecordingPermissionGranted,
-          status: screenRecordingPermissionGranted ? "Granted" : "Required",
-          requestTitle: "Request Access",
-          requestImage: "rectangle.on.rectangle",
-          request: {
-            markReviewed()
-            requestScreenRecordingPermission()
-          },
-          openSettings: {
-            markReviewed()
-            openScreenRecordingSettings()
-          }
-        )
+  private func permissionStatus(_ title: String, granted: Bool) -> some View {
+    Label(granted ? "\(title) granted" : "\(title) not granted",
+          systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+      .foregroundStyle(granted ? .green : .orange)
+  }
 
-        PermissionRow(
-          title: "Accessibility",
-          detail: "Required for the global Option push-to-talk shortcut while other apps are focused.",
-          isGranted: accessibilityPermissionGranted,
-          status: accessibilityPermissionGranted ? "Granted" : "Required",
-          requestTitle: "Request Access",
-          requestImage: "option",
-          request: {
-            markReviewed()
-            requestAccessibilityPermission()
-          },
-          openSettings: {
-            markReviewed()
-            openAccessibilitySettings()
-          }
-        )
+  private func primary(_ title: String, action: @escaping () -> Void) -> some View {
+    Button(title, action: action).buttonStyle(.borderedProminent)
+  }
 
-        PermissionRow(
-          title: "Microphone",
-          detail: "Required for push-to-talk voice turns.",
-          isGranted: microphonePermissionStatus.isGranted,
-          status: microphonePermissionStatus.label,
-          requestTitle: "Request Access",
-          requestImage: "mic",
-          request: {
-            markReviewed()
-            requestMicrophonePermission()
-          },
-          openSettings: {
-            markReviewed()
-            openMicrophoneSettings()
-          }
-        )
-      }
-    } footer: {
-      Button {
-        markReviewed()
-        refreshPermissions()
-      } label: {
-        Label("Refresh", systemImage: "arrow.clockwise")
+  private func decisionButtons(
+    granted: Bool,
+    grant: @escaping () -> Void,
+    deny: @escaping () -> Void,
+    deferAction: @escaping () -> Void
+  ) -> some View {
+    HStack {
+      if granted { Button("Continue", action: grant).buttonStyle(.borderedProminent) }
+      else {
+        Button("Continue Without It", action: deny)
+        Button("Decide Later", action: deferAction)
       }
     }
   }
-}
 
-private struct NotificationPreviewStep: View {
-  let previewNotification: () -> Void
-
-  var body: some View {
-    StepPane(title: "Proactive Preview", systemImage: "bell.badge") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "bell.badge",
-          title: "Local effect surface",
-          detail: "Intentive can show Runtime-approved desktop nudges without creating a second conversation."
-        )
-        OnboardingPoint(
-          systemImage: "checkmark.message",
-          title: "Acknowledged once",
-          detail: "Desktop effects acknowledge delivery through the Runtime Bridge and keep perception out of chat history."
-        )
-      }
-    } footer: {
-      Button {
-        previewNotification()
-      } label: {
-        Label("Preview Nudge", systemImage: "bell")
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-
-private struct FloatingBarShortcutStep: View {
-  let markReviewed: () -> Void
-
-  var body: some View {
-    StepPane(title: "Floating Bar Shortcut", systemImage: "keyboard") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "command",
-          title: "Global entry point",
-          detail: "Use the configured chat shortcut to summon the Floating Bar over the active app."
-        )
-        OnboardingPoint(
-          systemImage: "cursorarrow.click.2",
-          title: "No context switch",
-          detail: "The bar stays lightweight so a desktop question can become a normal Companion turn."
-        )
-      }
-    } footer: {
-      Button {
-        markReviewed()
-      } label: {
-        Label("Shortcut Reviewed", systemImage: "checkmark")
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-
-private struct FloatingBarDemoStep: View {
-  let openFloatingBar: () -> Void
-
-  var body: some View {
-    StepPane(title: "Floating Bar Demo", systemImage: "text.bubble") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "bubble.left.and.bubble.right",
-          title: "Compact chat",
-          detail: "The Floating Bar is the desktop entry point into the same Companion conversation."
-        )
-        OnboardingPoint(
-          systemImage: "dock.arrow.up.rectangle",
-          title: "Desktop-local effects",
-          detail: "Runtime-approved nudges can show locally without turning the Mac into a separate agent."
-        )
-      }
-    } footer: {
-      Button {
-        openFloatingBar()
-      } label: {
-        Label("Open Floating Bar", systemImage: "text.bubble")
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-
-private struct VoiceShortcutStep: View {
-  let markReviewed: () -> Void
-
-  var body: some View {
-    StepPane(title: "Voice Shortcut", systemImage: "keyboard.badge.waveform") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "mic.badge.plus",
-          title: "Push-to-talk",
-          detail: "Hold Option to talk. Double-tap Option to lock the voice turn until the next tap."
-        )
-        OnboardingPoint(
-          systemImage: "waveform.path.ecg",
-          title: "Voice is not capture",
-          detail: "Voice turns enter the same Companion path as typed chat after local speech gates pass."
-        )
-      }
-    } footer: {
-      Button {
-        markReviewed()
-      } label: {
-        Label("Shortcut Reviewed", systemImage: "checkmark")
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-
-private struct VoiceDemoStep: View {
-  let microphonePermissionStatus: DesktopMicrophonePermissionStatus
-  let reviewVoiceDemo: () -> Void
-
-  var body: some View {
-    StepPane(title: "Voice Demo", systemImage: "waveform") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "mic",
-          title: microphonePermissionStatus.isGranted ? "Microphone ready" : "Microphone needed",
-          detail: microphonePermissionStatus.isGranted
-            ? "Push-to-talk captures audio locally before a normal user message is sent."
-            : "Grant microphone access before using push-to-talk."
-        )
-        OnboardingPoint(
-          systemImage: "waveform.badge.magnifyingglass",
-          title: "Speech gate first",
-          detail: "Silent turns are dropped before they reach the Runtime Bridge."
-        )
-        OnboardingPoint(
-          systemImage: "checkmark.shield",
-          title: "No fabricated transcript",
-          detail: "Voice fails closed unless a real local transcription adapter is configured."
-        )
-      }
-    } footer: {
-      Button {
-        reviewVoiceDemo()
-      } label: {
-        Label("Open Voice", systemImage: "waveform")
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-
-private struct AmbientAudioConsentStep: View {
-  let markReviewed: () -> Void
-
-  var body: some View {
-    StepPane(title: "Ambient Audio", systemImage: "waveform.badge.magnifyingglass") {
-      VStack(alignment: .leading, spacing: 12) {
-        OnboardingPoint(
-          systemImage: "power",
-          title: "Off by default",
-          detail: "Ambient audio capture uses the local microphone path and only publishes compact summaries after the local speech gate."
-        )
-        OnboardingPoint(
-          systemImage: "lock.shield",
-          title: "Local transcript",
-          detail: "Raw audio stays on this Mac. Local transcripts are stored only in Screen Memory."
-        )
-      }
-    } footer: {
-      Button(action: markReviewed) {
-        Label("Review Ambient Audio", systemImage: "checkmark.circle")
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-private struct StepPane<Content: View, Footer: View>: View {
-  let title: String
-  let systemImage: String
-  @ViewBuilder let content: () -> Content
-  @ViewBuilder let footer: () -> Footer
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 22) {
-      Label(title, systemImage: systemImage)
-        .font(.title.bold())
-        .labelStyle(.titleAndIcon)
-
-      content()
-
-      Spacer()
-
-      HStack {
-        Spacer()
-        footer()
-      }
-    }
-    .padding(28)
-  }
-}
-
-private struct OnboardingPoint: View {
-  let systemImage: String
-  let title: String
-  let detail: String
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 12) {
-      Image(systemName: systemImage)
-        .foregroundStyle(.secondary)
-        .frame(width: 22)
-      VStack(alignment: .leading, spacing: 3) {
-        Text(title)
-          .font(.headline)
-        Text(detail)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-  }
-}
-
-private struct PermissionRow: View {
-  let title: String
-  let detail: String
-  let isGranted: Bool
-  let status: String
-  let requestTitle: String
-  let requestImage: String
-  let request: () -> Void
-  let openSettings: () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 3) {
-          Text(title)
-            .font(.headline)
-          Text(detail)
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        Label(status, systemImage: isGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-          .foregroundStyle(isGranted ? .green : .orange)
-      }
-
-      HStack {
-        Button(action: request) {
-          Label(requestTitle, systemImage: requestImage)
-        }
-        Button(action: openSettings) {
-          Label("System Settings", systemImage: "gearshape")
+  private func points(_ items: [(String, String)]) -> some View {
+    VStack(alignment: .leading, spacing: 14) {
+      ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+        Label { Text(item.1).fixedSize(horizontal: false, vertical: true) } icon: {
+          Image(systemName: item.0).frame(width: 24)
         }
       }
     }
-    .padding(14)
-    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
   }
 }
 
 private extension DesktopOnboardingStep {
+  var eyebrow: String {
+    switch self {
+    case .valuePrivacy: "Welcome"
+    case .authentication: "Your Companion"
+    case .screenRecording: "Essential sensing"
+    case .audioConsent: "Optional sensing"
+    case .privacyControls: "Your controls"
+    case .textChatShortcut: "Conversation"
+    case .ready: "Complete"
+    }
+  }
+
   var title: String {
     switch self {
-    case .trustPrimer:
-      return "Trust"
-    case .permissions:
-      return "Permissions"
-    case .notificationPreview:
-      return "Notifications"
-    case .floatingBarShortcut:
-      return "Bar Shortcut"
-    case .floatingBarDemo:
-      return "Bar Demo"
-    case .voiceShortcut:
-      return "Voice Shortcut"
-    case .voiceDemo:
-      return "Voice Demo"
-    case .ambientAudioConsent:
-      return "Ambient Audio"
+    case .valuePrivacy: "Understand your work, privately."
+    case .authentication: "Join your Companion."
+    case .screenRecording: "Build Screen Memory."
+    case .audioConsent: "Add ambient context?"
+    case .privacyControls: "Choose what Intentive remembers."
+    case .textChatShortcut: "Chat without changing context."
+    case .ready: "You're ready."
     }
   }
 
-  var subtitle: String {
+  var detail: String {
     switch self {
-    case .trustPrimer:
-      return "Local-first capture"
-    case .permissions:
-      return "Screen, shortcut, and voice"
-    case .notificationPreview:
-      return "Proactive nudge"
-    case .floatingBarShortcut:
-      return "Open from anywhere"
-    case .floatingBarDemo:
-      return "Desktop chat surface"
-    case .voiceShortcut:
-      return "Push-to-talk"
-    case .voiceDemo:
-      return "Push-to-talk path"
-    case .ambientAudioConsent:
-      return "Off by default"
-    }
-  }
-
-  var symbol: String {
-    switch self {
-    case .trustPrimer:
-      return "hand.raised"
-    case .permissions:
-      return "switch.2"
-    case .notificationPreview:
-      return "bell.badge"
-    case .floatingBarShortcut:
-      return "keyboard"
-    case .floatingBarDemo:
-      return "text.bubble"
-    case .voiceShortcut:
-      return "keyboard.badge.waveform"
-    case .voiceDemo:
-      return "waveform"
-    case .ambientAudioConsent:
-      return "waveform.badge.magnifyingglass"
+    case .valuePrivacy: "Your Mac is Intentive's private sensing body. The Agent Runtime remains the only brain."
+    case .authentication: "Authentication connects this Mac to one eternal conversation without storing chat history locally."
+    case .screenRecording: "Screen Recording enables the local screenshot/video archive, OCR timeline, and search."
+    case .audioConsent: "Microphone and system-audio sensing are optional, local, and separate from conversation input."
+    case .privacyControls: "Set retention and exclusions before sensing begins."
+    case .textChatShortcut: "Summon the same conversation over whatever you're doing."
+    case .ready: "You can change every sensing choice later."
     }
   }
 }

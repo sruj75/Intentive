@@ -130,7 +130,7 @@ public struct DesktopSurfaceContract: Equatable, Sendable {
     mainWindowSections: [.home, .screenMemory, .settings],
     conversationSurface: .floatingBar,
     conversationInput: .textOnly,
-    setupSurface: .utilityMainWindow,
+    setupSurface: .onboarding,
     capabilities: [
       .screenMemory,
       .floatingBarConversation,

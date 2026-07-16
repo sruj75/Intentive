@@ -1,11 +1,11 @@
 import SwiftUI
 
-enum OnboardingLayoutMode {
+public enum OnboardingLayoutMode {
   case split
   case centered
 }
 
-struct OnboardingStepScaffold<Content: View>: View {
+public struct OnboardingStepScaffold<Content: View>: View {
   let stepIndex: Int
   let totalSteps: Int
   let eyebrow: String
@@ -17,7 +17,7 @@ struct OnboardingStepScaffold<Content: View>: View {
   let onForceComplete: (() -> Void)?
   let content: Content
 
-  init(
+  public init(
     stepIndex: Int,
     totalSteps: Int,
     eyebrow: String,
@@ -41,7 +41,7 @@ struct OnboardingStepScaffold<Content: View>: View {
     self.content = content()
   }
 
-  var body: some View {
+  public var body: some View {
     VStack(spacing: 0) {
       header
 
@@ -131,10 +131,12 @@ struct OnboardingStepScaffold<Content: View>: View {
   }
 }
 
-struct OnboardingLogoMark: View {
+public struct OnboardingLogoMark: View {
   let onForceComplete: (() -> Void)?
 
-  var body: some View {
+  public init(onForceComplete: (() -> Void)?) { self.onForceComplete = onForceComplete }
+
+  public var body: some View {
     Text("Intentive")
       .font(.system(size: 18, weight: .semibold))
       .foregroundColor(.white)
@@ -146,10 +148,12 @@ struct OnboardingLogoMark: View {
   }
 }
 
-struct OnboardingCardButtonStyle: ButtonStyle {
+public struct OnboardingCardButtonStyle: ButtonStyle {
   let isPrimary: Bool
 
-  func makeBody(configuration: Configuration) -> some View {
+  public init(isPrimary: Bool) { self.isPrimary = isPrimary }
+
+  public func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .font(.system(size: 15, weight: .semibold))
       .foregroundColor(isPrimary ? .black : IntentiveColors.textPrimary)
@@ -169,12 +173,18 @@ struct OnboardingCardButtonStyle: ButtonStyle {
   }
 }
 
-struct OnboardingInsightCard: View {
+public struct OnboardingInsightCard: View {
   let icon: String
   let title: String
   let detail: String
 
-  var body: some View {
+  public init(icon: String, title: String, detail: String) {
+    self.icon = icon
+    self.title = title
+    self.detail = detail
+  }
+
+  public var body: some View {
     HStack(alignment: .top, spacing: 14) {
       Image(systemName: icon)
         .font(.system(size: 16, weight: .semibold))
@@ -207,12 +217,18 @@ struct OnboardingInsightCard: View {
   }
 }
 
-struct OnboardingSelectableChip: View {
+public struct OnboardingSelectableChip: View {
   let title: String
   let isSelected: Bool
   let action: () -> Void
 
-  var body: some View {
+  public init(title: String, isSelected: Bool, action: @escaping () -> Void) {
+    self.title = title
+    self.isSelected = isSelected
+    self.action = action
+  }
+
+  public var body: some View {
     Button(action: action) {
       Text(title)
         .font(.system(size: 14, weight: .semibold))

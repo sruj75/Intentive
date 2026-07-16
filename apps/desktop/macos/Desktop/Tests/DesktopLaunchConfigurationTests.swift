@@ -3,7 +3,7 @@ import IntentiveDesktopCore
 import XCTest
 
 final class DesktopLaunchConfigurationTests: XCTestCase {
-  func testDeterministicLaunchAssemblesUtilityShellAndTextOnlyFloatingBar() {
+  func testDeterministicLaunchAssemblesRenovatedOnboardingUtilityShellAndTextOnlyFloatingBar() {
     let profileRoot = URL(fileURLWithPath: "/tmp/intentive-assembled-profile", isDirectory: true)
 
     let configuration = DesktopLaunchConfiguration.assembledTest(
@@ -17,7 +17,7 @@ final class DesktopLaunchConfigurationTests: XCTestCase {
     XCTAssertEqual(configuration.surface.mainWindowSections, [.home, .screenMemory, .settings])
     XCTAssertEqual(configuration.surface.conversationSurface, .floatingBar)
     XCTAssertEqual(configuration.surface.conversationInput, .textOnly)
-    XCTAssertEqual(configuration.surface.setupSurface, .utilityMainWindow)
+    XCTAssertEqual(configuration.surface.setupSurface, .onboarding)
     XCTAssertEqual(configuration.permissions.screenRecording, .granted)
     XCTAssertEqual(configuration.permissions.microphone, .denied)
     XCTAssertEqual(configuration.authentication, .signedIn(userID: "fixture-user"))
@@ -58,7 +58,7 @@ final class DesktopLaunchConfigurationTests: XCTestCase {
     XCTAssertEqual(composition.permissions.screenRecording, .granted)
     XCTAssertEqual(composition.authentication, .signedIn(userID: "fixture-user"))
     XCTAssertEqual(composition.runtime, .connected)
-    XCTAssertEqual(composition.setupSurface, .utilityMainWindow)
+    XCTAssertEqual(composition.setupSurface, .onboarding)
     XCTAssertFalse(composition.deliversProductMacOSNotifications)
     XCTAssertTrue(composition.offersFloatingBarComposer)
   }

@@ -45,6 +45,7 @@ final class DesktopViewModel: ObservableObject {
   @Published var microphonePermissionStatus: DesktopMicrophonePermissionStatus
   @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
   @Published var onboardingProgress: DesktopOnboardingProgress
+  @Published var onboardingRetentionPeriod: ScreenMemoryRetentionPeriod = .sevenDays
   @Published var showOnboarding: Bool
   @Published var voiceCaptureRunning = false
   @Published var voiceStatus = "Ready for a local push-to-talk turn"
@@ -236,10 +237,16 @@ final class DesktopViewModel: ObservableObject {
   var onboardingRequirements: DesktopOnboardingRequirements {
     DesktopOnboardingRequirements(
       progress: onboardingProgress,
+      isAuthenticated: isOnboardingAuthenticated,
       screenRecordingPermissionGranted: screenRecordingPermissionGranted,
-      accessibilityPermissionGranted: accessibilityPermissionGranted,
-      microphonePermissionGranted: microphonePermissionStatus.isGranted
+      microphonePermissionGranted: microphonePermissionStatus.isGranted,
+      systemAudioPermissionGranted: screenRecordingPermissionGranted
     )
+  }
+
+  private var isOnboardingAuthenticated: Bool {
+    if case .signedIn = composition.authentication { return true }
+    return runtimeSession.accountState != nil
   }
 
   init(
@@ -285,14 +292,6 @@ final class DesktopViewModel: ObservableObject {
     self.accessibilityPermissionGranted = accessibilityPermissionGranted
     self.microphonePermissionStatus = microphonePermissionStatus
     onboardingProgress = progress
-    showOnboarding = composition.setupSurface == .onboarding
-      && !DesktopOnboardingRequirements(
-        progress: progress,
-        screenRecordingPermissionGranted: screenRecordingPermissionGranted,
-        accessibilityPermissionGranted: accessibilityPermissionGranted,
-        microphonePermissionGranted: microphonePermissionStatus.isGranted
-      ).isComplete
-
     let launchUserID: String?
     switch composition.authentication {
     case .signedOut:
@@ -300,6 +299,18 @@ final class DesktopViewModel: ObservableObject {
     case .signedIn(let userID):
       launchUserID = userID
     }
+    let retentionPersistence = UserDefaultsScreenMemoryRetentionPersistence(
+      userID: launchUserID ?? DesktopLocalProfile.anonymousUserID)
+    onboardingRetentionPeriod = retentionPersistence.loadRetentionPeriod() ?? .sevenDays
+    showOnboarding = composition.setupSurface == .onboarding
+      && !DesktopOnboardingRequirements(
+        progress: progress,
+        isAuthenticated: launchUserID != nil,
+        screenRecordingPermissionGranted: screenRecordingPermissionGranted,
+        microphonePermissionGranted: microphonePermissionStatus.isGranted,
+        systemAudioPermissionGranted: screenRecordingPermissionGranted
+      ).isComplete
+
     let initialScreenMemory = Self.makeScreenMemoryStore(
       userID: launchUserID,
       baseApplicationSupportURL: launchConfiguration.profileRoot
@@ -467,12 +478,22 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func finishOnboarding() {
-    guard onboardingRequirements.isComplete else {
+    guard onboardingRequirements.nextIncompleteStep == .ready else {
       status = "Desktop setup is not complete"
+      return
+    }
+    onboardingProgress = onboardingProgress.completingOnboarding()
+    do {
+      try onboardingStore.save(onboardingProgress)
+    } catch {
+      status = error.localizedDescription
       return
     }
     showOnboarding = false
     status = "Desktop setup complete"
+    if onboardingRequirements.captureReady {
+      Task { await performCaptureLaunchReconciliation() }
+    }
   }
 
   func markOnboardingStepReviewed(_ step: DesktopOnboardingStep) {
@@ -508,17 +529,30 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func requestOnboardingScreenRecordingPermission() {
-    markOnboardingStepReviewed(.permissions)
     requestScreenRecordingPermission()
   }
 
   func openOnboardingScreenRecordingSettings() {
-    markOnboardingStepReviewed(.permissions)
     openScreenRecordingSettings()
   }
 
+  func decideScreenRecording(_ decision: DesktopPermissionDecision) {
+    onboardingProgress = onboardingProgress.decidingScreenRecording(decision)
+    persistOnboardingProgress()
+  }
+
+  func decideAudio(_ decision: DesktopPermissionDecision) {
+    onboardingProgress = onboardingProgress.decidingAudio(decision)
+    if decision != .granted { setAmbientAudioCaptureEnabled(false) }
+    persistOnboardingProgress()
+  }
+
+  private func persistOnboardingProgress() {
+    do { try onboardingStore.save(onboardingProgress) }
+    catch { status = error.localizedDescription }
+  }
+
   func requestAccessibilityPermission() {
-    markOnboardingStepReviewed(.permissions)
     let requested = accessibilityPermissionGateway.requestAccessibilityPermission()
     accessibilityPermissionGranted = requested || accessibilityPermissionGateway.hasAccessibilityPermission()
     status =
@@ -528,25 +562,45 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func openAccessibilitySettings() {
-    markOnboardingStepReviewed(.permissions)
     accessibilityPermissionGateway.openAccessibilitySettings()
     status = "Opened Accessibility settings"
   }
 
   func requestMicrophonePermission() async {
-    markOnboardingStepReviewed(.permissions)
     microphonePermissionStatus = await microphonePermissionGateway.requestAccess()
     status =
       microphonePermissionStatus.isGranted
       ? "Microphone permission granted"
       : "Microphone permission required"
     reconcileAmbientAudioCapture()
+    decideAudio(microphonePermissionStatus.isGranted ? .granted : .denied)
   }
 
   func openMicrophoneSettings() {
-    markOnboardingStepReviewed(.permissions)
     microphonePermissionGateway.openMicrophoneSettings()
     status = "Opened Microphone settings"
+  }
+
+  func refreshOnboardingPermissions() {
+    refreshScreenRecordingPermission()
+    microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
+  }
+
+  func setOnboardingRetentionDays(_ days: Int) {
+    guard let period = ScreenMemoryRetentionPeriod(rawValue: days) else { return }
+    onboardingRetentionPeriod = period
+    let userID = runtimeSession.accountState?.userId ?? DesktopLocalProfile.anonymousUserID
+    do {
+      try UserDefaultsScreenMemoryRetentionPersistence(userID: userID).saveRetentionPeriod(period)
+      if let archive = screenMemory.activeArchive {
+        Task { @MainActor [weak self] in
+          do { _ = try await archive.applyRetentionPolicy(period) }
+          catch { self?.status = "Retention enforcement failed: \(error.localizedDescription)" }
+        }
+      }
+    } catch {
+      status = "Retention save failed: \(error.localizedDescription)"
+    }
   }
 
   func refreshDesktopPermissions() {
@@ -558,16 +612,7 @@ final class DesktopViewModel: ObservableObject {
 
   func openFloatingBarFromOnboarding() {
     openFloatingBar()
-    markOnboardingStepReviewed(.floatingBarDemo)
-  }
-
-  func reviewVoiceDemo() {
-    selected = .settings
-    markOnboardingStepReviewed(.voiceDemo)
-    status =
-      microphonePermissionStatus.isGranted
-      ? "Voice path ready for local transcription"
-      : "Microphone permission required for voice"
+    markOnboardingStepReviewed(.textChatShortcut)
   }
 
   func runPushToTalkTurn() async {
@@ -1231,7 +1276,12 @@ struct MainWindowView: View {
     }
     .task {
       await model.restoreRuntimeSessionIfNeeded()
-      await model.performCaptureLaunchReconciliation()
+      if !model.showOnboarding {
+        await model.performCaptureLaunchReconciliation()
+      }
+    }
+    .sheet(isPresented: $model.showOnboarding) {
+      DesktopOnboardingSheet(model: model)
     }
   }
 
