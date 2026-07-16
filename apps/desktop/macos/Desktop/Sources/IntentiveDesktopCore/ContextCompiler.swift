@@ -528,6 +528,25 @@ public final class PerceptionPublisher {
     return flushedCount
   }
 
+  /// Launch-time sweep: drop already-expired unsent records from the durable
+  /// outbox without sending anything. An expired record must never leave the
+  /// Mac, even if the Runtime is still connected. Returns the count dropped.
+  /// Renovates the expiry-drop half of `flushPendingPerceptionEvents` so a cold
+  /// launch reconciles the outbox independently of Runtime connectivity.
+  @discardableResult
+  public func dropExpiredPendingPerceptionEvents() throws -> Int {
+    guard let outbox else { return 0 }
+    let cutoff = now()
+    var dropped = 0
+    for event in try outbox.pendingPerceptionEvents(limit: 1_000) {
+      if let expiry = Self.parseTimestamp(event.expiresAt), expiry <= cutoff {
+        try outbox.removePerceptionEvent(eventId: event.eventId)
+        dropped += 1
+      }
+    }
+    return dropped
+  }
+
   /// Authoritative expiry = `captured_at` + the retention window encoded in the
   /// retention class (e.g. `screen_memory_7d` → 7 days), defaulting to 7 days.
   static func expiry(capturedAt: String, retentionClass: String) -> String {
@@ -548,3 +567,7 @@ public final class PerceptionPublisher {
       ?? ISO8601DateFormatter().date(from: value)
   }
 }
+
+// MARK: - PerceptionPublisher conformance
+
+extension PerceptionPublisher: PerceptionOutboxLaunchDrain {}

@@ -24,6 +24,15 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     setUpStatusItem()
   }
 
+  /// Slice 07 — quit path. Omi's `OmiApp.applicationWillTerminate` flushes the
+  /// Rewind chunk then marks clean shutdown. The Intentive equivalent routes
+  /// through `DesktopViewModel.requestQuit()`, which finalizes the active
+  /// video chunk and emits `session_end_marker` (reason `.quit`) before the OS
+  /// terminates the process.
+  func applicationWillTerminate(_ notification: Notification) {
+    model?.requestQuit()
+  }
+
   /// Wires the menu to the app's shared view model once SwiftUI has created it.
   func attach(model: DesktopViewModel) {
     self.model = model
@@ -56,7 +65,7 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     guard let model else { return }
 
     let captureItem = NSMenuItem(
-      title: model.compilerSettings.captureEnabled ? "Pause Screen Capture" : "Enable Screen Capture",
+      title: captureToggleTitle,
       action: #selector(toggleCapture), keyEquivalent: "")
     captureItem.target = self
     captureItem.isEnabled = model.screenRecordingPermissionGranted
@@ -99,6 +108,18 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   }
 
   @objc private func quitApp() {
+    // `applicationWillTerminate` handles the durable stop; `terminate` triggers it.
     NSApplication.shared.terminate(nil)
+  }
+
+  /// Slice 07 — the menu title reflects the live running state mirrored with
+  /// the saved enabled flag, exactly as Omi's `makeToggleItemView` reads
+  /// `screenAnalysisEnabled && isMonitoring`. This keeps the menu, the in-app
+  /// toggle, and the auto-resumed loop in sync after sleep/wake or
+  /// competing-recorder backoff.
+  private var captureToggleTitle: String {
+    guard let model else { return "Enable Screen Capture" }
+    if model.captureRunning { return "Pause Screen Capture" }
+    return model.compilerSettings.captureEnabled ? "Resume Screen Capture" : "Enable Screen Capture"
   }
 }

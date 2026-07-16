@@ -112,6 +112,17 @@ final class DesktopViewModel: ObservableObject {
     permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
     privacySnapshotProvider: { [weak self] in
       self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+    },
+    intervalProvider: { [weak self] in
+      // Battery-aware cadence: 3s on AC, 9s on battery (Omi:
+      // `effectiveCaptureInterval`). Falls back to the default when no
+      // lifecycle controller is wired yet.
+      self?.captureLifecycle?.captureInterval(at: Date())
+        ?? ScreenMemoryCaptureLoop.defaultIntervalSeconds
+    },
+    competingRecorderSkipProvider: { [weak self] in
+      // Per-tick frontmost-app yield (Omi: `ProactiveScreenshotCaptureGate`).
+      self?.captureLifecycle?.competingRecorderSkipReason(at: Date())
     }
   )
   private lazy var ambientAudioLoop = AmbientAudioCaptureLoop(
@@ -156,6 +167,41 @@ final class DesktopViewModel: ObservableObject {
       systemAudioPrivateModeGate,
     ]
   )
+  /// Capture-lifecycle resilience controller: auto-start, sleep/wake/lock,
+  /// battery cadence, competing-recorder yield, stop → session_end_marker.
+  /// Renovated from Omi's `ProactiveAssistantsPlugin` cycle at the Intentive
+  /// `DesktopExperience.swift` seam. The AppKit observers live in the app
+  /// target (`CaptureLifecycleAdapters.swift`); Core stays testable.
+  private(set) lazy var captureLifecycle: ScreenMemoryCaptureLifecycleController? = {
+    guard composition.activeSystemBoundaries.contains(.capture) else { return nil }
+    let usesCaptureBoundary = composition.activeSystemBoundaries.contains(.capture)
+    // The unclean-shutdown flag file lives next to `intentive.db` in the
+    // Intentive profile root. Omi stores `.omi_running` per-database; we keep a
+    // single app-level flag because the per-user archive mounts lazily after
+    // sign-in and the launch-time check must run before any archive exists.
+    let lock = (try? CaptureSessionLockFile.inProfile(launchConfiguration.profileRoot))
+      ?? CaptureSessionLockFile(url: launchConfiguration.profileRoot
+        .appendingPathComponent("intentive_session.lock"))
+    let controller = ScreenMemoryCaptureLifecycleController(
+      loop: captureLoop,
+      powerSource: PowerMonitorDesktopPowerSource(),
+      recorderDetector: AppKitCompetingScreenRecorderDetector(),
+      systemEventObserver: AppKitCaptureSystemEventObserver(),
+      sessionEndSink: runtime,
+      archiveReconciler: screenMemory.activeArchive,
+      outboxDrain: publisher,
+      lockFile: lock,
+      settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
+      permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
+      privacySnapshotProvider: { [weak self] in
+        self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+      },
+      captureBoundaryEnabled: usesCaptureBoundary
+    )
+    controller.installSystemEventObservers()
+    return controller
+  }()
+  private var didRunLaunchReconciliation = false
 
   var messages: [ChatMessage] {
     messageStore.messages
@@ -275,6 +321,31 @@ final class DesktopViewModel: ObservableObject {
     guard !runtimeRestoreAttempted else { return }
     runtimeRestoreAttempted = true
     await restoreRuntimeSession()
+  }
+
+  /// Slice 07 — launch-time capture-lifecycle reconciliation: detect an
+  /// unclean shutdown (leftover `intentive_session.lock`), reconcile orphaned
+  /// video chunks / expired outbox rows, and auto-start the capture loop when
+  /// the persisted `captureEnabled` is still `true`. Renovated from Omi's
+  /// `DesktopHomeView.scheduleProactiveMonitoringStart` + `.omi_running` flag.
+  func performCaptureLaunchReconciliation() async {
+    guard !didRunLaunchReconciliation else { return }
+    didRunLaunchReconciliation = true
+    guard composition.activeSystemBoundaries.contains(.capture) else { return }
+    await captureLifecycle?.performLaunchReconciliation()
+    captureRunning = captureLoop.state.isRunning
+    if captureRunning {
+      status = "Capture running"
+    }
+    objectWillChange.send()
+  }
+
+  /// Slice 07 — quit path. Finalizes the active video chunk and emits
+  /// `session_end_marker` with reason `.quit` before the app terminates.
+  /// Renovated from Omi's `RewindShutdownFlush` + `OmiApp.applicationWillTerminate`.
+  func requestQuit() {
+    captureLifecycle?.stop(reason: .quit)
+    captureRunning = false
   }
 
   func restoreRuntimeSession() async {
@@ -722,7 +793,13 @@ final class DesktopViewModel: ObservableObject {
     if enabled {
       status = "Screen Memory is on"
     } else {
-      if captureLoop.state.isRunning {
+      // Slice 07: route the user-initiated stop through the lifecycle controller
+      // so it finalizes the active chunk and emits `session_end_marker`
+      // (reason `.userToggle`). When the controller is absent (capture boundary
+      // disabled for this launch) fall back to a plain loop stop.
+      if let lifecycle = captureLifecycle {
+        lifecycle.stop(reason: .userToggle)
+      } else if captureLoop.state.isRunning {
         captureLoop.stop()
       }
       ambientAudioLoop.stop()
@@ -1146,6 +1223,7 @@ struct MainWindowView: View {
     }
     .task {
       await model.restoreRuntimeSessionIfNeeded()
+      await model.performCaptureLaunchReconciliation()
     }
   }
 

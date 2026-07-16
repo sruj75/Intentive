@@ -554,6 +554,17 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
 
 }
 
+// MARK: - ScreenMemoryArchive launch reconciliation
+
+extension ScreenMemoryArchive: ScreenMemoryLaunchReconciliation {
+  /// Launch-time reconciliation: finalize orphaned/finalizing video chunks and
+  /// run scheduled expiry. Idempotent per process (guarded by the ingest
+  /// coordinator's `didRecoverVideoArchive` / `didPrepareArchive` flags).
+  public func reconcileOnLaunch() async throws {
+    _ = try await ingestCoordinator.prepareArchive()
+  }
+}
+
 private actor ScreenMemoryIngestCoordinator {
   private let profileUserID: String
   private let imageAnalyzer: any ScreenMemoryImageAnalyzing

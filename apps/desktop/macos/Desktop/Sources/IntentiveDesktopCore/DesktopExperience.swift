@@ -551,7 +551,8 @@ public final class ScreenMemoryCaptureLoop {
   private let permissionProvider: () -> Bool
   private let privacySnapshotProvider: () -> ScreenMemoryPrivacySnapshot
   private let now: () -> Date
-  private let intervalSeconds: TimeInterval
+  public var intervalProvider: () -> TimeInterval
+  public var competingRecorderSkipProvider: () -> String?
   private var cadenceGate: DesktopCaptureCadenceGate
   private var task: Task<Void, Never>?
 
@@ -567,6 +568,8 @@ public final class ScreenMemoryCaptureLoop {
     },
     now: @escaping () -> Date = { Date() },
     intervalSeconds: TimeInterval = ScreenMemoryCaptureLoop.defaultIntervalSeconds,
+    intervalProvider: (() -> TimeInterval)? = nil,
+    competingRecorderSkipProvider: @escaping () -> String? = { nil },
     cadenceGate: DesktopCaptureCadenceGate = DesktopCaptureCadenceGate(),
     initialState: ScreenMemoryCaptureLoopState = ScreenMemoryCaptureLoopState()
   ) {
@@ -576,7 +579,8 @@ public final class ScreenMemoryCaptureLoop {
     self.permissionProvider = permissionProvider
     self.privacySnapshotProvider = privacySnapshotProvider
     self.now = now
-    self.intervalSeconds = max(0.2, intervalSeconds)
+    self.intervalProvider = intervalProvider ?? { intervalSeconds }
+    self.competingRecorderSkipProvider = competingRecorderSkipProvider
     self.cadenceGate = cadenceGate
     state = initialState
   }
@@ -625,6 +629,13 @@ public final class ScreenMemoryCaptureLoop {
       return recordSkip("screen recording permission required")
     }
 
+    // Per-tick competing-screen-recorder yield, adapted from Omi's
+    // `ProactiveScreenshotCaptureGate` consult in `captureFrame()`. Skips
+    // without reading the frame — Omi gives us this exact backoff behavior.
+    if let skipReason = competingRecorderSkipProvider() {
+      return recordSkip(skipReason)
+    }
+
     let captureStartedAt = now()
     var windowContext: DesktopWindowContext?
     if let contextSource = source as? DesktopWindowContextSource {
@@ -667,7 +678,7 @@ public final class ScreenMemoryCaptureLoop {
   }
 
   private var intervalNanoseconds: UInt64 {
-    UInt64(intervalSeconds * 1_000_000_000)
+    UInt64(intervalProvider() * 1_000_000_000)
   }
 
   private func recordSkip(_ reason: String) -> ScreenMemoryCaptureLoopEvent {
