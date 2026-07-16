@@ -64,9 +64,12 @@ public struct DesktopSystemBoundaryPolicy: Equatable, Sendable {
 }
 
 public enum DesktopMainWindowSection: String, CaseIterable, Equatable, Sendable {
-  case home
   case screenMemory
-  case settings
+  case privacy
+  case sensing
+  case account
+  case updates
+  case diagnostics
 }
 
 public enum DesktopConversationSurface: String, Equatable, Sendable {
@@ -127,7 +130,7 @@ public struct DesktopSurfaceContract: Equatable, Sendable {
   }
 
   public static let desktopV1 = DesktopSurfaceContract(
-    mainWindowSections: [.home, .screenMemory, .settings],
+    mainWindowSections: [.screenMemory, .privacy, .sensing, .account, .updates, .diagnostics],
     conversationSurface: .floatingBar,
     conversationInput: .textOnly,
     setupSurface: .onboarding,

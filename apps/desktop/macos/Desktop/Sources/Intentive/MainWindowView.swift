@@ -1,28 +1,60 @@
 import IntentiveDesktopCore
 import IntentiveDesktopNativeAdapters
 import IntentiveDesktopNativeAssets
+import ServiceManagement
 import SwiftUI
 
 enum DesktopSection: String, CaseIterable, Identifiable {
-  case home = "Home"
   case screenMemory = "Screen Memory"
-  case settings = "Settings"
+  case privacy = "Privacy"
+  case sensing = "Sensing"
+  case account = "Account"
+  case updates = "Updates"
+  case diagnostics = "Diagnostics"
 
   var id: String { rawValue }
 
   var symbol: String {
     switch self {
-    case .home: return "rectangle.grid.2x2"
     case .screenMemory: return "clock.arrow.circlepath"
-    case .settings: return "gearshape"
+    case .privacy: return "hand.raised"
+    case .sensing: return "waveform.and.magnifyingglass"
+    case .account: return "person.crop.circle"
+    case .updates: return "arrow.triangle.2.circlepath"
+    case .diagnostics: return "stethoscope"
     }
   }
 
   init(_ section: DesktopMainWindowSection) {
     switch section {
-    case .home: self = .home
     case .screenMemory: self = .screenMemory
-    case .settings: self = .settings
+    case .privacy: self = .privacy
+    case .sensing: self = .sensing
+    case .account: self = .account
+    case .updates: self = .updates
+    case .diagnostics: self = .diagnostics
+    }
+  }
+
+  init(_ section: DesktopUtilitySection) {
+    switch section {
+    case .screenMemory: self = .screenMemory
+    case .privacy: self = .privacy
+    case .sensing: self = .sensing
+    case .account: self = .account
+    case .updates: self = .updates
+    case .diagnostics: self = .diagnostics
+    }
+  }
+
+  var utilitySection: DesktopUtilitySection {
+    switch self {
+    case .screenMemory: return .screenMemory
+    case .privacy: return .privacy
+    case .sensing: return .sensing
+    case .account: return .account
+    case .updates: return .updates
+    case .diagnostics: return .diagnostics
     }
   }
 }
@@ -31,7 +63,7 @@ enum DesktopSection: String, CaseIterable, Identifiable {
 final class DesktopViewModel: ObservableObject {
   let launchConfiguration: DesktopLaunchConfiguration
   let composition: DesktopApplicationComposition
-  @Published var selected: DesktopSection = .home
+  @Published var selected: DesktopSection = .screenMemory
   @Published var query = ""
   @Published var input = ""
   @Published var status: String
@@ -46,6 +78,7 @@ final class DesktopViewModel: ObservableObject {
   @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
   @Published var onboardingProgress: DesktopOnboardingProgress
   @Published var onboardingRetentionPeriod: ScreenMemoryRetentionPeriod = .sevenDays
+  @Published var utilitySettings: DesktopUtilitySettings
   @Published var showOnboarding: Bool
   @Published var voiceCaptureRunning = false
   @Published var voiceStatus = "Ready for a local push-to-talk turn"
@@ -59,6 +92,7 @@ final class DesktopViewModel: ObservableObject {
   private let accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway
   private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
   private let onboardingStore: any DesktopOnboardingProgressStore
+  private let utilitySettingsCoordinator: DesktopUtilitySettingsCoordinator
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
   // On-device passive-audio stack (replaces RunAnywhere): Silero VAD gates
@@ -85,7 +119,8 @@ final class DesktopViewModel: ObservableObject {
     runtime: runtime,
     capturePermissionGranted: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
   )
-  private lazy var floatingBarController = FloatingBarController(runtimeClient: runtime, messageStore: messageStore)
+  private lazy var floatingBarController = FloatingBarController(
+    runtimeClient: runtime, messageStore: messageStore)
   private let floatingBarManager = FloatingControlBarManager.shared
   private lazy var pushToTalk = PushToTalkManager(
     audioCapture: NativeMicrophoneAudioCaptureService(),
@@ -113,7 +148,9 @@ final class DesktopViewModel: ObservableObject {
   private lazy var captureLoop = ScreenMemoryCaptureLoop(
     coordinator: capture,
     source: captureSource,
-    settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
+    settingsProvider: { [weak self] in
+      self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
+    },
     permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
     privacySnapshotProvider: { [weak self] in
       self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
@@ -135,7 +172,9 @@ final class DesktopViewModel: ObservableObject {
     audioCapture: NativeMicrophoneAudioCaptureService(captureDuration: 4.0),
     voiceGate: PushToTalkVoiceActivityGate(vad: sileroVAD),
     transcription: localTranscription,
-    settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
+    settingsProvider: { [weak self] in
+      self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
+    },
     permissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
     privacySnapshotProvider: { [weak self] in
       self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
@@ -184,9 +223,11 @@ final class DesktopViewModel: ObservableObject {
     // Intentive profile root. Omi stores `.omi_running` per-database; we keep a
     // single app-level flag because the per-user archive mounts lazily after
     // sign-in and the launch-time check must run before any archive exists.
-    let lock = (try? CaptureSessionLockFile.inProfile(launchConfiguration.profileRoot))
-      ?? CaptureSessionLockFile(url: launchConfiguration.profileRoot
-        .appendingPathComponent("intentive_session.lock"))
+    let lock =
+      (try? CaptureSessionLockFile.inProfile(launchConfiguration.profileRoot))
+      ?? CaptureSessionLockFile(
+        url: launchConfiguration.profileRoot
+          .appendingPathComponent("intentive_session.lock"))
     let controller = ScreenMemoryCaptureLifecycleController(
       loop: captureLoop,
       powerSource: PowerMonitorDesktopPowerSource(),
@@ -196,7 +237,9 @@ final class DesktopViewModel: ObservableObject {
       archiveReconciler: screenMemory.activeArchive,
       outboxDrain: publisher,
       lockFile: lock,
-      settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
+      settingsProvider: { [weak self] in
+        self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
+      },
       permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
       privacySnapshotProvider: { [weak self] in
         self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
@@ -253,10 +296,16 @@ final class DesktopViewModel: ObservableObject {
     launchConfiguration: DesktopLaunchConfiguration,
     composition: DesktopApplicationComposition,
     settingsStore: any ScreenMemorySettingsStore = UserDefaultsScreenMemorySettingsStore(),
-    permissionGateway: any ScreenRecordingPermissionGateway = NativeScreenRecordingPermissionGateway(),
-    accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway = NativeAccessibilityPermissionGateway(),
-    microphonePermissionGateway: any DesktopMicrophonePermissionGateway = NativeMicrophonePermissionGateway(),
-    onboardingStore: any DesktopOnboardingProgressStore = UserDefaultsDesktopOnboardingProgressStore()
+    permissionGateway: any ScreenRecordingPermissionGateway =
+      NativeScreenRecordingPermissionGateway(),
+    accessibilityPermissionGateway: any DesktopAccessibilityPermissionGateway =
+      NativeAccessibilityPermissionGateway(),
+    microphonePermissionGateway: any DesktopMicrophonePermissionGateway =
+      NativeMicrophonePermissionGateway(),
+    onboardingStore: any DesktopOnboardingProgressStore =
+      UserDefaultsDesktopOnboardingProgressStore(),
+    utilitySettingsStore: any DesktopUtilitySettingsStore =
+      UserDefaultsDesktopUtilitySettingsStore()
   ) {
     self.launchConfiguration = launchConfiguration
     self.composition = composition
@@ -265,6 +314,10 @@ final class DesktopViewModel: ObservableObject {
     self.accessibilityPermissionGateway = accessibilityPermissionGateway
     self.microphonePermissionGateway = microphonePermissionGateway
     self.onboardingStore = onboardingStore
+    let utilitySettingsCoordinator = DesktopUtilitySettingsCoordinator(store: utilitySettingsStore)
+    self.utilitySettingsCoordinator = utilitySettingsCoordinator
+    let loadedUtilitySettings = utilitySettingsCoordinator.settings
+    utilitySettings = loadedUtilitySettings
     var settings = settingsStore.load()
     let privacyPolicy = ScreenMemoryPrivacyPolicy(
       persistence: UserDefaultsScreenMemoryPrivacyPersistence(),
@@ -274,15 +327,20 @@ final class DesktopViewModel: ObservableObject {
     settings.excludedApps = []
     let progress = onboardingStore.load()
     let usesCaptureBoundary = composition.activeSystemBoundaries.contains(.capture)
-    let screenRecordingPermissionGranted = usesCaptureBoundary
+    let screenRecordingPermissionGranted =
+      usesCaptureBoundary
       ? permissionGateway.hasScreenRecordingPermission()
       : composition.permissions.screenRecording == .granted
-    let accessibilityPermissionGranted = usesCaptureBoundary
+    let accessibilityPermissionGranted =
+      usesCaptureBoundary
       ? accessibilityPermissionGateway.hasAccessibilityPermission()
       : false
-    let microphonePermissionStatus = usesCaptureBoundary
+    let microphonePermissionStatus =
+      usesCaptureBoundary
       ? microphonePermissionGateway.authorizationStatus()
       : Self.microphonePermissionStatus(from: composition.permissions.microphone)
+    settings.captureEnabled = loadedUtilitySettings.screenCaptureEnabled
+    settings.ambientAudioCaptureEnabled = loadedUtilitySettings.passiveAudioEnabled
     compilerSettings = settings
     excludedAppsText = Self.renderExcludedApps(
       Set(privacyPolicy.snapshot.excludedApplications.map(\.displayName))
@@ -302,7 +360,11 @@ final class DesktopViewModel: ObservableObject {
     let retentionPersistence = UserDefaultsScreenMemoryRetentionPersistence(
       userID: launchUserID ?? DesktopLocalProfile.anonymousUserID)
     onboardingRetentionPeriod = retentionPersistence.loadRetentionPeriod() ?? .sevenDays
-    showOnboarding = composition.setupSurface == .onboarding
+    if let retention = ScreenMemoryRetentionPeriod(rawValue: loadedUtilitySettings.retentionDays) {
+      onboardingRetentionPeriod = retention
+    }
+    showOnboarding =
+      composition.setupSurface == .onboarding
       && !DesktopOnboardingRequirements(
         progress: progress,
         isAuthenticated: launchUserID != nil,
@@ -318,8 +380,10 @@ final class DesktopViewModel: ObservableObject {
     screenMemory = SwitchableScreenMemoryStore(initialScreenMemory.store)
     screenMemoryProfileUserID = DesktopLocalProfile.sanitizedUserID(launchUserID)
     status = initialScreenMemory.status
+    selected = DesktopSection(loadedUtilitySettings.selectedSection)
     configureRuntimeSocketCallbacks()
     floatingBarManager.configure(controller: floatingBarController)
+    floatingBarManager.setShortcutPreset(loadedUtilitySettings.floatingBarShortcut)
     floatingBarManager.registerGlobalShortcut()
     reconcileAmbientAudioCapture()
     privacyCoordinator.enforcePersistedState()
@@ -332,7 +396,8 @@ final class DesktopViewModel: ObservableObject {
         runtimeState = .signedOut
         status = "Sign in required"
       case .signedIn:
-        runtimeState = composition.runtime == .connected ? .connected : .retry(retryAfterSeconds: nil)
+        runtimeState =
+          composition.runtime == .connected ? .connected : .retry(retryAfterSeconds: nil)
         status = composition.runtime == .connected ? "Runtime fixture connected" : "Runtime offline"
       }
       return
@@ -463,8 +528,78 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func openSetup() {
-    selected = .settings
+    selected = .privacy
     status = "Desktop setup"
+  }
+
+  func persistSelectedUtilitySection(_ section: DesktopSection) {
+    utilitySettings.selectedSection = section.utilitySection
+    persistUtilitySettings()
+  }
+
+  func setLaunchAtLogin(_ enabled: Bool) {
+    guard composition.activeSystemBoundaries.contains(.capture) else {
+      status = "Launch at login is unavailable in this deterministic launch"
+      return
+    }
+    do {
+      if enabled {
+        try SMAppService.mainApp.register()
+      } else {
+        try SMAppService.mainApp.unregister()
+      }
+    } catch {
+      status = "Launch at login could not be changed: \(error.localizedDescription)"
+      return
+    }
+    utilitySettings.launchAtLogin = enabled
+    persistUtilitySettings()
+    status = enabled ? "Launch at login enabled" : "Launch at login disabled"
+  }
+
+  func setAnalyticsEnabled(_ enabled: Bool) {
+    utilitySettings.analyticsEnabled = enabled
+    persistUtilitySettings()
+    status = enabled ? "Anonymous product analytics enabled" : "Product analytics disabled"
+  }
+
+  func setFloatingBarShortcut(_ shortcut: String) {
+    utilitySettings.floatingBarShortcut = shortcut
+    persistUtilitySettings()
+    floatingBarManager.setShortcutPreset(shortcut)
+    status = "Floating Bar shortcut saved"
+  }
+
+  func setRetentionDays(_ days: Int) {
+    setOnboardingRetentionDays(days)
+    utilitySettings.retentionDays = days
+    persistUtilitySettings()
+  }
+
+  func exportDiagnostics() {
+    status = "Diagnostics export is ready for the rotating log boundary in Slice 13"
+  }
+
+  func clearLocalData() {
+    guard let archive = screenMemory.activeArchive else {
+      status = "No local Screen Memory archive is mounted"
+      return
+    }
+    Task { @MainActor [weak self] in
+      do {
+        _ = try await archive.clearAll()
+        self?.refreshScreenMemorySearch()
+        self?.status = "Local Screen Memory cleared"
+      } catch {
+        self?.status = "Clear data failed: \(error.localizedDescription)"
+      }
+    }
+  }
+
+  private func persistUtilitySettings() {
+    do { try utilitySettingsCoordinator.update(utilitySettings) } catch {
+      status = "Utility settings save failed: \(error.localizedDescription)"
+    }
   }
 
   func presentOnboarding() {
@@ -548,13 +683,15 @@ final class DesktopViewModel: ObservableObject {
   }
 
   private func persistOnboardingProgress() {
-    do { try onboardingStore.save(onboardingProgress) }
-    catch { status = error.localizedDescription }
+    do { try onboardingStore.save(onboardingProgress) } catch {
+      status = error.localizedDescription
+    }
   }
 
   func requestAccessibilityPermission() {
     let requested = accessibilityPermissionGateway.requestAccessibilityPermission()
-    accessibilityPermissionGranted = requested || accessibilityPermissionGateway.hasAccessibilityPermission()
+    accessibilityPermissionGranted =
+      requested || accessibilityPermissionGateway.hasAccessibilityPermission()
     status =
       accessibilityPermissionGranted
       ? "Accessibility permission granted"
@@ -594,8 +731,9 @@ final class DesktopViewModel: ObservableObject {
       try UserDefaultsScreenMemoryRetentionPersistence(userID: userID).saveRetentionPeriod(period)
       if let archive = screenMemory.activeArchive {
         Task { @MainActor [weak self] in
-          do { _ = try await archive.applyRetentionPolicy(period) }
-          catch { self?.status = "Retention enforcement failed: \(error.localizedDescription)" }
+          do { _ = try await archive.applyRetentionPolicy(period) } catch {
+            self?.status = "Retention enforcement failed: \(error.localizedDescription)"
+          }
         }
       }
     } catch {
@@ -732,7 +870,8 @@ final class DesktopViewModel: ObservableObject {
     }
 
     voiceCaptureRunning = true
-    voiceStatus = pushToTalkShortcutStateMachine.state == .lockedListening
+    voiceStatus =
+      pushToTalkShortcutStateMachine.state == .lockedListening
       ? "Voice locked. Tap Option again to send."
       : "Hold Option to talk..."
     status = "Capturing voice"
@@ -835,13 +974,16 @@ final class DesktopViewModel: ObservableObject {
       emittedAt: Date().protocolTimestamp,
       viaPostMessageBack: true
     )
-    deliverEffect(message, runtimeClient: runtime, statusMessage: "Effect Runner delivered a local nudge")
+    deliverEffect(
+      message, runtimeClient: runtime, statusMessage: "Effect Runner delivered a local nudge")
   }
 
   func setCaptureEnabled(_ enabled: Bool) {
     var settings = compilerSettings
     settings.captureEnabled = enabled
     applyCompilerSettings(settings)
+    utilitySettings.screenCaptureEnabled = enabled
+    persistUtilitySettings()
 
     if enabled {
       status = "Screen Memory is on"
@@ -885,8 +1027,8 @@ final class DesktopViewModel: ObservableObject {
 
   private func startCaptureAfterPrivateMode() {
     guard !captureLoop.state.isRunning,
-          compilerSettings.captureEnabled,
-          screenRecordingPermissionGranted
+      compilerSettings.captureEnabled,
+      screenRecordingPermissionGranted
     else { return }
     toggleCapture()
   }
@@ -895,6 +1037,8 @@ final class DesktopViewModel: ObservableObject {
     var settings = compilerSettings
     settings.ambientAudioCaptureEnabled = enabled
     applyCompilerSettings(settings)
+    utilitySettings.passiveAudioEnabled = enabled
+    persistUtilitySettings()
     reconcileAmbientAudioCapture()
     status = enabled ? "Ambient audio capture is on" : "Ambient audio capture is off"
   }
@@ -909,7 +1053,8 @@ final class DesktopViewModel: ObservableObject {
   private func handleAmbientAudioEvent(_ event: AmbientAudioCaptureLoopEvent) {
     switch event {
     case .captured(let eventPublished):
-      status = eventPublished
+      status =
+        eventPublished
         ? "Ambient audio summary captured"
         : "Ambient audio capture produced no summary"
     case .skipped:
@@ -960,7 +1105,8 @@ final class DesktopViewModel: ObservableObject {
       captureLoop.stop()
       captureRunning = false
     }
-    status = granted ? "Screen Recording permission granted" : "Screen Recording permission required"
+    status =
+      granted ? "Screen Recording permission granted" : "Screen Recording permission required"
   }
 
   private func refreshScreenRecordingPermissionForCapture() -> Bool {
@@ -1059,7 +1205,9 @@ final class DesktopViewModel: ObservableObject {
       : "Queued \(eventCount) perception event(s) for Runtime"
   }
 
-  private func flushQueuedPerceptionEventsIfConnected(_ state: DesktopRuntimeSessionState) -> String? {
+  private func flushQueuedPerceptionEventsIfConnected(_ state: DesktopRuntimeSessionState)
+    -> String?
+  {
     guard case .connected = state else { return nil }
     do {
       let flushed = try publisher.flushPendingPerceptionEvents()
@@ -1101,7 +1249,8 @@ final class DesktopViewModel: ObservableObject {
     case .connected:
       return "Runtime connected"
     case .gate(let gate):
-      return gate == .capturePermissionSetup ? "Screen Recording permission required" : "Gate required: \(gate.rawValue)"
+      return gate == .capturePermissionSetup
+        ? "Screen Recording permission required" : "Gate required: \(gate.rawValue)"
     case .retry(let retryAfterSeconds):
       if let retryAfterSeconds {
         return "Runtime unavailable. Retry after \(Int(retryAfterSeconds))s"
@@ -1161,7 +1310,8 @@ final class DesktopViewModel: ObservableObject {
 
 private enum DesktopRuntimeConfiguration {
   static var clientVersion: String {
-    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "desktop-dev"
+    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+      ?? "desktop-dev"
   }
 
   static var deviceFingerprint: String {
@@ -1200,7 +1350,9 @@ private enum DesktopRuntimeConfiguration {
   }
 
   private static var hostedAuthURL: URL? {
-    guard let value = environment("INTENTIVE_HOSTED_AUTH_URL") ?? environment("INTENTIVE_NEON_AUTH_URL") else {
+    guard
+      let value = environment("INTENTIVE_HOSTED_AUTH_URL") ?? environment("INTENTIVE_NEON_AUTH_URL")
+    else {
       return nil
     }
     return URL(string: value)
@@ -1218,7 +1370,9 @@ private enum DesktopRuntimeConfiguration {
   }
 
   private static func environment(_ key: String) -> String? {
-    guard let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+    guard
+      let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(
+        in: .whitespacesAndNewlines),
       !value.isEmpty
     else {
       return nil
@@ -1274,6 +1428,7 @@ struct MainWindowView: View {
       model.selected = .screenMemory
       searchFocused = true
     }
+    .onChange(of: model.selected) { _, section in model.persistSelectedUtilitySection(section) }
     .task {
       await model.restoreRuntimeSessionIfNeeded()
       if !model.showOnboarding {
@@ -1307,7 +1462,9 @@ struct MainWindowView: View {
       Button {
         model.toggleCapture()
       } label: {
-        Label(model.captureRunning ? "Stop Capture" : "Start Capture", systemImage: model.captureRunning ? "stop.circle" : "camera.viewfinder")
+        Label(
+          model.captureRunning ? "Stop Capture" : "Start Capture",
+          systemImage: model.captureRunning ? "stop.circle" : "camera.viewfinder")
       }
       .disabled(
         model.privacySnapshot.isPrivateMode
@@ -1323,50 +1480,11 @@ struct MainWindowView: View {
   @ViewBuilder
   private var content: some View {
     switch model.selected {
-    case .home:
-      HomeView(
-        capture: model.toggleCapture,
-        openFloatingBar: model.openFloatingBar,
-        captureRunning: model.captureRunning,
-        captureEnabled: model.compilerSettings.captureEnabled && !model.privacySnapshot.isPrivateMode,
-        screenRecordingPermissionGranted: model.screenRecordingPermissionGranted
-      )
     case .screenMemory:
       ScreenMemoryView(model: model, searchFocused: $searchFocused)
-    case .settings:
-      SettingsView(model: model)
+    case .privacy, .sensing, .account, .updates, .diagnostics:
+      UtilitySettingsView(model: model, section: model.selected)
     }
-  }
-}
-
-private struct HomeView: View {
-  let capture: () -> Void
-  let openFloatingBar: () -> Void
-  let captureRunning: Bool
-  let captureEnabled: Bool
-  let screenRecordingPermissionGranted: Bool
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      Text("Intentive Desktop")
-        .font(.largeTitle.bold())
-      Text("Capture stays local. The Context Compiler publishes compact perception events, and Desktop joins the same Companion conversation as mobile.")
-        .font(.body)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: 660, alignment: .leading)
-      HStack {
-        Button(action: capture) {
-          Label(captureRunning ? "Stop Capture" : "Start Capture", systemImage: captureRunning ? "stop.circle" : "camera.viewfinder")
-        }
-        .disabled(!captureEnabled || !screenRecordingPermissionGranted)
-        Button(action: openFloatingBar) {
-          Label("Open Floating Bar", systemImage: "text.bubble")
-        }
-      }
-      Spacer()
-    }
-    .padding(28)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }
 
@@ -1420,7 +1538,8 @@ private struct ScreenMemoryView: View {
               .foregroundStyle(.secondary)
           }
           .padding(.vertical, 6)
-          .accessibilityIdentifier(result.recordID.map(ScreenMemoryAccessibilityID.frame) ?? result.record.id)
+          .accessibilityIdentifier(
+            result.recordID.map(ScreenMemoryAccessibilityID.frame) ?? result.record.id)
         }
         .accessibilityIdentifier(ScreenMemoryAccessibilityID.filmstrip)
       }
@@ -1431,141 +1550,138 @@ private struct ScreenMemoryView: View {
   }
 }
 
-private struct FloatingChatView: View {
+private struct UtilitySettingsView: View {
   @ObservedObject var model: DesktopViewModel
-
-  var body: some View {
-    VStack(spacing: 12) {
-      HStack {
-        Spacer()
-        Button(action: model.openFloatingBar) {
-          Label("Open Floating Bar", systemImage: "text.bubble")
-        }
-      }
-      .padding([.horizontal, .top])
-
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 10) {
-          ForEach(model.messages) { message in
-            HStack {
-              if message.author == .companion {
-                bubble(message, alignment: .leading)
-                Spacer(minLength: 80)
-              } else {
-                Spacer(minLength: 80)
-                bubble(message, alignment: .trailing)
-              }
-            }
-          }
-        }
-        .padding()
-      }
-      HStack {
-        TextField("Ask Intentive", text: $model.input)
-          .textFieldStyle(.roundedBorder)
-          .onSubmit(model.sendMessage)
-        Button(action: model.sendMessage) {
-          Image(systemName: "paperplane.fill")
-        }
-        .buttonStyle(.borderedProminent)
-      }
-      .padding([.horizontal, .bottom])
-    }
-  }
-
-  private func bubble(_ message: ChatMessage, alignment: HorizontalAlignment) -> some View {
-    VStack(alignment: alignment, spacing: 4) {
-      Text(message.body)
-      Text(message.author.rawValue.capitalized)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-    .padding(10)
-    .background(message.author == .companion ? Color(nsColor: .controlBackgroundColor) : Color.accentColor.opacity(0.18))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-  }
-}
-
-private struct EffectsView: View {
-  @ObservedObject var model: DesktopViewModel
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Button(action: model.triggerEffect) {
-        Label("Trigger PMB Nudge", systemImage: "bell.badge")
-      }
-      List(model.effectLog, id: \.self) { item in
-        Text(item)
-      }
-    }
-    .padding(20)
-  }
-}
-
-private struct SettingsView: View {
-  @ObservedObject var model: DesktopViewModel
+  let section: DesktopSection
 
   var body: some View {
     Form {
-      Section("General") {
-        Toggle(
-          "Screen Memory",
-          isOn: Binding(
-            get: { model.compilerSettings.captureEnabled },
-            set: model.setCaptureEnabled
+      if section == .sensing {
+        Section("Sensing") {
+          Toggle(
+            "Screen Memory",
+            isOn: Binding(
+              get: { model.compilerSettings.captureEnabled },
+              set: model.setCaptureEnabled
+            )
           )
-        )
+          Toggle(
+            "Passive audio context",
+            isOn: Binding(
+              get: { model.compilerSettings.ambientAudioCaptureEnabled },
+              set: model.setAmbientAudioCaptureEnabled
+            )
+          )
+          LabeledContent(
+            "Screen Recording",
+            value: model.screenRecordingPermissionGranted ? "Granted" : "Required")
+          LabeledContent(
+            "Microphone",
+            value: model.microphonePermissionStatus.isGranted ? "Granted" : "Not granted")
+          Toggle(
+            "Launch at login",
+            isOn: Binding(get: { model.utilitySettings.launchAtLogin }, set: model.setLaunchAtLogin)
+          )
+          Picker(
+            "Floating Bar shortcut",
+            selection: Binding(
+              get: { model.utilitySettings.floatingBarShortcut }, set: model.setFloatingBarShortcut)
+          ) {
+            Text("⌘O").tag("command+o")
+            Text("⌘⇧Space").tag("command+shift+space")
+            Text("⌥Space").tag("option+space")
+          }
+        }
       }
 
-      Section("Privacy") {
-        HStack {
-          Label(
-            model.privacySnapshot.isPrivateMode ? "Private Mode On" : "Private Mode Off",
-            systemImage: model.privacySnapshot.isPrivateMode ? "hand.raised.fill" : "hand.raised"
-          )
-          Spacer()
-          if model.privacySnapshot.isPrivateMode {
-            Button("Resume Sensing", action: model.resumeFromPrivateMode)
-          } else {
-            Button("Enter Private Mode") {
-              Task { await model.enterPrivateMode() }
+      if section == .privacy {
+        Section("Privacy") {
+          HStack {
+            Label(
+              model.privacySnapshot.isPrivateMode ? "Private Mode On" : "Private Mode Off",
+              systemImage: model.privacySnapshot.isPrivateMode ? "hand.raised.fill" : "hand.raised"
+            )
+            Spacer()
+            if model.privacySnapshot.isPrivateMode {
+              Button("Resume Sensing", action: model.resumeFromPrivateMode)
+            } else {
+              Button("Enter Private Mode") {
+                Task { await model.enterPrivateMode() }
+              }
             }
           }
-        }
 
-        HStack {
-          Label("Screen Recording", systemImage: "rectangle.on.rectangle")
-          Spacer()
-          Label(
-            model.screenRecordingPermissionGranted ? "Granted" : "Required",
-            systemImage: model.screenRecordingPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+          HStack {
+            Label("Screen Recording", systemImage: "rectangle.on.rectangle")
+            Spacer()
+            Label(
+              model.screenRecordingPermissionGranted ? "Granted" : "Required",
+              systemImage: model.screenRecordingPermissionGranted
+                ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+            )
+            .foregroundStyle(model.screenRecordingPermissionGranted ? .green : .orange)
+          }
+
+          HStack {
+            Button(action: model.requestScreenRecordingPermission) {
+              Label("Request Access", systemImage: "hand.raised")
+            }
+            Button(action: model.openScreenRecordingSettings) {
+              Label("Open System Settings", systemImage: "gearshape")
+            }
+            Button(action: model.refreshScreenRecordingPermission) {
+              Label("Refresh", systemImage: "arrow.clockwise")
+            }
+          }
+
+          TextField(
+            "Excluded applications (comma separated)",
+            text: Binding(
+              get: { model.excludedAppsText },
+              set: model.updateExcludedAppsText
+            )
           )
-          .foregroundStyle(model.screenRecordingPermissionGranted ? .green : .orange)
+          Picker(
+            "Keep Screen Memory",
+            selection: Binding(
+              get: { model.onboardingRetentionPeriod.rawValue }, set: model.setRetentionDays)
+          ) {
+            ForEach(DesktopUtilitySettings.allowedRetentionDays, id: \.self) { days in
+              Text("\(days) days").tag(days)
+            }
+          }
+          Button("Clear local Screen Memory", role: .destructive, action: model.clearLocalData)
         }
-
-        HStack {
-          Button(action: model.requestScreenRecordingPermission) {
-            Label("Request Access", systemImage: "hand.raised")
-          }
-          Button(action: model.openScreenRecordingSettings) {
-            Label("Open System Settings", systemImage: "gearshape")
-          }
-          Button(action: model.refreshScreenRecordingPermission) {
-            Label("Refresh", systemImage: "arrow.clockwise")
-          }
-        }
-
-        TextField(
-          "Privacy Zones",
-          text: Binding(
-            get: { model.excludedAppsText },
-            set: model.updateExcludedAppsText
-          )
-        )
       }
 
-      Section("About") {
-        Text("Intentive Desktop")
+      if section == .account {
+        Section("Account") {
+          LabeledContent(
+            "Runtime", value: model.runtimeState == .connected ? "Connected" : "Disconnected")
+          Button("Sign Out", action: model.signOut)
+        }
+      }
+
+      if section == .updates {
+        Section("Updates") {
+          LabeledContent("Application", value: "Intentive Desktop")
+          Text(
+            "Signed Sparkle checks and install state are provided by the release boundary in Slice 13."
+          )
+          .foregroundStyle(.secondary)
+        }
+      }
+
+      if section == .diagnostics {
+        Section("Diagnostics") {
+          Toggle(
+            "Anonymous product analytics",
+            isOn: Binding(
+              get: { model.utilitySettings.analyticsEnabled }, set: model.setAnalyticsEnabled))
+          LabeledContent("Capture", value: model.captureRunning ? "Running" : "Stopped")
+          LabeledContent("Runtime", value: String(describing: model.runtimeState))
+          Button("Export Logs", action: model.exportDiagnostics)
+        }
       }
     }
     .padding(24)

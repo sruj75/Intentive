@@ -14,7 +14,9 @@ final class DesktopLaunchConfigurationTests: XCTestCase {
     )
 
     XCTAssertEqual(configuration.profileRoot, profileRoot)
-    XCTAssertEqual(configuration.surface.mainWindowSections, [.home, .screenMemory, .settings])
+    XCTAssertEqual(
+      configuration.surface.mainWindowSections,
+      [.screenMemory, .privacy, .sensing, .account, .updates, .diagnostics])
     XCTAssertEqual(configuration.surface.conversationSurface, .floatingBar)
     XCTAssertEqual(configuration.surface.conversationInput, .textOnly)
     XCTAssertEqual(configuration.surface.setupSurface, .onboarding)
@@ -53,7 +55,9 @@ final class DesktopLaunchConfigurationTests: XCTestCase {
 
     let composition = DesktopApplicationAssembler.assemble(configuration: configuration)
 
-    XCTAssertEqual(composition.mainWindowSections, [.home, .screenMemory, .settings])
+    XCTAssertEqual(
+      composition.mainWindowSections,
+      [.screenMemory, .privacy, .sensing, .account, .updates, .diagnostics])
     XCTAssertEqual(composition.activeSystemBoundaries, [])
     XCTAssertEqual(composition.permissions.screenRecording, .granted)
     XCTAssertEqual(composition.authentication, .signedIn(userID: "fixture-user"))
