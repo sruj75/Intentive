@@ -30,7 +30,8 @@ test("heartbeat scheduler tick enqueues due users with floor and batch limit", a
   assert.deepEqual(enqueued, ["user_1", "user_2"]);
 });
 
-test("heartbeat scheduler start contains tick failures inside the poll loop", async () => {
+test("heartbeat scheduler start contains tick failures inside the poll loop", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const warnings = [];
   const scheduler = createHeartbeatScheduler({
     pollIntervalMs: 1_000,
@@ -42,21 +43,19 @@ test("heartbeat scheduler start contains tick failures inside the poll loop", as
     enqueueHeartbeat: () => true,
     logger: recordingLogger({ warnings }),
   });
+  t.after(() => scheduler.stop());
 
-  try {
-    scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    scheduler.stop();
-  } finally {
-    scheduler.stop();
-  }
+  scheduler.start();
+  await runNextPoll(t);
+  scheduler.stop();
 
   assert.equal(warnings.length, 1);
   assert.equal(warnings[0].event, "heartbeat.tick");
   assert.equal(warnings[0].attrs.status, "failed");
 });
 
-test("heartbeat scheduler escalates only after consecutive tick failures", async () => {
+test("heartbeat scheduler escalates only after consecutive tick failures", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const warnings = [];
   const errors = [];
   const scheduler = createHeartbeatScheduler({
@@ -70,9 +69,12 @@ test("heartbeat scheduler escalates only after consecutive tick failures", async
     enqueueHeartbeat: () => true,
     logger: recordingLogger({ errors, warnings }),
   });
+  t.after(() => scheduler.stop());
 
   scheduler.start();
-  await waitFor(() => errors.length === 1);
+  await runNextPoll(t);
+  await runNextPoll(t, 1);
+  await runNextPoll(t, 1);
   scheduler.stop();
 
   assert.equal(warnings.length, 2);
@@ -82,7 +84,8 @@ test("heartbeat scheduler escalates only after consecutive tick failures", async
   assert.equal(errors[0].event, "heartbeat.tick");
 });
 
-test("heartbeat scheduler success resets consecutive failure escalation", async () => {
+test("heartbeat scheduler success resets consecutive failure escalation", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const warnings = [];
   const errors = [];
   const results = [{ type: "reject" }, { type: "reject" }, { type: "resolve" }, { type: "reject" }];
@@ -101,16 +104,21 @@ test("heartbeat scheduler success resets consecutive failure escalation", async 
     enqueueHeartbeat: () => true,
     logger: recordingLogger({ errors, warnings }),
   });
+  t.after(() => scheduler.stop());
 
   scheduler.start();
-  await waitFor(() => warnings.length === 3);
+  await runNextPoll(t);
+  await runNextPoll(t, 1);
+  await runNextPoll(t, 1);
+  await runNextPoll(t, 1);
   scheduler.stop();
 
   assert.equal(errors.length, 0);
   assert.equal(warnings.length, 3);
 });
 
-test("heartbeat scheduler measures scheduler_lag_ms against the expected poll cadence", async () => {
+test("heartbeat scheduler measures scheduler_lag_ms against the expected poll cadence", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const infos = [];
   // clock() is read once at tick entry and once when the next poll is scheduled.
   // First immediate poll -> no prior cadence -> lag 0. Second poll fires at
@@ -124,28 +132,26 @@ test("heartbeat scheduler measures scheduler_lag_ms against the expected poll ca
     clock,
     logger: recordingLogger({ infos }),
   });
+  t.after(() => scheduler.stop());
 
-  try {
-    scheduler.start();
-    const deadline = Date.now() + 1_000;
-    while (infos.length < 2 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 2));
-    }
-  } finally {
-    scheduler.stop();
-  }
+  scheduler.start();
+  await runNextPoll(t);
+  await runNextPoll(t, 5);
+  scheduler.stop();
 
   assert.ok(infos.length >= 2, `expected at least two ticks, got ${infos.length}`);
   assert.equal(infos[0].attrs.scheduler_lag_ms, 0);
   assert.equal(infos[1].attrs.scheduler_lag_ms, 15);
 });
 
-async function waitFor(predicate) {
-  const deadline = Date.now() + 1_000;
-  while (!predicate() && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2));
+async function runNextPoll(t, advanceMs = 0) {
+  t.mock.timers.tick(advanceMs);
+  // The timer starts an async loop whose tick awaits the repository before its
+  // finally block schedules the next poll. Flush that promise chain so each
+  // clock advance represents exactly one completed poll.
+  for (let step = 0; step < 4; step += 1) {
+    await Promise.resolve();
   }
-  assert.ok(predicate(), "condition was not met before timeout");
 }
 
 function recordingLogger({ errors, infos, warnings } = {}) {
