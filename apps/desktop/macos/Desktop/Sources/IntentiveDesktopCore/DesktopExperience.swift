@@ -737,17 +737,13 @@ public enum AmbientAudioCaptureLoopEvent: Equatable, Sendable {
 public final class AmbientAudioCaptureLoop {
   public nonisolated static let defaultIntervalSeconds: TimeInterval = 15
 
-  private let coordinator: AmbientAudioCoordinator
   private let audioCapture: AudioCaptureService
-  private let voiceGate: VoiceActivityGate
-  private let transcription: LocalTranscriptionService
   private let settingsProvider: () -> CompilerSettings
   private let permissionProvider: () -> Bool
   private let privacySnapshotProvider: () -> ScreenMemoryPrivacySnapshot
-  private let activeWindowProvider: (() throws -> DesktopWindowContext?)?
   private let now: () -> Date
   private let intervalSeconds: TimeInterval
-  private var cadenceGate: AmbientAudioCadenceGate
+  private let pipeline: PassiveAudioContextPipeline
   private var task: Task<Void, Never>?
 
   public private(set) var state: AmbientAudioCaptureLoopState
@@ -768,17 +764,27 @@ public final class AmbientAudioCaptureLoop {
     cadenceGate: AmbientAudioCadenceGate = AmbientAudioCadenceGate(),
     initialState: AmbientAudioCaptureLoopState = AmbientAudioCaptureLoopState()
   ) {
-    self.coordinator = coordinator
     self.audioCapture = audioCapture
-    self.voiceGate = voiceGate
-    self.transcription = transcription
     self.settingsProvider = settingsProvider
     self.permissionProvider = permissionProvider
     self.privacySnapshotProvider = privacySnapshotProvider
-    self.activeWindowProvider = activeWindowProvider
     self.now = now
     self.intervalSeconds = max(1, intervalSeconds)
-    self.cadenceGate = cadenceGate
+    // The mic loop is a thin driver over the source-neutral pipeline: it captures a
+    // microphone turn and hands it in as `.microphone`. Voice-activity gating,
+    // transcription, local retention, secret filtering, and summary emission all live
+    // in the pipeline so the microphone and system-audio loops share one code path.
+    self.pipeline = PassiveAudioContextPipeline(
+      coordinator: coordinator,
+      voiceGate: voiceGate,
+      transcription: transcription,
+      settingsProvider: settingsProvider,
+      privacySnapshotProvider: privacySnapshotProvider,
+      microphonePermissionProvider: permissionProvider,
+      activeWindowProvider: activeWindowProvider,
+      now: now,
+      cadenceGate: cadenceGate
+    )
     state = initialState
   }
 
@@ -813,8 +819,9 @@ public final class AmbientAudioCaptureLoop {
 
   public func captureTick() async -> AmbientAudioCaptureLoopEvent {
     let settings = settingsProvider()
-    let privacy = privacySnapshotProvider()
-    guard !privacy.isPrivateMode else {
+    // Cheap pre-capture guards so the microphone engine never spins up while paused,
+    // disabled, or unpermitted. The pipeline re-validates these authoritatively.
+    guard !privacySnapshotProvider().isPrivateMode else {
       return recordSkip("Private Mode")
     }
     guard settings.captureEnabled else {
@@ -827,49 +834,25 @@ public final class AmbientAudioCaptureLoop {
       return recordSkip("microphone permission required")
     }
 
+    let pcm16k: Data
     do {
-      if let context = try activeWindowProvider?() {
-        guard !settings.isExcluded(appName: context.appName),
-              privacy.allows(appBundleID: context.appBundleID, appName: context.appName)
-        else {
-          return recordSkip("current app skipped")
-        }
-      }
+      pcm16k = try await audioCapture.capturePushToTalkAudio()
     } catch {
       return recordFailure(error.localizedDescription)
     }
 
-    let periodStartDate = now()
-    do {
-      let pcm16k = try await audioCapture.capturePushToTalkAudio()
-      guard await voiceGate.containsSpeech(pcm16k) else {
-        return recordSkip("no speech detected")
-      }
-      let rawTranscriptText = try await transcription.transcribe(pcm16k)
-      guard !privacySnapshotProvider().isPrivateMode else {
-        return recordSkip("Private Mode")
-      }
-      let transcriptText = rawTranscriptText.trimmingCharacters(in: .whitespacesAndNewlines)
-      let capturedAtDate = now()
-      guard cadenceGate.shouldEmit(transcript: transcriptText, capturedAt: capturedAtDate) else {
-        return recordSkip("ambient audio cadence throttled")
-      }
-      let transcript = AmbientAudioTranscript(
-        id: UUID().uuidString,
-        capturedAt: capturedAtDate.protocolTimestamp,
-        periodStart: periodStartDate.protocolTimestamp,
-        periodEnd: capturedAtDate.protocolTimestamp,
-        transcript: transcriptText
-      )
-      let event = try coordinator.accept(transcript: transcript)
+    switch await pipeline.ingest(pcm16k: pcm16k, source: .microphone) {
+    case .captured(_, let eventPublished):
       state.capturedSegmentCount += 1
-      state.publishedEventCount += event == nil ? 0 : 1
-      state.lastCapturedAt = transcript.capturedAt
+      state.publishedEventCount += eventPublished ? 1 : 0
+      state.lastCapturedAt = now().protocolTimestamp
       state.lastError = nil
       state.lastSkipReason = nil
-      return .captured(eventPublished: event != nil)
-    } catch {
-      return recordFailure(error.localizedDescription)
+      return .captured(eventPublished: eventPublished)
+    case .skipped(let reason):
+      return recordSkip(reason)
+    case .failed(let reason):
+      return recordFailure(reason)
     }
   }
 

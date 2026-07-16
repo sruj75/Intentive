@@ -60,7 +60,11 @@ final class DesktopViewModel: ObservableObject {
   private let onboardingStore: any DesktopOnboardingProgressStore
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
-  private let runAnywhereVoiceClient = DefaultRunAnywhereVoiceClient()
+  // On-device passive-audio stack (replaces RunAnywhere): Silero VAD gates
+  // microphone turns; FluidAudio/Parakeet transcribes on the Neural Engine. Shared
+  // so the ONNX session and the Parakeet model load once across every consumer.
+  private let sileroVAD = SileroPushToTalkVADPredictor()
+  private let localTranscription = FluidAudioTranscriptionService()
   private let pushToTalkRecorder = NativePushToTalkAudioRecorder()
   private let pushToTalkShortcutMonitor = NativePushToTalkShortcutMonitor()
   private var runtimeRestoreAttempted = false
@@ -84,8 +88,8 @@ final class DesktopViewModel: ObservableObject {
   private let floatingBarManager = FloatingControlBarManager.shared
   private lazy var pushToTalk = PushToTalkManager(
     audioCapture: NativeMicrophoneAudioCaptureService(),
-    voiceGate: RunAnywhereVoiceActivityGate(client: runAnywhereVoiceClient),
-    transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient)
+    voiceGate: PushToTalkVoiceActivityGate(vad: sileroVAD),
+    transcription: localTranscription
   )
   private lazy var compiler = ContextCompiler(settings: compilerSettings)
   private lazy var publisher = PerceptionPublisher(
@@ -128,8 +132,8 @@ final class DesktopViewModel: ObservableObject {
   private lazy var ambientAudioLoop = AmbientAudioCaptureLoop(
     coordinator: ambientAudio,
     audioCapture: NativeMicrophoneAudioCaptureService(captureDuration: 4.0),
-    voiceGate: RunAnywhereVoiceActivityGate(client: runAnywhereVoiceClient),
-    transcription: RunAnywhereTranscriptionService(client: runAnywhereVoiceClient),
+    voiceGate: PushToTalkVoiceActivityGate(vad: sileroVAD),
+    transcription: localTranscription,
     settingsProvider: { [weak self] in self?.compilerSettings ?? CompilerSettings(captureEnabled: false) },
     permissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
     privacySnapshotProvider: { [weak self] in

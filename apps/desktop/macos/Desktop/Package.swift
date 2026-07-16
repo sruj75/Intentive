@@ -18,9 +18,11 @@ let package = Package(
       url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
       exact: "1.24.2"
     ),
+    // On-device Parakeet STT (CoreML/ANE). Replaces the RunAnywhere voice stack;
+    // pinned to the 0.14.x API Omi's transcription mechanism was written against.
     .package(
-      url: "https://github.com/RunanywhereAI/runanywhere-sdks",
-      revision: "3ebae86014588d8c06a548540c6c14aeb017de1d"
+      url: "https://github.com/FluidInference/FluidAudio.git",
+      .upToNextMinor(from: "0.14.8")
     ),
   ],
   targets: [
@@ -61,11 +63,14 @@ let package = Package(
       dependencies: [
         "IntentiveDesktopCore",
         "IntentiveDesktopOmiArchive",
-        .product(name: "RunAnywhere", package: "runanywhere-sdks"),
-        .product(name: "RunAnywhereONNX", package: "runanywhere-sdks"),
         .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
+        .product(name: "FluidAudio", package: "FluidAudio"),
       ],
-      path: "Sources/IntentiveDesktopNativeAdapters"
+      path: "Sources/IntentiveDesktopNativeAdapters",
+      resources: [
+        // Silero VAD weights for the microphone voice-activity gate.
+        .process("Resources/silero_vad.onnx")
+      ]
     ),
     .target(
       name: "IntentiveDesktopNativeAssets",
