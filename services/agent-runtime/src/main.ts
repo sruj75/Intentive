@@ -88,6 +88,29 @@ const sql = neon(config.neon.url) as unknown as TransactionalSql;
 // fails per-trigger.
 const resilientSql = withTransactionRetry(sql);
 
+// ADR-0035: event-driven schedulers. The two clocks are constructed early so the
+// write-path hooks below can push committed due-times onto them; their `enqueue`
+// callbacks close over `channel` / `fireCron` / `monitoringTurn`, which are only
+// invoked at fire-time (after `start()`), so the forward references are safe.
+const heartbeatFloorMs = 60 * 60_000;
+const heartbeatScheduleRepo = createHeartbeatScheduleRepo(sql);
+const cronJobs = createCronJobsRepo(sql);
+
+let channel: PerUserChannel;
+
+const heartbeatScheduler = createHeartbeatScheduler({
+  scheduleRepo: heartbeatScheduleRepo,
+  enqueueHeartbeat: (userId) =>
+    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
+  floorMs: heartbeatFloorMs,
+  logger: log,
+});
+const cronScheduler = createCronScheduler({
+  cronJobsRepo: cronJobs,
+  enqueueCron: (job, context) => channel.enqueueCommitted(job.userId, () => fireCron(job, context)),
+  logger: log,
+});
+
 const verifier =
   config.auth.mode === "local-dev"
     ? createLocalDevJwtVerifier({
@@ -101,7 +124,15 @@ const verifier =
         audience: config.neonAuth.audience,
       });
 
-const registry = createAgentInstanceRepo(sql);
+const registry = createAgentInstanceRepo(sql, {
+  onNewUser: (userId) => {
+    // ADR-0035: bootstrap a brand-new user's first heartbeat. The `has` guard
+    // keeps existing users (already in the heap from boot) untouched on reconnect.
+    if (!heartbeatScheduler.has(userId)) {
+      heartbeatScheduler.schedule(userId, new Date(Date.now() + heartbeatFloorMs));
+    }
+  },
+});
 const resilientRegistry = {
   loadOrCreate: (input: Parameters<typeof registry.loadOrCreate>[0]) =>
     retryTransientDb(() => registry.loadOrCreate(input)),
@@ -121,7 +152,6 @@ const perceptionEmbedder = createOpenRouterPerceptionEmbedder({
 });
 const perceptionRecords = createPerceptionRecordsRepo(sql, perceptionEmbedder);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
-const cronJobs = createCronJobsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
 const connectionRegistry = createConnectionRegistry({ logger: log });
 const deliveries = createDeliveriesRepo(sql);
@@ -145,6 +175,12 @@ await retryTransientDb(() => memoryStore.setup());
 const cronBackend = createCronBackend({
   repo: cronJobs,
   loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
+  onScheduleCron: (job) => {
+    if (job.nextFireAt) {
+      cronScheduler.schedule(job.id, job.nextFireAt, job);
+    }
+  },
+  onCancelCron: (id) => cronScheduler.cancel(id),
 });
 const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
 const fallbackFloorSource = createBundledFallbackSource();
@@ -185,6 +221,8 @@ const turn = createTurn({
   workingContext,
   runtimeTurns,
   fallbackModel: config.model.model,
+  onTurnCommitted: (userId) =>
+    heartbeatScheduler.schedule(userId, new Date(Date.now() + heartbeatFloorMs)),
   logger: log,
 });
 const runTurn = createTurnRunner({
@@ -200,6 +238,8 @@ const fireCron = createCronTurnHandler({
   cronRuns,
   floorResolver,
   loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
+  onRescheduleCron: (job, nextFireAt) => cronScheduler.schedule(job.id, nextFireAt, job),
+  onCancelCron: (id) => cronScheduler.cancel(id),
   turn,
   logger: log,
 });
@@ -207,7 +247,6 @@ const monitoringTurn = createMonitoringTurn({
   floorResolver,
   turn,
 });
-let channel: PerUserChannel;
 channel = createPerUserChannel({
   sql: resilientSql,
   ledger,
@@ -254,17 +293,6 @@ channel = createPerUserChannel({
       monitoringTurn(session.userId, "perception_event"),
     );
   },
-  logger: log,
-});
-const cronScheduler = createCronScheduler({
-  cronJobsRepo: cronJobs,
-  enqueueCron: (job, context) => channel.enqueueCommitted(job.userId, () => fireCron(job, context)),
-  logger: log,
-});
-const heartbeatScheduler = createHeartbeatScheduler({
-  scheduleRepo: createHeartbeatScheduleRepo(sql),
-  enqueueHeartbeat: (userId) =>
-    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
   logger: log,
 });
 const startSession = createStartSession({

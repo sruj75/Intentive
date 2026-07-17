@@ -111,6 +111,7 @@ Local index: [`services/agent-runtime/docs/adr/README.md`](../../services/agent-
 | 0030 | v1 production readiness — off-the-shelf observability, not a custom program | accepted (scopes #42)                                            |
 | 0031 | Turn Execution spine owns the Runtime Turn anchor and floor resolution      | accepted (deepens turn.ts; cron now emits runtime_turns)         |
 | 0034 | Perception store and search tool                                            | accepted                                                         |
+| 0035 | Event-driven min-heap scheduler — replaces the 60s poll loops               | accepted; amends 0024 (narrows rejected-option reasoning)      |
 
 ## Migration map (old unified number → new per-context number)
 

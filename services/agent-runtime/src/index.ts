@@ -94,6 +94,7 @@ export type { CronJobsRepo } from "./domains/cron/repo/cron-jobs.js";
 export { createCronRunsRepo } from "./domains/cron/repo/cron-runs.js";
 export type { CronRunsRepo } from "./domains/cron/repo/cron-runs.js";
 export { createCronScheduler } from "./domains/cron/runtime/cron-scheduler.js";
+export type { CronScheduler } from "./domains/cron/runtime/cron-scheduler.js";
 export { createCronTurnHandler, isTransient } from "./domains/cron/service/cron-turn.js";
 export { parseCard, renderCard } from "./domains/cron/config/cron-card.js";
 export type {
@@ -115,6 +116,8 @@ export { createTurn } from "./domains/runtime/service/turn.js";
 export { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
 export { createWorkingContext } from "./domains/runtime/service/working-context.js";
 export { createShutdown } from "./runtime/shutdown.js";
+export { createSchedulerClock } from "./runtime/scheduler-clock.js";
+export type { SchedulerClock, SchedulerClockEntry } from "./runtime/scheduler-clock.js";
 export type {
   WorkingContext,
   WorkingContextInput,
@@ -159,6 +162,7 @@ export { createHeartbeatScheduleRepo } from "./domains/heartbeat/repo/heartbeat-
 export type {
   HeartbeatDueUser,
   HeartbeatScheduleRepo,
+  HeartbeatUserCandidate,
 } from "./domains/heartbeat/repo/heartbeat-schedule.js";
 export { createHeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
 export type { HeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
