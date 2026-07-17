@@ -8,7 +8,21 @@ pnpm --dir apps/desktop test
 apps/desktop/macos/run.sh
 ```
 
-Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, `INTENTIVE_SPARKLE_PUBLIC_ED_KEY`, `INTENTIVE_SENTRY_DSN`, `INTENTIVE_POSTHOG_PROJECT_KEY`, and optionally `INTENTIVE_POSTHOG_HOST` when assembling a release candidate outside GitHub Actions. Sparkle's feed and Ed25519 key are required for signed updates; missing telemetry values disable their respective transport without changing local diagnostics.
+Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_BUNDLE_ID` (default `com.heyintentive.desktop` — use `com.heyintentive.desktop.dev` for internal/dev builds), `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, `INTENTIVE_SPARKLE_PUBLIC_ED_KEY`, `INTENTIVE_SENTRY_DSN`, `INTENTIVE_POSTHOG_PROJECT_KEY`, and optionally `INTENTIVE_POSTHOG_HOST` when assembling a release candidate outside GitHub Actions. Sparkle's feed and Ed25519 key are required for signed updates; missing telemetry values disable their respective transport without changing local diagnostics.
+
+### Three channels, isolated by bundle ID
+
+| Channel                            | Bundle ID                     | App name        | Updates | When to use                           |
+| ---------------------------------- | ----------------------------- | --------------- | ------- | ------------------------------------- |
+| **Daily dev** (`run.sh`, raw bin)  | _(nil — `.dev` fallback)_     | Intentive Dev   | none    | fast iteration, hot-reload, eyeballing |
+| **Internal assembled** (Tart VM)   | `com.heyintentive.desktop.dev` | Intentive Dev   | none    | clean-slate permission/onboarding flows |
+| **Dogfood / release** (signed DMG) | `com.heyintentive.desktop`     | Intentive       | Sparkle | use the product like a real user      |
+
+`KeychainTokenStore` derives its `service` from `Bundle.main.bundleIdentifier`,
+falling back to `com.heyintentive.desktop.dev.auth` for the raw-binary `run.sh`
+path, so dev auth and dogfood auth never share a Keychain item. TCC grants and
+`~/Library/Application Support/<bundle-id>` directory ownership follow the same
+split — agents can trash the `.dev` world without touching the dogfood install.
 
 Product analytics is consent-controlled and deny-by-default: only the typed operational property allow-list can reach PostHog. Sentry errors use category/code metadata rather than raw error descriptions. Screenshots, OCR, app/window titles, audio transcripts, conversation text, tokens, and local paths must never be added to either payload. Local JSONL diagnostics rotate at 14 days or 100 MB and can be exported or cleared from Diagnostics.
 
@@ -24,6 +38,15 @@ fall back to a git-ignored workspace build root.
 ## Internal build: clean macOS permission slate
 
 Use an internal build for changes to Desktop Capture Readiness, permission onboarding, or native-bundle behavior. It builds the real SwiftPM `Intentive.app`, then runs it in a disposable [Tart](https://tart.run) macOS VM. Each run clones a pristine base VM, so Screen Recording, Microphone, and system-audio capture begin ungranted without changing the host Mac.
+
+Internal builds assemble under the **`com.heyintentive.desktop.dev` bundle ID** and
+app name **Intentive Dev** (overridable via `INTENTIVE_BUNDLE_ID` /
+`INTENTIVE_APP_NAME`). This is the middle channel of the
+[Three channels](#three-channels-isolated-by-bundle-id) table above — the VM's
+state stays isolated from the dogfood install by bundle ID, and the same `.dev`
+Keychain fallback applies, so dev and dogfood never share a Keychain item.
+Release CI continues to build and sign under `com.heyintentive.desktop`; that path
+is unchanged.
 
 ### Agent operations
 
@@ -185,3 +208,37 @@ Agent Runtime -> companion_message -> Effect Runner / floating bar
 ```
 
 Do not put provider API keys in the desktop app. Local models and local embeddings are allowed; cloud judgment belongs in the Agent Runtime.
+
+## Host cleanup
+
+SwiftPM `swift build` writes to `~/Library/Developer/Xcode/DerivedData/Intentive-*`,
+and `run.sh` / internal builds accumulate TCC grants, UserDefaults, and caches
+under the `com.heyintentive.desktop*` / legacy `com.intentive.desktop*` bundle-id prefixes on
+the host Mac (not inside the Tart VM). These accumulate across sessions and are
+not swept by `pnpm development:clean`, which covers backend ports, Metro, the
+simulator, and the disposable Tart clone only.
+
+Reset them with:
+
+```bash
+pnpm desktop:clean-host:status    # dry-run; show what would be reset and the total size
+pnpm desktop:clean-host           # delete DerivedData/Intentive-*, caches, prefs
+                                  # plists, and reset TCC grants for the
+                                  # legacy com.intentive.desktop / dev com.heyintentive.desktop.dev prefixes
+```
+
+The script (`scripts/desktop-host-cleanup.sh`) keeps the SwiftPM `.build/`
+incremental cache (`/Volumes/T9/Developer/...`) and the Tart base — those
+shorten the next build. Run it before installing a fresh dogfood DMG, before a
+clean round of permission testing, or whenever an agent session has left
+DerivedData growing.
+
+### Routine cadence
+
+- **Before a dogfood install** — reset host state so `/Applications/Intentive.app`
+  starts from a clean permission slate, like a real first-time user.
+- **First-launch permission testing on the host** — reset, then `run.sh`, so
+  TCC prompts fire from zero.
+- **Whenever `du -sh ~/Library/Developer/Xcode/DerivedData/Intentive-*` gets
+  large** — agents running `swift build` (compile + unit tests) accumulate
+  DerivedData; this is the bulk of the host-side desktop footprint.

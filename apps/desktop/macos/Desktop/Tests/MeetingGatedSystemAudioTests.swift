@@ -35,7 +35,8 @@ final class ConferencingAppsTests: XCTestCase {
         XCTAssertTrue(ConferencingApps.isNativeCallApp(bundleID: "com.microsoft.teams2"))
         XCTAssertTrue(ConferencingApps.isNativeCallApp(bundleID: "com.apple.facetime"))
         // Intentive itself is always using the mic while recording; it must not count as a meeting.
-        XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.intentive.desktop"))
+        XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.heyintentive.desktop"))
+        XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.heyintentive.desktop.dev"))
         XCTAssertFalse(ConferencingApps.isNativeCallApp(bundleID: "com.google.Chrome"))
     }
 
@@ -46,7 +47,8 @@ final class ConferencingAppsTests: XCTestCase {
         XCTAssertTrue(ConferencingApps.isBrowserBundleID("company.thebrowser.Browser"))  // Arc
         XCTAssertTrue(ConferencingApps.isBrowserBundleID("com.apple.WebKit.GPU"))
         // Not browsers.
-        XCTAssertFalse(ConferencingApps.isBrowserBundleID("com.intentive.desktop"))
+        XCTAssertFalse(ConferencingApps.isBrowserBundleID("com.heyintentive.desktop"))
+        XCTAssertFalse(ConferencingApps.isBrowserBundleID("com.heyintentive.desktop.dev"))
         XCTAssertFalse(ConferencingApps.isBrowserBundleID("us.zoom.xos"))
     }
 }

@@ -163,7 +163,7 @@ assert_bundle_identity() {
   feed_url="$(plist_read SUFeedURL)"
   public_key="$(plist_read SUPublicEDKey)"
 
-  [[ "$bundle_id" == "com.intentive.desktop" ]] || fail "bundle id must be com.intentive.desktop, got ${bundle_id:-missing}"
+  [[ "$bundle_id" == "com.heyintentive.desktop" ]] || fail "bundle id must be com.heyintentive.desktop, got ${bundle_id:-missing}"
   [[ "$minimum_system" == "14.0" ]] || fail "minimum macOS version must be 14.0, got ${minimum_system:-missing}"
   [[ "$url_scheme" == "intentive-desktop" ]] || fail "URL scheme must be intentive-desktop, got ${url_scheme:-missing}"
   [[ "$feed_url" == https://* ]] || fail "SUFeedURL must be HTTPS, got ${feed_url:-missing}"

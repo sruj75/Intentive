@@ -76,7 +76,7 @@ CONFIGURATION=release \
 
 Confirm the generated `Info.plist` contains:
 
-1. `CFBundleIdentifier = com.intentive.desktop`.
+1. `CFBundleIdentifier = com.heyintentive.desktop`.
 2. `CFBundleIconFile = AppIcon`, with `Contents/Resources/AppIcon.icns` present.
 3. `CFBundleURLTypes` with the `intentive-desktop` callback scheme.
 4. `CFBundleShortVersionString` and `CFBundleVersion` matching the release tag/build.

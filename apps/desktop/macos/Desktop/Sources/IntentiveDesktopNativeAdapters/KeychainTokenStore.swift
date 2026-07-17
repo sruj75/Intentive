@@ -7,11 +7,16 @@ public final class KeychainTokenStore: TokenStore {
   private let account: String
 
   public init(
-    service: String = "com.intentive.desktop.auth",
+    service: String? = nil,
     account: String = "neon-user-jwt"
   ) {
-    self.service = service
+    self.service = service ?? Self.defaultService()
     self.account = account
+  }
+
+  private static func defaultService() -> String {
+    let bundleID = Bundle.main.bundleIdentifier
+    return "\(bundleID ?? "com.heyintentive.desktop.dev").auth"
   }
 
   public func readToken() -> String? {

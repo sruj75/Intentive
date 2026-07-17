@@ -10,7 +10,7 @@ import os.log
 
 import FluidAudio
 
-private let voiceLog = Logger(subsystem: "com.intentive.desktop", category: "PassiveAudio")
+private let voiceLog = Logger(subsystem: "com.heyintentive.desktop", category: "PassiveAudio")
 
 // MARK: - Silero VAD (ONNX Runtime)
 

@@ -6,6 +6,7 @@ PACKAGE_PATH="$ROOT_DIR/Desktop"
 SWIFTPM="$ROOT_DIR/scripts/swiftpm.sh"
 CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="${INTENTIVE_APP_NAME:-Intentive}"
+BUNDLE_ID="${INTENTIVE_BUNDLE_ID:-com.heyintentive.desktop}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.0}"
 APP_BUILD="${INTENTIVE_APP_BUILD:-1}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
@@ -30,6 +31,7 @@ xml_escape() {
 }
 
 APP_NAME_XML="$(xml_escape "$APP_NAME")"
+BUNDLE_ID_XML="$(xml_escape "$BUNDLE_ID")"
 APP_VERSION_XML="$(xml_escape "$APP_VERSION")"
 APP_BUILD_XML="$(xml_escape "$APP_BUILD")"
 AUTH_CALLBACK_SCHEME_XML="$(xml_escape "$AUTH_CALLBACK_SCHEME")"
@@ -68,7 +70,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>
   <string>Intentive</string>
   <key>CFBundleIdentifier</key>
-  <string>com.intentive.desktop</string>
+  <string>$BUNDLE_ID_XML</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleName</key>

@@ -101,7 +101,7 @@ Runtime Secret Manager values:
 
 - Package: `apps/desktop/macos/Desktop`
 - Product name: `Intentive`
-- Bundle identifier: `com.intentive.desktop`
+- Bundle identifier: `com.heyintentive.desktop`
 - Local gates:
 
 ```bash

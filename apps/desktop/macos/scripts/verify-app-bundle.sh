@@ -42,6 +42,7 @@ assert_nonempty_plist() {
 APP_BUNDLE="$(
   CONFIGURATION="$CONFIGURATION" \
     INTENTIVE_APP_NAME="$APP_NAME" \
+    INTENTIVE_BUNDLE_ID="com.heyintentive.desktop" \
     INTENTIVE_APP_VERSION="$APP_VERSION" \
     INTENTIVE_APP_BUILD="$APP_BUILD" \
     INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
@@ -74,7 +75,7 @@ SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
 plutil -lint "$PLIST" >/dev/null
 
 assert_eq "CFBundleExecutable" "Intentive"
-assert_eq "CFBundleIdentifier" "com.intentive.desktop"
+assert_eq "CFBundleIdentifier" "com.heyintentive.desktop"
 assert_eq "CFBundleIconFile" "AppIcon"
 assert_eq "CFBundleName" "$APP_NAME"
 assert_eq "CFBundlePackageType" "APPL"

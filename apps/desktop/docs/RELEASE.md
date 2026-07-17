@@ -6,7 +6,7 @@ Intentive ships one Apple Silicon release path: a Developer ID signed and notari
 
 - Developer ID: `Developer ID Application: Srujan Gowda (24D6NXS6H7)`
 - Team ID: `24D6NXS6H7`
-- Bundle ID: `com.intentive.desktop`
+- Bundle ID: `com.heyintentive.desktop`
 - Minimum OS: macOS 14
 - Architecture: Apple Silicon (`arm64`) only
 

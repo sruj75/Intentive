@@ -69,13 +69,13 @@ public enum ConferencingApps {
 
   public static func isNativeCallApp(bundleID: String) -> Bool {
     let normalized = bundleID.lowercased()
-    guard normalized != "com.intentive.desktop" else { return false }
+    guard !normalized.hasPrefix("com.heyintentive.desktop") else { return false }
     return nativeBundleIDs.contains { normalized == $0 }
   }
 
   public static func isBrowserBundleID(_ bundleID: String) -> Bool {
     let normalized = bundleID.lowercased()
-    guard normalized != "com.intentive.desktop" else { return false }
+    guard !normalized.hasPrefix("com.heyintentive.desktop") else { return false }
     return browserBundlePrefixes.contains { normalized.hasPrefix($0) }
   }
 }

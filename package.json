@@ -38,6 +38,8 @@
     "dev": "turbo run dev",
     "development:status": "bash scripts/development-cleanup.sh --status",
     "development:clean": "bash scripts/development-cleanup.sh --runtime",
+    "desktop:clean-host:status": "bash scripts/desktop-host-cleanup.sh --status",
+    "desktop:clean-host": "bash scripts/desktop-host-cleanup.sh --reset",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

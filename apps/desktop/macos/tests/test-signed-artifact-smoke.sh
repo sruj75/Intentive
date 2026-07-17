@@ -69,7 +69,7 @@ cat >"$tmp_app/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key><string>Intentive</string>
-  <key>CFBundleIdentifier</key><string>com.intentive.desktop</string>
+  <key>CFBundleIdentifier</key><string>com.heyintentive.desktop</string>
   <key>CFBundleShortVersionString</key><string>0.12.34</string>
   <key>CFBundleVersion</key><string>12034</string>
   <key>CFBundleURLTypes</key>

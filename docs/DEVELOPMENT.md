@@ -144,6 +144,47 @@ scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
 
 ---
 
+## Desktop — dev vs. internal vs. dogfood
+
+The Desktop Client is the only deployable that shares the host Mac's Keychain,
+TCC permission buckets, and `~/Library` state with the rest of your machine. To
+keep development, internal testing, and dogfooding from contaminating each other,
+they live under **three separate bundle IDs**. This is the macOS equivalent of
+iOS's simulator sandbox + TestFlight: each channel owns an isolated permission
+and storage world, and agents can run wild in the dev one without touching the
+dogfood install.
+
+| Channel                          | Bundle ID                      | App name        | How you run it                                            | Sparkle updates | Who               |
+| -------------------------------- | ------------------------------ | --------------- | --------------------------------------------------------- | --------------- | ----------------- |
+| **Daily dev** (raw SwiftPM bin)  | _(none — TCC keyed by path)_   | Intentive Dev   | `apps/desktop/macos/run.sh`                              | no              | you, eyeballing    |
+| **Internal assembled** (Tart VM) | `com.heyintentive.desktop.dev` | Intentive Dev   | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` | no              | agents + you      |
+| **Dogfood / release** (signed)  | `com.heyintentive.desktop`     | Intentive       | Install the signed DMG from a GitHub Release into `/Applications` | yes (hourly)     | you, like a user  |
+
+**Why split:**
+- `KeychainTokenStore` derives its `service` from `Bundle.main.bundleIdentifier`
+  (with a `com.heyintentive.desktop.dev` fallback for the raw-binary `run.sh` case),
+  so dev auth and dogfood auth never share a Keychain item.
+- TCC permissions are per-bundle-ID, so Screen Recording / Microphone grants for
+  the dev build don't affect the dogfood install, and vice versa.
+- `/Applications/Intentive.app` (dogfood) and a Tart-internal `Intentive Dev.app`
+  can coexist; Sparkle only updates the production bundle ID.
+
+**One-time host cleanup, repeatable any time:**
+
+```bash
+pnpm desktop:clean-host:status          # show what would be reset
+pnpm desktop:clean-host                 # reset DerivedData/Intentive-*, caches,
+                                        # prefs plists, and TCC grants for
+                                        # legacy com.intentive.desktop / dev com.heyintentive.desktop.dev
+```
+
+It keeps the SwiftPM `.build/` incremental cache and the Tart base. Run it before
+installing a fresh dogfood DMG, or whenever an agent session has left
+DerivedData growing. See [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md)
+for the mechanics and the Tart VM guardrails.
+
+---
+
 ## The user journey to approve
 
 With the stack up and the Mobile dev client pointed at `:8080`, walk it and confirm
@@ -212,6 +253,13 @@ changing anything.
   and generated build trees accidentally placed in `.context`. The archive hook
   preserves `.context/attachments`, plans, notes, and Conductor's session database,
   and refuses to archive when unknown context data remains unexpectedly large.
+
+`pnpm development:clean` covers backend ports, Metro, the simulator, and the
+disposable Tart clone — **not** the Desktop Client's host-side state. macOS
+Keychain, TCC grants, DerivedData, and `~/Library` dirs accumulate against the
+shared `com.heyintentive.desktop*` / legacy `com.intentive.desktop*` bundle-id prefix. Reset them with
+`pnpm desktop:clean-host` (see [Desktop — dev vs. internal vs. dogfood](#desktop-dev-vs-internal-vs-dogfood)
+above).
 
 **Verify the sweep** (every line should report free/none):
 
