@@ -141,17 +141,20 @@ public final class RecordingCaptureSystemEventObserver: CaptureSystemEventObserv
 }
 
 // MARK: - Session-end sink
-// `RuntimeAdapter` already implements this body (`sendSessionEnd(reason:)`). The
-// protocol lets Core tests inject a recording sink without `RuntimeAdapter`.
+// The durable `PerceptionPublisher` implements this body (`publishSessionEnd`):
+// a marker is inserted into `runtime_ingress_outbox` before delivery is
+// attempted, so a clean stop, quit, or crash-recovery marker survives an outage
+// and is redelivered until the Runtime acknowledges it. The protocol lets Core
+// tests inject a recording sink without a live publisher.
 
 public protocol CaptureSessionEndSink: AnyObject {
-  func sendSessionEnd(reason: SessionEndReason) throws
+  func sendSessionEnd(_ marker: SessionEndMarker) throws
 }
 
 // MARK: - Archive reconciliation / outbox drain
 // Minimal seam the controller calls on launch. Implemented by
 // `ScreenMemoryArchive.prepareArchive()` + `runScheduledCleanup()`, and by
-// `PerceptionPublisher.flushPendingPerceptionEvents/Tombstones` when connected.
+// `PerceptionPublisher.flushPendingIngress` when connected.
 
 public protocol ScreenMemoryLaunchReconciliation: AnyObject {
   /// Reconcile orphaned chunks / run scheduled expiry. Idempotent per process.
@@ -168,10 +171,37 @@ public protocol PerceptionOutboxLaunchDrain: AnyObject {
   func dropExpiredPendingPerceptionEvents() throws -> Int
 }
 
-// MARK: - Lock file (unclean-shutdown flag)
+// MARK: - Session identity
+
+/// The active capture session's durable identity, persisted as JSON in
+/// `intentive_session.lock`. The preallocated `crashMarkerId` lets an unclean
+/// prior session finalize to exactly one idempotent `.crash` marker on the next
+/// launch — the Runtime dedupes by that stable id no matter how many times the
+/// leftover lock is observed.
+public struct CaptureSessionIdentity: Codable, Equatable, Sendable {
+  public var sessionId: String
+  public var startedAt: String
+  public var crashMarkerId: String
+
+  public init(sessionId: String, startedAt: String, crashMarkerId: String) {
+    self.sessionId = sessionId
+    self.startedAt = startedAt
+    self.crashMarkerId = crashMarkerId
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case sessionId = "session_id"
+    case startedAt = "started_at"
+    case crashMarkerId = "crash_marker_id"
+  }
+}
+
+// MARK: - Lock file (unclean-shutdown flag + session identity)
 // Adapted from Omi's `.omi_running` flag (`RewindDatabase.swift`). The Intentive
 // file is `intentive_session.lock`, written under the per-user profile root next
 // to `intentive.db` so a crash leaves it behind for the next launch to detect.
+// Unlike Omi's empty flag, it holds the running session's `CaptureSessionIdentity`
+// so launch reconciliation can attribute a single crash marker to the prior run.
 
 public struct CaptureSessionLockFile: Equatable, Sendable {
   public let url: URL
@@ -191,15 +221,26 @@ public struct CaptureSessionLockFile: Equatable, Sendable {
     fileManager.fileExists(atPath: url.path)
   }
 
+  /// Decode the persisted session identity. Returns `nil` when the lock is
+  /// absent or holds a legacy flag payload (older builds wrote plain bytes) —
+  /// the caller still treats the lock's presence as an unclean-shutdown signal.
+  public func read(fileManager: FileManager = .default) -> CaptureSessionIdentity? {
+    guard exists(fileManager: fileManager), let data = try? Data(contentsOf: url) else {
+      return nil
+    }
+    return try? JSONDecoder().decode(CaptureSessionIdentity.self, from: data)
+  }
+
+  /// Persist the running session's identity, replacing any prior lock. Presence
+  /// of the file is itself the unclean-shutdown flag until `markClean` removes it.
+  public func write(_ identity: CaptureSessionIdentity, fileManager: FileManager = .default) throws {
+    let data = try JSONEncoder().encode(identity)
+    try data.write(to: url, options: .atomic)
+  }
+
   public func markClean(fileManager: FileManager = .default) throws {
     if exists(fileManager: fileManager) {
       try fileManager.removeItem(at: url)
-    }
-  }
-
-  public func markUnclean(fileManager: FileManager = .default) throws {
-    if !exists(fileManager: fileManager) {
-      try Data("intentive_session".utf8).write(to: url)
     }
   }
 }
@@ -250,7 +291,11 @@ public final class ScreenMemoryCaptureLifecycleController {
   public private(set) var didDetectUncleanShutdown = false
   public private(set) var didMarkCleanShutdown = false
   public private(set) var launchReconciliationDroppedExpiredOutboxRows = 0
+  /// The active capture session's id, allocated when a capture actually starts.
+  /// `nil` before the first start / after a clean stop.
+  public private(set) var currentSessionId: String?
 
+  private let makeUUID: () -> String
   private var recorderGate: ProactiveScreenRecorderYieldGate
   private var wakeSettleTask: Task<Void, Never>?
 
@@ -271,7 +316,8 @@ public final class ScreenMemoryCaptureLifecycleController {
     },
     captureBoundaryEnabled: Bool = true,
     recorderGate: ProactiveScreenRecorderYieldGate = ProactiveScreenRecorderYieldGate(),
-    now: @escaping () -> Date = { Date() }
+    now: @escaping () -> Date = { Date() },
+    makeUUID: @escaping () -> String = { UUID().uuidString }
   ) {
     self.loop = loop
     self.cadence = cadence
@@ -288,6 +334,25 @@ public final class ScreenMemoryCaptureLifecycleController {
     self.captureBoundaryEnabled = captureBoundaryEnabled
     self.recorderGate = recorderGate
     self.now = now
+    self.makeUUID = makeUUID
+  }
+
+  /// Allocate a fresh capture session identity, persist it in the lock (with a
+  /// preallocated crash marker id), and reset session-end idempotency. Called
+  /// whenever a capture actually starts, so a new run never reuses the prior
+  /// session's markers. The lock's presence is the unclean-shutdown flag until a
+  /// clean stop removes it.
+  @discardableResult
+  private func beginSession() -> CaptureSessionIdentity {
+    let identity = CaptureSessionIdentity(
+      sessionId: makeUUID(),
+      startedAt: now().protocolTimestamp,
+      crashMarkerId: makeUUID()
+    )
+    currentSessionId = identity.sessionId
+    didEmitSessionEnd = false
+    try? lockFile?.write(identity)
+    return identity
   }
 
   // MARK: - Resilience queries the loop consults each tick
@@ -386,12 +451,16 @@ public final class ScreenMemoryCaptureLifecycleController {
   // MARK: - User toggle / quit stop
 
   /// Stop capture for a user-initiated reason. Stops the loop, finalizes the
-  /// active video chunk (so the stop is durable), and emits `session_end_marker`
-  /// once. A second call is a no-op (idempotent) — never emits a duplicate.
+  /// active video chunk (so the stop is durable), durably enqueues one
+  /// `session_end_marker`, then attempts delivery. A second call is a no-op
+  /// (idempotent) — never emits a duplicate.
   ///
-  /// The marker is queued synchronously (`RuntimeBridge.sendSessionEnd` is
-  /// already outage-safe — it queues when disconnected and flushes on reconnect).
-  /// The chunk finalize is bounded by a 5s semaphore so `applicationWillTerminate`
+  /// The marker is inserted into `runtime_ingress_outbox` by the durable
+  /// `PerceptionPublisher` before any send is attempted, so a disconnected stop
+  /// still redelivers on reconnect. The lock is removed only after the chunk
+  /// finalize and the marker enqueue both succeed; if the enqueue throws the
+  /// lock survives so the next launch finalizes the run via a crash marker. The
+  /// chunk finalize is bounded by a 5s semaphore so `applicationWillTerminate`
   /// does not stall the OS quit window.
   public func stop(reason: SessionEndReason) {
     loop.stop()
@@ -409,17 +478,26 @@ public final class ScreenMemoryCaptureLifecycleController {
       }
       _ = sem.wait(timeout: .now() + 5)
     }
+
+    let marker = SessionEndMarker(
+      markerId: makeUUID(),
+      sessionId: currentSessionId ?? makeUUID(),
+      endedAt: now().protocolTimestamp,
+      reason: reason
+    )
     do {
-      try sessionEndSink?.sendSessionEnd(reason: reason)
+      try sessionEndSink?.sendSessionEnd(marker)
+      // Durable enqueue succeeded (delivery, if disconnected, is redelivered by
+      // the outbox). Safe to clear the unclean-shutdown lock.
+      didEmitSessionEnd = true
+      currentSessionId = nil
+      try? lockFile?.markClean()
+      didMarkCleanShutdown = true
     } catch {
-      // Outage-safe: the marker is durably queued by `RuntimeBridge.sendOrQueue`
-      // before any throw path is reachable; a throw here is a send failure the
-      // outbox already absorbed. We still mark emitted to avoid duplicate
-      // markers on the next stop.
+      // Enqueue failed: keep the lock so the next launch finalizes this run via
+      // a crash marker. Still mark emitted to avoid a duplicate on a repeat stop.
+      didEmitSessionEnd = true
     }
-    didEmitSessionEnd = true
-    try? lockFile?.markClean()
-    didMarkCleanShutdown = true
   }
 
   // MARK: - Launch reconciliation
@@ -433,10 +511,23 @@ public final class ScreenMemoryCaptureLifecycleController {
     guard !didPerformLaunchReconciliation else { return }
     didPerformLaunchReconciliation = true
 
+    // A leftover lock means the prior session exited uncleanly. Finalize it to
+    // exactly one idempotent `.crash` marker (using the preallocated marker id
+    // so the Runtime dedupes it) before any new session is created, then clear
+    // the lock.
     if let lockFile, lockFile.exists() {
       didDetectUncleanShutdown = true
+      if let prior = lockFile.read() {
+        let crashMarker = SessionEndMarker(
+          markerId: prior.crashMarkerId,
+          sessionId: prior.sessionId,
+          endedAt: now().protocolTimestamp,
+          reason: .crash
+        )
+        try? sessionEndSink?.sendSessionEnd(crashMarker)
+      }
+      try? lockFile.markClean()
     }
-    try? lockFile?.markUnclean()
 
     if let archiveReconciler {
       do {
@@ -454,6 +545,7 @@ public final class ScreenMemoryCaptureLifecycleController {
           permissionProvider(),
           !privacySnapshotProvider().isPrivateMode
     else { return }
+    beginSession()
     _ = loop.start()
   }
 
@@ -465,6 +557,14 @@ public final class ScreenMemoryCaptureLifecycleController {
   private func settings() -> CompilerSettings { settingsProvider() }
 }
 
-// MARK: - RuntimeAdapter conformance
+// MARK: - PerceptionPublisher conformance
+// The session-end sink is the durable outbox driver: a marker is inserted into
+// `runtime_ingress_outbox` before delivery, so a quit/crash marker survives an
+// outage and redelivers until acknowledged. `RuntimeAdapter` no longer owns
+// session-end durability (its `outboundQueue` is ephemeral connection traffic).
 
-extension RuntimeAdapter: CaptureSessionEndSink {}
+extension PerceptionPublisher: CaptureSessionEndSink {
+  public func sendSessionEnd(_ marker: SessionEndMarker) throws {
+    try publishSessionEnd(marker)
+  }
+}

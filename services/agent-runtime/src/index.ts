@@ -72,6 +72,10 @@ export {
   toPerceptionRecord,
 } from "./domains/perception/repo/perception-records.js";
 export {
+  permittedEmbeddingText,
+  structuredScreenFields,
+} from "./domains/perception/repo/screen-signals.js";
+export {
   createOpenRouterPerceptionEmbedder,
   nullPerceptionEmbedder,
 } from "./domains/perception/service/perception-embedder.js";

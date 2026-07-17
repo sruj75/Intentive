@@ -15,6 +15,14 @@ export interface PerceptionRecord {
   readonly periodEnd: string;
   readonly summary: string;
   readonly signals: Record<string, unknown>;
+  // Structured permitted screen columns for `searchable_screen_record` (null for
+  // other artifact types). A redacted record carries app identity only:
+  // `windowTitle`/`ocrText` are null and `contentRedacted` is true.
+  readonly bundleId: string | null;
+  readonly appName: string | null;
+  readonly windowTitle: string | null;
+  readonly ocrText: string | null;
+  readonly contentRedacted: boolean;
   readonly sensitivityLabel: PerceptionSensitivityLabel;
   readonly retentionClass: string;
   readonly confidence: number;

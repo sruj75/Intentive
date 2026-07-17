@@ -493,24 +493,25 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     try store.enqueuePerceptionEvent(event)
   }
 
-  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
-    try store.pendingPerceptionEvents(limit: limit)
-  }
-
-  public func removePerceptionEvent(eventId: String) throws {
-    try store.removePerceptionEvent(eventId: eventId)
-  }
-
   public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
     try store.enqueuePerceptionTombstone(tombstone)
   }
 
-  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
-    try store.pendingPerceptionTombstones(limit: limit)
+  public func enqueueSessionEndMarker(_ marker: SessionEndMarker) throws {
+    try store.enqueueSessionEndMarker(marker)
   }
 
-  public func removePerceptionTombstone(tombstoneId: String) throws {
-    try store.removePerceptionTombstone(tombstoneId: tombstoneId)
+  public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
+    try store.pendingIngress(limit: limit)
+  }
+
+  public func removeIngress(kind: RuntimeIngressKind, ingressId: String) throws {
+    try store.removeIngress(kind: kind, ingressId: ingressId)
+  }
+
+  @discardableResult
+  public func dropExpiredPerceptionEvents(now: Date) throws -> Int {
+    try store.dropExpiredPerceptionEvents(now: now)
   }
 
   private static func storageReport(profile: ScreenMemoryProfile) throws -> ScreenMemoryStorageReport {

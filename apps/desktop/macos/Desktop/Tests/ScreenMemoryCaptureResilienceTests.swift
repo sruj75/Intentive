@@ -205,16 +205,25 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
 
   // MARK: - 8. Unclean shutdown flag
 
-  func testUncleanShutdownFlagDetectedAndCleanedOnLaunch() async throws {
+  func testUncleanShutdownLockFinalizesToOneCrashMarkerAndClearsOnLaunch() async throws {
     let base = try temporaryDirectory()
     let lock = try CaptureSessionLockFile.inProfile(base)
-    try lock.markUnclean()
+    // A leftover lock holds the prior session's identity, including the
+    // preallocated crash marker id.
+    let prior = CaptureSessionIdentity(
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      startedAt: "2026-07-05T10:00:00.000Z",
+      crashMarkerId: "22222222-2222-4222-8222-222222222222"
+    )
+    try lock.write(prior)
     XCTAssertTrue(lock.exists())
 
     let loop = makeLoop()
     let archive = FinalizingArchiveSpy()
+    let sink = RecordingSessionEndSink()
     let ctrl = makeController(
       loop: loop,
+      sessionEndSink: sink,
       archiveReconciler: archive,
       lockFile: lock,
       settingsProvider: { CompilerSettings(captureEnabled: false) }
@@ -222,8 +231,12 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     await ctrl.performLaunchReconciliation()
     XCTAssertTrue(ctrl.didDetectUncleanShutdown)
     XCTAssertFalse(loop.state.isRunning)
-    // markClean on stop clears the flag
-    ctrl.markCleanShutdown()
+    // Exactly one idempotent `.crash` marker for the prior session, using the
+    // preallocated id so the Runtime dedupes it.
+    XCTAssertEqual(sink.markers.map(\.reason), [.crash])
+    XCTAssertEqual(sink.markers.first?.markerId, prior.crashMarkerId)
+    XCTAssertEqual(sink.markers.first?.sessionId, prior.sessionId)
+    // The leftover lock is consumed on launch.
     XCTAssertFalse(lock.exists())
   }
 
@@ -278,11 +291,13 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     XCTAssertEqual(try reopened.pendingPerceptionEvents(limit: 10).map(\.eventId), ["unclean-event-1"])
     // On connect, flush exactly once.
     connected = true
-    let flushed = try publisher.flushPendingPerceptionEvents()
+    let flushed = try publisher.flushPendingIngress()
     XCTAssertEqual(flushed, 1)
     XCTAssertEqual(runtime.perceptionEvents.map(\.eventId), ["unclean-event-1"])
-    // A second flush finds nothing — no duplicate.
-    XCTAssertEqual(try publisher.flushPendingPerceptionEvents(), 0)
+    // A second flush on the same connection finds it already in-flight — no
+    // duplicate send. The row stays pending until a `runtime_ingress_ack`.
+    XCTAssertEqual(try publisher.flushPendingIngress(), 0)
+    XCTAssertEqual(try reopened.pendingPerceptionEvents(limit: 10).count, 1)
   }
 
   // MARK: - 10. No silent stay-stopped after relaunch (negative control)
@@ -482,9 +497,10 @@ private final class FakeCompetingRecorderDetector: CompetingScreenRecorderDetect
 }
 
 private final class RecordingSessionEndSink: CaptureSessionEndSink {
-  private(set) var emittedReasons: [SessionEndReason] = []
-  func sendSessionEnd(reason: SessionEndReason) throws {
-    emittedReasons.append(reason)
+  private(set) var markers: [SessionEndMarker] = []
+  var emittedReasons: [SessionEndReason] { markers.map(\.reason) }
+  func sendSessionEnd(_ marker: SessionEndMarker) throws {
+    markers.append(marker)
   }
 }
 

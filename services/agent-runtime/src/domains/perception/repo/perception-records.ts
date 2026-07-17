@@ -1,5 +1,6 @@
 import type { PerceptionEvent } from "@intentive/protocol";
 
+import { permittedEmbeddingText, structuredScreenFields } from "./screen-signals.js";
 import type {
   PerceptionEmbedder,
   PerceptionRecord,
@@ -49,6 +50,11 @@ export function createPerceptionRecordsRepo(
             period_end,
             summary,
             signals,
+            bundle_id,
+            app_name,
+            window_title,
+            ocr_text,
+            content_redacted,
             sensitivity_label,
             retention_class,
             confidence,
@@ -65,6 +71,11 @@ export function createPerceptionRecordsRepo(
           ${record.periodEnd},
           ${record.summary},
           ${JSON.stringify(record.signals)}::jsonb,
+          ${record.bundleId},
+          ${record.appName},
+          ${record.windowTitle},
+          ${record.ocrText},
+          ${record.contentRedacted},
           ${record.sensitivityLabel},
           ${record.retentionClass},
           ${record.confidence},
@@ -74,6 +85,11 @@ export function createPerceptionRecordsRepo(
         ON CONFLICT (user_id, event_id) DO UPDATE SET
           summary = excluded.summary,
           signals = excluded.signals,
+          bundle_id = excluded.bundle_id,
+          app_name = excluded.app_name,
+          window_title = excluded.window_title,
+          ocr_text = excluded.ocr_text,
+          content_redacted = excluded.content_redacted,
           sensitivity_label = excluded.sensitivity_label,
           retention_class = excluded.retention_class,
           confidence = excluded.confidence,
@@ -129,12 +145,27 @@ export function createPerceptionRecordsRepo(
           AND expires_at > now()
           AND (
             ${trimmedQuery} = ''
-            OR to_tsvector('simple', summary) @@ plainto_tsquery('simple', ${trimmedQuery})
+            OR to_tsvector(
+                 'simple',
+                 summary
+                   || ' ' || coalesce(app_name, '')
+                   || ' ' || coalesce(window_title, '')
+                   || ' ' || coalesce(ocr_text, '')
+               ) @@ plainto_tsquery('simple', ${trimmedQuery})
           )
         ORDER BY
           CASE
             WHEN ${trimmedQuery} = '' THEN 0
-            ELSE ts_rank_cd(to_tsvector('simple', summary), plainto_tsquery('simple', ${trimmedQuery}))
+            ELSE ts_rank_cd(
+              to_tsvector(
+                'simple',
+                summary
+                  || ' ' || coalesce(app_name, '')
+                  || ' ' || coalesce(window_title, '')
+                  || ' ' || coalesce(ocr_text, '')
+              ),
+              plainto_tsquery('simple', ${trimmedQuery})
+            )
           END DESC,
           captured_at DESC
         LIMIT ${cappedLimit}
@@ -183,6 +214,7 @@ export function createPerceptionRecordsRepo(
 }
 
 export function toPerceptionRecord(userId: string, event: PerceptionEvent): PerceptionRecord {
+  const screen = structuredScreenFields(event);
   return {
     userId,
     eventId: event.event_id,
@@ -193,6 +225,11 @@ export function toPerceptionRecord(userId: string, event: PerceptionEvent): Perc
     periodEnd: event.period_end,
     summary: event.summary,
     signals: event.signals,
+    bundleId: screen.bundleId,
+    appName: screen.appName,
+    windowTitle: screen.windowTitle,
+    ocrText: screen.ocrText,
+    contentRedacted: screen.contentRedacted,
     sensitivityLabel: event.sensitivity_label,
     retentionClass: event.retention_class,
     confidence: event.confidence,
@@ -201,12 +238,14 @@ export function toPerceptionRecord(userId: string, event: PerceptionEvent): Perc
   };
 }
 
-/** The text Agent Runtime embeds for a record: summary plus flattened signal values. */
+/**
+ * The text Agent Runtime embeds for a record. Delegates to the permitted-text
+ * derivation so a screen record embeds only its permitted fields (summary + app
+ * identity + window title + OCR) and a redacted one embeds summary + app
+ * identity only — secret text is structurally absent and never embedded.
+ */
 export function embeddingText(event: PerceptionEvent): string {
-  const signalText = Object.values(event.signals)
-    .filter((value): value is string => typeof value === "string")
-    .join(" ");
-  return [event.summary, signalText].filter(Boolean).join("\n").trim();
+  return permittedEmbeddingText(event);
 }
 
 async function embedRaw(embedder: PerceptionEmbedder, text: string): Promise<number[] | null> {

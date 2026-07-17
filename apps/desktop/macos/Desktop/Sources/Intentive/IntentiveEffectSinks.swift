@@ -15,5 +15,6 @@ final class AlreadyAcknowledgedRuntimeClient: RuntimeChatClient {
 
   func sendPerceptionEvent(_ event: PerceptionEvent) throws {}
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {}
+  func sendSessionEndMarker(_ marker: SessionEndMarker) throws {}
   func acknowledge(messageId: String) throws {}
 }

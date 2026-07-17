@@ -620,5 +620,7 @@ private final class PrivacyFixtureRuntimeClient: RuntimeChatClient {
   func sendPerceptionEvent(_ event: PerceptionEvent) throws { perceptionEvents.append(event) }
   private(set) var tombstones: [PerceptionTombstone] = []
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws { tombstones.append(tombstone) }
+  private(set) var markers: [SessionEndMarker] = []
+  func sendSessionEndMarker(_ marker: SessionEndMarker) throws { markers.append(marker) }
   func acknowledge(messageId: String) throws {}
 }

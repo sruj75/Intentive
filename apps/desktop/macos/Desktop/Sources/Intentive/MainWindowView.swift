@@ -117,7 +117,8 @@ final class DesktopViewModel: ObservableObject {
   private lazy var publisher = PerceptionPublisher(
     runtimeClient: runtime,
     outbox: screenMemory,
-    isRuntimeConnected: { [weak self] in self?.runtime.status == .connected }
+    isRuntimeConnected: { [weak self] in self?.runtime.status == .connected },
+    connectionGeneration: { [weak self] in self?.runtime.connectionGeneration ?? 0 }
   )
   private lazy var captureSource = NativeScreenCaptureSource()
   private lazy var capture = CaptureCoordinator(
@@ -219,7 +220,7 @@ final class DesktopViewModel: ObservableObject {
       powerSource: PowerMonitorDesktopPowerSource(),
       recorderDetector: AppKitCompetingScreenRecorderDetector(),
       systemEventObserver: AppKitCaptureSystemEventObserver(),
-      sessionEndSink: runtime,
+      sessionEndSink: publisher,
       archiveReconciler: screenMemory.activeArchive,
       outboxDrain: publisher,
       lockFile: lock,
@@ -894,6 +895,13 @@ final class DesktopViewModel: ObservableObject {
         self?.handleRuntimeCompanionMessage(companion)
       }
     }
+    // A `runtime_ingress_ack` (emitted after the Runtime's ledger+projection
+    // commit) is the only signal that deletes a durable outbox row.
+    runtime.onIngressAck = { [weak self] ack in
+      Task { @MainActor [weak self] in
+        try? self?.publisher.acknowledge(ack)
+      }
+    }
     runtimeSocket.onMessage = { [weak self] data in
       Task { @MainActor [weak self] in
         self?.handleRuntimeSocketMessage(data)
@@ -978,10 +986,10 @@ final class DesktopViewModel: ObservableObject {
   {
     guard case .connected = state else { return nil }
     do {
-      let flushed = try publisher.flushPendingPerceptionEvents()
-      // Propagate any locally-queued deletions on the same durable channel.
-      let tombstoned = try publisher.flushPendingPerceptionTombstones()
-      let synced = flushed + tombstoned
+      // Redeliver every unacknowledged durable-ingress item (events, tombstones,
+      // session-end markers) in enqueue order on the one outbox channel. Rows
+      // stay until a `runtime_ingress_ack` deletes them.
+      let synced = try publisher.flushPendingIngress()
       return synced > 0 ? "synced \(synced) queued perception update(s)" : nil
     } catch {
       return "perception sync pending: \(error.localizedDescription)"

@@ -112,20 +112,89 @@ public protocol AudioMemoryStore: AnyObject {
   func recentAudioMemory(limit: Int) -> [AudioMemoryRecord]
 }
 
+/// One durable, ordered outbox for every stateful ingress the Runtime
+/// acknowledges (`perception_event`, `perception_tombstone`,
+/// `session_end_marker`). Renovated from Omi's WAL reconcile: an item is
+/// enqueued, sent when connected, and removed only when the Runtime confirms the
+/// commit with a `runtime_ingress_ack` — never merely because the socket
+/// accepted the send. A single global enqueue order (one table keyed by
+/// `(ingress_kind, ingress_id)`) guarantees an event can never be replayed
+/// behind its own later tombstone.
 public protocol PerceptionEventOutbox: AnyObject {
   func enqueuePerceptionEvent(_ event: PerceptionEvent) throws
-  func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent]
-  func removePerceptionEvent(eventId: String) throws
   func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws
-  func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone]
-  func removePerceptionTombstone(tombstoneId: String) throws
+  func enqueueSessionEndMarker(_ marker: SessionEndMarker) throws
+  /// Pending items in durable enqueue order across all kinds, for redelivery.
+  func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem]
+  /// Remove one acknowledged item. Idempotent on redelivery.
+  func removeIngress(kind: RuntimeIngressKind, ingressId: String) throws
+  /// Drop already-expired unsent perception events. Returns the count dropped.
+  @discardableResult
+  func dropExpiredPerceptionEvents(now: Date) throws -> Int
+}
+
+/// A decoded durable-ingress item read back from the outbox, tagged with the
+/// stable `(kind, ingressId)` the Runtime acknowledges.
+public enum RuntimeIngressOutboxItem: Equatable, Sendable {
+  case perceptionEvent(PerceptionEvent)
+  case perceptionTombstone(PerceptionTombstone)
+  case sessionEndMarker(SessionEndMarker)
+
+  public var kind: RuntimeIngressKind {
+    switch self {
+    case .perceptionEvent: return .perceptionEvent
+    case .perceptionTombstone: return .perceptionTombstone
+    case .sessionEndMarker: return .sessionEndMarker
+    }
+  }
+
+  public var ingressId: String {
+    switch self {
+    case .perceptionEvent(let event): return event.eventId
+    case .perceptionTombstone(let tombstone): return tombstone.tombstoneId
+    case .sessionEndMarker(let marker): return marker.markerId
+    }
+  }
+
+  /// Authoritative expiry, present only for perception events.
+  public var expiresAt: String? {
+    if case .perceptionEvent(let event) = self { return event.expiresAt }
+    return nil
+  }
+}
+
+extension PerceptionEventOutbox {
+  /// Pending perception events in durable enqueue order — a typed filter over
+  /// the unified outbox. `limit` bounds the underlying read.
+  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
+    try pendingIngress(limit: limit).compactMap {
+      if case .perceptionEvent(let event) = $0 { return event }
+      return nil
+    }
+  }
+
+  /// Pending tombstones in durable enqueue order — a typed filter over the
+  /// unified outbox.
+  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
+    try pendingIngress(limit: limit).compactMap {
+      if case .perceptionTombstone(let tombstone) = $0 { return tombstone }
+      return nil
+    }
+  }
+
+  public func removePerceptionEvent(eventId: String) throws {
+    try removeIngress(kind: .perceptionEvent, ingressId: eventId)
+  }
+
+  public func removePerceptionTombstone(tombstoneId: String) throws {
+    try removeIngress(kind: .perceptionTombstone, ingressId: tombstoneId)
+  }
 }
 
 public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore, PerceptionEventOutbox {
   private var records: [ScreenMemoryRecord] = []
   private var audioRecords: [AudioMemoryRecord] = []
-  private var perceptionOutbox: [PerceptionEvent] = []
-  private var tombstoneOutbox: [PerceptionTombstone] = []
+  private var ingressOutbox: [RuntimeIngressOutboxItem] = []
 
   public init(records: [ScreenMemoryRecord] = []) {
     self.records = records
@@ -196,35 +265,47 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStor
   }
 
   public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
-    if let index = perceptionOutbox.firstIndex(where: { $0.eventId == event.eventId }) {
-      perceptionOutbox[index] = event
-    } else {
-      perceptionOutbox.append(event)
-    }
-  }
-
-  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
-    Array(perceptionOutbox.prefix(max(0, limit)))
-  }
-
-  public func removePerceptionEvent(eventId: String) throws {
-    perceptionOutbox.removeAll { $0.eventId == eventId }
+    upsertIngress(.perceptionEvent(event))
   }
 
   public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
-    if let index = tombstoneOutbox.firstIndex(where: { $0.tombstoneId == tombstone.tombstoneId }) {
-      tombstoneOutbox[index] = tombstone
-    } else {
-      tombstoneOutbox.append(tombstone)
+    upsertIngress(.perceptionTombstone(tombstone))
+  }
+
+  public func enqueueSessionEndMarker(_ marker: SessionEndMarker) throws {
+    upsertIngress(.sessionEndMarker(marker))
+  }
+
+  public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
+    Array(ingressOutbox.prefix(max(0, limit)))
+  }
+
+  public func removeIngress(kind: RuntimeIngressKind, ingressId: String) throws {
+    ingressOutbox.removeAll { $0.kind == kind && $0.ingressId == ingressId }
+  }
+
+  @discardableResult
+  public func dropExpiredPerceptionEvents(now: Date) throws -> Int {
+    let before = ingressOutbox.count
+    ingressOutbox.removeAll { item in
+      guard case .perceptionEvent(let event) = item,
+            let expiry = ISO8601DateFormatter.intentiveProtocol.date(from: event.expiresAt)
+      else { return false }
+      return expiry <= now
     }
+    return before - ingressOutbox.count
   }
 
-  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
-    Array(tombstoneOutbox.prefix(max(0, limit)))
-  }
-
-  public func removePerceptionTombstone(tombstoneId: String) throws {
-    tombstoneOutbox.removeAll { $0.tombstoneId == tombstoneId }
+  /// Upsert preserving enqueue position: a re-enqueue of the same
+  /// `(kind, ingressId)` updates in place so a later item never jumps ahead.
+  private func upsertIngress(_ item: RuntimeIngressOutboxItem) {
+    if let index = ingressOutbox.firstIndex(where: {
+      $0.kind == item.kind && $0.ingressId == item.ingressId
+    }) {
+      ingressOutbox[index] = item
+    } else {
+      ingressOutbox.append(item)
+    }
   }
 }
 
@@ -272,24 +353,25 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
     try (store as? PerceptionEventOutbox)?.enqueuePerceptionEvent(event)
   }
 
-  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
-    try (store as? PerceptionEventOutbox)?.pendingPerceptionEvents(limit: limit) ?? []
-  }
-
-  public func removePerceptionEvent(eventId: String) throws {
-    try (store as? PerceptionEventOutbox)?.removePerceptionEvent(eventId: eventId)
-  }
-
   public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
     try (store as? PerceptionEventOutbox)?.enqueuePerceptionTombstone(tombstone)
   }
 
-  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
-    try (store as? PerceptionEventOutbox)?.pendingPerceptionTombstones(limit: limit) ?? []
+  public func enqueueSessionEndMarker(_ marker: SessionEndMarker) throws {
+    try (store as? PerceptionEventOutbox)?.enqueueSessionEndMarker(marker)
   }
 
-  public func removePerceptionTombstone(tombstoneId: String) throws {
-    try (store as? PerceptionEventOutbox)?.removePerceptionTombstone(tombstoneId: tombstoneId)
+  public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
+    try (store as? PerceptionEventOutbox)?.pendingIngress(limit: limit) ?? []
+  }
+
+  public func removeIngress(kind: RuntimeIngressKind, ingressId: String) throws {
+    try (store as? PerceptionEventOutbox)?.removeIngress(kind: kind, ingressId: ingressId)
+  }
+
+  @discardableResult
+  public func dropExpiredPerceptionEvents(now: Date) throws -> Int {
+    try (store as? PerceptionEventOutbox)?.dropExpiredPerceptionEvents(now: now) ?? 0
   }
 
   private func carryPendingPerceptionEvents(to replacement: ScreenMemoryStore) {
@@ -300,18 +382,20 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
       return
     }
 
-    for event in (try? currentOutbox.pendingPerceptionEvents(limit: 10_000)) ?? [] {
+    // Carry every pending durable-ingress item to the replacement store in
+    // enqueue order, so a profile switch never loses or reorders unacknowledged
+    // events, tombstones, or session-end markers.
+    for item in (try? currentOutbox.pendingIngress(limit: 10_000)) ?? [] {
       do {
-        try replacementOutbox.enqueuePerceptionEvent(event)
-        try currentOutbox.removePerceptionEvent(eventId: event.eventId)
-      } catch {
-        continue
-      }
-    }
-    for tombstone in (try? currentOutbox.pendingPerceptionTombstones(limit: 10_000)) ?? [] {
-      do {
-        try replacementOutbox.enqueuePerceptionTombstone(tombstone)
-        try currentOutbox.removePerceptionTombstone(tombstoneId: tombstone.tombstoneId)
+        switch item {
+        case .perceptionEvent(let event):
+          try replacementOutbox.enqueuePerceptionEvent(event)
+        case .perceptionTombstone(let tombstone):
+          try replacementOutbox.enqueuePerceptionTombstone(tombstone)
+        case .sessionEndMarker(let marker):
+          try replacementOutbox.enqueueSessionEndMarker(marker)
+        }
+        try currentOutbox.removeIngress(kind: item.kind, ingressId: item.ingressId)
       } catch {
         continue
       }
@@ -794,21 +878,24 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         try execute("DELETE FROM screen_memory_records")
         try execute("DELETE FROM screen_memory_video_chunks")
         try execute("DELETE FROM audio_memory_records")
-        try execute("DELETE FROM perception_event_outbox")
+        try execute("DELETE FROM runtime_ingress_outbox")
       } else {
         for recordID in plan.recordIDs {
           try execute("DELETE FROM screen_memory_records_fts WHERE id = ?", bindings: [.text(recordID)])
           try execute("DELETE FROM screen_memory_records WHERE id = ?", bindings: [.text(recordID)])
+          // Only drop an unsent perception event that carries the deleted
+          // record; a pending tombstone must survive so the deletion still
+          // propagates to the Agent Runtime.
           try execute(
-            "DELETE FROM perception_event_outbox WHERE event_json LIKE ?",
-            bindings: [.text("%\(recordID)%")]
+            "DELETE FROM runtime_ingress_outbox WHERE ingress_kind = ? AND payload_json LIKE ?",
+            bindings: [.text(RuntimeIngressKind.perceptionEvent.rawValue), .text("%\(recordID)%")]
           )
         }
         for audioID in plan.audioRecordIDs {
           try execute("DELETE FROM audio_memory_records WHERE id = ?", bindings: [.text(audioID)])
           try execute(
-            "DELETE FROM perception_event_outbox WHERE event_json LIKE ?",
-            bindings: [.text("%\(audioID)%")]
+            "DELETE FROM runtime_ingress_outbox WHERE ingress_kind = ? AND payload_json LIKE ?",
+            bindings: [.text(RuntimeIngressKind.perceptionEvent.rawValue), .text("%\(audioID)%")]
           )
         }
         for chunkID in plan.chunkIDs {
@@ -1115,100 +1202,68 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
   }
 
   public func enqueuePerceptionEvent(_ event: PerceptionEvent) throws {
-    let encoded = try ProtocolEventCodec.encode(event)
-    guard let encodedText = String(data: encoded, encoding: .utf8) else {
-      throw ScreenMemoryStoreError.invalidText
-    }
-    try execute(
-      """
-      INSERT INTO perception_event_outbox (event_id, event_json, enqueued_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(event_id) DO UPDATE SET
-        event_json = excluded.event_json,
-        enqueued_at = excluded.enqueued_at
-      """,
-      bindings: [
-        .text(event.eventId),
-        .text(encodedText),
-        .text(Date().protocolTimestamp),
-      ]
+    try enqueueIngress(
+      kind: .perceptionEvent,
+      ingressId: event.eventId,
+      payload: try ProtocolEventCodec.encode(event),
+      expiresAt: event.expiresAt
     )
-  }
-
-  public func pendingPerceptionEvents(limit: Int) throws -> [PerceptionEvent] {
-    try withStatement(
-      """
-      SELECT event_json
-      FROM perception_event_outbox
-      ORDER BY enqueued_at ASC, event_id ASC
-      LIMIT ?
-      """,
-      bindings: [.int(max(0, limit))]
-    ) { statement in
-      var events: [PerceptionEvent] = []
-      while true {
-        let result = sqlite3_step(statement)
-        if result == SQLITE_ROW {
-          let eventJSON = try columnText(statement, 0)
-          guard let eventData = eventJSON.data(using: .utf8) else {
-            throw ScreenMemoryStoreError.invalidText
-          }
-          events.append(try ProtocolEventCodec.decodePerceptionEvent(eventData))
-        } else if result == SQLITE_DONE {
-          return events
-        } else {
-          throw ScreenMemoryStoreError.stepFailed(errorMessage)
-        }
-      }
-    }
-  }
-
-  public func removePerceptionEvent(eventId: String) throws {
-    try execute("DELETE FROM perception_event_outbox WHERE event_id = ?", bindings: [.text(eventId)])
   }
 
   public func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
-    let encoded = try ProtocolEventCodec.encode(tombstone)
-    guard let encodedText = String(data: encoded, encoding: .utf8) else {
-      throw ScreenMemoryStoreError.invalidText
-    }
-    try execute(
-      """
-      INSERT INTO perception_tombstone_outbox (tombstone_id, tombstone_json, enqueued_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(tombstone_id) DO UPDATE SET
-        tombstone_json = excluded.tombstone_json,
-        enqueued_at = excluded.enqueued_at
-      """,
-      bindings: [
-        .text(tombstone.tombstoneId),
-        .text(encodedText),
-        .text(Date().protocolTimestamp),
-      ]
+    try enqueueIngress(
+      kind: .perceptionTombstone,
+      ingressId: tombstone.tombstoneId,
+      payload: try ProtocolEventCodec.encode(tombstone),
+      expiresAt: nil
     )
   }
 
-  public func pendingPerceptionTombstones(limit: Int) throws -> [PerceptionTombstone] {
+  public func enqueueSessionEndMarker(_ marker: SessionEndMarker) throws {
+    try enqueueIngress(
+      kind: .sessionEndMarker,
+      ingressId: marker.markerId,
+      payload: try ProtocolEventCodec.encode(marker),
+      expiresAt: nil
+    )
+  }
+
+  public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
+    // `seq` is the monotonic enqueue order across every kind, so an event can
+    // never be redelivered behind its own later tombstone.
     try withStatement(
       """
-      SELECT tombstone_json
-      FROM perception_tombstone_outbox
-      ORDER BY enqueued_at ASC, tombstone_id ASC
+      SELECT ingress_kind, payload_json
+      FROM runtime_ingress_outbox
+      ORDER BY seq ASC
       LIMIT ?
       """,
       bindings: [.int(max(0, limit))]
     ) { statement in
-      var tombstones: [PerceptionTombstone] = []
+      var items: [RuntimeIngressOutboxItem] = []
       while true {
         let result = sqlite3_step(statement)
         if result == SQLITE_ROW {
-          let tombstoneJSON = try columnText(statement, 0)
-          guard let tombstoneData = tombstoneJSON.data(using: .utf8) else {
+          let kindRaw = try columnText(statement, 0)
+          let payloadJSON = try columnText(statement, 1)
+          guard let payload = payloadJSON.data(using: .utf8) else {
             throw ScreenMemoryStoreError.invalidText
           }
-          tombstones.append(try ProtocolEventCodec.decodePerceptionTombstone(tombstoneData))
+          switch RuntimeIngressKind(rawValue: kindRaw) {
+          case .perceptionEvent:
+            items.append(.perceptionEvent(try ProtocolEventCodec.decodePerceptionEvent(payload)))
+          case .perceptionTombstone:
+            items.append(
+              .perceptionTombstone(try ProtocolEventCodec.decodePerceptionTombstone(payload)))
+          case .sessionEndMarker:
+            items.append(.sessionEndMarker(try ProtocolEventCodec.decodeSessionEndMarker(payload)))
+          case nil:
+            // Unknown kind from a forward-incompatible row: skip rather than fail
+            // the whole drain.
+            continue
+          }
         } else if result == SQLITE_DONE {
-          return tombstones
+          return items
         } else {
           throw ScreenMemoryStoreError.stepFailed(errorMessage)
         }
@@ -1216,11 +1271,116 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     }
   }
 
-  public func removePerceptionTombstone(tombstoneId: String) throws {
+  public func removeIngress(kind: RuntimeIngressKind, ingressId: String) throws {
     try execute(
-      "DELETE FROM perception_tombstone_outbox WHERE tombstone_id = ?",
-      bindings: [.text(tombstoneId)]
+      "DELETE FROM runtime_ingress_outbox WHERE ingress_kind = ? AND ingress_id = ?",
+      bindings: [.text(kind.rawValue), .text(ingressId)]
     )
+  }
+
+  @discardableResult
+  public func dropExpiredPerceptionEvents(now: Date) throws -> Int {
+    try execute(
+      """
+      DELETE FROM runtime_ingress_outbox
+      WHERE ingress_kind = ?
+        AND expires_at IS NOT NULL
+        AND expires_at <= ?
+      """,
+      bindings: [.text(RuntimeIngressKind.perceptionEvent.rawValue), .text(now.protocolTimestamp)]
+    )
+    return Int(sqlite3_changes(db))
+  }
+
+  private func enqueueIngress(
+    kind: RuntimeIngressKind,
+    ingressId: String,
+    payload: Data,
+    expiresAt: String?
+  ) throws {
+    guard let payloadText = String(data: payload, encoding: .utf8) else {
+      throw ScreenMemoryStoreError.invalidText
+    }
+    // A re-enqueue keeps the original `seq` (position), so refreshing a payload
+    // never advances an item past a later one that was enqueued after it.
+    try execute(
+      """
+      INSERT INTO runtime_ingress_outbox (ingress_kind, ingress_id, payload_json, enqueued_at, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(ingress_kind, ingress_id) DO UPDATE SET
+        payload_json = excluded.payload_json,
+        enqueued_at = excluded.enqueued_at,
+        expires_at = excluded.expires_at
+      """,
+      bindings: [
+        .text(kind.rawValue),
+        .text(ingressId),
+        .text(payloadText),
+        .text(Date().protocolTimestamp),
+        expiresAt.map(SQLiteBinding.text) ?? .null,
+      ]
+    )
+  }
+
+  /// One-time carry of the legacy per-kind outboxes (`perception_event_outbox`,
+  /// `perception_tombstone_outbox`) into the unified `runtime_ingress_outbox`,
+  /// preserving global enqueue order by `enqueued_at` so a pre-upgrade event can
+  /// never redeliver behind its own later tombstone. Idempotent: once the legacy
+  /// tables are dropped this is a no-op. Perception-event expiry is recovered
+  /// from the stored payload via `json_extract`.
+  private func migrateLegacyPerceptionOutboxes() throws {
+    let hasEvents = try legacyTableExists("perception_event_outbox")
+    let hasTombstones = try legacyTableExists("perception_tombstone_outbox")
+    guard hasEvents || hasTombstones else { return }
+
+    var selects: [String] = []
+    if hasEvents {
+      selects.append(
+        """
+        SELECT '\(RuntimeIngressKind.perceptionEvent.rawValue)' AS ingress_kind,
+               event_id AS ingress_id,
+               event_json AS payload_json,
+               enqueued_at AS enqueued_at,
+               json_extract(event_json, '$.expires_at') AS expires_at
+        FROM perception_event_outbox
+        """
+      )
+    }
+    if hasTombstones {
+      selects.append(
+        """
+        SELECT '\(RuntimeIngressKind.perceptionTombstone.rawValue)' AS ingress_kind,
+               tombstone_id AS ingress_id,
+               tombstone_json AS payload_json,
+               enqueued_at AS enqueued_at,
+               NULL AS expires_at
+        FROM perception_tombstone_outbox
+        """
+      )
+    }
+
+    try execute(
+      """
+      INSERT OR IGNORE INTO runtime_ingress_outbox
+        (ingress_kind, ingress_id, payload_json, enqueued_at, expires_at)
+      SELECT ingress_kind, ingress_id, payload_json, enqueued_at, expires_at
+      FROM (
+        \(selects.joined(separator: "\n        UNION ALL\n"))
+      )
+      ORDER BY enqueued_at ASC, ingress_id ASC
+      """
+    )
+    try execute("DROP TABLE IF EXISTS perception_event_outbox")
+    try execute("DROP TABLE IF EXISTS perception_tombstone_outbox")
+  }
+
+  private func legacyTableExists(_ name: String) throws -> Bool {
+    try withStatement(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+      bindings: [.text(name)]
+    ) { statement in
+      sqlite3_step(statement) == SQLITE_ROW
+    }
   }
 
   private func migrate() throws {
@@ -1292,24 +1452,24 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     )
     try execute("PRAGMA user_version = 2")
     try execute("DROP TABLE IF EXISTS legacy_screen_memory_imports")
+    // One durable outbox for every Runtime-acknowledged ingress kind, replacing
+    // the two per-kind tables (migration below). `seq` is the monotonic global
+    // enqueue order so an event can never redeliver behind its later tombstone;
+    // rows survive until a `runtime_ingress_ack` deletes them by `(kind, id)`.
     try execute(
       """
-      CREATE TABLE IF NOT EXISTS perception_event_outbox (
-        event_id TEXT PRIMARY KEY,
-        event_json TEXT NOT NULL,
-        enqueued_at TEXT NOT NULL
+      CREATE TABLE IF NOT EXISTS runtime_ingress_outbox (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        ingress_kind TEXT NOT NULL,
+        ingress_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        enqueued_at TEXT NOT NULL,
+        expires_at TEXT,
+        UNIQUE(ingress_kind, ingress_id)
       )
       """
     )
-    try execute(
-      """
-      CREATE TABLE IF NOT EXISTS perception_tombstone_outbox (
-        tombstone_id TEXT PRIMARY KEY,
-        tombstone_json TEXT NOT NULL,
-        enqueued_at TEXT NOT NULL
-      )
-      """
-    )
+    try migrateLegacyPerceptionOutboxes()
     try execute(
       """
       CREATE TABLE IF NOT EXISTS audio_memory_records (

@@ -399,17 +399,29 @@ public enum SessionEndReason: String, Codable, Equatable, Sendable {
 
 public struct SessionEndMarker: Codable, Equatable, Sendable {
   public let type: String
+  /// Stable UUID for this marker: the Runtime's dedup key and the value echoed
+  /// back in `runtime_ingress_ack.ingress_id`. For a `crash` marker it is
+  /// preallocated in the session lock so an unclean prior session finalizes to
+  /// exactly one idempotent marker on next launch.
+  public var markerId: String
+  /// The capture session this marker closes. A fresh capture allocates a new
+  /// `sessionId`; markers never span sessions.
+  public var sessionId: String
   public var endedAt: String
   public var reason: SessionEndReason
 
-  public init(endedAt: String, reason: SessionEndReason) {
+  public init(markerId: String, sessionId: String, endedAt: String, reason: SessionEndReason) {
     self.type = "session_end_marker"
+    self.markerId = markerId
+    self.sessionId = sessionId
     self.endedAt = endedAt
     self.reason = reason
   }
 
   enum CodingKeys: String, CodingKey, CaseIterable {
     case type
+    case markerId = "marker_id"
+    case sessionId = "session_id"
     case endedAt = "ended_at"
     case reason
   }
@@ -476,10 +488,43 @@ public struct RuntimeError: Codable, Equatable, Sendable {
   }
 }
 
+/// The kind of durable ingress a `runtime_ingress_ack` acknowledges. Mirrors the
+/// Protocol enum: only the three durable, outbox-backed ingress kinds appear —
+/// `user_message` is never acknowledged this way.
+public enum RuntimeIngressKind: String, Codable, Equatable, Sendable {
+  case perceptionEvent = "perception_event"
+  case perceptionTombstone = "perception_tombstone"
+  case sessionEndMarker = "session_end_marker"
+}
+
+/// A durable-ingress acknowledgement the Runtime sends only after the event
+/// ledger and projection transaction commits (a redelivered, deduped item is
+/// acknowledged the same way). Desktop keeps the matching outbox row until this
+/// arrives. `ingressId` is the item's own stable UUID — `event_id`,
+/// `tombstone_id`, or the session marker's `marker_id`. See the renovation plan.
+public struct RuntimeIngressAck: Codable, Equatable, Sendable {
+  public let type: String
+  public var ingressKind: RuntimeIngressKind
+  public var ingressId: String
+
+  public init(ingressKind: RuntimeIngressKind, ingressId: String) {
+    self.type = "runtime_ingress_ack"
+    self.ingressKind = ingressKind
+    self.ingressId = ingressId
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case ingressKind = "ingress_kind"
+    case ingressId = "ingress_id"
+  }
+}
+
 public enum RuntimeToClientEvent: Equatable, Sendable {
   case helloOk(HelloOk)
   case historyBackfillResponse(HistoryBackfillResponse)
   case companionMessage(CompanionMessage)
+  case runtimeIngressAck(RuntimeIngressAck)
   case runtimeError(RuntimeError)
 }
 
@@ -510,6 +555,15 @@ public struct ProtocolEventCodec {
     return try decoder.decode(PerceptionTombstone.self, from: data)
   }
 
+  public static func decodeSessionEndMarker(_ data: Data) throws -> SessionEndMarker {
+    try validateAllowedKeys(
+      data: data,
+      type: "session_end_marker",
+      allowed: Set(SessionEndMarker.CodingKeys.allCases.map(\.stringValue))
+    )
+    return try decoder.decode(SessionEndMarker.self, from: data)
+  }
+
   public static func decodeRuntimeToClientEvent(_ data: Data) throws -> RuntimeToClientEvent {
     let type = try topLevelType(data)
     switch type {
@@ -534,6 +588,13 @@ public struct ProtocolEventCodec {
         allowed: Set(CompanionMessage.CodingKeys.allCases.map(\.stringValue))
       )
       return .companionMessage(try decoder.decode(CompanionMessage.self, from: data))
+    case "runtime_ingress_ack":
+      try validateAllowedKeys(
+        data: data,
+        type: type,
+        allowed: Set(RuntimeIngressAck.CodingKeys.allCases.map(\.stringValue))
+      )
+      return .runtimeIngressAck(try decoder.decode(RuntimeIngressAck.self, from: data))
     case "runtime_error":
       try validateAllowedKeys(
         data: data,

@@ -168,6 +168,7 @@ public protocol RuntimeChatClient: AnyObject {
   func sendUserMessage(_ body: String) throws -> ChatMessage
   func sendPerceptionEvent(_ event: PerceptionEvent) throws
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws
+  func sendSessionEndMarker(_ marker: SessionEndMarker) throws
   func acknowledge(messageId: String) throws
 }
 
@@ -190,6 +191,7 @@ public final class DisconnectedRuntimeChatClient: RuntimeChatClient {
 
   public func sendPerceptionEvent(_ event: PerceptionEvent) throws {}
   public func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {}
+  public func sendSessionEndMarker(_ marker: SessionEndMarker) throws {}
   public func acknowledge(messageId: String) throws {}
 }
 
@@ -200,6 +202,10 @@ public final class RuntimeAdapter: RuntimeChatClient {
   public private(set) var connectionGeneration: Int = 0
   public let messageStore: MessageStore
   public var onCompanionMessage: ((CompanionMessage) -> Void)?
+  /// Sink for durable-ingress acknowledgements. The durable outbox observes this
+  /// to delete an item only once the Runtime confirms its ledger/projection
+  /// transaction committed — not merely because the socket accepted the send.
+  public var onIngressAck: ((RuntimeIngressAck) -> Void)?
 
   private let socket: RuntimeSocket
   private let clientVersion: String
@@ -257,6 +263,8 @@ public final class RuntimeAdapter: RuntimeChatClient {
       messageStore.appendCompanion(companion)
       onCompanionMessage?(companion)
       try acknowledge(messageId: companion.messageId)
+    case .runtimeIngressAck(let ack):
+      onIngressAck?(ack)
     case .runtimeError(let error):
       status = .failed(error.message)
     }
@@ -281,11 +289,15 @@ public final class RuntimeAdapter: RuntimeChatClient {
   }
 
   public func sendPerceptionEvent(_ event: PerceptionEvent) throws {
-    try sendOrQueue(ProtocolEventCodec.encode(event))
+    try sendDurableIngress(ProtocolEventCodec.encode(event))
   }
 
   public func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
-    try sendOrQueue(ProtocolEventCodec.encode(tombstone))
+    try sendDurableIngress(ProtocolEventCodec.encode(tombstone))
+  }
+
+  public func sendSessionEndMarker(_ marker: SessionEndMarker) throws {
+    try sendDurableIngress(ProtocolEventCodec.encode(marker))
   }
 
   public func sendPresence(foreground: Bool) throws {
@@ -315,19 +327,24 @@ public final class RuntimeAdapter: RuntimeChatClient {
     return true
   }
 
-  public func sendSessionEnd(reason: SessionEndReason) throws {
-    try sendOrQueue(
-      ProtocolEventCodec.encode(
-        SessionEndMarker(endedAt: now().protocolTimestamp, reason: reason)
-      )
-    )
-  }
-
   private func sendOrQueue(_ data: Data) throws {
     guard status == .connected else {
       outboundQueue.append(data)
       return
     }
+    try socket.send(data)
+  }
+
+  /// Durable ingress (`perception_event`, `perception_tombstone`,
+  /// `session_end_marker`) bypasses `outboundQueue`. The SQLite outbox (via
+  /// `PerceptionPublisher`) owns redelivery keyed by `(ingress_kind, ingress_id)`
+  /// and keeps every item until a `runtime_ingress_ack` deletes it, so a send
+  /// while disconnected is a no-op here rather than an ephemeral enqueue that
+  /// could reorder an event behind its later tombstone. `outboundQueue` remains
+  /// only for ephemeral connection traffic (connect, delivery acks, presence,
+  /// history backfill).
+  private func sendDurableIngress(_ data: Data) throws {
+    guard status == .connected else { return }
     try socket.send(data)
   }
 

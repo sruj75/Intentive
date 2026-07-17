@@ -1,6 +1,6 @@
-import type { HistoryBackfillResponse, RuntimeError } from "@intentive/protocol";
+import type { HistoryBackfillResponse, RuntimeError, RuntimeIngressAck } from "@intentive/protocol";
 
-import type { PerUserChannel } from "../../sessions/types/event.js";
+import type { PerUserChannel, RuntimeIngressEvent } from "../../sessions/types/event.js";
 import { isRuntimeIngressEvent } from "../../sessions/types/event.js";
 import { conversationHistoryUnavailableError } from "../service/history-unavailable.js";
 import type { GatewayEventHandler } from "./ws-handler.js";
@@ -19,8 +19,12 @@ const unsupportedPostConnectEvent: RuntimeError = {
  *   `history_backfill_response`. It serializes behind pending per-User work but
  *   never touches the arrival ledger/write path (ADR-0006).
  * - a Runtime Ingress event (`user_message` / `perception_event` /
- *   `session_end_marker`) is a **write** — `channel.accept` commits the ledger
- *   marker + projection in one transaction and replies with nothing.
+ *   `perception_tombstone` / `session_end_marker`) is a **write** —
+ *   `channel.accept` commits the ledger marker + projection in one transaction.
+ *   The three durable ingress kinds then receive a `runtime_ingress_ack` sent
+ *   only after that transaction commits (a duplicate the ledger dedupes still
+ *   commits and so is acknowledged the same way); a failed transaction rejects
+ *   and is never acknowledged. `user_message` gets no durable ack.
  * - anything else is rejected with an explicit `runtime_error`; there is no
  *   silent no-op.
  */
@@ -45,7 +49,7 @@ export function createPostConnectRouter(deps: { channel: PerUserChannel }): Gate
 
     if (isRuntimeIngressEvent(event)) {
       await deps.channel.accept(session, event);
-      return undefined;
+      return ingressAckFor(event);
     }
 
     if (event.type === "presence_update") {
@@ -59,4 +63,35 @@ export function createPostConnectRouter(deps: { channel: PerUserChannel }): Gate
 
     return unsupportedPostConnectEvent;
   };
+}
+
+/**
+ * The durable-ingress acknowledgement for a just-committed write, or `undefined`
+ * for `user_message` (which carries no durable outbox on the client). The
+ * `ingress_id` is the item's own stable UUID so a redelivered, ledger-deduped
+ * item acknowledges identically.
+ */
+function ingressAckFor(event: RuntimeIngressEvent): RuntimeIngressAck | undefined {
+  switch (event.type) {
+    case "perception_event":
+      return {
+        type: "runtime_ingress_ack",
+        ingress_kind: "perception_event",
+        ingress_id: event.event_id,
+      };
+    case "perception_tombstone":
+      return {
+        type: "runtime_ingress_ack",
+        ingress_kind: "perception_tombstone",
+        ingress_id: event.tombstone_id,
+      };
+    case "session_end_marker":
+      return {
+        type: "runtime_ingress_ack",
+        ingress_kind: "session_end_marker",
+        ingress_id: event.marker_id,
+      };
+    default:
+      return undefined;
+  }
 }

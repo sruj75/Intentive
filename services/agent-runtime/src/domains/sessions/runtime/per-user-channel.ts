@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { LogAttrs, Logger } from "@intentive/providers/telemetry";
 import { createNoopLogger } from "@intentive/providers/telemetry";
 
@@ -37,17 +36,15 @@ export function createPerUserChannel(deps: {
   runTurn?: TurnRunner;
   onPerceptionArrived?: PerceptionArrivedSink;
   onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
-  newDedupKey?: () => string;
   logger?: Logger;
 }): PerUserChannel {
-  const newDedupKey = deps.newDedupKey ?? randomUUID;
   const logger = deps.logger ?? createNoopLogger();
   const queue = createUserQueue({ logger });
 
   return {
     accept(session, event) {
       return queue.submit(session.userId, async () => {
-        const record = toLedgerRecord(session, event, newDedupKey);
+        const record = toLedgerRecord(session, event);
         const results = await deps.sql.transaction([
           deps.ledger.recordQuery(record),
           ...deps.project(session, event),
@@ -131,20 +128,16 @@ function insertedLedgerRow(results: unknown[]): boolean {
   return Array.isArray(ledgerRows) && ledgerRows.length > 0;
 }
 
-function toLedgerRecord(
-  session: BoundSession,
-  event: RuntimeIngressEvent,
-  newDedupKey: () => string,
-): LedgerRecord {
+function toLedgerRecord(session: BoundSession, event: RuntimeIngressEvent): LedgerRecord {
   return {
     userId: session.userId,
     kind: event.type,
-    dedupKey: dedupKeyFor(event, newDedupKey),
+    dedupKey: dedupKeyFor(event),
     payload: event,
   };
 }
 
-function dedupKeyFor(event: RuntimeIngressEvent, newDedupKey: () => string): string {
+function dedupKeyFor(event: RuntimeIngressEvent): string {
   switch (event.type) {
     case "user_message":
       return event.message_id;
@@ -153,6 +146,8 @@ function dedupKeyFor(event: RuntimeIngressEvent, newDedupKey: () => string): str
     case "perception_tombstone":
       return event.tombstone_id;
     case "session_end_marker":
-      return newDedupKey();
+      // The marker's stable UUID is its dedup key, so a redelivered marker
+      // commits idempotently and is acknowledged the same way.
+      return event.marker_id;
   }
 }

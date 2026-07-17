@@ -198,9 +198,10 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     // Local store holds a text transcript only — there is no audio-bytes field.
     let record = try XCTUnwrap(h.store.recentAudioMemory(limit: 1).first)
     XCTAssertFalse(record.transcript.isEmpty)
-    // The synced event references an opaque local record, never a media payload or path.
+    // The synced event references an opaque local record by UUID, never a media
+    // payload or path.
     let event = try XCTUnwrap(h.runtime.perceptionEvents.first)
-    XCTAssertTrue(event.localRecordRef.hasPrefix("screen-memory://ambient-audio/"))
+    XCTAssertNotNil(UUID(uuidString: event.localRecordRef))
     XCTAssertFalse(event.localRecordRef.hasPrefix("/"))
   }
 

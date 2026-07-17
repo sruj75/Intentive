@@ -49,9 +49,8 @@ test("accept commits the ledger marker before projection queries in one transact
   assert.deepEqual(transactions[0], [ledgerQuery, projectionQuery]);
 });
 
-test("accept derives stable dedup keys for messages and perception events and mints them for end markers", async () => {
+test("accept derives stable dedup keys for messages, perception events, and end markers", async () => {
   const records = [];
-  const keys = ["end_1", "end_2"];
   const channel = createPerUserChannel({
     sql: { transaction: async () => [] },
     ledger: {
@@ -62,29 +61,21 @@ test("accept derives stable dedup keys for messages and perception events and mi
     },
     conversation: { readSnapshot: async () => emptySnapshot() },
     project: () => [],
-    newDedupKey: () => keys.shift(),
   });
 
   await channel.accept(session, userMessage("message_1"));
   await channel.accept(session, perceptionEvent("perception_1"));
-  await channel.accept(session, {
-    type: "session_end_marker",
-    ended_at: "2026-06-09T00:01:00.000Z",
-    reason: "quit",
-  });
-  await channel.accept(session, {
-    type: "session_end_marker",
-    ended_at: "2026-06-09T00:02:00.000Z",
-    reason: "quit",
-  });
+  await channel.accept(session, sessionEndMarker("marker_1"));
+  await channel.accept(session, sessionEndMarker("marker_2", "2026-06-09T00:02:00.000Z"));
 
   assert.deepEqual(
     records.map((record) => [record.kind, record.dedupKey]),
     [
       ["user_message", "message_1"],
       ["perception_event", "perception_1"],
-      ["session_end_marker", "end_1"],
-      ["session_end_marker", "end_2"],
+      // The marker's own stable UUID is its dedup key, so redelivery dedupes.
+      ["session_end_marker", "marker_1"],
+      ["session_end_marker", "marker_2"],
     ],
   );
 });
@@ -238,11 +229,7 @@ test("onPerceptionArrived fires once for new perception events only", async () =
   const perception = perceptionEvent("perception_1");
   await channel.accept(session, perception);
   await channel.accept(session, perception);
-  await channel.accept(session, {
-    type: "session_end_marker",
-    ended_at: "2026-06-09T00:01:00.000Z",
-    reason: "quit",
-  });
+  await channel.accept(session, sessionEndMarker("marker_1"));
   await channel.accept(session, userMessage("message_1"));
 
   assert.deepEqual(perceptions, [
@@ -262,6 +249,16 @@ function userMessage(messageId) {
     message_id: messageId,
     body: "hello",
     sent_at: "2026-06-09T00:00:00.000Z",
+  };
+}
+
+function sessionEndMarker(markerId, endedAt = "2026-06-09T00:01:00.000Z") {
+  return {
+    type: "session_end_marker",
+    marker_id: markerId,
+    session_id: "11111111-1111-4111-8111-111111111111",
+    ended_at: endedAt,
+    reason: "quit",
   };
 }
 

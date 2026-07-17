@@ -1,7 +1,7 @@
 {
   "type": "perception_tombstone",
-  "tombstone_id": "tombstone_2026-07-05T11-00-00Z_001",
+  "tombstone_id": "5f9a1b2c-3d4e-4f5a-9b8c-7d6e5f4a3b2c",
   "reason": "manual_delete",
-  "event_refs": ["perception_2026-07-05T10-00-00Z_001"],
+  "event_refs": ["0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d"],
   "emitted_at": "2026-07-05T11:00:00.000Z"
 }

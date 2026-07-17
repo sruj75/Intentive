@@ -1,6 +1,6 @@
 {
   "type": "perception_event",
-  "event_id": "perception_2026-07-05T10-00-00Z_001",
+  "event_id": "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
   "source_client": "desktop",
   "captured_at": "2026-07-05T10:00:00.000Z",
   "period_start": "2026-07-05T09:59:15.000Z",
@@ -8,9 +8,11 @@
   "artifact_type": "searchable_screen_record",
   "summary": "User is reviewing the desktop renovation plan and comparing protocol requirements.",
   "signals": {
-    "app": "Code",
-    "window_title_redacted": true,
-    "ocr_word_count": 184
+    "content_redacted": false,
+    "bundle_id": "com.microsoft.VSCode",
+    "app_name": "Code",
+    "window_title": "plan.md — Intentive",
+    "ocr_text": "Atomic Plan: Close the Eight Desktop Release Blockers"
   },
   "embedding_ref": {
     "model_id": "local-test-embedding",
@@ -21,5 +23,5 @@
   "retention_class": "screen_memory_30d",
   "confidence": 0.92,
   "expires_at": "2026-08-04T10:00:00.000Z",
-  "local_record_ref": "screen-memory://records/2026-07-05/001"
+  "local_record_ref": "7c4d9f10-3a2b-4e5c-8d6f-1a2b3c4d5e6f"
 }

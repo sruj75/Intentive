@@ -7,14 +7,16 @@ import XCTest
 /// loop, but over the WS Protocol with crash-safe SQLite durability, expiry
 /// enforcement, and tenant-scoped tombstones.
 final class PerceptionSyncTests: XCTestCase {
-  func testDurableOutboxDeliversEachEventExactlyOnceAcrossAnOutage() throws {
+  func testDurableOutboxKeepsRowsUntilAcknowledgedAcrossAnOutage() throws {
     let store = try SQLiteScreenMemoryStore(databaseURL: temporaryDatabaseURL())
     let client = ScriptedPerceptionRuntimeClient()
     client.connected = false
+    var generation = 1
     let publisher = PerceptionPublisher(
       runtimeClient: client,
       outbox: store,
-      isRuntimeConnected: { client.connected }
+      isRuntimeConnected: { client.connected },
+      connectionGeneration: { generation }
     )
 
     // Offline: every publish durably queues, nothing is delivered.
@@ -24,21 +26,70 @@ final class PerceptionSyncTests: XCTestCase {
     XCTAssertEqual(try store.pendingPerceptionEvents(limit: 100).count, 5)
     XCTAssertTrue(client.receivedEvents.isEmpty)
 
-    // Reconnect, but the socket drops mid-flush after two deliveries.
+    // Reconnect, but the socket drops mid-flush after two deliveries. Deletion is
+    // acknowledgement-driven, so a send never removes a row — all five survive.
     client.connected = true
     client.failEventsAfter = 2
-    XCTAssertThrowsError(try publisher.flushPendingPerceptionEvents())
+    XCTAssertThrowsError(try publisher.flushPendingIngress())
     XCTAssertEqual(client.receivedEvents.count, 2)
-    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 100).count, 3)
+    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 100).count, 5)
 
-    // The drop clears; the tail is redelivered — no duplicates, no losses.
+    // The drop is a new connection generation: the in-flight set resets and the
+    // whole tail is redelivered (Runtime dedupes the two duplicates by ledger).
+    generation = 2
     client.failEventsAfter = nil
-    let flushed = try publisher.flushPendingPerceptionEvents()
-    XCTAssertEqual(flushed, 3)
+    let flushed = try publisher.flushPendingIngress()
+    XCTAssertEqual(flushed, 5)
+    XCTAssertEqual(Set(client.receivedEvents.map(\.eventId)).count, 5)
+
+    // A `runtime_ingress_ack` per event (emitted after the ledger commit) is the
+    // only thing that empties the outbox.
+    for index in 0..<5 {
+      try publisher.acknowledge(
+        RuntimeIngressAck(ingressKind: .perceptionEvent, ingressId: "evt-\(index)")
+      )
+    }
     XCTAssertTrue(try store.pendingPerceptionEvents(limit: 100).isEmpty)
-    let deliveredIDs = client.receivedEvents.map(\.eventId)
-    XCTAssertEqual(deliveredIDs.count, 5)
-    XCTAssertEqual(Set(deliveredIDs).count, 5)
+  }
+
+  func testDuplicateAcknowledgementIsIdempotent() throws {
+    let store = InMemoryScreenMemoryStore()
+    let client = ScriptedPerceptionRuntimeClient()
+    let publisher = PerceptionPublisher(runtimeClient: client, outbox: store, isRuntimeConnected: { true })
+
+    try publisher.publish(artifact(id: "evt-dup"))
+    let ack = RuntimeIngressAck(ingressKind: .perceptionEvent, ingressId: "evt-dup")
+    try publisher.acknowledge(ack)
+    XCTAssertTrue(try store.pendingPerceptionEvents(limit: 10).isEmpty)
+    // A redelivered/duplicate ack for an already-deleted row is a no-op.
+    XCTAssertNoThrow(try publisher.acknowledge(ack))
+    XCTAssertTrue(try store.pendingPerceptionEvents(limit: 10).isEmpty)
+  }
+
+  func testEventNeverRedeliversBehindItsLaterTombstone() throws {
+    let store = try SQLiteScreenMemoryStore(databaseURL: temporaryDatabaseURL())
+    let client = ScriptedPerceptionRuntimeClient()
+    client.connected = false
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { client.connected }
+    )
+
+    try publisher.publish(artifact(id: "evt-order"))
+    try publisher.publishTombstone(
+      PerceptionTombstone(
+        tombstoneId: "tomb-order",
+        reason: .manualDelete,
+        eventRefs: ["evt-order"],
+        emittedAt: Date().protocolTimestamp
+      )
+    )
+
+    // The unified outbox preserves global enqueue order: the event drains before
+    // its later tombstone, never after it.
+    let kinds = try store.pendingIngress(limit: 100).map(\.kind)
+    XCTAssertEqual(kinds, [.perceptionEvent, .perceptionTombstone])
   }
 
   func testPendingTailSurvivesRelaunchMidOutage() throws {
@@ -68,10 +119,17 @@ final class PerceptionSyncTests: XCTestCase {
       outbox: reopened,
       isRuntimeConnected: { true }
     )
-    let flushed = try publisher.flushPendingPerceptionEvents()
+    let flushed = try publisher.flushPendingIngress()
     XCTAssertEqual(flushed, 3)
-    XCTAssertTrue(try reopened.pendingPerceptionEvents(limit: 100).isEmpty)
+    // Redelivery does not delete: rows survive until acknowledged.
+    XCTAssertEqual(try reopened.pendingPerceptionEvents(limit: 100).count, 3)
     XCTAssertEqual(Set(onlineClient.receivedEvents.map(\.eventId)).count, 3)
+    for index in 0..<3 {
+      try publisher.acknowledge(
+        RuntimeIngressAck(ingressKind: .perceptionEvent, ingressId: "durable-\(index)")
+      )
+    }
+    XCTAssertTrue(try reopened.pendingPerceptionEvents(limit: 100).isEmpty)
   }
 
   func testFlushDropsAlreadyExpiredUnsentRecordsWithoutSending() throws {
@@ -91,11 +149,12 @@ final class PerceptionSyncTests: XCTestCase {
       event(id: "fresh", expiresAt: clock.addingTimeInterval(3600).protocolTimestamp)
     )
 
-    let flushed = try publisher.flushPendingPerceptionEvents()
+    let flushed = try publisher.flushPendingIngress()
     XCTAssertEqual(flushed, 1)
     XCTAssertEqual(client.receivedEvents.map(\.eventId), ["fresh"])
-    // The expired record is dropped — never sent, and no longer pending.
-    XCTAssertTrue(try store.pendingPerceptionEvents(limit: 100).isEmpty)
+    // The expired record is dropped — never sent. The fresh record was sent but
+    // stays pending until acknowledged.
+    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 100).map(\.eventId), ["fresh"])
   }
 
   func testTombstoneQueuesOfflineAndPropagatesOnReconnect() throws {
@@ -120,9 +179,12 @@ final class PerceptionSyncTests: XCTestCase {
     XCTAssertTrue(client.receivedTombstones.isEmpty)
 
     client.connected = true
-    let flushed = try publisher.flushPendingPerceptionTombstones()
+    let flushed = try publisher.flushPendingIngress()
     XCTAssertEqual(flushed, 1)
     XCTAssertEqual(client.receivedTombstones.map(\.tombstoneId), ["t1"])
+    // Still pending until the Runtime acknowledges the tombstone.
+    XCTAssertEqual(try store.pendingPerceptionTombstones(limit: 10).count, 1)
+    try publisher.acknowledge(RuntimeIngressAck(ingressKind: .perceptionTombstone, ingressId: "t1"))
     XCTAssertTrue(try store.pendingPerceptionTombstones(limit: 10).isEmpty)
   }
 
@@ -301,6 +363,7 @@ private final class ScriptedPerceptionRuntimeClient: RuntimeChatClient {
   var failEventsAfter: Int?
   private(set) var receivedEvents: [PerceptionEvent] = []
   private(set) var receivedTombstones: [PerceptionTombstone] = []
+  private(set) var receivedMarkers: [SessionEndMarker] = []
   private var eventSendCount = 0
 
   enum TransportError: Error { case dropped }
@@ -320,6 +383,10 @@ private final class ScriptedPerceptionRuntimeClient: RuntimeChatClient {
 
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
     receivedTombstones.append(tombstone)
+  }
+
+  func sendSessionEndMarker(_ marker: SessionEndMarker) throws {
+    receivedMarkers.append(marker)
   }
 
   func acknowledge(messageId: String) throws {}

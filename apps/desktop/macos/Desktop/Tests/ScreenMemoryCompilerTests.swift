@@ -185,6 +185,67 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertNil(artifacts.first?.embedding)
   }
 
+  func testSearchableRecordEmitsPermittedStrictSignalsAndUUIDIdentity() throws {
+    let frame = CapturedFrame(
+      id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      appBundleID: "com.apple.Safari",
+      appName: "Safari",
+      windowTitle: "Q3 planning",
+      ocrText: "roadmap milestones and owners"
+    )
+    let artifact = try SearchableScreenRecordAnalyzer().analyze(frame, retentionClass: "screen_memory_7d")
+
+    // event_id and local_record_ref are the record's own UUID.
+    XCTAssertEqual(artifact.id, frame.id)
+    XCTAssertEqual(artifact.localRecordRef, frame.id)
+    XCTAssertNotNil(UUID(uuidString: artifact.id))
+    // Permitted strict signal shape: app identity + title + OCR, not redacted.
+    XCTAssertEqual(artifact.signals["content_redacted"], .bool(false))
+    XCTAssertEqual(artifact.signals["bundle_id"], .string("com.apple.Safari"))
+    XCTAssertEqual(artifact.signals["app_name"], .string("Safari"))
+    XCTAssertEqual(artifact.signals["window_title"], .string("Q3 planning"))
+    XCTAssertEqual(artifact.signals["ocr_text"], .string("roadmap milestones and owners"))
+    XCTAssertNotNil(artifact.embedding)
+  }
+
+  func testSearchableRecordRedactsToAppIdentityOnlyWhenSecretDetected() throws {
+    let frame = CapturedFrame(
+      id: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      appBundleID: "com.googlecode.iterm2",
+      appName: "iTerm2",
+      windowTitle: "deploy",
+      ocrText: "export API_KEY=abc123"
+    )
+    let artifact = try SearchableScreenRecordAnalyzer().analyze(frame, retentionClass: "screen_memory_7d")
+
+    // Redacted strict signal shape: only app identity — no title / OCR / embedding.
+    XCTAssertEqual(artifact.signals["content_redacted"], .bool(true))
+    XCTAssertEqual(artifact.signals["bundle_id"], .string("com.googlecode.iterm2"))
+    XCTAssertEqual(artifact.signals["app_name"], .string("iTerm2"))
+    XCTAssertNil(artifact.signals["window_title"])
+    XCTAssertNil(artifact.signals["ocr_text"])
+    XCTAssertEqual(artifact.sensitivityLabel, .secretDetected)
+    XCTAssertNil(artifact.embedding)
+  }
+
+  func testSearchableRecordFillsNonEmptyAppIdentityFallbacks() throws {
+    let frame = CapturedFrame(
+      id: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      appBundleID: "",
+      appName: "",
+      windowTitle: "",
+      ocrText: "plain notes"
+    )
+    let artifact = try SearchableScreenRecordAnalyzer().analyze(frame, retentionClass: "screen_memory_7d")
+
+    // `bundle_id` / `app_name` must be non-empty for the strict Protocol union.
+    XCTAssertEqual(artifact.signals["bundle_id"], .string("unknown.bundle"))
+    XCTAssertEqual(artifact.signals["app_name"], .string("Unknown App"))
+  }
+
   func testCompilerSkipsExcludedAppsCaseInsensitively() throws {
     let compiler = ContextCompiler(
       settings: CompilerSettings(excludedApps: ["Safari", "1Password"])
@@ -289,8 +350,11 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(try outbox.pendingPerceptionEvents(limit: 10).map(\.eventId), ["queued"])
 
     connected = true
-    XCTAssertEqual(try publisher.flushPendingPerceptionEvents(), 1)
+    XCTAssertEqual(try publisher.flushPendingIngress(), 1)
     XCTAssertEqual(runtime.perceptionEvents.map(\.eventId), ["queued"])
+    // Ack-driven deletion: the row stays until the Runtime acknowledges it.
+    XCTAssertEqual(try outbox.pendingPerceptionEvents(limit: 10).map(\.eventId), ["queued"])
+    try publisher.acknowledge(RuntimeIngressAck(ingressKind: .perceptionEvent, ingressId: "queued"))
     XCTAssertTrue(try outbox.pendingPerceptionEvents(limit: 10).isEmpty)
   }
 
@@ -333,9 +397,10 @@ final class ScreenMemoryCompilerTests: XCTestCase {
 
     let artifact = try XCTUnwrap(AmbientAudioAnalyzer().analyze(transcript))
 
-    XCTAssertEqual(artifact.id, "ambient-audio-segment-1")
+    XCTAssertEqual(artifact.id, DeterministicPerceptionID.uuid(from: "ambient-audio:segment-1"))
+    XCTAssertNotNil(UUID(uuidString: artifact.id))
     XCTAssertEqual(artifact.artifactType, .ambientAudioSummary)
-    XCTAssertEqual(artifact.localRecordRef, "screen-memory://ambient-audio/segment-1")
+    XCTAssertEqual(artifact.localRecordRef, DeterministicPerceptionID.uuid(from: "ambient-audio:segment-1"))
     XCTAssertEqual(artifact.signals["audio_source"], .string("microphone"))
     XCTAssertEqual(artifact.sensitivityLabel, .normal)
     XCTAssertNil(artifact.rawFrameBytes)
@@ -513,10 +578,10 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(events.map(\.eventId), ["screen-offline-frame"])
+    XCTAssertEqual(events.map(\.eventId), ["offline-frame"])
     XCTAssertTrue(runtime.perceptionEvents.isEmpty)
-    XCTAssertEqual(store.search("offline outbox", limit: 10).first?.record.id, "screen-offline-frame")
-    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 10).map(\.eventId), ["screen-offline-frame"])
+    XCTAssertEqual(store.search("offline outbox", limit: 10).first?.record.id, "offline-frame")
+    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 10).map(\.eventId), ["offline-frame"])
   }
 
   func testCaptureCoordinatorStoresPerceptionInSQLiteScreenMemory() throws {
@@ -540,7 +605,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
 
     XCTAssertNil(store.lastError)
     XCTAssertEqual(runtime.perceptionEvents.count, 1)
-    XCTAssertEqual(try store.searchRecords("durable compiler", limit: 10).first?.record.id, "screen-frame-sqlite")
+    XCTAssertEqual(try store.searchRecords("durable compiler", limit: 10).first?.record.id, "frame-sqlite")
   }
 
   func testCaptureCoordinatorKeepsFullOCRLocalWhilePublishingCompactSummary() throws {
@@ -564,7 +629,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     )
 
     let localRecord = try XCTUnwrap(store.search("tail-local-only-token", limit: 10).first?.record)
-    XCTAssertEqual(localRecord.id, "screen-full-ocr")
+    XCTAssertEqual(localRecord.id, "full-ocr")
     XCTAssertEqual(localRecord.windowTitle, "Intentive spec")
     XCTAssertEqual(localRecord.ocrText, fullOCR)
     let published = try XCTUnwrap(runtime.perceptionEvents.first)
@@ -593,8 +658,8 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let events = try await coordinator.captureOnce(from: source)
 
     XCTAssertEqual(events.count, 1)
-    XCTAssertEqual(runtime.perceptionEvents.first?.eventId, "screen-native-frame")
-    XCTAssertEqual(store.search("capture source", limit: 10).first?.record.id, "screen-native-frame")
+    XCTAssertEqual(runtime.perceptionEvents.first?.eventId, "native-frame")
+    XCTAssertEqual(store.search("capture source", limit: 10).first?.record.id, "native-frame")
     XCTAssertFalse(try ProtocolEventCodec.encode(events[0]).contains("raw_frame".data(using: .utf8)!))
   }
 
@@ -685,7 +750,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
     XCTAssertEqual(loop.state.publishedEventCount, 1)
     XCTAssertEqual(loop.state.failedCaptureCount, 0)
     XCTAssertEqual(runtime.perceptionEvents.count, 1)
-    XCTAssertEqual(store.search("running loop", limit: 10).first?.record.id, "screen-loop-frame")
+    XCTAssertEqual(store.search("running loop", limit: 10).first?.record.id, "loop-frame")
   }
 
   func testCaptureLoopRecordsFailureAndContinuesOnNextTick() async throws {
@@ -717,7 +782,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
     XCTAssertEqual(loop.state.failedCaptureCount, 1)
     XCTAssertEqual(loop.state.capturedFrameCount, 1)
     XCTAssertNil(loop.state.lastError)
-    XCTAssertEqual(runtime.perceptionEvents.first?.eventId, "screen-recovered-frame")
+    XCTAssertEqual(runtime.perceptionEvents.first?.eventId, "recovered-frame")
   }
 
   func testStartStopAreIdempotent() {
@@ -970,7 +1035,10 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
     XCTAssertEqual(loop.state.capturedFrameCount, 2)
     XCTAssertEqual(loop.state.skippedCaptureCount, 1)
     XCTAssertEqual(source.captureCount, 2)
-    XCTAssertEqual(runtime.perceptionEvents.map(\.eventId), ["screen-debounce-code", "screen-debounce-safari", "focus-debounce-safari"])
+    XCTAssertEqual(
+      runtime.perceptionEvents.map(\.eventId),
+      ["debounce-code", "debounce-safari", DeterministicPerceptionID.uuid(from: "focus:debounce-safari")]
+    )
   }
 }
 
@@ -1067,6 +1135,11 @@ final class RecordingRuntimeClient: RuntimeChatClient {
   private(set) var tombstones: [PerceptionTombstone] = []
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
     tombstones.append(tombstone)
+  }
+
+  private(set) var markers: [SessionEndMarker] = []
+  func sendSessionEndMarker(_ marker: SessionEndMarker) throws {
+    markers.append(marker)
   }
 
   func acknowledge(messageId: String) throws {

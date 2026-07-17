@@ -202,6 +202,42 @@ public struct HardSecretDetector {
   }
 }
 
+/// A stable UUID derived from a source key, so re-deriving the same artifact
+/// (e.g. on redelivery, or across a relaunch) yields the same `event_id` /
+/// `local_record_ref` and the durable outbox dedups it by identity. The Protocol
+/// requires both to be UUIDs; synthetic artifacts (focus, activity, ambient
+/// audio) have no archive record UUID of their own, so they mint one
+/// deterministically here. Two FNV-1a passes fill 16 bytes; the RFC 4122 version
+/// (5) and variant bits are stamped so the result is a well-formed UUID. Not
+/// cryptographic — collision resistance across per-user perception keys suffices.
+enum DeterministicPerceptionID {
+  static func uuid(from key: String) -> String {
+    var bytes = [UInt8](repeating: 0, count: 16)
+    let low = fnv1a(Array(key.utf8))
+    let high = fnv1a([0x01] + Array(key.utf8))
+    for index in 0..<8 {
+      bytes[index] = UInt8((low >> (UInt64(index) * 8)) & 0xff)
+      bytes[8 + index] = UInt8((high >> (UInt64(index) * 8)) & 0xff)
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x50  // version 5
+    bytes[8] = (bytes[8] & 0x3f) | 0x80  // RFC 4122 variant
+    let hex = Array(bytes.map { String(format: "%02x", $0) }.joined())
+    return [
+      String(hex[0..<8]), String(hex[8..<12]), String(hex[12..<16]),
+      String(hex[16..<20]), String(hex[20..<32]),
+    ].joined(separator: "-")
+  }
+
+  private static func fnv1a(_ bytes: [UInt8]) -> UInt64 {
+    var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+    for byte in bytes {
+      hash ^= UInt64(byte)
+      hash = hash &* 0x0000_0100_0000_01b3
+    }
+    return hash
+  }
+}
+
 public struct SearchableScreenRecordAnalyzer {
   private let embeddingService: LocalEmbeddingService
   private let secretDetector: HardSecretDetector
@@ -220,18 +256,37 @@ public struct SearchableScreenRecordAnalyzer {
       hasSecret
       ? "Secret-like content was detected and suppressed."
       : compactSummary(appName: frame.appName, windowTitle: frame.windowTitle, text: frame.ocrText)
+    // `bundle_id` / `app_name` must be non-empty per the strict Protocol union,
+    // so a missing app identity falls back to a stable placeholder.
+    let bundleID = frame.appBundleID.isEmpty ? "unknown.bundle" : frame.appBundleID
+    let appName = frame.appName.isEmpty ? "Unknown App" : frame.appName
+    // The strict `searchableScreenRecordSignals` union: a permitted record ships
+    // app identity plus window title and OCR text; a secret-detected record ships
+    // only app identity (title / OCR / embedding are absent). event_id and
+    // local_record_ref are the record's own UUID so a deletion tombstone
+    // correlates by `event_ref`.
+    let signals: [String: JSONValue] =
+      hasSecret
+      ? [
+        "content_redacted": .bool(true),
+        "bundle_id": .string(bundleID),
+        "app_name": .string(appName),
+      ]
+      : [
+        "content_redacted": .bool(false),
+        "bundle_id": .string(bundleID),
+        "app_name": .string(appName),
+        "window_title": .string(frame.windowTitle),
+        "ocr_text": .string(frame.ocrText),
+      ]
     return CompiledPerceptionArtifact(
-      id: "screen-\(frame.id)",
+      id: frame.id,
       artifactType: .searchableScreenRecord,
       capturedAt: frame.capturedAt,
       periodStart: frame.capturedAt,
       periodEnd: frame.capturedAt,
       summary: summary,
-      signals: [
-        "app": .string(frame.appName),
-        "window_title_redacted": .bool(hasSecret),
-        "ocr_word_count": .number(Double(frame.ocrText.split(whereSeparator: \.isWhitespace).count)),
-      ],
+      signals: signals,
       retentionClass: retentionClass,
       sensitivityLabel: hasSecret ? .secretDetected : .normal,
       confidence: hasSecret ? 0.5 : 0.88,
@@ -261,8 +316,9 @@ public struct FocusSignalAnalyzer {
     guard let previous, previous.appName != frame.appName || previous.windowTitle != frame.windowTitle else {
       return nil
     }
+    let identity = DeterministicPerceptionID.uuid(from: "focus:\(frame.id)")
     return CompiledPerceptionArtifact(
-      id: "focus-\(frame.id)",
+      id: identity,
       artifactType: .focusSignal,
       capturedAt: frame.capturedAt,
       periodStart: previous.capturedAt,
@@ -275,7 +331,7 @@ public struct FocusSignalAnalyzer {
       retentionClass: "screen_memory_30d",
       sensitivityLabel: .normal,
       confidence: 0.8,
-      localRecordRef: "screen-memory://focus/\(frame.id)",
+      localRecordRef: identity,
       embedding: nil
     )
   }
@@ -287,8 +343,9 @@ public struct ActivitySummaryAnalyzer {
   public func summarize(frames: [CapturedFrame]) -> CompiledPerceptionArtifact? {
     guard let first = frames.first, let last = frames.last else { return nil }
     let apps = Set(frames.map(\.appName)).sorted().joined(separator: ", ")
+    let identity = DeterministicPerceptionID.uuid(from: "activity:\(last.id)")
     return CompiledPerceptionArtifact(
-      id: "activity-\(last.id)",
+      id: identity,
       artifactType: .activitySummary,
       capturedAt: last.capturedAt,
       periodStart: first.capturedAt,
@@ -301,7 +358,7 @@ public struct ActivitySummaryAnalyzer {
       retentionClass: "screen_memory_30d",
       sensitivityLabel: .normal,
       confidence: 0.72,
-      localRecordRef: "screen-memory://activity/\(last.id)",
+      localRecordRef: identity,
       embedding: nil
     )
   }
@@ -331,8 +388,9 @@ public struct AmbientAudioAnalyzer {
       hasSecret
       ? "Secret-like ambient audio content was detected and suppressed."
       : compactSummary(words: words)
+    let identity = DeterministicPerceptionID.uuid(from: "ambient-audio:\(transcript.id)")
     return CompiledPerceptionArtifact(
-      id: "ambient-audio-\(transcript.id)",
+      id: identity,
       artifactType: .ambientAudioSummary,
       capturedAt: transcript.capturedAt,
       periodStart: transcript.periodStart,
@@ -346,7 +404,7 @@ public struct AmbientAudioAnalyzer {
       retentionClass: retentionClass,
       sensitivityLabel: hasSecret ? .secretDetected : .normal,
       confidence: hasSecret ? 0.45 : 0.76,
-      localRecordRef: "screen-memory://ambient-audio/\(transcript.id)",
+      localRecordRef: identity,
       embedding: hasSecret ? nil : try embeddingService.embed(summary),
       rawFrameBytes: nil
     )
@@ -434,28 +492,45 @@ public final class ContextCompiler {
 /// Renovated from Omi's `ScreenActivitySyncService` (a resumable, batched
 /// uploader) and its WAL reconcile pattern (enqueue → deliver → confirm →
 /// remove). Intentive's changes: the transport is the WS Protocol
-/// `perception_event` / `perception_tombstone` rather than HTTP to a rust
-/// backend; durability is the crash-safe SQLite outbox keyed by `event_id` /
-/// `tombstone_id` rather than a UserDefaults high-water mark; a record already
-/// past its `expires_at` is dropped before it is ever sent; and tenant-scoped
-/// tombstones propagate local deletion. Nothing is removed from the outbox until
-/// the send succeeds, so an outage never loses a record and redelivery upserts
-/// idempotently on the Runtime.
+/// `perception_event` / `perception_tombstone` / `session_end_marker` rather
+/// than HTTP to a rust backend; durability is the crash-safe SQLite
+/// `runtime_ingress_outbox` keyed by `(ingress_kind, ingress_id)` rather than a
+/// UserDefaults high-water mark; a record already past its `expires_at` is
+/// dropped before it is ever sent; and tenant-scoped tombstones propagate local
+/// deletion.
+///
+/// Deletion is acknowledgement-driven, not send-driven: a socket send only marks
+/// an item in-flight for the current connection; the outbox row survives until a
+/// `runtime_ingress_ack` (emitted after the Runtime's ledger+projection commit)
+/// deletes it by `(kind, id)`. A lost acknowledgement therefore becomes
+/// reconnect → redeliver → Runtime ledger dedupe → repeated acknowledgement. The
+/// in-flight set resets whenever the connection generation changes, so a
+/// disconnect forces redelivery of everything still unacknowledged.
 public final class PerceptionPublisher {
   private let runtimeClient: RuntimeChatClient
   private let outbox: PerceptionEventOutbox?
   private let isRuntimeConnected: () -> Bool
+  private let connectionGeneration: () -> Int
   private let now: () -> Date
+
+  /// Items sent on the current connection but not yet acknowledged, keyed by
+  /// `kind:ingressId`. Never a substitute for the durable outbox — purely an
+  /// optimization so a repeated flush does not re-send an item before its ack
+  /// arrives. Reset when the connection generation changes.
+  private var inFlight: Set<String> = []
+  private var inFlightGeneration: Int?
 
   public init(
     runtimeClient: RuntimeChatClient,
     outbox: PerceptionEventOutbox? = nil,
     isRuntimeConnected: @escaping () -> Bool = { true },
+    connectionGeneration: @escaping () -> Int = { 0 },
     now: @escaping () -> Date = Date.init
   ) {
     self.runtimeClient = runtimeClient
     self.outbox = outbox
     self.isRuntimeConnected = isRuntimeConnected
+    self.connectionGeneration = connectionGeneration
     self.now = now
   }
 
@@ -480,71 +555,97 @@ public final class PerceptionPublisher {
       localRecordRef: artifact.localRecordRef
     )
     try outbox?.enqueuePerceptionEvent(event)
-    guard isRuntimeConnected() else {
-      return event
-    }
-    try runtimeClient.sendPerceptionEvent(event)
-    try outbox?.removePerceptionEvent(eventId: event.eventId)
+    trySend(.perceptionEvent(event))
     return event
   }
 
   /// Durably queue a tenant-scoped deletion for propagation to the Runtime.
   public func publishTombstone(_ tombstone: PerceptionTombstone) throws {
     try outbox?.enqueuePerceptionTombstone(tombstone)
-    guard isRuntimeConnected() else { return }
-    try runtimeClient.sendPerceptionTombstone(tombstone)
-    try outbox?.removePerceptionTombstone(tombstoneId: tombstone.tombstoneId)
+    trySend(.perceptionTombstone(tombstone))
   }
 
+  /// Durably queue a session-end marker (clean stop, quit, or a leftover-lock
+  /// crash marker) for propagation to the Runtime.
+  public func publishSessionEnd(_ marker: SessionEndMarker) throws {
+    try outbox?.enqueueSessionEndMarker(marker)
+    trySend(.sessionEndMarker(marker))
+  }
+
+  /// Delete an acknowledged item once the Runtime confirms its ledger+projection
+  /// transaction committed. Idempotent: a duplicate ack for an already-deleted
+  /// row is a no-op.
+  public func acknowledge(_ ack: RuntimeIngressAck) throws {
+    inFlight.remove(inFlightKey(kind: ack.ingressKind, ingressId: ack.ingressId))
+    try outbox?.removeIngress(kind: ack.ingressKind, ingressId: ack.ingressId)
+  }
+
+  /// Redeliver every unacknowledged item in durable enqueue order, dropping
+  /// already-expired perception events first (an expired record must never leave
+  /// the Mac, even on reconnect). Nothing is deleted here — only a
+  /// `runtime_ingress_ack` deletes. Returns the number of items sent.
   @discardableResult
-  public func flushPendingPerceptionEvents(limit: Int = 100) throws -> Int {
+  public func flushPendingIngress(limit: Int = 100) throws -> Int {
     guard let outbox else { return 0 }
-    // Drop already-expired unsent records first — an expired record must never
-    // leave the Mac, even on reconnect.
-    let cutoff = now()
-    var flushedCount = 0
-    for event in try outbox.pendingPerceptionEvents(limit: limit) {
-      if let expiry = Self.parseTimestamp(event.expiresAt), expiry <= cutoff {
-        try outbox.removePerceptionEvent(eventId: event.eventId)
-        continue
-      }
-      guard isRuntimeConnected() else { break }
-      try runtimeClient.sendPerceptionEvent(event)
-      try outbox.removePerceptionEvent(eventId: event.eventId)
-      flushedCount += 1
+    resetInFlightIfConnectionChanged()
+    _ = try outbox.dropExpiredPerceptionEvents(now: now())
+    guard isRuntimeConnected() else { return 0 }
+    var sent = 0
+    for item in try outbox.pendingIngress(limit: limit) {
+      let key = inFlightKey(kind: item.kind, ingressId: item.ingressId)
+      if inFlight.contains(key) { continue }
+      try send(item)
+      inFlight.insert(key)
+      sent += 1
     }
-    return flushedCount
-  }
-
-  @discardableResult
-  public func flushPendingPerceptionTombstones(limit: Int = 100) throws -> Int {
-    guard isRuntimeConnected(), let outbox else { return 0 }
-    var flushedCount = 0
-    for tombstone in try outbox.pendingPerceptionTombstones(limit: limit) {
-      try runtimeClient.sendPerceptionTombstone(tombstone)
-      try outbox.removePerceptionTombstone(tombstoneId: tombstone.tombstoneId)
-      flushedCount += 1
-    }
-    return flushedCount
+    return sent
   }
 
   /// Launch-time sweep: drop already-expired unsent records from the durable
   /// outbox without sending anything. An expired record must never leave the
   /// Mac, even if the Runtime is still connected. Returns the count dropped.
-  /// Renovates the expiry-drop half of `flushPendingPerceptionEvents` so a cold
-  /// launch reconciles the outbox independently of Runtime connectivity.
   @discardableResult
   public func dropExpiredPendingPerceptionEvents() throws -> Int {
     guard let outbox else { return 0 }
-    let cutoff = now()
-    var dropped = 0
-    for event in try outbox.pendingPerceptionEvents(limit: 1_000) {
-      if let expiry = Self.parseTimestamp(event.expiresAt), expiry <= cutoff {
-        try outbox.removePerceptionEvent(eventId: event.eventId)
-        dropped += 1
-      }
+    return try outbox.dropExpiredPerceptionEvents(now: now())
+  }
+
+  private func trySend(_ item: RuntimeIngressOutboxItem) {
+    resetInFlightIfConnectionChanged()
+    guard isRuntimeConnected() else { return }
+    // A freshly compiled artifact is never expired; stale queued items are the
+    // ones an expired record could hide in, and those are dropped on the
+    // redelivery path (`flushPendingIngress`) and the launch sweep before any
+    // send — an expired record never leaves the Mac.
+    do {
+      try send(item)
+      inFlight.insert(inFlightKey(kind: item.kind, ingressId: item.ingressId))
+    } catch {
+      // Send failed; the durable outbox redelivers on the next flush. Deletion
+      // still waits for a `runtime_ingress_ack`, so nothing is lost.
     }
-    return dropped
+  }
+
+  private func send(_ item: RuntimeIngressOutboxItem) throws {
+    switch item {
+    case .perceptionEvent(let event):
+      try runtimeClient.sendPerceptionEvent(event)
+    case .perceptionTombstone(let tombstone):
+      try runtimeClient.sendPerceptionTombstone(tombstone)
+    case .sessionEndMarker(let marker):
+      try runtimeClient.sendSessionEndMarker(marker)
+    }
+  }
+
+  private func resetInFlightIfConnectionChanged() {
+    let generation = connectionGeneration()
+    guard inFlightGeneration != generation else { return }
+    inFlight.removeAll()
+    inFlightGeneration = generation
+  }
+
+  private func inFlightKey(kind: RuntimeIngressKind, ingressId: String) -> String {
+    "\(kind.rawValue):\(ingressId)"
   }
 
   /// Authoritative expiry = `captured_at` + the retention window encoded in the

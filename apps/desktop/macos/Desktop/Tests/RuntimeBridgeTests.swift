@@ -165,6 +165,29 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertEqual(ack["message_id"] as? String, "c1")
   }
 
+  func testRuntimeIngressAckIsDecodedAndDeliveredToSinkWithoutFailingConnection() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    var acks: [RuntimeIngressAck] = []
+    adapter.onIngressAck = { acks.append($0) }
+    try adapter.connect(routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "jwt"))
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
+    )
+
+    let ack = RuntimeIngressAck(
+      ingressKind: .perceptionEvent,
+      ingressId: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d"
+    )
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(ack))
+
+    XCTAssertEqual(acks.map(\.ingressId), ["0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d"])
+    XCTAssertEqual(acks.map(\.ingressKind), [.perceptionEvent])
+    // The ack must not disturb the live connection or emit a reply.
+    XCTAssertEqual(adapter.status, .connected)
+    XCTAssertFalse(socket.sentTypes.contains("runtime_ingress_ack"))
+  }
+
   func testCompanionMessageNotifiesLiveHandler() throws {
     let socket = FakeRuntimeSocket()
     let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
@@ -373,12 +396,21 @@ final class RuntimeBridgeTests: XCTestCase {
       ProtocolEventCodec.encode(HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil)))
     )
 
-    try adapter.sendSessionEnd(reason: .quit)
+    try adapter.sendSessionEndMarker(
+      SessionEndMarker(
+        markerId: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        endedAt: "2026-07-06T00:00:00.000Z",
+        reason: .quit
+      )
+    )
 
     let marker = try XCTUnwrap(socket.sentObjects.last)
-    XCTAssertEqual(Set(marker.keys), Set(["type", "ended_at", "reason"]))
+    XCTAssertEqual(Set(marker.keys), Set(["type", "marker_id", "session_id", "ended_at", "reason"]))
     XCTAssertEqual(marker["type"] as? String, "session_end_marker")
     XCTAssertEqual(marker["reason"] as? String, "quit")
+    XCTAssertEqual(marker["marker_id"] as? String, "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d")
+    XCTAssertEqual(marker["session_id"] as? String, "11111111-1111-4111-8111-111111111111")
   }
 }
 
@@ -431,5 +463,6 @@ private final class RecordingFloatingBarRuntimeClient: RuntimeChatClient {
 
   func sendPerceptionEvent(_ event: PerceptionEvent) throws {}
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {}
+  func sendSessionEndMarker(_ marker: SessionEndMarker) throws {}
   func acknowledge(messageId: String) throws {}
 }
