@@ -7,5 +7,5 @@ export const accountContent = {
   privacyHint: "Additional Privacy Rules",
   logout: "Log out",
   addPhotoUnavailable: "Add profile photo unavailable",
-  profileFallback: "Genie User",
+  profileFallback: "Intentive User",
 } as const;

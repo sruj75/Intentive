@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -9,7 +9,16 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
+import Animated, {
+  FadeInUp,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
 import { IdentityControl, OrbitalMark, PrimaryButton } from "../../../design/primitives";
 import { mobileTheme as theme } from "../../../design/theme";
@@ -45,6 +54,24 @@ function SuggestionGroup({
       ))}
     </View>
   );
+}
+
+function ActivityDot({ delay }: { readonly delay: number }) {
+  const opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    opacity.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(withTiming(1, { duration: 400 }), withTiming(0.3, { duration: 400 })),
+        -1,
+      ),
+    );
+  }, [delay, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return <Animated.View style={[styles.activityDot, animatedStyle]} />;
 }
 
 function TimelineRow({
@@ -124,9 +151,9 @@ function TimelineRow({
     >
       {item.phase === "thinking" ? (
         <View style={styles.activityDots}>
-          <View style={styles.activityDot} />
-          <View style={styles.activityDot} />
-          <View style={styles.activityDot} />
+          <ActivityDot delay={0} />
+          <ActivityDot delay={160} />
+          <ActivityDot delay={320} />
         </View>
       ) : (
         <Text style={styles.composingText}>…</Text>
@@ -155,6 +182,7 @@ function Composer({
           blurOnSubmit={false}
           editable={!disabled}
           enterKeyHint="send"
+          multiline
           onChangeText={onChange}
           onSubmitEditing={onSubmit}
           placeholder={content.composerPlaceholder}
@@ -219,6 +247,7 @@ export function ConversationScene({
   );
   const [overlay, setOverlay] = useState<"none" | "drawer" | "settings">("none");
   const scrollRef = useRef<ScrollView>(null);
+  const nearBottom = useRef(true);
   const isWelcome = mode === "welcome";
   const submitComposer = () => {
     if (isWelcome || composerValue.trim().length === 0) return;
@@ -244,8 +273,16 @@ export function ConversationScene({
         contentContainerStyle={[styles.thread, isWelcome && styles.welcomeThread]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => {
+          if (nearBottom.current) scrollRef.current?.scrollToEnd({ animated: true });
+        }}
+        onScroll={(event) => {
+          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+          nearBottom.current =
+            contentOffset.y + layoutMeasurement.height >= contentSize.height - 48;
+        }}
         ref={scrollRef}
+        scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
         testID="conversation-scroll"
       >
@@ -418,6 +455,7 @@ const styles = StyleSheet.create({
     flex: 1,
     ...theme.type.body,
     color: theme.color.ink,
+    maxHeight: theme.component.chat.composerInputMaxHeight,
     paddingVertical: theme.component.chat.composerInputVerticalPadding,
   },
   composerAffordance: {

@@ -110,6 +110,7 @@ export const mobileTheme = {
       activityMinHeight: 54,
       activityDotSize: 5,
       composerMinHeight: 54,
+      composerInputMaxHeight: 120,
       composerDisabledOpacity: 0.75,
       composerInputVerticalPadding: 10,
       composerAffordanceWidth: 36,

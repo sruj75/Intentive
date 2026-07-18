@@ -1,5 +1,5 @@
 export const brandIdentity = {
-  name: "Genie",
-  initialsFallback: "G",
-  mark: "Genie abstract mark",
+  name: "Intentive",
+  initialsFallback: "I",
+  mark: "Intentive abstract mark",
 } as const;

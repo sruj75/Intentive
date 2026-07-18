@@ -159,11 +159,11 @@ describe("Huracán local experience", () => {
 
     fireEvent.changeText(nameInput, "Srujan Gowda");
     fireEvent(nameInput, "submitEditing");
-    expect(screen.getByText("Genie Mentions")).toBeTruthy();
+    expect(screen.getByText("Intentive Mentions")).toBeTruthy();
     expect(screen.toJSON()).toMatchSnapshot("C-friends-intro");
 
     fireEvent.press(screen.getByTestId("add-friends-intro"));
-    expect(screen.getByText("Genie is proactive.")).toBeTruthy();
+    expect(screen.getByText("Intentive is proactive.")).toBeTruthy();
     expect(screen.toJSON()).toMatchSnapshot("D-permissions-intro");
 
     fireEvent.press(screen.getByTestId("enable-permissions"));
@@ -185,7 +185,7 @@ describe("Huracán local experience", () => {
     expect(screen.toJSON()).toMatchSnapshot("G-settings");
 
     fireEvent.press(screen.getByTestId("settings-identity-control"));
-    fireEvent.press(screen.getByText("Genie"));
+    fireEvent.press(screen.getByText("Intentive"));
     expect(screen.queryByTestId("drawer-overlay")).toBeNull();
 
     fireEvent.press(screen.getByTestId("get-started"));

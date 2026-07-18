@@ -2,7 +2,7 @@ import type { ConversationTimelineItem } from "../types/conversation-timeline.js
 
 export const chatContent = {
   welcome: {
-    title: "Welcome to Genie, let’s learn how to Genie.",
+    title: "Welcome to Intentive, let’s learn how to Intentive.",
     action: "Get Started",
   },
   drawer: {
@@ -13,14 +13,14 @@ export const chatContent = {
     ] as const,
     recent: "Recent",
     empty: "Nothing here yet",
-    home: "Genie",
+    home: "Intentive",
     openSettings: "Open settings",
     closeMenu: "Close menu",
   },
   openMenu: "Open profile menu",
   capabilityTitle: "Friends",
   capabilityBody:
-    "Connect with friends to let Genie help you stay close to the people in your life.",
+    "Connect with friends to let Intentive help you stay close to the people in your life.",
   capabilityAction: "Add Friends",
   suggestions: [
     "What can you do for me?",
@@ -28,11 +28,11 @@ export const chatContent = {
     "Remind me to call someone?",
   ],
   composerPlaceholder: "Follow up",
-  composerLabel: "Message Genie",
+  composerLabel: "Message Intentive",
   attachmentUnavailable: "Add attachment unavailable",
   microphoneUnavailable: "Microphone unavailable",
-  thinkingLabel: "Genie is thinking",
-  composingLabel: "Genie is composing",
+  thinkingLabel: "Intentive is thinking",
+  composingLabel: "Intentive is composing",
   replyNameFallback: "there",
   firstReply: "Hey {firstName}. Good to see you. How’s your day looking—anything on your mind?",
   laterReply:

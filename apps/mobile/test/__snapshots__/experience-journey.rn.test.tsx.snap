@@ -110,7 +110,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     }
                   }
                 >
-                   Hi, I’m Genie.
+                   Hi, I’m Intentive.
                 </Text>
               </Text>
             </View>
@@ -974,7 +974,7 @@ exports[`Huracán local experience walks and captures A through L without native
                   }
                 }
               >
-                Genie Mentions
+                Intentive Mentions
               </Text>
               <Text
                 selectable={true}
@@ -988,7 +988,7 @@ exports[`Huracán local experience walks and captures A through L without native
                   }
                 }
               >
-                Genie keeps tabs on you and your friends. Genie will bring you closer to the people in your life.
+                Intentive keeps tabs on you and your friends. Intentive will bring you closer to the people in your life.
               </Text>
             </View>
             <View
@@ -1258,7 +1258,7 @@ exports[`Huracán local experience walks and captures A through L without native
                 }
               }
             >
-              Genie is proactive.
+              Intentive is proactive.
             </Text>
             <View
               accessibilityRole="button"
@@ -1520,6 +1520,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -1535,7 +1537,7 @@ exports[`Huracán local experience walks and captures A through L without native
                 testID="chat-welcome-state"
               >
                 <View
-                  accessibilityLabel="Genie abstract mark"
+                  accessibilityLabel="Intentive abstract mark"
                   style={
                     {
                       "alignItems": "center",
@@ -1624,7 +1626,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     }
                   }
                 >
-                  Welcome to Genie, let’s learn how to Genie.
+                  Welcome to Intentive, let’s learn how to Intentive.
                 </Text>
                 <View
                   accessibilityRole="button"
@@ -1908,7 +1910,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -2004,10 +2006,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={false}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -2020,6 +2023,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -2329,6 +2333,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -2344,7 +2350,7 @@ exports[`Huracán local experience walks and captures A through L without native
                 testID="chat-welcome-state"
               >
                 <View
-                  accessibilityLabel="Genie abstract mark"
+                  accessibilityLabel="Intentive abstract mark"
                   style={
                     {
                       "alignItems": "center",
@@ -2433,7 +2439,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     }
                   }
                 >
-                  Welcome to Genie, let’s learn how to Genie.
+                  Welcome to Intentive, let’s learn how to Intentive.
                 </Text>
                 <View
                   accessibilityRole="button"
@@ -2717,7 +2723,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -2813,10 +2819,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={false}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -2829,6 +2836,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -3441,7 +3449,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     }
                   }
                 >
-                  Genie
+                  Intentive
                 </Text>
               </View>
             </View>
@@ -3643,6 +3651,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -3658,7 +3668,7 @@ exports[`Huracán local experience walks and captures A through L without native
                 testID="chat-welcome-state"
               >
                 <View
-                  accessibilityLabel="Genie abstract mark"
+                  accessibilityLabel="Intentive abstract mark"
                   style={
                     {
                       "alignItems": "center",
@@ -3747,7 +3757,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     }
                   }
                 >
-                  Welcome to Genie, let’s learn how to Genie.
+                  Welcome to Intentive, let’s learn how to Intentive.
                 </Text>
                 <View
                   accessibilityRole="button"
@@ -4031,7 +4041,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -4127,10 +4137,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={false}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -4143,6 +4154,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -4965,6 +4977,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -5040,7 +5054,7 @@ exports[`Huracán local experience walks and captures A through L without native
                         }
                       }
                     >
-                      Connect with friends to let Genie help you stay close to the people in your life.
+                      Connect with friends to let Intentive help you stay close to the people in your life.
                     </Text>
                     <View
                       accessibilityRole="button"
@@ -5111,7 +5125,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     </View>
                   </View>
                   <View
-                    accessibilityLabel="Genie abstract mark"
+                    accessibilityLabel="Intentive abstract mark"
                     style={
                       {
                         "alignItems": "center",
@@ -5396,7 +5410,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -5490,10 +5504,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={true}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -5506,6 +5521,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -5812,6 +5828,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -5887,7 +5905,7 @@ exports[`Huracán local experience walks and captures A through L without native
                         }
                       }
                     >
-                      Connect with friends to let Genie help you stay close to the people in your life.
+                      Connect with friends to let Intentive help you stay close to the people in your life.
                     </Text>
                     <View
                       accessibilityRole="button"
@@ -5958,7 +5976,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     </View>
                   </View>
                   <View
-                    accessibilityLabel="Genie abstract mark"
+                    accessibilityLabel="Intentive abstract mark"
                     style={
                       {
                         "alignItems": "center",
@@ -6243,7 +6261,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -6337,10 +6355,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={true}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -6353,6 +6372,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -6659,6 +6679,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -6738,7 +6760,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -6832,10 +6854,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={true}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -6848,6 +6871,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -7154,6 +7178,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -7218,7 +7244,7 @@ exports[`Huracán local experience walks and captures A through L without native
                   </View>
                 </View>
                 <View
-                  accessibilityLabel="Genie is thinking"
+                  accessibilityLabel="Intentive is thinking"
                   entering={
                     {
                       "delay": [Function],
@@ -7255,32 +7281,47 @@ exports[`Huracán local experience walks and captures A through L without native
                   >
                     <View
                       style={
-                        {
-                          "backgroundColor": "#858585",
-                          "borderRadius": 2.5,
-                          "height": 5,
-                          "width": 5,
-                        }
+                        [
+                          {
+                            "backgroundColor": "#858585",
+                            "borderRadius": 2.5,
+                            "height": 5,
+                            "width": 5,
+                          },
+                          {
+                            "opacity": 0.3,
+                          },
+                        ]
                       }
                     />
                     <View
                       style={
-                        {
-                          "backgroundColor": "#858585",
-                          "borderRadius": 2.5,
-                          "height": 5,
-                          "width": 5,
-                        }
+                        [
+                          {
+                            "backgroundColor": "#858585",
+                            "borderRadius": 2.5,
+                            "height": 5,
+                            "width": 5,
+                          },
+                          {
+                            "opacity": 0.3,
+                          },
+                        ]
                       }
                     />
                     <View
                       style={
-                        {
-                          "backgroundColor": "#858585",
-                          "borderRadius": 2.5,
-                          "height": 5,
-                          "width": 5,
-                        }
+                        [
+                          {
+                            "backgroundColor": "#858585",
+                            "borderRadius": 2.5,
+                            "height": 5,
+                            "width": 5,
+                          },
+                          {
+                            "opacity": 0.3,
+                          },
+                        ]
                       }
                     />
                   </View>
@@ -7301,7 +7342,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -7395,10 +7436,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={true}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -7411,6 +7453,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -7717,6 +7760,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -7781,7 +7826,7 @@ exports[`Huracán local experience walks and captures A through L without native
                   </View>
                 </View>
                 <View
-                  accessibilityLabel="Genie is composing"
+                  accessibilityLabel="Intentive is composing"
                   entering={
                     {
                       "delay": [Function],
@@ -7836,7 +7881,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -7930,10 +7975,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={true}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -7946,6 +7992,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -8252,6 +8299,8 @@ exports[`Huracán local experience walks and captures A through L without native
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={[Function]}
+            onScroll={[Function]}
+            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             testID="conversation-scroll"
           >
@@ -8370,7 +8419,7 @@ exports[`Huracán local experience walks and captures A through L without native
             }
           >
             <View
-              accessibilityLabel="Genie abstract mark"
+              accessibilityLabel="Intentive abstract mark"
               style={
                 {
                   "alignItems": "center",
@@ -8464,10 +8513,11 @@ exports[`Huracán local experience walks and captures A through L without native
               }
             >
               <TextInput
-                accessibilityLabel="Message Genie"
+                accessibilityLabel="Message Intentive"
                 blurOnSubmit={false}
                 editable={true}
                 enterKeyHint="send"
+                multiline={true}
                 onChangeText={[Function]}
                 onSubmitEditing={[Function]}
                 placeholder="Follow up"
@@ -8480,6 +8530,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "fontSize": 17,
                     "fontWeight": "400",
                     "lineHeight": 25,
+                    "maxHeight": 120,
                     "paddingVertical": 10,
                   }
                 }
@@ -8894,7 +8945,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Genie understands your context
+                    Intentive understands your context
                   </Text>
                   <Text
                     selectable={true}
@@ -8908,7 +8959,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Share what matters in the moment and Genie keeps the people, details, and meaning together.
+                    Share what matters in the moment and Intentive keeps the people, details, and meaning together.
                   </Text>
                 </View>
               </View>
@@ -9416,7 +9467,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Genie understands your relationships and routines to create timely, contextual reminders that feel natural.
+                    Intentive understands your relationships and routines to create timely, contextual reminders that feel natural.
                   </Text>
                 </View>
               </View>
@@ -9875,7 +9926,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Genie remembers
+                    Intentive remembers
                   </Text>
                   <Text
                     selectable={true}
@@ -10348,7 +10399,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Genie learns your taste
+                    Intentive learns your taste
                   </Text>
                   <Text
                     selectable={true}
@@ -10362,7 +10413,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    The more you share, the better Genie understands the places, ideas, and experiences that feel like you.
+                    The more you share, the better Intentive understands the places, ideas, and experiences that feel like you.
                   </Text>
                 </View>
               </View>
@@ -10856,7 +10907,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Genie sends messages
+                    Intentive sends messages
                   </Text>
                   <Text
                     selectable={true}
@@ -10870,7 +10921,7 @@ exports[`Huracán local experience walks and captures A through L without native
                       }
                     }
                   >
-                    Found something good? Genie can send it to someone and keep the conversation moving.
+                    Found something good? Intentive can send it to someone and keep the conversation moving.
                   </Text>
                 </View>
               </View>

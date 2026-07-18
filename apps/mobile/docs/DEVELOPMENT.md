@@ -238,9 +238,14 @@ wrote, so nothing keeps running and nothing stale is left on disk. Idempotent �
 safe to run even if some pieces are already gone. Run from the repo root.
 
 ```bash
-# 1. stop Metro (free port 8081 + any expo/metro process)
+# zsh treats an unmatched glob as an error; keep cleanup idempotent when no files exist.
+setopt nonomatch
+
+# 1. stop Metro and every Mobile build worker started by this workflow
 lsof -ti tcp:8081 | xargs kill -9 2>/dev/null
-pkill -f "expo start" 2>/dev/null; pkill -f "metro" 2>/dev/null
+pkill -f "expo start" 2>/dev/null; pkill -f "expo run:ios" 2>/dev/null
+pkill -f "metro" 2>/dev/null; pkill -f "eas build.*--local" 2>/dev/null
+pkill -f "xcodebuild.*Intentive" 2>/dev/null
 
 # 2. terminate + uninstall the app, shut the simulator down, quit the Simulator UI
 for D in $(xcrun simctl list devices booted -j | grep -o '"udid" : "[^"]*"' | cut -d'"' -f4); do
@@ -248,7 +253,13 @@ for D in $(xcrun simctl list devices booted -j | grep -o '"udid" : "[^"]*"' | cu
   xcrun simctl uninstall "$D" com.heyintentive.expo 2>/dev/null
 done
 xcrun simctl shutdown all 2>/dev/null
-osascript -e 'tell application "Simulator" to quit' 2>/dev/null
+osascript -e 'tell application id "com.apple.iphonesimulator" to quit' 2>/dev/null
+
+# Shutting down devices does not prove that the Simulator GUI quit. Give normal quit
+# a moment, then kill the concrete GUI executable if it is still alive. The [S]
+# pattern matches Simulator without matching this command's own shell process.
+sleep 1
+pkill -9 -f '/Simulator.app/Contents/MacOS/[S]imulator' 2>/dev/null
 
 # 3. delete the build artifact(s)
 rm -f apps/mobile/build-*.tar.gz
@@ -266,6 +277,7 @@ too — `kill` on port 8081 only catches a foreground/own-shell process.
 ```bash
 lsof -ti tcp:8081 || echo "port free ✓"
 xcrun simctl list devices booted | grep -i booted || echo "no sims booted ✓"
+pgrep -f '/Simulator.app/Contents/MacOS/[S]imulator' || echo "Simulator GUI quit ✓"
 ls apps/mobile/build-*.tar.gz 2>/dev/null || echo "no artifacts ✓"
 ls -d /tmp/intentive-* 2>/dev/null || echo "no temp ✓"
 ```

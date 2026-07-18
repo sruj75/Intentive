@@ -17,8 +17,8 @@ export const onboardingContent = {
     continue: "Continue",
   },
   friends: {
-    title: "Genie Mentions",
-    body: "Genie keeps tabs on you and your friends. Genie will bring you closer to the people in your life.",
+    title: "Intentive Mentions",
+    body: "Intentive keeps tabs on you and your friends. Intentive will bring you closer to the people in your life.",
     action: "Add Friends",
     example: {
       firstPrompt: "How’s Matt?",
@@ -28,7 +28,7 @@ export const onboardingContent = {
     },
   },
   permissions: {
-    title: "Genie is proactive.",
+    title: "Intentive is proactive.",
     action: "Enable Permissions",
     mediaLabel: "Proactive conversation preview",
     example: {
@@ -41,8 +41,8 @@ export const onboardingContent = {
   education: [
     {
       eyebrow: "Context",
-      title: "Genie understands your context",
-      body: "Share what matters in the moment and Genie keeps the people, details, and meaning together.",
+      title: "Intentive understands your context",
+      body: "Share what matters in the moment and Intentive keeps the people, details, and meaning together.",
       mediaLabel: "Context preview",
       example: [
         { side: "user", text: "Look at this." },
@@ -55,7 +55,7 @@ export const onboardingContent = {
     {
       eyebrow: "Reminders",
       title: "Set social reminders",
-      body: "Genie understands your relationships and routines to create timely, contextual reminders that feel natural.",
+      body: "Intentive understands your relationships and routines to create timely, contextual reminders that feel natural.",
       mediaLabel: "Reminder preview",
       example: [
         { side: "user", text: "Remind him to meet me later." },
@@ -68,7 +68,7 @@ export const onboardingContent = {
     },
     {
       eyebrow: "Memory",
-      title: "Genie remembers",
+      title: "Intentive remembers",
       body: "The details you share stay connected, so conversations can pick up naturally instead of starting over.",
       mediaLabel: "Memory preview",
       example: [
@@ -78,8 +78,8 @@ export const onboardingContent = {
     },
     {
       eyebrow: "Taste",
-      title: "Genie learns your taste",
-      body: "The more you share, the better Genie understands the places, ideas, and experiences that feel like you.",
+      title: "Intentive learns your taste",
+      body: "The more you share, the better Intentive understands the places, ideas, and experiences that feel like you.",
       mediaLabel: "Taste preview",
       example: [
         { side: "user", text: "Somewhere quiet, warm, and not too polished." },
@@ -88,8 +88,8 @@ export const onboardingContent = {
     },
     {
       eyebrow: "Sibling Connect",
-      title: "Genie sends messages",
-      body: "Found something good? Genie can send it to someone and keep the conversation moving.",
+      title: "Intentive sends messages",
+      body: "Found something good? Intentive can send it to someone and keep the conversation moving.",
       mediaLabel: "Message preview",
       example: [
         { side: "user", text: "Send this to Max." },
