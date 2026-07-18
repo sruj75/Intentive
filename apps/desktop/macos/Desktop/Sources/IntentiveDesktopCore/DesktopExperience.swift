@@ -505,6 +505,9 @@ public final class ScreenMemoryCaptureLoop {
     task?.cancel()
     task = nil
     state.isRunning = false
+    // A new user/session start must take an immediate first frame even when it
+    // resumes on the same window before the normal steady-state cadence elapses.
+    cadenceGate = DesktopCaptureCadenceGate()
   }
 
   public func captureTick() async -> ScreenMemoryCaptureLoopEvent {

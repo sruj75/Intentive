@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 import IntentiveDesktopCore
 
@@ -7,199 +8,179 @@ public enum NativeMicrophoneAudioCaptureError: Error, Equatable, LocalizedError 
   case inputUnavailable
   case conversionUnavailable
   case conversionFailed(String)
-  case noAudioCaptured
+  case ioProcCreationFailed(OSStatus)
+  case deviceStartFailed(OSStatus)
 
   public var errorDescription: String? {
     switch self {
-    case .microphonePermissionDenied:
-      return "Microphone permission is required for passive audio sensing."
-    case .inputUnavailable:
-      return "No microphone input is available."
-    case .conversionUnavailable:
-      return "The microphone input could not be converted to 16 kHz mono PCM."
-    case .conversionFailed(let message):
-      return "Microphone audio conversion failed: \(message)"
-    case .noAudioCaptured:
-      return "No microphone audio was captured."
+    case .microphonePermissionDenied: return "Microphone permission is required for passive audio sensing."
+    case .inputUnavailable: return "No microphone input is available."
+    case .conversionUnavailable: return "The microphone input could not be converted to 16 kHz mono PCM."
+    case .conversionFailed(let message): return "Microphone audio conversion failed: \(message)"
+    case .ioProcCreationFailed(let status): return "Microphone IOProc creation failed: \(status)"
+    case .deviceStartFailed(let status): return "Microphone device start failed: \(status)"
     }
   }
 }
 
-public final class NativeMicrophoneAudioCaptureService: AmbientAudioSegmentCapturing {
-  private let captureDuration: TimeInterval
+/// Continuous CoreAudio microphone source renovated from Omi's
+/// `AudioCaptureService`. It uses the default input device's IOProc rather than
+/// periodically creating AVAudioEngine taps.
+public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
+  PassiveAudioStreamingSource
+{
+  private let queue = DispatchQueue(label: "com.intentive.passive-audio.microphone")
+  private let lock = NSLock()
+  private var deviceID = kAudioObjectUnknown
+  private var ioProcID: AudioDeviceIOProcID?
+  private var converter: AVAudioConverter?
+  private var inputFormat: AVAudioFormat?
+  private var targetFormat: AVAudioFormat?
+  private var handler: (@Sendable (Data) -> Void)?
+  private var running = false
 
-  public init(captureDuration: TimeInterval = 5.0) {
-    self.captureDuration = captureDuration
-  }
+  public init() {}
 
-  public func captureSegment() async throws -> Data {
+  public var isRunning: Bool { lock.withLock { running } }
+
+  public func start(onPCM16k: @escaping @Sendable (Data) -> Void) async throws {
     let status = AVCaptureDevice.authorizationStatus(for: .audio)
-    if status == .notDetermined {
-      let granted = await AVCaptureDevice.requestAccess(for: .audio)
-      guard granted else { throw NativeMicrophoneAudioCaptureError.microphonePermissionDenied }
-    } else {
-      guard status == .authorized else {
-        throw NativeMicrophoneAudioCaptureError.microphonePermissionDenied
+    guard status == .authorized else { throw NativeMicrophoneAudioCaptureError.microphonePermissionDenied }
+    if isRunning { return }
+    try await withCheckedThrowingContinuation { continuation in
+      queue.async { [weak self] in
+        guard let self else { continuation.resume(); return }
+        do { try self.startOnQueue(handler: onPCM16k); continuation.resume() }
+        catch { continuation.resume(throwing: error) }
       }
     }
-
-    return try await MicrophoneCaptureRun(duration: captureDuration).start()
   }
 
-  static func pcm16kMonoData(
+  public func stop() {
+    let snapshot: (AudioObjectID, AudioDeviceIOProcID?) = lock.withLock {
+      let result = (deviceID, ioProcID)
+      deviceID = kAudioObjectUnknown
+      ioProcID = nil
+      handler = nil
+      converter = nil
+      inputFormat = nil
+      targetFormat = nil
+      running = false
+      return result
+    }
+    queue.async {
+      if let proc = snapshot.1, snapshot.0 != kAudioObjectUnknown {
+        AudioDeviceStop(snapshot.0, proc)
+        AudioDeviceDestroyIOProcID(snapshot.0, proc)
+      }
+    }
+  }
+
+  public func clearPendingBuffers() { converter?.reset() }
+
+  private func startOnQueue(handler: @escaping @Sendable (Data) -> Void) throws {
+    var inputDevice = kAudioObjectUnknown
+    var size = UInt32(MemoryLayout<AudioObjectID>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    guard AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &inputDevice) == noErr,
+      inputDevice != kAudioObjectUnknown
+    else { throw NativeMicrophoneAudioCaptureError.inputUnavailable }
+
+    var stream = AudioStreamBasicDescription()
+    size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+    address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreamFormat,
+      mScope: kAudioDevicePropertyScopeInput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    guard AudioObjectGetPropertyData(inputDevice, &address, 0, nil, &size, &stream) == noErr,
+      let sourceFormat = AVAudioFormat(streamDescription: &stream),
+      let destination = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
+      let converter = AVAudioConverter(from: sourceFormat, to: destination)
+    else { throw NativeMicrophoneAudioCaptureError.conversionUnavailable }
+
+    var proc: AudioDeviceIOProcID?
+    let createStatus = AudioDeviceCreateIOProcIDWithBlock(&proc, inputDevice, queue) {
+      [weak self] _, input, _, _, _ in self?.handle(input)
+    }
+    guard createStatus == noErr, let proc else {
+      throw NativeMicrophoneAudioCaptureError.ioProcCreationFailed(createStatus)
+    }
+    let startStatus = AudioDeviceStart(inputDevice, proc)
+    guard startStatus == noErr else {
+      AudioDeviceDestroyIOProcID(inputDevice, proc)
+      throw NativeMicrophoneAudioCaptureError.deviceStartFailed(startStatus)
+    }
+    lock.withLock {
+      deviceID = inputDevice
+      ioProcID = proc
+      self.converter = converter
+      inputFormat = sourceFormat
+      targetFormat = destination
+      self.handler = handler
+      running = true
+    }
+  }
+
+  private func handle(_ input: UnsafePointer<AudioBufferList>?) {
+    guard let input else { return }
+    let snapshot = lock.withLock { (running, inputFormat, converter, targetFormat, handler) }
+    guard snapshot.0, let source = snapshot.1, let converter = snapshot.2,
+      let target = snapshot.3, let handler = snapshot.4 else { return }
+    let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+    guard let first = buffers.first, first.mDataByteSize > 0 else { return }
+    let bytesPerFrame = max(1, Int(source.streamDescription.pointee.mBytesPerFrame))
+    let frames = AVAudioFrameCount(Int(first.mDataByteSize) / bytesPerFrame)
+    guard frames > 0, let sourceBuffer = AVAudioPCMBuffer(pcmFormat: source, frameCapacity: frames)
+    else { return }
+    sourceBuffer.frameLength = frames
+    let destinationBuffers = UnsafeMutableAudioBufferListPointer(sourceBuffer.mutableAudioBufferList)
+    for (index, destination) in destinationBuffers.enumerated() where index < buffers.count {
+      guard let src = buffers[index].mData, let dst = destination.mData else { continue }
+      memcpy(dst, src, min(Int(destination.mDataByteSize), Int(buffers[index].mDataByteSize)))
+    }
+    if let data = try? Self.pcm16kMonoData(from: sourceBuffer, converter: converter, targetFormat: target),
+      !data.isEmpty { handler(data) }
+  }
+
+  public static func pcm16kMonoData(
     from buffer: AVAudioPCMBuffer,
     converter: AVAudioConverter,
     targetFormat: AVAudioFormat
   ) throws -> Data {
-    let ratio = targetFormat.sampleRate / buffer.format.sampleRate
-    let frameCapacity = AVAudioFrameCount(max(1, ceil(Double(buffer.frameLength) * ratio) + 32))
-    guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity) else {
+    let capacity = AVAudioFrameCount(max(1, ceil(Double(buffer.frameLength) * targetFormat.sampleRate / buffer.format.sampleRate) + 32))
+    guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
       throw NativeMicrophoneAudioCaptureError.conversionUnavailable
     }
-
-    var didProvideInput = false
-    var conversionError: NSError?
-    let status = converter.convert(to: output, error: &conversionError) { _, outStatus in
-      if didProvideInput {
-        outStatus.pointee = .noDataNow
-        return nil
-      }
-      didProvideInput = true
-      outStatus.pointee = .haveData
-      return buffer
+    var supplied = false
+    var error: NSError?
+    let status = converter.convert(to: output, error: &error) { _, outStatus in
+      if supplied { outStatus.pointee = .noDataNow; return nil }
+      supplied = true; outStatus.pointee = .haveData; return buffer
     }
-
-    if status == .error {
-      throw NativeMicrophoneAudioCaptureError.conversionFailed(
-        conversionError?.localizedDescription ?? "unknown error"
-      )
+    guard status != .error else {
+      throw NativeMicrophoneAudioCaptureError.conversionFailed(error?.localizedDescription ?? "unknown error")
     }
     return encodePCM16LE(fromMonoFloat32: output)
   }
 
-  static func encodePCM16LE(fromMonoFloat32 buffer: AVAudioPCMBuffer) -> Data {
+  public static func encodePCM16LE(fromMonoFloat32 buffer: AVAudioPCMBuffer) -> Data {
     guard let channel = buffer.floatChannelData?[0] else { return Data() }
-    let frameLength = Int(buffer.frameLength)
-    var data = Data(capacity: frameLength * 2)
-
-    for index in 0..<frameLength {
-      let clamped = min(1.0, max(-1.0, channel[index]))
-      var sample = Int16((clamped * Float(Int16.max)).rounded()).littleEndian
+    var data = Data(capacity: Int(buffer.frameLength) * 2)
+    for index in 0..<Int(buffer.frameLength) {
+      var sample = Int16((min(1, max(-1, channel[index])) * Float(Int16.max)).rounded()).littleEndian
       withUnsafeBytes(of: &sample) { data.append(contentsOf: $0) }
     }
     return data
   }
 }
 
-private final class MicrophoneCaptureRun {
-  private let duration: TimeInterval
-  private let engine = AVAudioEngine()
-  private let lock = NSLock()
-  private var continuation: CheckedContinuation<Data, Error>?
-  private var completed = false
-  private var captured = Data()
-
-  init(duration: TimeInterval) {
-    self.duration = duration
-  }
-
-  func start() async throws -> Data {
-    try await withCheckedThrowingContinuation { continuation in
-      self.continuation = continuation
-      do {
-        try startEngine()
-      } catch {
-        complete(.failure(error))
-      }
-    }
-  }
-
-  private func startEngine() throws {
-    let input = engine.inputNode
-    let inputFormat = input.outputFormat(forBus: 0)
-    guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-      throw NativeMicrophoneAudioCaptureError.inputUnavailable
-    }
-    guard
-      let targetFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: 16_000,
-        channels: 1,
-        interleaved: false
-      ),
-      let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
-    else {
-      throw NativeMicrophoneAudioCaptureError.conversionUnavailable
-    }
-
-    input.installTap(onBus: 0, bufferSize: 1_024, format: inputFormat) { [weak self] buffer, _ in
-      guard let self else { return }
-      do {
-        let data = try NativeMicrophoneAudioCaptureService.pcm16kMonoData(
-          from: buffer,
-          converter: converter,
-          targetFormat: targetFormat
-        )
-        append(data)
-      } catch {
-        complete(.failure(error))
-      }
-    }
-
-    do {
-      try engine.start()
-    } catch {
-      input.removeTap(onBus: 0)
-      throw error
-    }
-
-    Task { [weak self] in
-      guard let self else { return }
-      try? await Task.sleep(nanoseconds: UInt64(max(0.1, duration) * 1_000_000_000))
-      finish()
-    }
-  }
-
-  private func append(_ data: Data) {
-    guard !data.isEmpty else { return }
-    lock.lock()
-    if !completed {
-      captured.append(data)
-    }
-    lock.unlock()
-  }
-
-  private func finish() {
-    lock.lock()
-    let data = captured
-    lock.unlock()
-
-    guard !data.isEmpty else {
-      complete(.failure(NativeMicrophoneAudioCaptureError.noAudioCaptured))
-      return
-    }
-    complete(.success(data))
-  }
-
-  private func complete(_ result: Result<Data, Error>) {
-    lock.lock()
-    guard !completed else {
-      lock.unlock()
-      return
-    }
-    completed = true
-    let continuation = continuation
-    self.continuation = nil
-    lock.unlock()
-
-    engine.inputNode.removeTap(onBus: 0)
-    engine.stop()
-
-    switch result {
-    case .success(let data):
-      continuation?.resume(returning: data)
-    case .failure(let error):
-      continuation?.resume(throwing: error)
-    }
-  }
+private extension NSLock {
+  func withLock<T>(_ body: () -> T) -> T { lock(); defer { unlock() }; return body() }
 }

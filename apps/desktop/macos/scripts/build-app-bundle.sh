@@ -49,6 +49,20 @@ NATIVE_ASSETS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ASSETS_BUNDLE_NAME"
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Frameworks"
 cp "$BUILD_DIR/Intentive" "$APP_BUNDLE/Contents/MacOS/Intentive"
+# SwiftPM links binary frameworks with an @rpath install name but its standalone
+# executable does not know the conventional app-bundle Frameworks directory.
+# Add that bundle-relative lookup before signing so assembled debug and release
+# apps launch the frameworks copied below instead of aborting in dyld.
+if ! otool -l "$APP_BUNDLE/Contents/MacOS/Intentive" \
+  | grep -Fq 'path @executable_path/../Frameworks'; then
+  install_name_tool \
+    -add_rpath '@executable_path/../Frameworks' \
+    "$APP_BUNDLE/Contents/MacOS/Intentive"
+  # `swift build` emits an ad-hoc signature. Mach-O load-command edits
+  # invalidate it, so restore an ad-hoc executable signature for local bundles;
+  # public release signing replaces this after the complete app is assembled.
+  codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/Intentive"
+fi
 for framework in Sparkle.framework Sentry.framework; do
   if [[ ! -d "$BUILD_DIR/$framework" ]]; then
     echo "Missing release framework: $BUILD_DIR/$framework" >&2

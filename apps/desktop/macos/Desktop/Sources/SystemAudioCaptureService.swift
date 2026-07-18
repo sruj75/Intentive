@@ -1,11 +1,14 @@
 import Foundation
 import AVFoundation
 import CoreAudio
+import IntentiveDesktopCore
 
 /// Service for capturing system audio using Core Audio Taps (macOS 14.4+)
 /// Captures all system audio output and converts to 16-bit PCM at 16kHz for transcription
 @available(macOS 14.4, *)
-class SystemAudioCaptureService: @unchecked Sendable {
+public class SystemAudioCaptureService: @unchecked Sendable {
+
+    public init() {}
 
     // MARK: - Types
 
@@ -453,4 +456,14 @@ class SystemAudioCaptureService: @unchecked Sendable {
             }
         }
     }
+}
+
+@available(macOS 14.4, *)
+extension SystemAudioCaptureService: PassiveAudioStreamingSource {
+    public var isRunning: Bool { capturing }
+    public func start(onPCM16k: @escaping @Sendable (Data) -> Void) async throws {
+        try await startCapture(onAudioChunk: onPCM16k)
+    }
+    public func stop() { stopCapture() }
+    public func clearPendingBuffers() { audioConverter?.reset() }
 }

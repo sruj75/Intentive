@@ -39,6 +39,7 @@ struct AskAIInputView: View {
             onHeightChange(height)
           }
         )
+        .accessibilityIdentifier("floating-composer-input")
       }
       .padding(.horizontal, 4)
       .frame(height: textHeight)
@@ -50,6 +51,7 @@ struct AskAIInputView: View {
       }
       .disabled(!canSend)
       .buttonStyle(.plain)
+      .accessibilityIdentifier("floating-composer-send")
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 12)

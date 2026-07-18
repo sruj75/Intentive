@@ -53,6 +53,7 @@ struct FloatingControlBarView: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("Open Intentive conversation")
+    .accessibilityIdentifier("floating-bar-open")
   }
 
   private var conversationView: some View {
@@ -67,6 +68,7 @@ struct FloatingControlBarView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close conversation")
+        .accessibilityIdentifier("floating-bar-close")
       }
       .padding(.horizontal, 16)
       .padding(.top, 12)
@@ -105,6 +107,7 @@ struct FloatingControlBarView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Dismiss nudge")
+        .accessibilityIdentifier("floating-pmb-dismiss")
       }
       Text(notification.message)
         .scaledFont(size: 13)
@@ -114,11 +117,13 @@ struct FloatingControlBarView: View {
           FloatingControlBarManager.shared.openNotificationAsChat()
         }
         .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("floating-pmb-reply")
         Button("Snooze") {
           FloatingControlBarManager.shared.snooze(
             for: FloatingControlBarManager.snoozeTwoHoursDuration)
         }
         .buttonStyle(.bordered)
+        .accessibilityIdentifier("floating-pmb-snooze")
       }
     }
     .padding(16)

@@ -22,7 +22,17 @@ public struct DesktopPermissionSnapshot: Equatable, Sendable {
 
 public enum DesktopLaunchAuthenticationState: Equatable, Sendable {
   case signedOut
-  case signedIn(userID: String)
+  case signedIn(userID: String, email: String? = nil)
+
+  public var accountState: AccountState? {
+    guard case .signedIn(let userID, let email) = self else { return nil }
+    return AccountState(
+      userId: userID,
+      email: email,
+      hasAgentInstance: true,
+      hasDesktopClient: true
+    )
+  }
 }
 
 public enum DesktopLaunchRuntimeState: String, Equatable, Sendable {
@@ -190,14 +200,15 @@ public struct DesktopLaunchConfiguration: Equatable, Sendable {
     profileRoot: URL,
     permissions: DesktopPermissionSnapshot,
     authentication: DesktopLaunchAuthenticationState,
-    runtime: DesktopLaunchRuntimeState
+    runtime: DesktopLaunchRuntimeState,
+    systemBoundaries: DesktopSystemBoundaryPolicy = .deterministicTest
   ) -> DesktopLaunchConfiguration {
     DesktopLaunchConfiguration(
       profileRoot: profileRoot,
       permissions: permissions,
       authentication: authentication,
       runtime: runtime,
-      systemBoundaries: .deterministicTest,
+      systemBoundaries: systemBoundaries,
       surface: .desktopV1
     )
   }

@@ -75,7 +75,7 @@ The final assembled acceptance tracer is:
 pnpm --dir apps/desktop acceptance:assembled
 ```
 
-It runs the accessibility-addressed timeline/search, text-only Floating Bar, PMB, onboarding, and utility-settings journeys plus capture/sync/reconnect/expiry/tombstone behavior and Protocol fixtures. Signed/notarized artifact launch and Tart TCC prompts remain dedicated-Mac release gates; see [`apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
+It launches an actual isolated-profile app bundle and drives its real controls through an external macOS Accessibility process. The debug-only loopback bridge is limited to fixtures, Runtime-link/ack faults, and snapshots; it cannot invoke user actions. Evidence is assertion-derived and step-level. The runner must already have Accessibility permission. Signed/notarized artifact launch, N-1 Sparkle update proof, live signed-in full-stack proof, and Tart TCC prompts remain dedicated-Mac release gates; see [`apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
 
 ### Routing session smoke (local)
 

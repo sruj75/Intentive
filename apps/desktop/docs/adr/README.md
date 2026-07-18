@@ -13,3 +13,4 @@ Numbering is local to `apps/desktop/`.
 | 0007 | Text-first Companion; mic is dictation, superseded | [0007-bidirectional-voice-v2.md](0007-bidirectional-voice-v2.md) |
 | 0008 | Floating control bar — minimal-diff restoration; voice/subagent behavior superseded | [0008-floating-bar-strip-and-salvage.md](0008-floating-bar-strip-and-salvage.md) |
 | 0009 | Desktop v1 surface and Runtime boundary | [0009-desktop-v1-surface-and-runtime-boundary.md](0009-desktop-v1-surface-and-runtime-boundary.md) |
+| 0010 | Passive audio sensing is on by default | [0010-passive-audio-sensing-default-on.md](0010-passive-audio-sensing-default-on.md) |

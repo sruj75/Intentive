@@ -6,6 +6,26 @@ import IntentiveDesktopNativeAdapters
 import XCTest
 
 final class RewindStorageVideoFrameExtractionTests: XCTestCase {
+  func testConcurrentFlushFinalizesWriterOnlyOnce() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("VideoChunkEncoderConcurrentFinalizationTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+    let encoder = try VideoChunkEncoder(videosDirectory: root)
+    _ = try await encoder.addFrame(
+      image: try solidImage(color: .blue),
+      timestamp: Date(timeIntervalSince1970: 1_000)
+    )
+
+    async let first = encoder.flushCurrentChunk()
+    async let second = encoder.flushCurrentChunk()
+    let finalized = try await [first, second].compactMap { $0 }
+    let activeChunkID = await encoder.activeChunkID()
+
+    XCTAssertEqual(finalized.count, 1)
+    XCTAssertNil(activeChunkID)
+  }
+
   func testFailedPublicationClearsEncoderStateAndRemovesStagedMedia() async throws {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("VideoChunkEncoderFinalizationTests-\(UUID().uuidString)")

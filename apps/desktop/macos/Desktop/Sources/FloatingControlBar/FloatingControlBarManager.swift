@@ -45,6 +45,9 @@ public final class FloatingControlBarManager {
     proactiveSnooze.isActive
   }
 
+  public var isVisible: Bool { window?.isVisible == true }
+  public var isShowingNotification: Bool { window?.state.currentNotification != nil }
+
   /// The floating bar's transcript view. Fed from Core's `MessageStore` via
   /// `refreshMessages()`; the salvaged view reads it through `sharedFloatingProvider`.
   let floatingProvider = ChatProvider()

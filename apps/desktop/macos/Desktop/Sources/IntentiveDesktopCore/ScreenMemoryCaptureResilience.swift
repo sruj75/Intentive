@@ -9,6 +9,26 @@ public enum ScreenMemoryCapturePauseReason: String, Equatable, Sendable {
   case permissionLost
   case privateMode
   case userToggle
+  case displayChange
+}
+
+/// The one observable capture truth consumed by settings, the status menu,
+/// onboarding, Private Mode, and acceptance automation.
+public enum ScreenMemoryCaptureLifecycleState: Equatable, Sendable {
+  case disabled
+  case permissionBlocked
+  case privateMode
+  case starting
+  case running
+  case autoPaused(ScreenMemoryCapturePauseReason)
+  case stopping
+  case degraded(String)
+  case failed(String)
+
+  public var isRunning: Bool {
+    if case .running = self { return true }
+    return false
+  }
 }
 
 // MARK: - Power source
@@ -294,10 +314,18 @@ public final class ScreenMemoryCaptureLifecycleController {
   /// The active capture session's id, allocated when a capture actually starts.
   /// `nil` before the first start / after a clean stop.
   public private(set) var currentSessionId: String?
+  public private(set) var state: ScreenMemoryCaptureLifecycleState = .disabled {
+    didSet { if oldValue != state { onStateChange?(state) } }
+  }
+  public var onStateChange: ((ScreenMemoryCaptureLifecycleState) -> Void)?
+  public var onCaptureEvent: ((ScreenMemoryCaptureLoopEvent) -> Void)?
 
   private let makeUUID: () -> String
   private var recorderGate: ProactiveScreenRecorderYieldGate
   private var wakeSettleTask: Task<Void, Never>?
+  private var displayChangeTask: Task<Void, Never>?
+  private var userEnabled = false
+  private var startGeneration = 0
 
   public init(
     loop: ScreenMemoryCaptureLoop,
@@ -388,12 +416,15 @@ public final class ScreenMemoryCaptureLifecycleController {
     guard captureBoundaryEnabled else { return }
     systemEventObserver?.observe { [weak self] kind in
       Task { @MainActor [weak self] in
-        self?.handleSystemEvent(kind)
+        self?.receiveSystemEvent(kind)
       }
     }
   }
 
-  private func handleSystemEvent(_ kind: CaptureSystemEventKind) {
+  /// Routes an observed AppKit power/display event through the authoritative
+  /// lifecycle. Public so the assembled acceptance host can inject the same
+  /// boundary event without controlling user actions through its bridge.
+  public func receiveSystemEvent(_ kind: CaptureSystemEventKind) {
     guard captureBoundaryEnabled else { return }
     switch kind {
     case .systemSleep:
@@ -405,8 +436,68 @@ public final class ScreenMemoryCaptureLifecycleController {
     case .screenUnlock:
       scheduleWakeResume()
     case .displayChange:
-      break
+      handleDisplayChange()
     }
+  }
+
+  /// Sole user-facing start/stop entry point. Callers persist the desired
+  /// preference, then ask this controller to reconcile the physical source.
+  public func setUserEnabled(_ enabled: Bool) {
+    userEnabled = enabled
+    startGeneration += 1
+    if enabled {
+      reconcile()
+    } else {
+      stop(reason: .userToggle)
+    }
+  }
+
+  /// Reconcile desired policy, permission, privacy, and the actual source.
+  public func reconcile() {
+    guard captureBoundaryEnabled else {
+      loop.stop()
+      state = .disabled
+      return
+    }
+    let enabled = userEnabled || settings().captureEnabled
+    guard enabled else {
+      loop.stop()
+      state = .disabled
+      return
+    }
+    guard permissionProvider() else {
+      loop.stop()
+      state = .permissionBlocked
+      return
+    }
+    guard !privacySnapshotProvider().isPrivateMode else {
+      loop.stop()
+      pausedReason = .privateMode
+      state = .privateMode
+      return
+    }
+    guard !loop.state.isRunning else {
+      pausedReason = nil
+      state = .running
+      return
+    }
+
+    state = .starting
+    if currentSessionId == nil { beginSession() }
+    let generation = startGeneration
+    let started = loop.start { [weak self] event in
+      guard let self, generation == self.startGeneration else { return }
+      self.onCaptureEvent?(event)
+      switch event {
+      case .captured:
+        self.state = .running
+      case .skipped(let reason):
+        self.state = .degraded(reason)
+      case .failed(let reason):
+        self.state = .failed(reason)
+      }
+    }
+    state = started || loop.state.isRunning ? .running : .failed("capture source did not start")
   }
 
   // MARK: - Pause / resume
@@ -418,6 +509,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     pausedReason = reason
     if reason != .userToggle {
       wasAutoPaused = true
+      state = reason == .privateMode ? .privateMode : .autoPaused(reason)
     }
   }
 
@@ -433,7 +525,7 @@ public final class ScreenMemoryCaptureLifecycleController {
       return
     }
     pausedReason = nil
-    _ = loop.start()
+    reconcile()
   }
 
   private func scheduleWakeResume() {
@@ -445,6 +537,27 @@ public final class ScreenMemoryCaptureLifecycleController {
       }
       guard !Task.isCancelled else { return }
       await MainActor.run { self?.resume() }
+    }
+  }
+
+  private func handleDisplayChange() {
+    guard loop.state.isRunning else { return }
+    startGeneration += 1
+    loop.stop()
+    pausedReason = .displayChange
+    wasAutoPaused = true
+    state = .autoPaused(.displayChange)
+    displayChangeTask?.cancel()
+    displayChangeTask = Task { [weak self] in
+      guard let self else { return }
+      try? await archiveReconciler?.finalizeActiveVideoChunk()
+      guard !Task.isCancelled else { return }
+      try? await Task.sleep(
+        nanoseconds: UInt64(Self.wakeSettleDelaySeconds * 1_000_000_000))
+      guard !Task.isCancelled else { return }
+      pausedReason = nil
+      wasAutoPaused = false
+      reconcile()
     }
   }
 
@@ -463,9 +576,18 @@ public final class ScreenMemoryCaptureLifecycleController {
   /// chunk finalize is bounded by a 5s semaphore so `applicationWillTerminate`
   /// does not stall the OS quit window.
   public func stop(reason: SessionEndReason) {
+    startGeneration += 1
+    state = .stopping
     loop.stop()
     pausedReason = .userToggle
-    guard !didEmitSessionEnd else { return }
+    guard let sessionId = currentSessionId else {
+      state = .disabled
+      return
+    }
+    guard !didEmitSessionEnd else {
+      state = .disabled
+      return
+    }
 
     if let archiveReconciler {
       let sem = DispatchSemaphore(value: 0)
@@ -481,7 +603,7 @@ public final class ScreenMemoryCaptureLifecycleController {
 
     let marker = SessionEndMarker(
       markerId: makeUUID(),
-      sessionId: currentSessionId ?? makeUUID(),
+      sessionId: sessionId,
       endedAt: now().protocolTimestamp,
       reason: reason
     )
@@ -493,10 +615,12 @@ public final class ScreenMemoryCaptureLifecycleController {
       currentSessionId = nil
       try? lockFile?.markClean()
       didMarkCleanShutdown = true
+      state = .disabled
     } catch {
       // Enqueue failed: keep the lock so the next launch finalizes this run via
       // a crash marker. Still mark emitted to avoid a duplicate on a repeat stop.
       didEmitSessionEnd = true
+      state = .failed(error.localizedDescription)
     }
   }
 
@@ -545,8 +669,8 @@ public final class ScreenMemoryCaptureLifecycleController {
           permissionProvider(),
           !privacySnapshotProvider().isPrivateMode
     else { return }
-    beginSession()
-    _ = loop.start()
+    userEnabled = true
+    reconcile()
   }
 
   public func markCleanShutdown() {

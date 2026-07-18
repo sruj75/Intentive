@@ -53,6 +53,7 @@ public final class DesktopRuntimeSessionCoordinator {
     controlPlane: any DesktopControlPlaneRoutingClient,
     device: ClientDeviceService,
     runtime: RuntimeAdapter,
+    initialAccountState: AccountState? = nil,
     capturePermissionGranted: @escaping () -> Bool,
     timeZone: @escaping () -> TimeZone = { .current }
   ) {
@@ -60,6 +61,7 @@ public final class DesktopRuntimeSessionCoordinator {
     self.controlPlane = controlPlane
     self.device = device
     self.runtime = runtime
+    accountState = initialAccountState
     self.capturePermissionGranted = capturePermissionGranted
     self.timeZone = timeZone
   }
@@ -95,6 +97,18 @@ public final class DesktopRuntimeSessionCoordinator {
   public func disconnect() {
     runtime.disconnect()
     markSignedOut()
+  }
+
+  @discardableResult
+  public func signOut() async -> DesktopRuntimeSessionState {
+    runtime.disconnect()
+    do {
+      try await auth.signOut()
+      markSignedOut()
+    } catch {
+      state = .failed("Sign out failed: \(error.localizedDescription)")
+    }
+    return state
   }
 
   public func markRuntimeConnected() {

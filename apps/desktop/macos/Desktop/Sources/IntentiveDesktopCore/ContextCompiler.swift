@@ -99,7 +99,7 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
     contextChangeDebounceSeconds: Double = 3,
     sameContextMinimumSeconds: Double = 60,
     messagingFallbackSeconds: Double = 15,
-    ambientAudioCaptureEnabled: Bool = false
+    ambientAudioCaptureEnabled: Bool = true
   ) {
     self.captureEnabled = captureEnabled
     self.excludedApps = excludedApps
@@ -126,7 +126,7 @@ public struct CompilerSettings: Codable, Equatable, Sendable {
       contextChangeDebounceSeconds: try container.decodeIfPresent(Double.self, forKey: .contextChangeDebounceSeconds) ?? 3,
       sameContextMinimumSeconds: try container.decodeIfPresent(Double.self, forKey: .sameContextMinimumSeconds) ?? 60,
       messagingFallbackSeconds: try container.decodeIfPresent(Double.self, forKey: .messagingFallbackSeconds) ?? 15,
-      ambientAudioCaptureEnabled: try container.decodeIfPresent(Bool.self, forKey: .ambientAudioCaptureEnabled) ?? false
+      ambientAudioCaptureEnabled: try container.decodeIfPresent(Bool.self, forKey: .ambientAudioCaptureEnabled) ?? true
     )
   }
 

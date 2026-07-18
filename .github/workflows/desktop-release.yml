@@ -1,10 +1,20 @@
 name: desktop-release
 
 on:
-  push:
-    tags:
-      - "desktop-v*"
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: SHA accepted by desktop-release-candidate
+        required: true
+        type: string
+      candidate_run_id:
+        description: Successful desktop-release-candidate workflow run ID
+        required: true
+        type: string
+      release_version:
+        description: Semver without desktop-v prefix
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,12 +26,59 @@ env:
 jobs:
   release:
     runs-on: macos-latest
+    environment: desktop-release-approval
+    outputs:
+      release_tag: ${{ steps.candidate.outputs.release_tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
+
+      - name: Verify protected candidate evidence and create tag
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          VERSION: ${{ inputs.release_version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+][0-9]+)?$ ]] || {
+            echo "Invalid Desktop release version: $VERSION" >&2
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p .context/candidate-evidence
+          gh run view "$CANDIDATE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json workflowName,conclusion,event \
+            > .context/candidate-evidence/run.json
+          python3 - .context/candidate-evidence/run.json <<'PY'
+          import json, pathlib, sys
+          run = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          if run.get("workflowName") != "desktop-release-candidate":
+              raise SystemExit("candidate evidence came from the wrong workflow")
+          if run.get("conclusion") != "success" or run.get("event") != "workflow_dispatch":
+              raise SystemExit("candidate evidence workflow was not a successful manual run")
+          PY
+          gh run download "$CANDIDATE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "desktop-candidate-$CANDIDATE_SHA" \
+            --dir .context/candidate-evidence
+          python3 - "$CANDIDATE_SHA" .context/candidate-evidence/desktop-assembled-acceptance.json <<'PY'
+          import json, pathlib, sys
+          expected, path = sys.argv[1], pathlib.Path(sys.argv[2])
+          evidence = json.loads(path.read_text())
+          if not evidence.get("ok") or evidence.get("gitSHA") != expected:
+              raise SystemExit("candidate AX evidence does not accept the requested SHA")
+          PY
+          RELEASE_TAG="desktop-v$VERSION"
+          git tag --annotate "$RELEASE_TAG" "$CANDIDATE_SHA" --message "Intentive Desktop $VERSION"
+          git push origin "$RELEASE_TAG"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -37,15 +94,7 @@ jobs:
 
       - name: Resolve release version
         run: |
-          if [[ "${GITHUB_REF_NAME}" == desktop-v* ]]; then
-            [[ "${GITHUB_REF_NAME}" =~ ^desktop-v[0-9]+\.[0-9]+\.[0-9]+([+][0-9]+)?$ ]] || {
-              echo "Invalid Desktop release tag: ${GITHUB_REF_NAME}" >&2
-              exit 1
-            }
-            VERSION="${GITHUB_REF_NAME#desktop-v}"
-          else
-            VERSION="$(node -p "require('./apps/desktop/package.json').version")"
-          fi
+          VERSION="${RELEASE_TAG#desktop-v}"
           BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
           if [[ "$VERSION" == *"+"* ]]; then
             BUILD_NUMBER="${VERSION##*+}"
@@ -67,11 +116,6 @@ jobs:
           DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
           DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
         run: |
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            echo "Workflow-dispatch smoke builds may be unsigned."
-            exit 0
-          fi
-
           missing=()
           for secret_name in \
             APPLE_DEVELOPER_ID_CERT \
@@ -143,10 +187,6 @@ jobs:
 
       - name: Codesign app
         run: |
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            echo "No signing identity configured; skipping codesign."
-            exit 0
-          fi
           for framework in \
             "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" \
             "$APP_BUNDLE/Contents/Frameworks/Sentry.framework"; do
@@ -174,7 +214,6 @@ jobs:
             "dist/Intentive-$VERSION.dmg"
 
       - name: Codesign DMG
-        if: github.ref_type == 'tag'
         run: |
           codesign --force --timestamp --sign "$SIGNING_IDENTITY" "dist/Intentive-$VERSION.dmg"
           codesign --verify --verbose=2 "dist/Intentive-$VERSION.dmg"
@@ -185,10 +224,6 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            echo "Workflow-dispatch smoke builds do not enter the public notarization lane."
-            exit 0
-          fi
           if [[ -z "${APPLE_ID:-}" ]]; then
             echo "No Apple notarization credentials configured; skipping notarization."
             exit 0
@@ -209,13 +244,9 @@ jobs:
           DMG="Intentive-$VERSION.dmg"
           DMG_PATH="dist/$DMG"
           DMG_BYTES="$(stat -f%z "$DMG_PATH")"
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            SPARKLE_SIGN_UPDATE="$(find "$(scripts/development-storage.sh path swiftpm-desktop)" -path '*/Sparkle/bin/sign_update' -type f -perm -111 | head -n 1)"
-            [[ -x "$SPARKLE_SIGN_UPDATE" ]] || { echo "Sparkle sign_update tool not found" >&2; exit 1; }
-            SIGNATURE="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGN_UPDATE" --ed-key-file - -p "$DMG_PATH")"
-          else
-            SIGNATURE="unsigned-workflow-dispatch"
-          fi
+          SPARKLE_SIGN_UPDATE="$(find "$(scripts/development-storage.sh path swiftpm-desktop)" -path '*/Sparkle/bin/sign_update' -type f -perm -111 | head -n 1)"
+          [[ -x "$SPARKLE_SIGN_UPDATE" ]] || { echo "Sparkle sign_update tool not found" >&2; exit 1; }
+          SIGNATURE="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGN_UPDATE" --ed-key-file - -p "$DMG_PATH")"
           cat > dist/appcast.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -228,7 +259,7 @@ jobs:
                 <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
                 <pubDate>$(date -u +"%a, %d %b %Y %H:%M:%S %z")</pubDate>
                 <enclosure
-                  url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$DMG"
+                  url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/$DMG"
                   sparkle:edSignature="$SIGNATURE"
                   length="$DMG_BYTES"
                   type="application/octet-stream" />
@@ -238,7 +269,6 @@ jobs:
           EOF
 
       - name: Audit signed release artifacts
-        if: github.ref_type == 'tag'
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
@@ -255,7 +285,7 @@ jobs:
             --app "$APP_BUNDLE" \
             --dmg "dist/Intentive-$VERSION.dmg" \
             --appcast dist/appcast.xml \
-            --tag "$GITHUB_REF_NAME" \
+            --tag "$RELEASE_TAG" \
             --build "$BUILD_NUMBER" \
             --expected-team-id "$APPLE_TEAM_ID" \
             --sparkle-sign-tool "$SPARKLE_SIGN_UPDATE" \
@@ -264,23 +294,56 @@ jobs:
           rm -f "$PRIVATE_KEY_FILE"
           trap - EXIT
 
-      - name: Upload workflow-dispatch smoke artifacts
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v7
-        with:
-          name: intentive-desktop-unsigned-smoke-${{ github.run_number }}
-          path: |
-            dist/*.dmg
-            dist/appcast.xml
-          if-no-files-found: error
-
       - name: Upload release artifacts
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist/*.dmg
             dist/appcast.xml
             dist/desktop-release-acceptance.json
           draft: true
           generate_release_notes: true
+
+  stage2-proof-and-publish:
+    needs: release
+    runs-on: [self-hosted, macOS, ARM64, intentive-desktop]
+    environment: desktop-release-stage2-proof
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      DESKTOP_STAGE2_SPARKLE_DRIVER: ${{ vars.DESKTOP_STAGE2_SPARKLE_DRIVER }}
+      DESKTOP_STAGE2_TART_DRIVER: ${{ vars.DESKTOP_STAGE2_TART_DRIVER }}
+      DESKTOP_STAGE2_FULL_STACK_DRIVER: ${{ vars.DESKTOP_STAGE2_FULL_STACK_DRIVER }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Download the exact draft candidate
+        run: |
+          mkdir -p dist
+          gh release download "$RELEASE_TAG" --dir dist --pattern '*.dmg' --pattern appcast.xml
+          test "$(find dist -name '*.dmg' -type f | wc -l | tr -d ' ')" = 1
+      - name: Execute installed-DMG, Sparkle N-1, Tart TCC, and signed-in proof
+        run: |
+          DMG="$(find dist -name '*.dmg' -type f -print -quit)"
+          EVIDENCE_DIR="$RUNNER_TEMP/intentive-stage2-proof-$GITHUB_RUN_ID"
+          apps/desktop/macos/scripts/run-stage2-release-proof.sh \
+            --dmg "$DMG" \
+            --appcast dist/appcast.xml \
+            --tag "$RELEASE_TAG" \
+            --sha "$CANDIDATE_SHA" \
+            --output "$EVIDENCE_DIR"
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
+      - name: Attach Stage 2 proof and publish
+        run: |
+          EVIDENCE_ARCHIVE="$RUNNER_TEMP/intentive-stage2-proof-$GITHUB_RUN_ID.tar.gz"
+          tar -C "$EVIDENCE_DIR" -czf "$EVIDENCE_ARCHIVE" .
+          shasum -a 256 "$EVIDENCE_ARCHIVE" > "$EVIDENCE_ARCHIVE.sha256"
+          gh release upload "$RELEASE_TAG" \
+            "$EVIDENCE_ARCHIVE" "$EVIDENCE_ARCHIVE.sha256" --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

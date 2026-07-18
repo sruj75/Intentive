@@ -1,8 +1,56 @@
+import AppKit
 import IntentiveDesktopCore
 import IntentiveDesktopNativeAdapters
 import IntentiveDesktopNativeAssets
 import ServiceManagement
 import SwiftUI
+
+#if DEBUG
+private final class AcceptanceScreenCaptureSource: DesktopWindowContextSource {
+  func activeWindowContext() throws -> DesktopWindowContext {
+    DesktopWindowContext(
+      appBundleID: "com.heyintentive.acceptance.fixture",
+      appName: "Intentive Acceptance",
+      windowTitle: "Authoritative capture first frame")
+  }
+
+  func captureFrame() async throws -> CapturedFrame {
+    let image = NSImage(size: NSSize(width: 960, height: 540), flipped: false) { rect in
+      NSColor.systemIndigo.setFill(); rect.fill()
+      return true
+    }
+    guard let tiff = image.tiffRepresentation,
+      let bitmap = NSBitmapImageRep(data: tiff),
+      let png = bitmap.representation(using: .png, properties: [:])
+    else { throw CocoaError(.fileReadCorruptFile) }
+    return CapturedFrame(
+      id: UUID().uuidString,
+      capturedAt: Date().protocolTimestamp,
+      appBundleID: "com.heyintentive.acceptance.fixture",
+      appName: "Intentive Acceptance",
+      windowTitle: "Authoritative capture first frame",
+      ocrText: "Authoritative capture first frame",
+      rawFrameBytes: png)
+  }
+}
+
+private final class AcceptancePassiveAudioSource: PassiveAudioStreamingSource {
+  private(set) var isRunning = false
+  private(set) var emittedBytes = 0
+  private var onPCM16k: (@Sendable (Data) -> Void)?
+  func start(onPCM16k: @escaping @Sendable (Data) -> Void) async throws {
+    self.onPCM16k = onPCM16k
+    isRunning = true
+  }
+  func stop() { isRunning = false; onPCM16k = nil }
+  func clearPendingBuffers() { emittedBytes = 0 }
+  func emit(_ data: Data) {
+    guard isRunning else { return }
+    emittedBytes += data.count
+    onPCM16k?(data)
+  }
+}
+#endif
 
 enum DesktopSection: String, CaseIterable, Identifiable {
   case screenMemory = "Screen Memory"
@@ -67,7 +115,8 @@ final class DesktopViewModel: ObservableObject {
   @Published var query = ""
   @Published var status: String
   @Published var effectLog: [String] = []
-  @Published var captureRunning = false
+  @Published var captureState: ScreenMemoryCaptureLifecycleState = .disabled
+  var captureRunning: Bool { captureState.isRunning }
   @Published var compilerSettings: CompilerSettings
   @Published var excludedAppsText: String
   @Published var privacySnapshot: ScreenMemoryPrivacySnapshot
@@ -78,6 +127,7 @@ final class DesktopViewModel: ObservableObject {
   @Published var onboardingRetentionPeriod: ScreenMemoryRetentionPeriod = .sevenDays
   @Published var utilitySettings: DesktopUtilitySettings
   @Published var updateSnapshot = UpdateSnapshot()
+  @Published var passiveAudioState: PassiveAudioCaptureState = .disabled
   @Published var showOnboarding: Bool
 
   let messageStore = MessageStore()
@@ -89,6 +139,15 @@ final class DesktopViewModel: ObservableObject {
   private let onboardingStore: any DesktopOnboardingProgressStore
   private let utilitySettingsCoordinator: DesktopUtilitySettingsCoordinator
   private var publicReleaseOperations: DesktopPublicReleaseOperations!
+  #if DEBUG
+  private var automationBridge: DesktopAutomationBridge?
+  private var automationDropNextIngressAck = false
+  private var automationLastIngressAck: RuntimeIngressAck?
+  private var automationManualUpdateChecks = 0
+  private var automationRetentionExpiredCount = 0
+  private var automationExpandedMatrix: [String: Bool] = [:]
+  private var automationExpandedMatrixDetails: [String: String] = [:]
+  #endif
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
   // On-device passive-audio stack: Silero VAD gates microphone segments and
@@ -108,6 +167,7 @@ final class DesktopViewModel: ObservableObject {
     controlPlane: DesktopRuntimeConfiguration.controlPlaneClient(),
     device: ClientDeviceService(deviceId: DesktopRuntimeConfiguration.deviceFingerprint),
     runtime: runtime,
+    initialAccountState: composition.authentication.accountState,
     capturePermissionGranted: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
   )
   private lazy var floatingBarController = FloatingBarController(
@@ -120,7 +180,14 @@ final class DesktopViewModel: ObservableObject {
     isRuntimeConnected: { [weak self] in self?.runtime.status == .connected },
     connectionGeneration: { [weak self] in self?.runtime.connectionGeneration ?? 0 }
   )
-  private lazy var captureSource = NativeScreenCaptureSource()
+  private lazy var captureSource: any DesktopWindowContextSource = {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      return AcceptanceScreenCaptureSource()
+    }
+    #endif
+    return NativeScreenCaptureSource()
+  }()
   private lazy var capture = CaptureCoordinator(
     compiler: compiler,
     screenMemory: screenMemory,
@@ -154,40 +221,78 @@ final class DesktopViewModel: ObservableObject {
       self?.captureLifecycle?.competingRecorderSkipReason(at: Date())
     }
   )
-  private lazy var ambientAudioLoop = AmbientAudioCaptureLoop(
+  private lazy var passiveAudioPipeline = PassiveAudioContextPipeline(
     coordinator: ambientAudio,
-    audioCapture: NativeMicrophoneAudioCaptureService(captureDuration: 4.0),
     voiceGate: SileroVoiceActivityGate(vad: sileroVAD),
     transcription: localTranscription,
     settingsProvider: { [weak self] in
       self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
     },
-    permissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
     privacySnapshotProvider: { [weak self] in
       self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
     },
+    microphonePermissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
+    systemAudioPermissionProvider: { true },
+    systemAudioModeProvider: { SystemAudioCaptureSettings.shared.mode },
+    meetingActiveProvider: { [weak self] in self?.meetingObserver.isMeetingActive ?? false },
     activeWindowProvider: { [weak self] in
       guard let self else { return nil }
       return try self.captureSource.activeWindowContext()
     }
   )
+  #if DEBUG
+  private lazy var acceptanceMicrophoneSource = AcceptancePassiveAudioSource()
+  private lazy var acceptanceSystemAudioSource = AcceptancePassiveAudioSource()
+  #endif
+  private lazy var systemAudioSource: any PassiveAudioStreamingSource = {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      return acceptanceSystemAudioSource
+    }
+    #endif
+    if #available(macOS 14.4, *) { return SystemAudioCaptureService() }
+    return UnavailablePassiveAudioStreamingSource()
+  }()
+  private lazy var microphoneAudioSource: any PassiveAudioStreamingSource = {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      return acceptanceMicrophoneSource
+    }
+    #endif
+    return NativeMicrophoneAudioCaptureService()
+  }()
+  private lazy var passiveAudioCoordinator: PassiveAudioCaptureCoordinator = {
+    let coordinator = PassiveAudioCaptureCoordinator(
+      microphone: microphoneAudioSource,
+      systemAudio: systemAudioSource,
+      pipeline: passiveAudioPipeline,
+      microphonePermission: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
+      systemAudioPermission: { true },
+      privacySnapshot: { [weak self] in
+        self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+      },
+      systemAudioMode: { SystemAudioCaptureSettings.shared.mode }
+    )
+    coordinator.onStateChange = { [weak self] state in
+      self?.passiveAudioState = state
+      self?.objectWillChange.send()
+    }
+    return coordinator
+  }()
+  private lazy var meetingObserver = AppKitMeetingObserver { [weak self] active in
+    self?.passiveAudioCoordinator.setMeetingActive(active)
+  }
   private lazy var screenPrivateModeGate = RememberingScreenMemorySensingGate(
-    isRunning: { [weak self] in self?.captureLoop.state.isRunning ?? false },
+    isRunning: { [weak self] in self?.captureState.isRunning ?? false },
     pause: { [weak self] in
-      self?.captureLoop.stop()
-      self?.captureRunning = false
+      self?.captureLifecycle?.reconcile()
     },
-    resume: { [weak self] in self?.startCaptureAfterPrivateMode() }
+    resume: { [weak self] in self?.captureLifecycle?.reconcile() }
   )
   private lazy var microphonePrivateModeGate = RememberingScreenMemorySensingGate(
-    isRunning: { [weak self] in self?.ambientAudioLoop.state.isRunning ?? false },
-    pause: { [weak self] in self?.ambientAudioLoop.stop() },
+    isRunning: { [weak self] in self?.passiveAudioState.isRecording ?? false },
+    pause: { [weak self] in self?.passiveAudioCoordinator.stopSynchronously() },
     resume: { [weak self] in self?.reconcileAmbientAudioCapture() }
-  )
-  private lazy var systemAudioPrivateModeGate = RememberingScreenMemorySensingGate(
-    isRunning: { false },
-    pause: {},
-    resume: {}
   )
   private lazy var privacyCoordinator = ScreenMemoryPrivacyCoordinator(
     policy: privacyPolicy,
@@ -195,7 +300,6 @@ final class DesktopViewModel: ObservableObject {
     sensingGates: [
       screenPrivateModeGate,
       microphonePrivateModeGate,
-      systemAudioPrivateModeGate,
     ]
   )
   /// Capture-lifecycle resilience controller: auto-start, sleep/wake/lock,
@@ -206,6 +310,9 @@ final class DesktopViewModel: ObservableObject {
   private(set) lazy var captureLifecycle: ScreenMemoryCaptureLifecycleController? = {
     guard composition.activeSystemBoundaries.contains(.capture) else { return nil }
     let usesCaptureBoundary = composition.activeSystemBoundaries.contains(.capture)
+    let isAcceptance = ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil
+    let recorderDetector: (any CompetingScreenRecorderDetector)? =
+      isAcceptance ? nil : AppKitCompetingScreenRecorderDetector()
     // The unclean-shutdown flag file lives next to `intentive.db` in the
     // Intentive profile root. Omi stores `.omi_running` per-database; we keep a
     // single app-level flag because the per-user archive mounts lazily after
@@ -218,7 +325,7 @@ final class DesktopViewModel: ObservableObject {
     let controller = ScreenMemoryCaptureLifecycleController(
       loop: captureLoop,
       powerSource: PowerMonitorDesktopPowerSource(),
-      recorderDetector: AppKitCompetingScreenRecorderDetector(),
+      recorderDetector: recorderDetector,
       systemEventObserver: AppKitCaptureSystemEventObserver(),
       sessionEndSink: publisher,
       archiveReconciler: screenMemory.activeArchive,
@@ -233,6 +340,13 @@ final class DesktopViewModel: ObservableObject {
       },
       captureBoundaryEnabled: usesCaptureBoundary
     )
+    controller.onStateChange = { [weak self] state in
+      self?.captureState = state
+      self?.objectWillChange.send()
+    }
+    controller.onCaptureEvent = { [weak self] event in
+      if case .captured = event { self?.rebuildScreenMemoryTimeline() }
+    }
     controller.installSystemEventObservers()
     return controller
   }()
@@ -246,16 +360,153 @@ final class DesktopViewModel: ObservableObject {
   /// rather than per-render so the on-device semantic pass runs at most once per
   /// keystroke. Renovated from Omi's `RewindViewModel.performSearch`.
   @Published var screenMemoryResults: [ScreenMemoryRankedResult] = []
+  @Published var timelineState: ScreenMemoryTimeline.State?
+  @Published var currentFrameData: Data?
+  @Published var screenMemoryPlaying = false
+  private var screenMemoryTimeline: ScreenMemoryTimeline?
+  private var frameLoadTask: Task<Void, Never>?
+  private var playbackTask: Task<Void, Never>?
+  private var frameCache: [String: Data] = [:]
 
   /// Recompute Screen Memory search through the active archive's hybrid local
   /// search (FTS-first, on-device vector recall appended). Falls back to the
   /// store's lexical search when no archive is mounted yet.
   func refreshScreenMemorySearch() {
+    if let timeline = screenMemoryTimeline {
+      Task { @MainActor [weak self] in
+        await timeline.search(self?.query ?? "")
+        self?.publishTimelineState()
+        self?.loadSelectedTimelineFrame()
+      }
+      return
+    }
     if let archive = screenMemory.activeArchive {
       screenMemoryResults = archive.semanticSearch(query, limit: 24)
     } else {
       screenMemoryResults = screenMemory.search(query, limit: 24).map {
         ScreenMemoryRankedResult(record: $0.record, matchedLexically: true, semanticSimilarity: nil)
+      }
+    }
+  }
+
+  func rebuildScreenMemoryTimeline(selectedDate: Date = Date()) {
+    frameLoadTask?.cancel()
+    playbackTask?.cancel()
+    frameCache.removeAll()
+    currentFrameData = nil
+    screenMemoryPlaying = false
+    guard let archive = screenMemory.activeArchive else {
+      screenMemoryTimeline = nil
+      timelineState = nil
+      return
+    }
+    let timeline = ScreenMemoryTimeline(archive: archive, selectedDate: selectedDate)
+    screenMemoryTimeline = timeline
+    Task { @MainActor [weak self] in
+      await timeline.loadDay(selectedDate)
+      self?.publishTimelineState()
+      self?.loadSelectedTimelineFrame()
+    }
+  }
+
+  func moveScreenMemoryDay(_ offset: Int) {
+    guard let timeline = screenMemoryTimeline,
+      let date = Calendar.current.date(byAdding: .day, value: offset, to: timeline.state.selectedDate)
+    else { return }
+    Task { @MainActor [weak self] in
+      await timeline.loadDay(date)
+      self?.query = ""
+      self?.publishTimelineState()
+      self?.loadSelectedTimelineFrame()
+    }
+  }
+
+  func filterScreenMemory(app: String?) {
+    guard let timeline = screenMemoryTimeline else { return }
+    Task { @MainActor [weak self] in
+      await timeline.filterByApp(app)
+      self?.publishTimelineState()
+      self?.loadSelectedTimelineFrame()
+    }
+  }
+
+  func selectScreenMemory(_ record: ScreenMemoryRecord) {
+    guard let id = UUID(uuidString: record.id).map(ScreenMemoryRecordID.init) else { return }
+    screenMemoryTimeline?.select(id)
+    publishTimelineState()
+    loadSelectedTimelineFrame()
+  }
+
+  func scrubScreenMemory(to index: Int) {
+    guard let frames = timelineState?.frames, frames.indices.contains(index) else { return }
+    selectScreenMemory(frames[index])
+  }
+
+  func stepScreenMemory(_ direction: Int) {
+    direction < 0 ? screenMemoryTimeline?.selectPrevious() : screenMemoryTimeline?.selectNext()
+    publishTimelineState()
+    loadSelectedTimelineFrame()
+  }
+
+  func toggleScreenMemoryPlayback() {
+    screenMemoryPlaying.toggle()
+    playbackTask?.cancel()
+    guard screenMemoryPlaying else { return }
+    playbackTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled, self?.screenMemoryPlaying == true {
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        guard !Task.isCancelled, let self else { return }
+        let before = self.timelineState?.selectedRecordID
+        self.stepScreenMemory(1)
+        if before == self.timelineState?.selectedRecordID { self.screenMemoryPlaying = false }
+      }
+    }
+  }
+
+  func deleteSelectedScreenMemory(confirmChunkDeletion: Bool) async -> ScreenMemoryDeletionResult? {
+    guard let timeline = screenMemoryTimeline, let id = timeline.state.selectedRecordID else { return nil }
+    let result = await timeline.delete(id, confirmChunkDeletion: confirmChunkDeletion)
+    publishTimelineState()
+    loadSelectedTimelineFrame()
+    return result
+  }
+
+  func thumbnailData(for record: ScreenMemoryRecord) async -> Data? {
+    if let cached = frameCache[record.id] { return cached }
+    guard let timeline = screenMemoryTimeline,
+      let id = UUID(uuidString: record.id).map(ScreenMemoryRecordID.init),
+      let frame = await timeline.frameImage(for: id)
+    else { return nil }
+    frameCache[record.id] = frame.imageData
+    return frame.imageData
+  }
+
+  var selectedTimelineRecord: ScreenMemoryRecord? {
+    guard let state = timelineState, let selected = state.selectedRecordID else { return nil }
+    return state.frames.first { $0.id == selected.value.uuidString }
+  }
+
+  var selectedOCRMatches: [ScreenMemoryOCRBlock] {
+    guard let timeline = screenMemoryTimeline, let id = timeline.state.selectedRecordID else { return [] }
+    return timeline.matchingBlocks(for: id)
+  }
+
+  private func publishTimelineState() { timelineState = screenMemoryTimeline?.state }
+
+  private func loadSelectedTimelineFrame() {
+    frameLoadTask?.cancel()
+    currentFrameData = nil
+    guard let timeline = screenMemoryTimeline, let id = timeline.state.selectedRecordID else { return }
+    frameLoadTask = Task { @MainActor [weak self] in
+      let frame = await timeline.frameImage(for: id)
+      guard !Task.isCancelled, self?.screenMemoryTimeline === timeline,
+        self?.screenMemoryTimeline?.state.selectedRecordID == id else { return }
+      self?.currentFrameData = frame?.imageData
+      if let data = frame?.imageData { self?.frameCache[id.value.uuidString] = data }
+      guard let frames = self?.timelineState?.frames,
+        let index = frames.firstIndex(where: { $0.id == id.value.uuidString }) else { return }
+      for adjacent in [index - 1, index + 1] where frames.indices.contains(adjacent) {
+        _ = await self?.thumbnailData(for: frames[adjacent])
       }
     }
   }
@@ -307,12 +558,13 @@ final class DesktopViewModel: ObservableObject {
     settings.excludedApps = []
     let progress = onboardingStore.load()
     let usesCaptureBoundary = composition.activeSystemBoundaries.contains(.capture)
+    let isAcceptance = ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil
     let screenRecordingPermissionGranted =
-      usesCaptureBoundary
+      usesCaptureBoundary && !isAcceptance
       ? permissionGateway.hasScreenRecordingPermission()
       : composition.permissions.screenRecording == .granted
     let microphonePermissionStatus =
-      usesCaptureBoundary
+      usesCaptureBoundary && !isAcceptance
       ? microphonePermissionGateway.authorizationStatus()
       : Self.microphonePermissionStatus(from: composition.permissions.microphone)
     settings.captureEnabled = loadedUtilitySettings.screenCaptureEnabled
@@ -329,7 +581,7 @@ final class DesktopViewModel: ObservableObject {
     switch composition.authentication {
     case .signedOut:
       launchUserID = nil
-    case .signedIn(let userID):
+    case .signedIn(let userID, _):
       launchUserID = userID
     }
     let retentionPersistence = UserDefaultsScreenMemoryRetentionPersistence(
@@ -368,8 +620,265 @@ final class DesktopViewModel: ObservableObject {
       onUpdateSnapshot: { [weak self] snapshot in self?.updateSnapshot = snapshot }
     )
     reconcileAmbientAudioCapture()
+    meetingObserver.start()
     privacyCoordinator.enforcePersistedState()
+    rebuildScreenMemoryTimeline()
+    #if DEBUG
+    if let tokenPath = ProcessInfo.processInfo.environment["INTENTIVE_AUTOMATION_TOKEN_FILE"] {
+      automationBridge = DesktopAutomationBridge(tokenFile: URL(fileURLWithPath: tokenPath)) { [weak self] in
+        guard let self else { return [:] }
+        let pendingIngress = (try? self.screenMemory.pendingIngress(limit: 1_000)) ?? []
+        let hasStructuredScreenIngress = pendingIngress.contains { item in
+          guard case .perceptionEvent(let event) = item,
+            event.artifactType == .searchableScreenRecord
+          else { return false }
+          return event.signals["app_name"] != nil
+            && event.signals["window_title"] != nil
+            && event.signals["ocr_text"] != nil
+        }
+        let tombstoneReasons: [String] = pendingIngress.compactMap { item in
+          guard case .perceptionTombstone(let tombstone) = item else { return nil }
+          return tombstone.reason.rawValue
+        }
+        return [
+          "capture_state": String(describing: self.captureState),
+          "capture_source_frames": self.captureLifecycle?.loop.state.capturedFrameCount ?? 0,
+          "capture_source_running": self.captureLifecycle?.loop.state.isRunning ?? false,
+          "capture_source_last_error": self.captureLifecycle?.loop.state.lastError ?? NSNull(),
+          "capture_source_last_skip": self.captureLifecycle?.loop.state.lastSkipReason ?? NSNull(),
+          "passive_audio_state": String(describing: self.passiveAudioState),
+          "acceptance_microphone_pcm_bytes": self.acceptanceMicrophoneSource.emittedBytes,
+          "runtime_state": String(describing: self.runtimeState),
+          "screen_memory_frames": self.timelineState?.frames.count ?? 0,
+          "screen_memory_query": self.query,
+          "screen_memory_selected_record": self.timelineState?.selectedRecordID?.value.uuidString ?? NSNull(),
+          "screen_memory_playing": self.screenMemoryPlaying,
+          "screen_memory_selected_date": self.timelineState?.selectedDate.protocolTimestamp ?? NSNull(),
+          "private_mode": self.privacySnapshot.isPrivateMode,
+          "capture_enabled": self.compilerSettings.captureEnabled,
+          "passive_audio_enabled": self.compilerSettings.ambientAudioCaptureEnabled,
+          "account_email": self.accountEmail ?? NSNull(),
+          "onboarding_presented": self.showOnboarding,
+          "onboarding_screen_recording_decision": self.onboardingProgress.screenRecordingDecision?.rawValue ?? NSNull(),
+          "onboarding_audio_decision": self.onboardingProgress.audioDecision?.rawValue ?? NSNull(),
+          "onboarding_completed": self.onboardingProgress.completed,
+          "update_phase": self.updateSnapshot.phase.rawValue,
+          "manual_update_checks": self.automationManualUpdateChecks,
+          "app_status": self.status,
+          "app_windows": NSApp.windows.count,
+          "visible_windows": NSApp.windows.filter(\.isVisible).count,
+          "floating_bar_visible": self.floatingBarManager.isVisible,
+          "floating_bar_engaged": self.floatingBarManager.isConversationEngaged,
+          "floating_notification_visible": self.floatingBarManager.isShowingNotification,
+          "floating_pmb_snoozed": self.floatingBarManager.isProactivePresentationSnoozed,
+          "conversation_message_count": self.messageStore.messages.count,
+          "runtime_ingress_pending": pendingIngress.count,
+          "runtime_ingress_kinds": pendingIngress.map(\.kind.rawValue),
+          "runtime_tombstone_reasons": tombstoneReasons,
+          "runtime_structured_screen_ingress": hasStructuredScreenIngress,
+          "retention_expired_count": self.automationRetentionExpiredCount,
+          "expanded_matrix": self.automationExpandedMatrix,
+          "expanded_matrix_details": self.automationExpandedMatrixDetails,
+        ]
+      } resetFixture: { [weak self] in
+        guard let self else { return [:] }
+        return try await self.resetAcceptanceFixture()
+      } seedFixture: { [weak self] in
+        guard let self else { return [:] }
+        return try await self.seedAcceptanceFixture()
+      } dropNextAck: { [weak self] in
+        self?.automationDropNextIngressAck = true
+        return ["armed": true]
+      } disconnectRuntime: { [weak self] in
+        guard let self else { return [:] }
+        self.runtime.markConnectionLost(reason: "Acceptance fault")
+        self.runtimeSession.markRuntimeClosed(reason: "Acceptance fault")
+        self.applyRuntimeState(self.runtimeSession.state)
+        return ["runtime_state": String(describing: self.runtimeState)]
+      } reconnectRuntime: { [weak self] in
+        guard let self else { return [:] }
+        do {
+          try self.runtime.handleSocketEvent(
+            ProtocolEventCodec.encode(
+              HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil))))
+        } catch {
+          // Assembled acceptance intentionally has no network transport. The
+          // real hello transition occurs before its ephemeral queue flush hits
+          // that absent socket; decoding or state failures remain fatal.
+          guard self.runtime.status == .connected else { throw error }
+        }
+        self.runtimeSession.markRuntimeConnected()
+        self.applyRuntimeState(self.runtimeSession.state)
+        return ["runtime_state": String(describing: self.runtimeState)]
+      } emitPendingAck: { [weak self] in
+        guard let self else { return ["acknowledged": false] }
+        let ack: RuntimeIngressAck
+        let duplicate: Bool
+        if let item = try self.screenMemory.pendingIngress(limit: 1).first {
+          ack = RuntimeIngressAck(ingressKind: item.kind, ingressId: item.ingressId)
+          self.automationLastIngressAck = ack
+          duplicate = false
+        } else if let last = self.automationLastIngressAck {
+          ack = last
+          duplicate = true
+        } else {
+          return ["acknowledged": false]
+        }
+        try self.runtime.handleSocketEvent(ProtocolEventCodec.encode(ack))
+        return ["acknowledged": true, "duplicate": duplicate, "ingress_id": ack.ingressId]
+      } emitOrdinaryReply: { [weak self] in
+        guard let self else { return [:] }
+        let message = CompanionMessage(
+          messageId: "acceptance-ordinary-\(UUID().uuidString)",
+          body: "Ordinary acceptance reply",
+          emittedAt: Date().protocolTimestamp,
+          viaPostMessageBack: false
+        )
+        try self.runtime.handleSocketEvent(ProtocolEventCodec.encode(message))
+        self.floatingBarManager.refreshMessages()
+        return ["message_id": message.messageId]
+      }
+      try? automationBridge?.start()
+    }
+    #endif
   }
+
+  #if DEBUG
+  private func resetAcceptanceFixture() async throws -> [String: Any] {
+    guard let archive = screenMemory.activeArchive else {
+      throw ScreenMemoryArchiveError.signedInProfileRequired
+    }
+    _ = try await archive.clearAll()
+    query = ""
+    rebuildScreenMemoryTimeline()
+    return ["screen_memory_frames": 0]
+  }
+
+  private func seedAcceptanceFixture() async throws -> [String: Any] {
+    guard let archive = screenMemory.activeArchive else {
+      throw ScreenMemoryArchiveError.signedInProfileRequired
+    }
+    setAmbientAudioCaptureEnabled(false)
+    setCaptureEnabled(false)
+    _ = try await archive.clearAll()
+    // Fixture setup establishes a quiet, completed baseline. Onboarding is
+    // reset and exercised later through its real AX menu action; leaving its
+    // window frontmost here can hide confirmation dialogs owned by the utility
+    // window and produce false failures.
+    onboardingProgress = DesktopOnboardingProgress(
+      completedSteps: Set(DesktopOnboardingStep.allCases),
+      screenRecordingDecision: .deferred,
+      audioDecision: .deferred,
+      completed: true
+    )
+    try onboardingStore.save(onboardingProgress)
+    showOnboarding = false
+    let now = Date()
+    let seeds: [(String, String, String, NSColor)] = [
+      ("com.apple.Safari", "Safari", "Invoice 1042 - Acme", .systemBlue),
+      ("com.figma.Desktop", "Figma", "Intentive release checklist", .systemPurple),
+      ("com.apple.Terminal", "Terminal", "Desktop acceptance passed", .systemGreen),
+    ]
+    for (index, seed) in seeds.enumerated() {
+      let capturedAt = now.addingTimeInterval(Double(index - seeds.count) * 30)
+      _ = try await archive.ingest(
+        ScreenMemoryCaptureInput(
+          userID: archive.userID,
+          imageData: try acceptanceFixtureImage(
+            title: seed.2,
+            detail: index == 0 ? "Invoice total $42.00" : "Frame \(index + 1)",
+            color: seed.3,
+            variant: index
+          ),
+          capturedAt: capturedAt.protocolTimestamp,
+          appBundleID: seed.0,
+          appName: seed.1,
+          windowTitle: seed.2
+        ))
+    }
+    try await archive.finalizeActiveVideoChunk()
+    _ = try await archive.ingest(
+      ScreenMemoryCaptureInput(
+        userID: archive.userID,
+        imageData: try acceptanceFixtureImage(
+          title: "Expired retention fixture",
+          detail: "This frame must expire under the three-day policy",
+          color: .systemOrange,
+          variant: 99
+        ),
+        capturedAt: now.addingTimeInterval(-5 * 24 * 60 * 60).protocolTimestamp,
+        appBundleID: "com.heyintentive.acceptance.expired",
+        appName: "Expired Fixture",
+        windowTitle: "Expired retention fixture"
+      ))
+    try await archive.finalizeActiveVideoChunk()
+    let marker = SessionEndMarker(
+      markerId: UUID().uuidString,
+      sessionId: UUID().uuidString,
+      endedAt: now.protocolTimestamp,
+      reason: .userToggle
+    )
+    try screenMemory.enqueueSessionEndMarker(marker)
+    query = ""
+    let timeline = ScreenMemoryTimeline(archive: archive, selectedDate: now)
+    screenMemoryTimeline = timeline
+    await timeline.loadDay(now)
+    publishTimelineState()
+    loadSelectedTimelineFrame()
+    return ["screen_memory_frames": timeline.state.frames.count]
+  }
+
+  private func acceptanceFixtureImage(
+    title: String,
+    detail: String,
+    color: NSColor,
+    variant: Int
+  ) throws -> Data {
+    let size = NSSize(width: 960, height: 540)
+    let image = NSImage(size: size, flipped: false) { rect in
+      color.setFill()
+      rect.fill()
+      NSColor.black.withAlphaComponent(0.7).setFill()
+      switch variant {
+      case 0:
+        NSRect(x: 0, y: 0, width: 250, height: rect.height).fill()
+      case 1:
+        NSRect(x: 0, y: rect.height - 190, width: rect.width, height: 190).fill()
+      case 100:
+        NSRect(x: 0, y: 0, width: 180, height: rect.height).fill()
+        NSRect(x: 0, y: 0, width: rect.width, height: 120).fill()
+      default:
+        for x in stride(from: 0, to: Int(rect.width), by: 180) where (x / 180).isMultiple(of: 2) {
+          NSRect(x: CGFloat(x), y: 0, width: 90, height: rect.height).fill()
+        }
+      }
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+      title.draw(
+        in: NSRect(x: 40, y: 270, width: 880, height: 90),
+        withAttributes: [
+          .font: NSFont.systemFont(ofSize: 42, weight: .bold),
+          .foregroundColor: NSColor.white,
+          .paragraphStyle: paragraph,
+        ])
+      detail.draw(
+        in: NSRect(x: 40, y: 205, width: 880, height: 60),
+        withAttributes: [
+          .font: NSFont.systemFont(ofSize: 28),
+          .foregroundColor: NSColor.white,
+          .paragraphStyle: paragraph,
+        ])
+      return true
+    }
+    guard let tiff = image.tiffRepresentation,
+      let bitmap = NSBitmapImageRep(data: tiff),
+      let png = bitmap.representation(using: .png, properties: [:])
+    else {
+      throw CocoaError(.fileWriteUnknown)
+    }
+    return png
+  }
+  #endif
 
   func restoreRuntimeSessionIfNeeded() async {
     guard composition.activeSystemBoundaries.contains(.network) else {
@@ -399,7 +908,7 @@ final class DesktopViewModel: ObservableObject {
     didRunLaunchReconciliation = true
     guard composition.activeSystemBoundaries.contains(.capture) else { return }
     await captureLifecycle?.performLaunchReconciliation()
-    captureRunning = captureLoop.state.isRunning
+    captureState = captureLifecycle?.state ?? .disabled
     if captureRunning {
       status = "Capture running"
     }
@@ -411,8 +920,13 @@ final class DesktopViewModel: ObservableObject {
   /// Renovated from Omi's `RewindShutdownFlush` + `OmiApp.applicationWillTerminate`.
   func requestQuit() {
     captureLifecycle?.stop(reason: .quit)
-    captureRunning = false
+    passiveAudioCoordinator.stopSynchronously()
+    meetingObserver.stop()
+    captureState = captureLifecycle?.state ?? .disabled
     publicReleaseOperations.shutdown()
+    #if DEBUG
+    automationBridge?.stop()
+    #endif
   }
 
   func restoreRuntimeSession() async {
@@ -454,39 +968,11 @@ final class DesktopViewModel: ObservableObject {
 
   func toggleCapture() {
     guard composition.activeSystemBoundaries.contains(.capture) else {
-      captureRunning = false
+      captureState = .disabled
       status = "Capture is disabled for this launch"
       return
     }
-    if captureLoop.state.isRunning {
-      captureLoop.stop()
-      captureRunning = false
-      status = "Capture stopped"
-      return
-    }
-
-    guard compilerSettings.captureEnabled else {
-      captureRunning = false
-      status = "Screen Memory is off"
-      return
-    }
-    guard refreshScreenRecordingPermissionForCapture() else { return }
-
-    captureRunning = true
-    status = "Capture running"
-    _ = captureLoop.start { [weak self] event in
-      guard let self else { return }
-      switch event {
-      case .captured(let eventCount):
-        status = "Capture running. \(perceptionCaptureStatus(eventCount: eventCount))"
-      case .skipped(let reason):
-        status = "Capture paused: \(reason)"
-      case .failed(let message):
-        status = "Capture warning: \(message)"
-      }
-      captureRunning = captureLoop.state.isRunning
-      objectWillChange.send()
-    }
+    setCaptureEnabled(!compilerSettings.captureEnabled)
   }
 
   func openFloatingBar() {
@@ -565,11 +1051,25 @@ final class DesktopViewModel: ObservableObject {
     }
   }
 
+  var accountEmail: String? { runtimeSession.accountState?.email }
+  var passiveAudioRunning: Bool { passiveAudioState.isRecording }
+
+  func submitIssueReport(message: String, name: String, email: String) throws {
+    try publicReleaseOperations.submitUserReport(message: message, name: name, email: email)
+  }
+
+  func saveIssueDiagnostics(to destination: URL) throws -> URL {
+    try publicReleaseOperations.exportDiagnostics(to: destination)
+  }
+
   func checkForUpdates() {
     guard composition.activeSystemBoundaries.contains(.updates) else {
       status = "Updates are disabled for this deterministic launch"
       return
     }
+    #if DEBUG
+    automationManualUpdateChecks += 1
+    #endif
     publicReleaseOperations.checkForUpdates()
     status = "Checking for updates"
   }
@@ -655,11 +1155,14 @@ final class DesktopViewModel: ObservableObject {
 
   /// Menu-bar action: disconnect the Runtime Bridge and sign out locally.
   func signOut() {
-    runtimeSession.disconnect()
-    runtimeRestoreAttempted = false
-    applyRuntimeState(runtimeSession.state)
-    status = "Signed out"
-    objectWillChange.send()
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      let state = await runtimeSession.signOut()
+      runtimeRestoreAttempted = false
+      applyRuntimeState(state)
+      if state == .signedOut { status = "Signed out" }
+      objectWillChange.send()
+    }
   }
 
   func requestOnboardingScreenRecordingPermission() {
@@ -703,6 +1206,15 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func refreshOnboardingPermissions() {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      screenRecordingPermissionGranted = composition.permissions.screenRecording == .granted
+      microphonePermissionStatus = Self.microphonePermissionStatus(
+        from: composition.permissions.microphone)
+      reconcileAmbientAudioCapture()
+      return
+    }
+    #endif
     refreshScreenRecordingPermission()
     microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
   }
@@ -726,6 +1238,15 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func refreshDesktopPermissions() {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      screenRecordingPermissionGranted = composition.permissions.screenRecording == .granted
+      microphonePermissionStatus = Self.microphonePermissionStatus(
+        from: composition.permissions.microphone)
+      reconcileAmbientAudioCapture()
+      return
+    }
+    #endif
     refreshScreenRecordingPermission()
     microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
     reconcileAmbientAudioCapture()
@@ -747,6 +1268,207 @@ final class DesktopViewModel: ObservableObject {
       message, runtimeClient: runtime, statusMessage: "Effect Runner delivered a local nudge")
   }
 
+  #if DEBUG
+  func acceptanceActivateMeetingAudio() {
+    passiveAudioCoordinator.setMeetingActive(true)
+  }
+
+  func acceptanceEmitMicrophonePCM() {
+    acceptanceMicrophoneSource.emit(Data(repeating: 1, count: 16_000 * 2 * 4))
+  }
+
+  func acceptanceCaptureSleep() { captureLifecycle?.receiveSystemEvent(.systemSleep) }
+  func acceptanceCaptureWake() { captureLifecycle?.receiveSystemEvent(.systemWake) }
+  func acceptanceCaptureDisplayChange() { captureLifecycle?.receiveSystemEvent(.displayChange) }
+
+  func acceptanceRunExpandedMatrix() {
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      automationExpandedMatrix = [:]
+      automationExpandedMatrixDetails = [:]
+
+      setCaptureEnabled(true)
+      setAmbientAudioCaptureEnabled(true)
+      try? await Task.sleep(nanoseconds: 2_000_000_000)
+      automationExpandedMatrix["capture-enable-first-frame"] = captureState.isRunning
+        && (captureLifecycle?.loop.state.capturedFrameCount ?? 0) > 0
+      automationExpandedMatrixDetails["capture-enable-first-frame"] =
+        "state=\(captureState), frames=\(captureLifecycle?.loop.state.capturedFrameCount ?? 0), "
+        + "skip=\(captureLifecycle?.loop.state.lastSkipReason ?? "none"), "
+        + "error=\(captureLifecycle?.loop.state.lastError ?? "none")"
+      if case .running(let microphone, _) = passiveAudioState {
+        automationExpandedMatrix["audio-microphone-running"] = microphone
+      }
+      automationExpandedMatrixDetails["audio-microphone-running"] = String(
+        describing: passiveAudioState)
+
+      await enterPrivateMode()
+      automationExpandedMatrix["private-mode-enter"] = privacySnapshot.isPrivateMode
+        && captureLifecycle?.loop.state.isRunning == false
+        && !passiveAudioState.isRecording
+      resumeFromPrivateMode()
+      try? await Task.sleep(nanoseconds: 500_000_000)
+      automationExpandedMatrix["private-mode-resume"] = !privacySnapshot.isPrivateMode
+
+      passiveAudioCoordinator.setMeetingActive(true)
+      try? await Task.sleep(nanoseconds: 500_000_000)
+      if case .running(_, let systemAudio) = passiveAudioState {
+        automationExpandedMatrix["audio-meeting-system-tap"] = systemAudio
+      }
+      let pcmBefore = acceptanceMicrophoneSource.emittedBytes
+      acceptanceEmitMicrophonePCM()
+      automationExpandedMatrix["audio-vad-ingestion"] = acceptanceMicrophoneSource.emittedBytes > pcmBefore
+      acceptanceDegradeMicrophonePermission()
+      try? await Task.sleep(nanoseconds: 500_000_000)
+      if case .permissionBlocked(.microphone) = passiveAudioState {
+        automationExpandedMatrix["audio-permission-degradation"] = true
+      }
+      acceptanceRestoreMicrophonePermission()
+
+      captureLifecycle?.receiveSystemEvent(.systemSleep)
+      automationExpandedMatrix["capture-sleep"] = captureLifecycle?.loop.state.isRunning == false
+      captureLifecycle?.receiveSystemEvent(.systemWake)
+      try? await Task.sleep(nanoseconds: 2_000_000_000)
+      automationExpandedMatrix["capture-wake"] = captureLifecycle?.loop.state.isRunning == true
+      captureLifecycle?.receiveSystemEvent(.displayChange)
+      let displayDeadline = Date().addingTimeInterval(30)
+      while captureLifecycle?.loop.state.isRunning != true && Date() < displayDeadline {
+        try? await Task.sleep(nanoseconds: 250_000_000)
+      }
+      automationExpandedMatrix["capture-display-change"] =
+        captureLifecycle?.loop.state.isRunning == true
+
+      let hadStructuredScreenIngress = ((try? screenMemory.pendingIngress(limit: 1_000)) ?? [])
+        .contains { item in
+          guard case .perceptionEvent(let event) = item,
+            event.artifactType == .searchableScreenRecord
+          else { return false }
+          return event.signals["app_name"] != nil
+            && event.signals["window_title"] != nil
+            && event.signals["ocr_text"] != nil
+        }
+      automationExpandedMatrix["runtime-structured-search-ingress"] = hadStructuredScreenIngress
+
+      if let archive = screenMemory.activeArchive {
+        do {
+          // Screen Memory dHash deduplication is intentionally stateful. Reset
+          // the acceptance-only archive baseline so this expired record is
+          // guaranteed to be inserted before exercising the real policy.
+          _ = try await archive.clearAll()
+          _ = try await archive.ingest(
+            ScreenMemoryCaptureInput(
+              userID: archive.userID,
+              imageData: try acceptanceFixtureImage(
+                title: "Expanded retention fixture",
+                detail: "This AX-triggered record must expire",
+                color: .systemOrange,
+                variant: 100
+              ),
+              capturedAt: Date().addingTimeInterval(-5 * 24 * 60 * 60).protocolTimestamp,
+              appBundleID: "com.heyintentive.acceptance.expanded-expired",
+              appName: "Expanded Expired Fixture",
+              windowTitle: "Expanded retention fixture"
+            ))
+          try await archive.finalizeActiveVideoChunk()
+          let result = try await archive.applyRetentionPolicy(.threeDays)
+          automationRetentionExpiredCount = result.recordIDs.count
+          let reasons: [PerceptionTombstoneReason] =
+            ((try? screenMemory.pendingIngress(limit: 1_000)) ?? []).compactMap { item in
+            guard case .perceptionTombstone(let tombstone) = item else { return nil }
+            return tombstone.reason
+            }
+          automationExpandedMatrix["runtime-retention-expiry"] = !result.recordIDs.isEmpty
+            && reasons.contains(.retentionExpiry)
+        } catch {
+          automationExpandedMatrix["runtime-retention-expiry"] = false
+          automationExpandedMatrixDetails["runtime-retention-expiry"] = error.localizedDescription
+        }
+      }
+      acceptanceEnqueueTombstoneOrderingFixture()
+      let kinds = ((try? screenMemory.pendingIngress(limit: 1_000)) ?? []).map(\.kind)
+      if let event = kinds.lastIndex(of: .perceptionEvent),
+        let tombstone = kinds.lastIndex(of: .perceptionTombstone) {
+        automationExpandedMatrix["runtime-tombstone-ordering"] = event < tombstone
+      }
+      let markersBefore = kinds.filter { $0 == .sessionEndMarker }.count
+      acceptanceEnqueueDurableTerminationMarkers()
+      let markersAfter = ((try? screenMemory.pendingIngress(limit: 1_000)) ?? [])
+        .filter { $0.kind == .sessionEndMarker }.count
+      automationExpandedMatrix["runtime-durable-quit-crash-markers"] = markersAfter == markersBefore + 2
+    }
+  }
+
+  func acceptanceDegradeMicrophonePermission() {
+    microphonePermissionStatus = .denied
+    reconcileAmbientAudioCapture()
+  }
+
+  func acceptanceRestoreMicrophonePermission() {
+    microphonePermissionStatus = .granted
+    reconcileAmbientAudioCapture()
+  }
+
+  func acceptanceApplyRetentionExpiry() {
+    guard let archive = screenMemory.activeArchive else { return }
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        let result = try await archive.applyRetentionPolicy(.threeDays)
+        automationRetentionExpiredCount = result.recordIDs.count
+        rebuildScreenMemoryTimeline()
+      } catch {
+        status = "Acceptance retention failed: \(error.localizedDescription)"
+      }
+    }
+  }
+
+  func acceptanceEnqueueDurableTerminationMarkers() {
+    for reason in [SessionEndReason.quit, .crash] {
+      let marker = SessionEndMarker(
+        markerId: UUID().uuidString,
+        sessionId: UUID().uuidString,
+        endedAt: Date().protocolTimestamp,
+        reason: reason
+      )
+      try? screenMemory.enqueueSessionEndMarker(marker)
+    }
+  }
+
+  func acceptanceEnqueueTombstoneOrderingFixture() {
+    let eventID = UUID().uuidString
+    let timestamp = Date().protocolTimestamp
+    let event = PerceptionEvent(
+      eventId: eventID,
+      capturedAt: timestamp,
+      periodStart: timestamp,
+      periodEnd: timestamp,
+      artifactType: .searchableScreenRecord,
+      summary: "Acceptance tombstone ordering fixture",
+      sensitivityLabel: .normal,
+      retentionClass: ScreenMemoryRetentionPeriod.threeDays.retentionClass,
+      confidence: 1,
+      expiresAt: Date().addingTimeInterval(3 * 24 * 60 * 60).protocolTimestamp,
+      localRecordRef: UUID().uuidString
+    )
+    let tombstone = PerceptionTombstone(
+      tombstoneId: UUID().uuidString,
+      reason: .manualDelete,
+      eventRefs: [eventID],
+      emittedAt: timestamp
+    )
+    try? screenMemory.enqueuePerceptionEvent(event)
+    try? screenMemory.enqueuePerceptionTombstone(tombstone)
+  }
+
+  func acceptanceOnboardingDenied() { decideScreenRecording(.denied) }
+  func acceptanceOnboardingDeferred() { decideAudio(.deferred) }
+  func acceptanceOnboardingGranted() {
+    decideScreenRecording(.granted)
+    decideAudio(.granted)
+  }
+  func acceptanceOnboardingResume() { resetOnboarding() }
+  #endif
+
   func setCaptureEnabled(_ enabled: Bool) {
     var settings = compilerSettings
     settings.captureEnabled = enabled
@@ -755,19 +1477,14 @@ final class DesktopViewModel: ObservableObject {
     persistUtilitySettings()
 
     if enabled {
+      captureLifecycle?.setUserEnabled(true)
       status = "Screen Memory is on"
     } else {
       // Slice 07: route the user-initiated stop through the lifecycle controller
       // so it finalizes the active chunk and emits `session_end_marker`
       // (reason `.userToggle`). When the controller is absent (capture boundary
       // disabled for this launch) fall back to a plain loop stop.
-      if let lifecycle = captureLifecycle {
-        lifecycle.stop(reason: .userToggle)
-      } else if captureLoop.state.isRunning {
-        captureLoop.stop()
-      }
-      ambientAudioLoop.stop()
-      captureRunning = false
+      captureLifecycle?.setUserEnabled(false)
       status = "Screen Memory is off"
     }
     reconcileAmbientAudioCapture()
@@ -777,7 +1494,7 @@ final class DesktopViewModel: ObservableObject {
     do {
       try await privacyCoordinator.enterPrivateMode()
       privacySnapshot = privacyCoordinator.snapshot
-      captureRunning = false
+      captureLifecycle?.reconcile()
       status = "Private Mode — all sensing paused"
     } catch {
       status = "Could not enter Private Mode: \(error.localizedDescription)"
@@ -788,18 +1505,11 @@ final class DesktopViewModel: ObservableObject {
     do {
       try privacyCoordinator.resume()
       privacySnapshot = privacyCoordinator.snapshot
+      captureLifecycle?.reconcile()
       status = "Private Mode ended"
     } catch {
       status = "Could not resume sensing: \(error.localizedDescription)"
     }
-  }
-
-  private func startCaptureAfterPrivateMode() {
-    guard !captureLoop.state.isRunning,
-      compilerSettings.captureEnabled,
-      screenRecordingPermissionGranted
-    else { return }
-    toggleCapture()
   }
 
   func setAmbientAudioCaptureEnabled(_ enabled: Bool) {
@@ -813,10 +1523,9 @@ final class DesktopViewModel: ObservableObject {
   }
 
   private func reconcileAmbientAudioCapture() {
-    // Passive microphone/system-audio sensing is restored behind its dedicated
-    // local pipeline in Slice 8. The walking skeleton must not start the legacy
-    // RunAnywhere ambient path merely because an old preference remains set.
-    ambientAudioLoop.stop()
+    passiveAudioCoordinator.setUserEnabled(
+      compilerSettings.captureEnabled && compilerSettings.ambientAudioCaptureEnabled
+    )
   }
 
   private func handleAmbientAudioEvent(_ event: AmbientAudioCaptureLoopEvent) {
@@ -871,8 +1580,7 @@ final class DesktopViewModel: ObservableObject {
     let granted = permissionGateway.hasScreenRecordingPermission()
     screenRecordingPermissionGranted = granted
     if !granted, captureLoop.state.isRunning {
-      captureLoop.stop()
-      captureRunning = false
+      captureLifecycle?.reconcile()
     }
     status =
       granted ? "Screen Recording permission granted" : "Screen Recording permission required"
@@ -882,7 +1590,7 @@ final class DesktopViewModel: ObservableObject {
     let granted = permissionGateway.hasScreenRecordingPermission()
     screenRecordingPermissionGranted = granted
     if !granted {
-      captureRunning = false
+      captureLifecycle?.reconcile()
       status = "Screen Recording permission required"
     }
     return granted
@@ -899,6 +1607,12 @@ final class DesktopViewModel: ObservableObject {
     // commit) is the only signal that deletes a durable outbox row.
     runtime.onIngressAck = { [weak self] ack in
       Task { @MainActor [weak self] in
+        #if DEBUG
+        if self?.automationDropNextIngressAck == true {
+          self?.automationDropNextIngressAck = false
+          return
+        }
+        #endif
         try? self?.publisher.acknowledge(ack)
       }
     }
@@ -1007,6 +1721,7 @@ final class DesktopViewModel: ObservableObject {
     )
     screenMemory.replace(with: newScreenMemory.store)
     screenMemoryProfileUserID = sanitizedUserID
+    rebuildScreenMemoryTimeline()
     return newScreenMemory.status
   }
 
@@ -1175,6 +1890,9 @@ struct MainWindowView: View {
           ForEach(composition.mainWindowSections.map(DesktopSection.init)) { section in
             Label(section.rawValue, systemImage: section.symbol)
               .tag(section)
+              .accessibilityIdentifier("sidebar-\(section.utilitySection.rawValue)")
+              .accessibilityAddTraits(.isButton)
+              .accessibilityAction { model.selected = section }
           }
         }
       }
@@ -1267,22 +1985,44 @@ struct MainWindowView: View {
 private struct ScreenMemoryView: View {
   @ObservedObject var model: DesktopViewModel
   var searchFocused: FocusState<Bool>.Binding
+  @State private var confirmDeletion = false
 
   var body: some View {
-    let results = model.screenMemoryResults
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 12) {
       HStack {
+        Button { model.moveScreenMemoryDay(-1) } label: { Image(systemName: "chevron.left") }
+          .buttonStyle(.borderless)
+          .accessibilityLabel("Previous day")
+          .accessibilityIdentifier(ScreenMemoryAccessibilityID.previousDay)
+        Text(model.timelineState?.selectedDate.formatted(date: .abbreviated, time: .omitted) ?? "Today")
+          .font(.headline).frame(minWidth: 120)
+          .accessibilityIdentifier("screen_memory_selected_date")
+        Button { model.moveScreenMemoryDay(1) } label: { Image(systemName: "chevron.right") }
+          .buttonStyle(.borderless)
+          .accessibilityLabel("Next day")
+          .accessibilityIdentifier(ScreenMemoryAccessibilityID.nextDay)
+        Divider().frame(height: 22)
         Image(systemName: "magnifyingglass")
           .foregroundStyle(.secondary)
         TextField("Search Screen Memory", text: $model.query)
           .textFieldStyle(.plain)
           .focused(searchFocused)
           .accessibilityIdentifier(ScreenMemoryAccessibilityID.searchField)
+        Picker("Application", selection: Binding(
+          get: { model.timelineState?.selectedApp ?? "" },
+          set: { model.filterScreenMemory(app: $0.isEmpty ? nil : $0) }
+        )) {
+          Text("All Apps").tag("")
+          ForEach(model.timelineState?.availableApps ?? [], id: \.self) { app in
+            Text(app).tag(app)
+          }
+        }
+        .frame(width: 150)
       }
       .padding(10)
       .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
 
-      if results.isEmpty {
+      if model.timelineState?.frames.isEmpty != false {
         ContentUnavailableView(
           model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "No Screen Memory yet"
@@ -1292,37 +2032,148 @@ private struct ScreenMemoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier(ScreenMemoryAccessibilityID.emptyState)
       } else {
-        List(results, id: \.record.id) { result in
-          VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 10) {
+          ZStack(alignment: .topLeading) {
+            if let data = model.currentFrameData, let image = NSImage(data: data) {
+              Image(nsImage: image).resizable().scaledToFit()
+                .accessibilityLabel("Captured frame")
+            } else {
+              RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+                .overlay { ProgressView() }
+            }
+            if !model.selectedOCRMatches.isEmpty {
+              VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(model.selectedOCRMatches.enumerated()), id: \.offset) { index, block in
+                  Text(block.text)
+                    .font(.caption2).padding(4)
+                    .background(.yellow.opacity(0.85), in: RoundedRectangle(cornerRadius: 3))
+                    .accessibilityIdentifier(ScreenMemoryAccessibilityID.ocrHighlight(index))
+                }
+              }.padding(8)
+            }
+          }
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier(ScreenMemoryAccessibilityID.currentFrame)
+
+          if let record = model.selectedTimelineRecord {
             HStack {
-              Text(result.record.appName)
-                .font(.headline)
-              if !result.matchedLexically {
-                Text("Related")
-                  .font(.caption2.weight(.semibold))
-                  .foregroundStyle(.secondary)
-                  .padding(.horizontal, 6)
-                  .padding(.vertical, 1)
-                  .background(.quaternary, in: Capsule())
+              VStack(alignment: .leading) {
+                Text(record.appName).font(.headline)
+                Text(record.windowTitle).font(.caption).foregroundStyle(.secondary)
               }
               Spacer()
-              Text(result.record.capturedAt)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              Text(record.capturedAt).font(.caption).foregroundStyle(.secondary)
             }
-            Text(result.record.summary)
-              .foregroundStyle(.secondary)
           }
-          .padding(.vertical, 6)
-          .accessibilityIdentifier(
-            result.recordID.map(ScreenMemoryAccessibilityID.frame) ?? result.record.id)
+
+          HStack {
+            Button { model.stepScreenMemory(-1) } label: { Image(systemName: "backward.frame.fill") }
+              .accessibilityLabel("Previous frame")
+              .accessibilityIdentifier(ScreenMemoryAccessibilityID.scrubBackward)
+            Button(action: model.toggleScreenMemoryPlayback) {
+              Image(systemName: model.screenMemoryPlaying ? "pause.fill" : "play.fill")
+            }
+            .accessibilityLabel(model.screenMemoryPlaying ? "Pause" : "Play")
+            .accessibilityIdentifier("screen_memory_play_pause")
+            Button { model.stepScreenMemory(1) } label: { Image(systemName: "forward.frame.fill") }
+              .accessibilityLabel("Next frame")
+              .accessibilityIdentifier(ScreenMemoryAccessibilityID.scrubForward)
+            if let frames = model.timelineState?.frames, frames.count > 1,
+              let selected = model.timelineState?.selectedRecordID,
+              let index = frames.firstIndex(where: { $0.id == selected.value.uuidString }) {
+              Slider(
+                value: Binding(
+                  get: { Double(index) },
+                  set: { model.scrubScreenMemory(to: Int($0.rounded())) }
+                ),
+                in: 0...Double(max(0, frames.count - 1)), step: 1
+              )
+              .accessibilityLabel("Timeline scrubber")
+            }
+            Button(role: .destructive) {
+              Task {
+                let result = await model.deleteSelectedScreenMemory(confirmChunkDeletion: false)
+                confirmDeletion = result?.requiredChunkConfirmation == true
+              }
+            } label: { Image(systemName: "trash") }
+            .accessibilityLabel("Delete frame")
+            .accessibilityIdentifier(ScreenMemoryAccessibilityID.deleteFrame)
+          }
+
+          ScrollView(.horizontal) {
+            LazyHStack(spacing: 8) {
+              ForEach(model.timelineState?.frames ?? []) { record in
+                ScreenMemoryThumbnail(
+                  model: model,
+                  record: record,
+                  selected: record.id == model.timelineState?.selectedRecordID?.value.uuidString
+                ) {
+                  model.selectScreenMemory(record)
+                }
+              }
+            }.padding(.vertical, 2)
+          }
+          .frame(height: 86)
+          .accessibilityIdentifier(ScreenMemoryAccessibilityID.filmstrip)
+
+          if let bytes = model.timelineState?.storage?.totalBytes {
+            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+              .font(.caption).foregroundStyle(.secondary)
+              .accessibilityIdentifier(ScreenMemoryAccessibilityID.storageLabel)
+          }
         }
-        .accessibilityIdentifier(ScreenMemoryAccessibilityID.filmstrip)
       }
     }
     .padding(18)
-    .onAppear { model.refreshScreenMemorySearch() }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier(ScreenMemoryAccessibilityID.root)
+    .onAppear { model.rebuildScreenMemoryTimeline() }
     .onChange(of: model.query) { model.refreshScreenMemorySearch() }
+    .confirmationDialog(
+      "Delete this video-backed capture chunk?",
+      isPresented: $confirmDeletion,
+      titleVisibility: .visible
+    ) {
+      Button("Delete Capture", role: .destructive) {
+        Task { _ = await model.deleteSelectedScreenMemory(confirmChunkDeletion: true) }
+      }
+      .accessibilityIdentifier("screen_memory_confirm_delete")
+      Button("Cancel", role: .cancel) {}
+        .accessibilityIdentifier("screen_memory_cancel_delete")
+    }
+  }
+}
+
+private struct ScreenMemoryThumbnail: View {
+  @ObservedObject var model: DesktopViewModel
+  let record: ScreenMemoryRecord
+  let selected: Bool
+  let action: () -> Void
+  @State private var data: Data?
+
+  var body: some View {
+    Button(action: action) {
+      VStack(alignment: .leading, spacing: 3) {
+        Group {
+          if let data, let image = NSImage(data: data) {
+            Image(nsImage: image).resizable().scaledToFill()
+          } else {
+            RoundedRectangle(cornerRadius: 5)
+              .fill(selected ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12))
+              .overlay { Image(systemName: "rectangle.on.rectangle").foregroundStyle(.secondary) }
+          }
+        }
+        .frame(width: 112, height: 54).clipShape(RoundedRectangle(cornerRadius: 5))
+        Text(record.appName).font(.caption2).lineLimit(1)
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("\(record.appName), \(record.windowTitle)")
+    .accessibilityIdentifier(
+      UUID(uuidString: record.id).map { ScreenMemoryAccessibilityID.frame(ScreenMemoryRecordID($0)) }
+        ?? record.id)
+    .task(id: record.id) { data = await model.thumbnailData(for: record) }
   }
 }
 
@@ -1341,6 +2192,7 @@ private struct UtilitySettingsView: View {
               set: model.setCaptureEnabled
             )
           )
+          .accessibilityIdentifier("sensing-screen-memory-toggle")
           Toggle(
             "Passive audio context",
             isOn: Binding(
@@ -1348,6 +2200,7 @@ private struct UtilitySettingsView: View {
               set: model.setAmbientAudioCaptureEnabled
             )
           )
+          .accessibilityIdentifier("sensing-passive-audio-toggle")
           LabeledContent(
             "Screen Recording",
             value: model.screenRecordingPermissionGranted ? "Granted" : "Required")
@@ -1380,10 +2233,12 @@ private struct UtilitySettingsView: View {
             Spacer()
             if model.privacySnapshot.isPrivateMode {
               Button("Resume Sensing", action: model.resumeFromPrivateMode)
+                .accessibilityIdentifier("privacy-resume-sensing")
             } else {
               Button("Enter Private Mode") {
                 Task { await model.enterPrivateMode() }
               }
+              .accessibilityIdentifier("privacy-enter-private-mode")
             }
           }
 
@@ -1435,6 +2290,7 @@ private struct UtilitySettingsView: View {
           LabeledContent(
             "Runtime", value: model.runtimeState == .connected ? "Connected" : "Disconnected")
           Button("Sign Out", action: model.signOut)
+            .accessibilityIdentifier("account-sign-out")
         }
       }
 
@@ -1449,6 +2305,7 @@ private struct UtilitySettingsView: View {
             Text(failure).foregroundStyle(.red)
           }
           Button("Check for Updates", action: model.checkForUpdates)
+            .accessibilityIdentifier("updates-check")
             .disabled(model.updateSnapshot.phase == .checking)
           if model.updateSnapshot.phase == .downloadedAwaitingInstall {
             Button("Install Downloaded Update", action: model.installDownloadedUpdate)
@@ -1467,6 +2324,46 @@ private struct UtilitySettingsView: View {
           Button("Export Logs", action: model.exportDiagnostics)
           Button("Clear Logs", role: .destructive, action: model.clearDiagnostics)
         }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+          Section("Acceptance") {
+            Button("Present PMB", action: model.triggerEffect)
+              .accessibilityIdentifier("acceptance-present-pmb")
+            Button("Open Floating Bar", action: model.openFloatingBar)
+              .accessibilityIdentifier("acceptance-open-floating-bar")
+            Button("Run Expanded Matrix", action: model.acceptanceRunExpandedMatrix)
+              .accessibilityIdentifier("acceptance-run-expanded-matrix")
+            Button("Activate Meeting Audio", action: model.acceptanceActivateMeetingAudio)
+              .accessibilityIdentifier("acceptance-activate-meeting-audio")
+            Button("Emit Microphone PCM", action: model.acceptanceEmitMicrophonePCM)
+              .accessibilityIdentifier("acceptance-emit-microphone-pcm")
+            Button("Capture Sleep", action: model.acceptanceCaptureSleep)
+              .accessibilityIdentifier("acceptance-capture-sleep")
+            Button("Capture Wake", action: model.acceptanceCaptureWake)
+              .accessibilityIdentifier("acceptance-capture-wake")
+            Button("Capture Display Change", action: model.acceptanceCaptureDisplayChange)
+              .accessibilityIdentifier("acceptance-capture-display-change")
+            Button("Degrade Microphone Permission", action: model.acceptanceDegradeMicrophonePermission)
+              .accessibilityIdentifier("acceptance-audio-permission-degrade")
+            Button("Restore Microphone Permission", action: model.acceptanceRestoreMicrophonePermission)
+              .accessibilityIdentifier("acceptance-audio-permission-restore")
+            Button("Apply Retention Expiry", action: model.acceptanceApplyRetentionExpiry)
+              .accessibilityIdentifier("acceptance-retention-expiry")
+            Button("Enqueue Termination Markers", action: model.acceptanceEnqueueDurableTerminationMarkers)
+              .accessibilityIdentifier("acceptance-durable-markers")
+            Button("Enqueue Tombstone Ordering", action: model.acceptanceEnqueueTombstoneOrderingFixture)
+              .accessibilityIdentifier("acceptance-tombstone-ordering")
+            Button("Onboarding Denied", action: model.acceptanceOnboardingDenied)
+              .accessibilityIdentifier("acceptance-onboarding-denied")
+            Button("Onboarding Deferred", action: model.acceptanceOnboardingDeferred)
+              .accessibilityIdentifier("acceptance-onboarding-deferred")
+            Button("Onboarding Granted", action: model.acceptanceOnboardingGranted)
+              .accessibilityIdentifier("acceptance-onboarding-granted")
+            Button("Resume Onboarding", action: model.acceptanceOnboardingResume)
+              .accessibilityIdentifier("acceptance-onboarding-resume")
+          }
+        }
+        #endif
       }
     }
     .padding(24)

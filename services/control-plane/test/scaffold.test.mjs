@@ -6,6 +6,7 @@ import { controlPlaneContractSample } from "../dist/index.js";
 test("control-plane scaffold exports a valid account sample", () => {
   assert.deepEqual(controlPlaneContractSample, {
     user_id: "user_stub",
+    email: null,
     next_gate: null,
     has_agent_instance: false,
     has_desktop_client: false,

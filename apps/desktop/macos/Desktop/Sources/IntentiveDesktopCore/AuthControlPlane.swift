@@ -264,6 +264,7 @@ public struct HostedAuthTokenResponse: Codable, Equatable, Sendable {
 
 public struct AccountState: Codable, Equatable, Sendable {
   public var userId: String
+  public var email: String?
   public var nextGate: PreChatGateKind?
   public var hasAgentInstance: Bool
   public var hasDesktopClient: Bool
@@ -271,12 +272,14 @@ public struct AccountState: Codable, Equatable, Sendable {
 
   public init(
     userId: String,
+    email: String? = nil,
     nextGate: PreChatGateKind? = nil,
     hasAgentInstance: Bool,
     hasDesktopClient: Bool,
     entitlementLabel: String? = nil
   ) {
     self.userId = userId
+    self.email = email
     self.nextGate = nextGate
     self.hasAgentInstance = hasAgentInstance
     self.hasDesktopClient = hasDesktopClient
@@ -289,6 +292,7 @@ public struct AccountState: Codable, Equatable, Sendable {
 
   enum CodingKeys: String, CodingKey {
     case userId = "user_id"
+    case email
     case nextGate = "next_gate"
     case hasAgentInstance = "has_agent_instance"
     case hasDesktopClient = "has_desktop_client"

@@ -5,6 +5,72 @@ import XCTest
 @MainActor
 final class ScreenMemoryCaptureResilienceTests: XCTestCase {
 
+  func testUserEnableIsTheSoleStartEntryPointAndPublishesAuthoritativeState() {
+    let loop = makeLoop(intervalSeconds: 30)
+    let ctrl = makeController(loop: loop)
+
+    XCTAssertEqual(ctrl.state, .disabled)
+    ctrl.setUserEnabled(true)
+
+    XCTAssertTrue(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .running)
+    XCTAssertNotNil(ctrl.currentSessionId)
+  }
+
+  func testUserEnableFailsClosedWhenPermissionIsMissing() {
+    let loop = makeLoop(intervalSeconds: 30)
+    let ctrl = makeController(loop: loop, permissionProvider: { false })
+
+    ctrl.setUserEnabled(true)
+
+    XCTAssertFalse(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .permissionBlocked)
+  }
+
+  func testPrivateModeStopsTheSourceAndReconcilesThroughController() {
+    var privateMode = false
+    let loop = makeLoop(intervalSeconds: 30)
+    let ctrl = makeController(
+      loop: loop,
+      privacySnapshotProvider: { ScreenMemoryPrivacySnapshot(isPrivateMode: privateMode) }
+    )
+    ctrl.setUserEnabled(true)
+    XCTAssertEqual(ctrl.state, .running)
+
+    privateMode = true
+    ctrl.reconcile()
+    XCTAssertFalse(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .privateMode)
+
+    privateMode = false
+    ctrl.reconcile()
+    XCTAssertTrue(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .running)
+  }
+
+  func testDisplayChangeFinalizesThenRestartsAfterSettle() async {
+    let observer = RecordingCaptureSystemEventObserver()
+    let archive = FinalizingArchiveSpy()
+    let loop = makeLoop(intervalSeconds: 30)
+    let ctrl = makeController(
+      loop: loop,
+      systemEventObserver: observer,
+      archiveReconciler: archive
+    )
+    ctrl.installSystemEventObservers()
+    ctrl.setUserEnabled(true)
+
+    observer.fire(.displayChange)
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertFalse(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .autoPaused(.displayChange))
+    XCTAssertEqual(archive.finalizeCalls, 1)
+
+    await flushPendingTasks()
+    XCTAssertTrue(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .running)
+  }
+
   // MARK: - 1. Dynamic cadence on battery
 
   func testCaptureIntervalReflectsBatteryState() {
@@ -145,7 +211,7 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       sessionEndSink: sink,
       archiveReconciler: archive
     )
-    XCTAssertTrue(loop.start())
+    ctrl.setUserEnabled(true)
     ctrl.stop(reason: .userToggle)
     XCTAssertFalse(loop.state.isRunning)
     XCTAssertEqual(sink.emittedReasons, [.userToggle])
@@ -169,7 +235,7 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       sessionEndSink: sink,
       archiveReconciler: archive
     )
-    XCTAssertTrue(loop.start())
+    ctrl.setUserEnabled(true)
     ctrl.stop(reason: .quit)
     XCTAssertEqual(sink.emittedReasons, [.quit])
     XCTAssertEqual(archive.finalizeCalls, 1)
@@ -250,10 +316,38 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       sessionEndSink: sink,
       lockFile: lock
     )
-    loop.start()
+    ctrl.setUserEnabled(true)
     ctrl.stop(reason: .quit)
     XCTAssertFalse(lock.exists())
     XCTAssertTrue(ctrl.didMarkCleanShutdown)
+  }
+
+  func testStopWithoutAnActiveSessionDoesNotInventSessionEndIdentity() {
+    let sink = RecordingSessionEndSink()
+    let archive = FinalizingArchiveSpy()
+    let ctrl = makeController(
+      sessionEndSink: sink,
+      archiveReconciler: archive,
+      settingsProvider: { CompilerSettings(captureEnabled: false) }
+    )
+
+    ctrl.setUserEnabled(false)
+
+    XCTAssertTrue(sink.markers.isEmpty)
+    XCTAssertEqual(archive.finalizeCalls, 0)
+    XCTAssertEqual(ctrl.state, .disabled)
+  }
+
+  func testDisablePreservesDurableStopFailureState() {
+    let ctrl = makeController(sessionEndSink: FailingSessionEndSink())
+    ctrl.setUserEnabled(true)
+
+    ctrl.setUserEnabled(false)
+
+    guard case .failed(let message) = ctrl.state else {
+      return XCTFail("Expected failed lifecycle state, got \(ctrl.state)")
+    }
+    XCTAssertEqual(message, "durable session end enqueue failed")
   }
 
   // MARK: - 9. Idempotency after unclean termination (durable outbox)
@@ -501,6 +595,16 @@ private final class RecordingSessionEndSink: CaptureSessionEndSink {
   var emittedReasons: [SessionEndReason] { markers.map(\.reason) }
   func sendSessionEnd(_ marker: SessionEndMarker) throws {
     markers.append(marker)
+  }
+}
+
+private final class FailingSessionEndSink: CaptureSessionEndSink {
+  func sendSessionEnd(_: SessionEndMarker) throws {
+    throw NSError(
+      domain: "ScreenMemoryCaptureResilienceTests",
+      code: 1,
+      userInfo: [NSLocalizedDescriptionKey: "durable session end enqueue failed"]
+    )
   }
 }
 

@@ -306,7 +306,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(loaded.contextChangeDebounceSeconds, 4)
     XCTAssertEqual(loaded.sameContextMinimumSeconds, 45)
     XCTAssertEqual(loaded.messagingFallbackSeconds, 12)
-    XCTAssertFalse(loaded.ambientAudioCaptureEnabled)
+    XCTAssertTrue(loaded.ambientAudioCaptureEnabled)
   }
 
   func testPerceptionPublisherRejectsRawFrameBytes() throws {
@@ -951,6 +951,38 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
     XCTAssertEqual(loop.state.skippedCaptureCount, 1)
     XCTAssertEqual(source.captureCount, 2)
     XCTAssertEqual(runtime.perceptionEvents.count, 2)
+  }
+
+  func testCaptureLoopStopResetsCadenceForImmediateFirstFrameOnRestart() async throws {
+    let runtime = RecordingRuntimeClient()
+    let source = ContextAwareCountingDesktopCaptureSource(
+      context: DesktopWindowContext(appName: "Code", windowTitle: "Intentive"),
+      frame: CapturedFrame(
+        id: "restart-frame",
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Code",
+        windowTitle: "Intentive",
+        ocrText: "restart capture"
+      )
+    )
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: InMemoryScreenMemoryStore(),
+        publisher: PerceptionPublisher(runtimeClient: runtime)
+      ),
+      source: source,
+      now: { Date(timeIntervalSince1970: 3) }
+    )
+
+    let first = await loop.captureTick()
+    let throttled = await loop.captureTick()
+    loop.stop()
+    let restarted = await loop.captureTick()
+    XCTAssertEqual(first, .captured(eventCount: 1))
+    XCTAssertEqual(throttled, .skipped("same context throttled"))
+    XCTAssertEqual(restarted, .captured(eventCount: 1))
+    XCTAssertEqual(source.captureCount, 2)
   }
 
   func testCaptureLoopUsesShorterFallbackForMessagingApps() async throws {

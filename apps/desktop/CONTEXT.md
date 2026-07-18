@@ -35,5 +35,5 @@ _Avoid_: chat lab, agent pill, delegation bar
 - Provider API keys never live on the Mac.
 - The Desktop Context Compiler emits evidence and candidate artifacts; the Agent Runtime decides whether to act.
 - Screen Memory is local truth for screen records. Conversation History is Runtime truth.
-- Passive microphone and system-audio sensing is deferred until the Omi-derived local pipeline is restored; it remains separate from conversation input.
+- Passive microphone and meeting-gated system-audio sensing is local, on by default, and separate from conversation input. It emits only filtered local transcript summaries.
 - Post-Message-Back is the only proactive presentation trigger. Intentive does not duplicate a floating nudge with a product macOS notification.

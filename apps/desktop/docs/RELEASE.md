@@ -29,12 +29,15 @@ The old Tauri updater keys are not reused: Sparkle has its own Ed25519 format. A
 
 ## Release flow
 
-1. Merge the release commit to `main` and tag it `desktop-vX.Y.Z` (or `desktop-vX.Y.Z+BUILD` to pin `CFBundleVersion`).
-2. `.github/workflows/desktop-release.yml` builds the release app, signs Sparkle/Sentry inside-out, signs the app with `Intentive-Release.entitlements`, creates an installable DMG with an `/Applications` link, signs/notarizes/staples it, and creates the Sparkle signature from that DMG.
-3. `smoke-signed-desktop-artifact.sh` verifies identity, Team ID, hardened runtime, Gatekeeper, arm64-only architecture, frameworks/assets/privacy metadata, DMG ticket and contents, appcast metadata, and the cryptographic Sparkle signature. It writes digest evidence.
-4. The workflow creates a **draft** GitHub Release. Draft status is load-bearing: artifacts are not exposed through Sparkle before dedicated-Mac acceptance.
-5. Run `desktop-release-acceptance.yml` with the draft tag. The self-hosted Apple Silicon Mac re-runs assembled journeys, downloads the immutable draft assets, matches the DMG digest to CI evidence, mounts the DMG, and launches the signed installed payload.
-6. Set `publish=true` only after the dedicated-Mac gate is green and the Tart permission checklist below has been completed. The acceptance workflow then publishes the already-audited draft; it never rebuilds it.
+1. Merge the release commit to `main`. Run `desktop-release-candidate.yml` with that exact untagged SHA. Its dedicated Mac launches the real assembled app and records step-level external Accessibility evidence. No tag or public artifact exists yet.
+2. Review the uploaded exact-SHA evidence. Start `desktop-release.yml` with the accepted SHA, candidate workflow run ID, and version. The job pauses at the protected `desktop-release-approval` environment; only after approval does it validate the evidence and create `desktop-vX.Y.Z` (or `desktop-vX.Y.Z+BUILD`).
+3. The protected workflow builds the release app, signs Sparkle/Sentry inside-out, signs the app with `Intentive-Release.entitlements`, creates an installable DMG with an `/Applications` link, signs/notarizes/staples it, and creates the Sparkle signature from that exact DMG.
+4. `smoke-signed-desktop-artifact.sh` verifies identity, Team ID, hardened runtime, Gatekeeper, arm64-only architecture, frameworks/assets/privacy metadata, DMG ticket and contents, appcast metadata, and the cryptographic Sparkle signature. It writes digest evidence.
+5. The workflow creates a **draft** GitHub Release. Draft status is load-bearing: artifacts are not exposed through Sparkle before dedicated-Mac acceptance.
+6. Run `desktop-release-acceptance.yml` with the draft tag. The self-hosted Apple Silicon Mac downloads the immutable draft assets, matches the DMG digest to CI evidence, mounts the DMG, and launches the signed installed payload.
+7. Configure the dedicated release Mac with executable drivers in `DESKTOP_STAGE2_SPARKLE_DRIVER`, `DESKTOP_STAGE2_TART_DRIVER`, and `DESKTOP_STAGE2_FULL_STACK_DRIVER`. They drive the real N-1 loopback update, clean-TCC Tart checklist, and signed-in full-stack journey respectively; each receives the exact tag, SHA, DMG digest, a fresh output path, and evidence root.
+8. The protected `desktop-release-stage2-proof` job downloads the exact draft and runs `run-stage2-release-proof.sh`. That repository-owned entry point freshly installs and launches the notarized DMG from `/Applications`, executes all three dedicated-Mac drivers, validates four newly produced proof families (`installed-dmg.json`, `sparkle-update.json`, `tart-tcc.json`, and `full-stack.json`) plus attachments and identity/digest binding, attaches them to the draft, and only then publishes it. Pre-existing evidence is deleted and cannot satisfy the gate.
+8. Set `publish=true` only when every artifact matches the tag and candidate digest. Publishing never rebuilds the accepted payload.
 
 ## Deterministic gates
 
@@ -45,7 +48,7 @@ pnpm --dir apps/desktop release:smoke
 pnpm harness --scope apps/desktop
 ```
 
-`acceptance:assembled` covers the accessibility-addressed timeline/search tracer, text-only Floating Bar behavior, PMB presentation/acknowledgement, onboarding decisions/resume, utility settings persistence, capture/text-sync/reconnect, expiry/tombstones, and Protocol fixtures. It writes `.context/desktop-assembled-acceptance.json`.
+`acceptance:assembled` builds and launches a real isolated-profile app bundle. A debug-only loopback bridge provides fixture/fault control and state observation with a random bearer token stored mode `0600`; it cannot perform user actions. The external driver uses the macOS AX tree, captures per-step pre/post values, screenshots, AX snapshots, log references, and assertions, and writes `.context/desktop-assembled-acceptance.json` plus `.context/desktop-assembled-evidence/`. The command fails closed when the runner lacks Accessibility permission.
 
 ## Clean-permission Tart gate
 

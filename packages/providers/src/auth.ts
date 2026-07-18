@@ -12,6 +12,7 @@ import { createRemoteJWKSet, errors, jwtVerify } from "jose";
 
 export interface VerifiedPrincipal {
   user_id: string;
+  email: string | null;
 }
 
 export interface JwtVerifier {
@@ -126,7 +127,7 @@ export function createJwtVerifier(
       if (typeof payload.sub !== "string" || payload.sub.length === 0) {
         throw new JwtVerificationError("malformed", "Token is missing a subject (sub) claim");
       }
-      return { user_id: payload.sub };
+      return { user_id: payload.sub, email: verifiedEmail(payload.email) };
     },
   };
 }
@@ -164,7 +165,7 @@ export function createLocalDevJwtVerifier(config: {
       if (typeof payload.sub !== "string" || payload.sub.length === 0) {
         throw new JwtVerificationError("malformed", "Token is missing a subject (sub) claim");
       }
-      return { user_id: payload.sub };
+      return { user_id: payload.sub, email: verifiedEmail(payload.email) };
     },
   };
 }
@@ -217,4 +218,31 @@ function isJwks(value: unknown): value is { keys: unknown[] } {
     "keys" in value &&
     Array.isArray((value as { keys?: unknown }).keys)
   );
+}
+
+function verifiedEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim();
+  if (email.length > 254) return null;
+  const parts = email.split("@");
+  if (parts.length !== 2) return null;
+  const [local, domain] = parts;
+  if (
+    !local ||
+    !domain ||
+    local.length > 64 ||
+    local.startsWith(".") ||
+    local.endsWith(".") ||
+    local.includes("..") ||
+    !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)
+  )
+    return null;
+  const labels = domain.split(".");
+  if (
+    labels.length < 2 ||
+    labels.at(-1)!.length < 2 ||
+    labels.some((label) => !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))
+  )
+    return null;
+  return email;
 }

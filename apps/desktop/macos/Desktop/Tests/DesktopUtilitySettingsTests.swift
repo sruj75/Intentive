@@ -3,6 +3,10 @@ import XCTest
 @testable import IntentiveDesktopCore
 
 final class DesktopUtilitySettingsTests: XCTestCase {
+  func testPassiveAudioEnabledDefaultsToTrue() {
+    XCTAssertTrue(DesktopUtilitySettings().passiveAudioEnabled)
+  }
+
   func testUtilityNavigationContainsOnlyApprovedDestinations() {
     XCTAssertEqual(
       DesktopUtilitySection.allCases,

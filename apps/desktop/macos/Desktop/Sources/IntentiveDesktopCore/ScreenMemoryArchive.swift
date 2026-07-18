@@ -584,6 +584,7 @@ private actor ScreenMemoryIngestCoordinator {
   private var latestStoredRecordID: ScreenMemoryRecordID?
   private var didRecoverVideoArchive = false
   private var staleFinalizationTask: Task<Void, Never>?
+  private var activeVideoFinalizationTask: Task<Void, Error>?
   private var didPrepareArchive = false
   private var lastRetentionCleanupAt: Date = .distantPast
   private var isRetentionCleanupRunning = false
@@ -887,6 +888,22 @@ private actor ScreenMemoryIngestCoordinator {
   }
 
   func finalizeActiveVideoChunk() async throws {
+    if let activeVideoFinalizationTask {
+      try await activeVideoFinalizationTask.value
+      return
+    }
+    let task = Task { try await self.performActiveVideoFinalization() }
+    activeVideoFinalizationTask = task
+    do {
+      try await task.value
+      activeVideoFinalizationTask = nil
+    } catch {
+      activeVideoFinalizationTask = nil
+      throw error
+    }
+  }
+
+  private func performActiveVideoFinalization() async throws {
     try await recoverVideoArchiveIfNeeded()
     staleFinalizationTask?.cancel()
     staleFinalizationTask = nil

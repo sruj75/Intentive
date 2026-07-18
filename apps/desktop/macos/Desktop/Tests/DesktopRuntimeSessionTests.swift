@@ -153,6 +153,31 @@ final class DesktopRuntimeSessionTests: XCTestCase {
     XCTAssertEqual(socket.closeCount, 1)
   }
 
+  func testSignOutClearsPersistedCredentialBeforePublishingSignedOutState() async {
+    let auth = FakeAuthAdapter(token: "user-jwt")
+    let socket = SessionFakeRuntimeSocket()
+    let session = DesktopRuntimeSessionCoordinator(
+      auth: auth,
+      controlPlane: FakeDesktopControlPlane(),
+      device: ClientDeviceService(deviceId: "fingerprint-1"),
+      runtime: RuntimeAdapter(socket: socket, clientVersion: "desktop-test"),
+      initialAccountState: AccountState(
+        userId: "user-1",
+        hasAgentInstance: true,
+        hasDesktopClient: true
+      ),
+      capturePermissionGranted: { true }
+    )
+
+    let state = await session.signOut()
+
+    XCTAssertEqual(state, DesktopRuntimeSessionState.signedOut)
+    let restored = try? await auth.restore()
+    XCTAssertNil(restored)
+    XCTAssertNil(session.accountState)
+    XCTAssertEqual(socket.closeCount, 1)
+  }
+
   func testRuntimeCloseMarksAdapterLostAndPreservesQueueForNextRoute() async throws {
     let auth = FakeAuthAdapter(token: "user-jwt")
     let controlPlane = FakeDesktopControlPlane(

@@ -260,11 +260,15 @@ actor VideoChunkEncoder {
     }
     let stagedURL = stagedURL(for: chunkID)
     defer {
-      resetCurrentChunkState()
       try? fileManager.removeItem(at: stagedURL)
     }
     let sampleCount = frameTimestamps.count
     input.markAsFinished()
+    // `finishWriting` suspends this actor. Detach the active writer state
+    // before that suspension so a concurrent flush/addFrame cannot re-enter
+    // finalization and invoke AVAssetWriter.finishWriting a second time on the
+    // same writer (an Objective-C exception, not a catchable Swift error).
+    resetCurrentChunkState()
     do {
       try await finishWriting(writer)
       let finalURL = finalizedURL(for: chunkID)

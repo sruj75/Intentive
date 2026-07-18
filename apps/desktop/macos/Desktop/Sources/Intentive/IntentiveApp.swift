@@ -18,7 +18,29 @@ struct IntentiveApp: App {
     ).first
       ?? FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent("Library/Application Support", isDirectory: true)
+    #if DEBUG
+    let acceptanceRoot = ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"]
+      .map { URL(fileURLWithPath: $0, isDirectory: true) }
+    let configuration = acceptanceRoot.map {
+      DesktopLaunchConfiguration.assembledTest(
+        profileRoot: $0,
+        permissions: DesktopPermissionSnapshot(screenRecording: .granted, microphone: .granted),
+        authentication: .signedIn(
+          userID: "acceptance-user",
+          email: "acceptance@example.com"
+        ),
+        runtime: .connected,
+        systemBoundaries: DesktopSystemBoundaryPolicy(
+          captureEnabled: true,
+          networkEnabled: false,
+          updatesEnabled: true,
+          telemetryEnabled: false
+        )
+      )
+    } ?? DesktopLaunchConfiguration.production(profileRoot: applicationSupportRoot)
+    #else
     let configuration = DesktopLaunchConfiguration.production(profileRoot: applicationSupportRoot)
+    #endif
     let composition = DesktopApplicationAssembler.assemble(configuration: configuration)
     self.composition = composition
     _model = StateObject(

@@ -9,8 +9,20 @@ final class SparkleUpdateDriver: NSObject, UpdateDriver, SPUUpdaterDelegate {
 
   private var controller: SPUStandardUpdaterController!
   private var deferredInstallation: (() -> Void)?
+  private let acceptanceFeedURL: String?
 
   init(enabled: Bool) {
+    let environment = ProcessInfo.processInfo.environment
+    if environment["INTENTIVE_RELEASE_ACCEPTANCE"] == "1",
+      let raw = environment["INTENTIVE_RELEASE_ACCEPTANCE_FEED_URL"],
+      let url = URL(string: raw),
+      url.scheme == "http",
+      url.host == "127.0.0.1" || url.host == "localhost"
+    {
+      acceptanceFeedURL = raw
+    } else {
+      acceptanceFeedURL = nil
+    }
     super.init()
     controller = SPUStandardUpdaterController(
       startingUpdater: enabled,
@@ -23,6 +35,8 @@ final class SparkleUpdateDriver: NSObject, UpdateDriver, SPUUpdaterDelegate {
       controller.updater.updateCheckInterval = 60 * 60
     }
   }
+
+  func feedURLString(for updater: SPUUpdater) -> String? { acceptanceFeedURL }
 
   func checkForUpdates(manual: Bool) {
     if manual {
@@ -139,6 +153,30 @@ final class SentryPostHogTelemetryClient: TelemetryClient {
     }
   }
 
+  /// Explicit user action: unlike product analytics, issue reports are sent
+  /// whenever Sentry is configured, independent of the analytics preference.
+  func submitUserReport(
+    message: String,
+    name: String,
+    email: String,
+    diagnosticFiles: [URL]
+  ) throws {
+    guard sentryEnabled else { throw ReportIssueError.sentryUnavailable }
+    let title = message.isEmpty ? "User Report (diagnostics only)" : "User Report"
+    SentrySDK.capture(message: title) { scope in
+      scope.setLevel(.info)
+      if !name.isEmpty { scope.setExtra(value: name, key: "reporter_name") }
+      if !email.isEmpty { scope.setExtra(value: email, key: "reporter_email") }
+      if !message.isEmpty { scope.setExtra(value: message, key: "user_report") }
+      for file in diagnosticFiles where file.pathExtension == "jsonl" {
+        scope.addAttachment(
+          Attachment(path: file.path, filename: file.lastPathComponent, contentType: "application/jsonl")
+        )
+      }
+    }
+    SentrySDK.flush(timeout: 2)
+  }
+
   private func bridge(_ value: TelemetryValue) -> Any {
     switch value {
     case .string(let value): return value
@@ -232,6 +270,23 @@ final class DesktopPublicReleaseOperations {
     )
   }
 
+  func submitUserReport(message: String, name: String, email: String) throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "Intentive-Report-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    let export = try diagnostics?.export(to: temporaryRoot)
+    let files = try export.map {
+      try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)
+    } ?? []
+    try telemetryTransport.submitUserReport(
+      message: message.trimmingCharacters(in: .whitespacesAndNewlines),
+      name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+      email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+      diagnosticFiles: files
+    )
+  }
+
   func shutdown() {
     try? diagnostics?.append(
       DiagnosticEntry(level: .info, category: "application", message: "application terminating")
@@ -270,4 +325,9 @@ final class DesktopPublicReleaseOperations {
       )
     )
   }
+}
+
+enum ReportIssueError: LocalizedError {
+  case sentryUnavailable
+  var errorDescription: String? { "Issue reporting is unavailable. Save diagnostics to share offline." }
 }

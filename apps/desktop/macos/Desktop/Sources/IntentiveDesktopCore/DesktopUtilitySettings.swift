@@ -24,7 +24,7 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
   public init(
     retentionDays: Int = 7,
     screenCaptureEnabled: Bool = true,
-    passiveAudioEnabled: Bool = false,
+    passiveAudioEnabled: Bool = true,
     floatingBarShortcut: String = "command+o",
     launchAtLogin: Bool = false,
     analyticsEnabled: Bool = true,
