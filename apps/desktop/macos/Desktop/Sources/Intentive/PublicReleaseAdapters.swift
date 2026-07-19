@@ -52,6 +52,11 @@ final class SparkleUpdateDriver: NSObject, UpdateDriver, SPUUpdaterDelegate {
     installation?()
   }
 
+  func setAutomaticPreferences(checks: Bool, downloads: Bool) {
+    controller.updater.automaticallyChecksForUpdates = checks
+    controller.updater.automaticallyDownloadsUpdates = checks && downloads
+  }
+
   func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
     eventHandler?(.downloadStarted(version: item.displayVersionString))
   }
@@ -194,6 +199,7 @@ final class DesktopPublicReleaseOperations {
 
   private let telemetry: PrivacyFilteringTelemetryClient
   private let telemetryTransport: SentryPostHogTelemetryClient
+  private let updateDriver: SparkleUpdateDriver
 
   init(
     profileRoot: URL,
@@ -203,6 +209,7 @@ final class DesktopPublicReleaseOperations {
     onUpdateSnapshot: @escaping (UpdateSnapshot) -> Void
   ) {
     let driver = SparkleUpdateDriver(enabled: updatesEnabled)
+    updateDriver = driver
     updater = PublicReleaseUpdater(driver: driver)
     let initialAnalyticsConsent = analyticsConsent()
     let transport = SentryPostHogTelemetryClient(
@@ -244,6 +251,10 @@ final class DesktopPublicReleaseOperations {
 
   func resumeDeferredInstall() {
     updater.resumeDeferredInstall()
+  }
+
+  func setAutomaticUpdatePreferences(checks: Bool, downloads: Bool) {
+    updateDriver.setAutomaticPreferences(checks: checks, downloads: downloads)
   }
 
   func exportDiagnostics(to destination: URL) throws -> URL {

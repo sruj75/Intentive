@@ -48,6 +48,25 @@ final class AuthControlPlaneTests: XCTestCase {
     XCTAssertEqual(tokenStore.readToken(), "user-jwt")
   }
 
+  func testNeonManagedProviderChoiceIsForwardedWithoutChangingTokenHandling() async throws {
+    let tokenStore = InMemoryTokenStore()
+    let session = FakeHostedAuthSession(
+      callbackURL: URL(string: "intentive-desktop://auth/callback?state=state-1&token=user-jwt")!
+    )
+    let provider = NeonAuthProvider(
+      hostedAuthURL: URL(string: "https://auth.test/sign-in")!,
+      tokenStore: tokenStore,
+      authSession: session,
+      stateFactory: { "state-1" }
+    )
+
+    let token = try await provider.signIn(provider: .google)
+    XCTAssertEqual(token, "user-jwt")
+    let components = try XCTUnwrap(URLComponents(url: XCTUnwrap(session.startedURL), resolvingAgainstBaseURL: false))
+    XCTAssertEqual(components.queryItems?.first(where: { $0.name == "provider" })?.value, "google")
+    XCTAssertEqual(tokenStore.readToken(), "user-jwt")
+  }
+
   func testHostedSignInRejectsMismatchedState() async {
     let session = FakeHostedAuthSession(
       callbackURL: URL(string: "intentive-desktop://auth/callback?state=bad&token=user-jwt")!

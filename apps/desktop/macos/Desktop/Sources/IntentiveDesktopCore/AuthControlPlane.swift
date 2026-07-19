@@ -30,7 +30,18 @@ public protocol AuthAdapter: AnyObject {
   var cachedUserJWT: String? { get }
   func restore() async throws -> String?
   func signIn() async throws -> String
+  func signIn(provider: DesktopAuthProvider) async throws -> String
+  func cancelSignIn()
   func signOut() async throws
+}
+
+public enum DesktopAuthProvider: String, Codable, Equatable, Sendable {
+  case apple, google
+}
+
+public extension AuthAdapter {
+  func signIn(provider _: DesktopAuthProvider) async throws -> String { try await signIn() }
+  func cancelSignIn() {}
 }
 
 public protocol TokenStore: AnyObject {
@@ -79,7 +90,10 @@ public final class DevAuthProvider: AuthAdapter {
 
 public protocol HostedAuthSessionRunner: AnyObject {
   func start(url: URL, callbackScheme: String) async throws -> URL
+  func cancel()
 }
+
+public extension HostedAuthSessionRunner { func cancel() {} }
 
 public final class NeonAuthProvider: AuthAdapter {
   public private(set) var cachedUserJWT: String?
@@ -119,20 +133,29 @@ public final class NeonAuthProvider: AuthAdapter {
   }
 
   public func signIn() async throws -> String {
+    try await signIn(provider: .apple)
+  }
+
+  public func signIn(provider: DesktopAuthProvider) async throws -> String {
     guard let authSession else { throw DesktopAuthError.missingHostedAuthSession }
     let state = stateFactory()
-    let signInURL = try hostedSignInURL(state: state)
+    let signInURL = try hostedSignInURL(state: state, provider: provider)
     let callbackURL = try await authSession.start(url: signInURL, callbackScheme: callbackScheme)
     return try await completeHostedCallback(callbackURL, expectedState: state)
   }
 
   public func hostedSignInURL(state: String) throws -> URL {
+    try hostedSignInURL(state: state, provider: nil)
+  }
+
+  public func hostedSignInURL(state: String, provider: DesktopAuthProvider?) throws -> URL {
     guard let hostedAuthURL else { throw DesktopAuthError.missingHostedAuthURL }
     var components = URLComponents(url: hostedAuthURL, resolvingAgainstBaseURL: false)
     var items = components?.queryItems ?? []
     items.append(URLQueryItem(name: "client", value: "desktop"))
     items.append(URLQueryItem(name: "redirect_uri", value: "\(callbackScheme)://auth/callback"))
     items.append(URLQueryItem(name: "state", value: state))
+    if let provider { items.append(URLQueryItem(name: "provider", value: provider.rawValue)) }
     components?.queryItems = items
     return components?.url ?? hostedAuthURL
   }
@@ -188,6 +211,8 @@ public final class NeonAuthProvider: AuthAdapter {
     tokenStore.writeToken(nil)
     cachedUserJWT = nil
   }
+
+  public func cancelSignIn() { authSession?.cancel() }
 
   private func exchangeCodeForToken(_ code: String) async throws -> String {
     guard let tokenExchangeURL else { throw DesktopAuthError.missingToken }

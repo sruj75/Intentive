@@ -125,7 +125,7 @@ public final class MeetingDetector {
   }
 }
 
-public enum SystemAudioCaptureMode: String, CaseIterable, Sendable {
+public enum SystemAudioCaptureMode: String, CaseIterable, Codable, Sendable {
   case always
   case onlyDuringMeetings
   case never

@@ -305,6 +305,27 @@ public final class AmbientAudioCoordinator {
   }
 }
 
+/// Gates only future local audio writes. Existing records and the screen
+/// archive are untouched when the preference changes.
+public final class ConditionalAudioMemoryStore: AudioMemoryStore {
+  private let store: AudioMemoryStore
+  private let shouldStore: () -> Bool
+
+  public init(store: AudioMemoryStore, shouldStore: @escaping () -> Bool) {
+    self.store = store
+    self.shouldStore = shouldStore
+  }
+
+  public func addAudioMemory(_ record: AudioMemoryRecord) {
+    guard shouldStore() else { return }
+    store.addAudioMemory(record)
+  }
+
+  public func recentAudioMemory(limit: Int) -> [AudioMemoryRecord] {
+    store.recentAudioMemory(limit: limit)
+  }
+}
+
 public struct EmptyAmbientAudioSegmentCapture: AmbientAudioSegmentCapturing {
   public init() {}
 

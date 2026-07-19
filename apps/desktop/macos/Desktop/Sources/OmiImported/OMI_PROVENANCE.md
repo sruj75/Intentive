@@ -7,8 +7,11 @@ The files under this directory were copied before adaptation from:
 - Source root: `desktop/macos/Desktop/Sources`
 
 The Theme directory remains byte-identical and is compiled as the `OmiTheme`
-SwiftPM target. Settings and setup sources are pruned in place to the approved
-Intentive surface, with backend bindings supplied outside this directory.
+SwiftPM target. Settings and setup sources were copied in the import checkpoint,
+then pruned in place into the compiled `OmiDesktopUI` target. Deleted rows below
+document copied material evaluated and removed during pruning; the retained
+Settings shell and setup views are adapted at their original paths. Backend
+bindings live exclusively in `IntentiveOmiPresentationAdapter.swift`.
 
 | Imported source | Git blob |
 | --- | --- |

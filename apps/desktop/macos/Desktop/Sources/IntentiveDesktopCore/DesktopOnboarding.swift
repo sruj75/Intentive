@@ -1,141 +1,160 @@
 import Foundation
 
-/// The approved Intentive journey, retaining Omi's ordered, resumable page
-/// mechanism while removing Omi product/provider and Intentive voice steps.
+/// Semantic identifiers for the six retained Omi setup pages. Sign-in is a
+/// separate launch gate and is intentionally outside the progress rail.
 public enum DesktopOnboardingStep: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
-  case valuePrivacy = "value_privacy"
-  case authentication
+  case trust
   case screenRecording = "screen_recording"
-  case audioConsent = "audio_consent"
-  case privacyControls = "privacy_controls"
-  case textChatShortcut = "text_chat_shortcut"
-  case ready
+  case microphone
+  case accessibility
+  case floatingBarShortcut = "floating_bar_shortcut"
+  case floatingBarDemo = "floating_bar_demo"
 
   public var id: String { rawValue }
 }
 
 public enum DesktopPermissionDecision: String, Codable, Equatable, Sendable {
-  case granted
-  case denied
-  case deferred
+  case granted, denied, deferred
 }
 
 public enum DesktopScreenRecordingState: Equatable, Sendable {
-  case notReviewed
-  case deferred
-  case denied
-  case granted
-  case grantLost
+  case notReviewed, deferred, denied, granted, grantLost
 }
 
 public struct DesktopOnboardingProgress: Codable, Equatable, Sendable {
   public private(set) var completedSteps: Set<DesktopOnboardingStep>
   public private(set) var screenRecordingDecision: DesktopPermissionDecision?
-  public private(set) var audioDecision: DesktopPermissionDecision?
+  public private(set) var microphoneDecision: DesktopPermissionDecision?
   public private(set) var completed: Bool
 
   public init(
     completedSteps: Set<DesktopOnboardingStep> = [],
     screenRecordingDecision: DesktopPermissionDecision? = nil,
-    audioDecision: DesktopPermissionDecision? = nil,
+    microphoneDecision: DesktopPermissionDecision? = nil,
     completed: Bool = false
   ) {
-    self.completedSteps = completedSteps
+    self.completedSteps = completed ? Set(DesktopOnboardingStep.allCases) : completedSteps
     self.screenRecordingDecision = screenRecordingDecision
-    self.audioDecision = audioDecision
+    self.microphoneDecision = microphoneDecision
     self.completed = completed
   }
 
-  public func isReviewed(_ step: DesktopOnboardingStep) -> Bool {
-    completedSteps.contains(step)
-  }
+  public func isReviewed(_ step: DesktopOnboardingStep) -> Bool { completedSteps.contains(step) }
 
   public func completing(_ step: DesktopOnboardingStep) -> DesktopOnboardingProgress {
     var copy = self
     copy.completedSteps.insert(step)
+    if copy.completedSteps.isSuperset(of: DesktopOnboardingStep.allCases) { copy.completed = true }
     return copy
   }
 
-  public func decidingScreenRecording(
-    _ decision: DesktopPermissionDecision
-  ) -> DesktopOnboardingProgress {
+  public func decidingScreenRecording(_ decision: DesktopPermissionDecision) -> DesktopOnboardingProgress {
     var copy = self
     copy.screenRecordingDecision = decision
     copy.completedSteps.insert(.screenRecording)
     return copy
   }
 
-  public func decidingAudio(_ decision: DesktopPermissionDecision) -> DesktopOnboardingProgress {
+  public func decidingMicrophone(_ decision: DesktopPermissionDecision) -> DesktopOnboardingProgress {
     var copy = self
-    copy.audioDecision = decision
-    copy.completedSteps.insert(.audioConsent)
+    copy.microphoneDecision = decision
+    copy.completedSteps.insert(.microphone)
     return copy
   }
 
+  /// Compatibility with the pre-renovation caller until the executable adapter is replaced.
+  public func decidingAudio(_ decision: DesktopPermissionDecision) -> DesktopOnboardingProgress {
+    decidingMicrophone(decision)
+  }
+
   public func completingOnboarding() -> DesktopOnboardingProgress {
-    var copy = completing(.ready)
-    copy.completed = true
-    return copy
+    DesktopOnboardingProgress(
+      completedSteps: Set(DesktopOnboardingStep.allCases),
+      screenRecordingDecision: screenRecordingDecision,
+      microphoneDecision: microphoneDecision,
+      completed: true
+    )
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case completedSteps, screenRecordingDecision, microphoneDecision, audioDecision, completed
+  }
+
+  public init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    let isCompleted = try values.decodeIfPresent(Bool.self, forKey: .completed) ?? false
+    let legacyRaw = try values.decodeIfPresent(Set<String>.self, forKey: .completedSteps) ?? []
+    var migrated = Set(legacyRaw.compactMap(DesktopOnboardingStep.init(rawValue:)))
+    if legacyRaw.contains("value_privacy") { migrated.insert(.trust) }
+    if legacyRaw.contains("audio_consent") { migrated.insert(.microphone) }
+    if legacyRaw.contains("text_chat_shortcut") { migrated.insert(.floatingBarShortcut) }
+    if legacyRaw.contains("ready") { migrated.insert(.floatingBarDemo) }
+    self.init(
+      completedSteps: migrated,
+      screenRecordingDecision: try values.decodeIfPresent(
+        DesktopPermissionDecision.self, forKey: .screenRecordingDecision),
+      microphoneDecision: try values.decodeIfPresent(
+        DesktopPermissionDecision.self, forKey: .microphoneDecision)
+        ?? values.decodeIfPresent(DesktopPermissionDecision.self, forKey: .audioDecision),
+      completed: isCompleted
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var values = encoder.container(keyedBy: CodingKeys.self)
+    try values.encode(completedSteps.map(\.rawValue), forKey: .completedSteps)
+    try values.encodeIfPresent(screenRecordingDecision, forKey: .screenRecordingDecision)
+    try values.encodeIfPresent(microphoneDecision, forKey: .microphoneDecision)
+    try values.encode(completed, forKey: .completed)
   }
 }
 
 public struct DesktopOnboardingRequirements: Equatable, Sendable {
   public var progress: DesktopOnboardingProgress
   public var isAuthenticated: Bool
+  public var crossClientSetupComplete: Bool
   public var screenRecordingPermissionGranted: Bool
   public var microphonePermissionGranted: Bool
-  public var systemAudioPermissionGranted: Bool
+  public var accessibilityPermissionGranted: Bool
 
   public init(
     progress: DesktopOnboardingProgress,
     isAuthenticated: Bool,
+    crossClientSetupComplete: Bool = true,
     screenRecordingPermissionGranted: Bool,
     microphonePermissionGranted: Bool,
-    systemAudioPermissionGranted: Bool
+    systemAudioPermissionGranted _: Bool = false,
+    accessibilityPermissionGranted: Bool = false
   ) {
     self.progress = progress
     self.isAuthenticated = isAuthenticated
+    self.crossClientSetupComplete = crossClientSetupComplete
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
     self.microphonePermissionGranted = microphonePermissionGranted
-    self.systemAudioPermissionGranted = systemAudioPermissionGranted
+    self.accessibilityPermissionGranted = accessibilityPermissionGranted
   }
 
   public var screenRecordingState: DesktopScreenRecordingState {
     switch progress.screenRecordingDecision {
-    case nil: return .notReviewed
-    case .deferred: return .deferred
-    case .denied: return .denied
-    case .granted: return screenRecordingPermissionGranted ? .granted : .grantLost
+    case nil: .notReviewed
+    case .deferred: .deferred
+    case .denied: .denied
+    case .granted: screenRecordingPermissionGranted ? .granted : .grantLost
     }
   }
 
-  public var captureReady: Bool {
-    isAuthenticated && screenRecordingPermissionGranted
-  }
-
+  public var captureReady: Bool { isAuthenticated && screenRecordingPermissionGranted }
   public var textChatReady: Bool { isAuthenticated }
 
-  public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool {
-    switch step {
-    case .valuePrivacy, .privacyControls, .textChatShortcut:
-      return progress.isReviewed(step)
-    case .authentication:
-      return isAuthenticated
-    case .screenRecording:
-      return progress.screenRecordingDecision != nil
-    case .audioConsent:
-      return progress.audioDecision != nil
-    case .ready:
-      return progress.completed
-    }
-  }
+  public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool { progress.isReviewed(step) }
 
   public var isComplete: Bool {
-    progress.completed && DesktopOnboardingStep.allCases.allSatisfy(isSatisfied)
+    isAuthenticated && crossClientSetupComplete && progress.completed
+      && DesktopOnboardingStep.allCases.allSatisfy(isSatisfied)
   }
 
   public var nextIncompleteStep: DesktopOnboardingStep? {
-    guard !isComplete else { return nil }
+    guard isAuthenticated, crossClientSetupComplete else { return nil }
     return DesktopOnboardingStep.allCases.first { !isSatisfied($0) }
   }
 }
@@ -147,38 +166,24 @@ public protocol DesktopOnboardingProgressStore {
 
 public enum DesktopOnboardingProgressStoreError: Error, LocalizedError {
   case encodeFailed(String)
-
   public var errorDescription: String? {
-    switch self {
-    case .encodeFailed(let message):
-      return "Desktop onboarding progress could not be saved: \(message)"
-    }
+    switch self { case .encodeFailed(let message): "Desktop onboarding progress could not be saved: \(message)" }
   }
 }
 
 public final class UserDefaultsDesktopOnboardingProgressStore: DesktopOnboardingProgressStore {
   private let defaults: UserDefaults
   private let key: String
-
-  public init(
-    defaults: UserDefaults = .standard,
-    key: String = "intentive.desktop.onboarding.progress.v2"
-  ) {
+  public init(defaults: UserDefaults = .standard, key: String = "intentive.desktop.onboarding.progress.v3") {
     self.defaults = defaults
     self.key = key
   }
-
   public func load() -> DesktopOnboardingProgress {
     guard let data = defaults.data(forKey: key) else { return DesktopOnboardingProgress() }
-    return (try? JSONDecoder().decode(DesktopOnboardingProgress.self, from: data))
-      ?? DesktopOnboardingProgress()
+    return (try? JSONDecoder().decode(DesktopOnboardingProgress.self, from: data)) ?? DesktopOnboardingProgress()
   }
-
   public func save(_ progress: DesktopOnboardingProgress) throws {
-    do {
-      defaults.set(try JSONEncoder().encode(progress), forKey: key)
-    } catch {
-      throw DesktopOnboardingProgressStoreError.encodeFailed(error.localizedDescription)
-    }
+    do { defaults.set(try JSONEncoder().encode(progress), forKey: key) }
+    catch { throw DesktopOnboardingProgressStoreError.encodeFailed(error.localizedDescription) }
   }
 }

@@ -13,6 +13,7 @@ let package = Package(
     .library(name: "IntentiveDesktopNativeAssets", targets: ["IntentiveDesktopNativeAssets"]),
     .library(name: "IntentiveDesktopOmiArchive", targets: ["IntentiveDesktopOmiArchive"]),
     .library(name: "OmiTheme", targets: ["OmiTheme"]),
+    .library(name: "OmiDesktopUI", targets: ["OmiDesktopUI"]),
   ],
   dependencies: [
     // Omi's production release boundaries, renovated behind Intentive-owned
@@ -39,6 +40,12 @@ let package = Package(
       path: "Sources/OmiImported/Theme"
     ),
     .target(
+      name: "OmiDesktopUI",
+      dependencies: ["OmiTheme"],
+      path: "Sources/OmiImported",
+      exclude: ["Theme", "OMI_PROVENANCE.md"]
+    ),
+    .target(
       name: "IntentiveDesktopCore",
       path: "Sources/IntentiveDesktopCore"
     ),
@@ -56,6 +63,7 @@ let package = Package(
       dependencies: [
         "IntentiveDesktopCore",
         "IntentiveDesktopOmiArchive",
+        "OmiDesktopUI",
         .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
         .product(name: "FluidAudio", package: "FluidAudio"),
       ],
@@ -90,11 +98,6 @@ let package = Package(
         "Theme/IntentiveColors.swift",
         "Theme/IntentiveFont.swift",
         "Theme/IntentiveTextEditor.swift",
-        // Omi's real paged onboarding scaffold and permission/trust cards,
-        // adapted to Intentive chrome and public application seams (Slice 11).
-        "OnboardingPermissionStepView.swift",
-        "OnboardingStepScaffold.swift",
-        "OnboardingTrustStepView.swift",
         "FloatingControlBar/AIResponseView.swift",
         "FloatingControlBar/AskAIInputView.swift",
         "FloatingControlBar/DraggableAreaView.swift",

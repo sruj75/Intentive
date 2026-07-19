@@ -2,6 +2,7 @@ import AppKit
 import IntentiveDesktopCore
 import IntentiveDesktopNativeAdapters
 import IntentiveDesktopNativeAssets
+import OmiDesktopUI
 import ServiceManagement
 import SwiftUI
 
@@ -53,56 +54,46 @@ private final class AcceptancePassiveAudioSource: PassiveAudioStreamingSource {
 #endif
 
 enum DesktopSection: String, CaseIterable, Identifiable {
-  case screenMemory = "Screen Memory"
+  case general = "General"
+  case rewind = "Rewind"
   case privacy = "Privacy"
-  case sensing = "Sensing"
-  case account = "Account"
-  case updates = "Updates"
-  case diagnostics = "Diagnostics"
+  case about = "About"
 
   var id: String { rawValue }
 
   var symbol: String {
     switch self {
-    case .screenMemory: return "clock.arrow.circlepath"
-    case .privacy: return "hand.raised"
-    case .sensing: return "waveform.and.magnifyingglass"
-    case .account: return "person.crop.circle"
-    case .updates: return "arrow.triangle.2.circlepath"
-    case .diagnostics: return "stethoscope"
+    case .general: return "gearshape"
+    case .rewind: return "clock.arrow.circlepath"
+    case .privacy: return "lock.shield"
+    case .about: return "info.circle"
     }
   }
 
   init(_ section: DesktopMainWindowSection) {
     switch section {
-    case .screenMemory: self = .screenMemory
+    case .general: self = .general
+    case .rewind: self = .rewind
     case .privacy: self = .privacy
-    case .sensing: self = .sensing
-    case .account: self = .account
-    case .updates: self = .updates
-    case .diagnostics: self = .diagnostics
+    case .about: self = .about
     }
   }
 
   init(_ section: DesktopUtilitySection) {
     switch section {
-    case .screenMemory: self = .screenMemory
+    case .general: self = .general
+    case .rewind: self = .rewind
     case .privacy: self = .privacy
-    case .sensing: self = .sensing
-    case .account: self = .account
-    case .updates: self = .updates
-    case .diagnostics: self = .diagnostics
+    case .about: self = .about
     }
   }
 
   var utilitySection: DesktopUtilitySection {
     switch self {
-    case .screenMemory: return .screenMemory
+    case .general: return .general
+    case .rewind: return .rewind
     case .privacy: return .privacy
-    case .sensing: return .sensing
-    case .account: return .account
-    case .updates: return .updates
-    case .diagnostics: return .diagnostics
+    case .about: return .about
     }
   }
 }
@@ -111,7 +102,7 @@ enum DesktopSection: String, CaseIterable, Identifiable {
 final class DesktopViewModel: ObservableObject {
   let launchConfiguration: DesktopLaunchConfiguration
   let composition: DesktopApplicationComposition
-  @Published var selected: DesktopSection = .screenMemory
+  @Published var selected: DesktopSection = .general
   @Published var query = ""
   @Published var status: String
   @Published var effectLog: [String] = []
@@ -195,8 +186,12 @@ final class DesktopViewModel: ObservableObject {
     archiveProvider: { [weak self] in self?.screenMemory.activeArchive },
     privacyPolicy: privacyPolicy
   )
+  private lazy var localAudioMemory = ConditionalAudioMemoryStore(
+    store: screenMemory,
+    shouldStore: { [weak self] in self?.utilitySettings.storeRecordings ?? true }
+  )
   private lazy var ambientAudio = AmbientAudioCoordinator(
-    audioMemory: screenMemory,
+    audioMemory: localAudioMemory,
     publisher: publisher
   )
   private lazy var captureLoop = ScreenMemoryCaptureLoop(
@@ -512,9 +507,11 @@ final class DesktopViewModel: ObservableObject {
   }
 
   var onboardingRequirements: DesktopOnboardingRequirements {
-    DesktopOnboardingRequirements(
+    let gate = runtimeSession.accountState?.nextGate
+    return DesktopOnboardingRequirements(
       progress: onboardingProgress,
       isAuthenticated: isOnboardingAuthenticated,
+      crossClientSetupComplete: gate == nil || gate == .capturePermissionSetup,
       screenRecordingPermissionGranted: screenRecordingPermissionGranted,
       microphonePermissionGranted: microphonePermissionStatus.isGranted,
       systemAudioPermissionGranted: screenRecordingPermissionGranted
@@ -611,6 +608,7 @@ final class DesktopViewModel: ObservableObject {
     configureRuntimeSocketCallbacks()
     floatingBarManager.configure(controller: floatingBarController)
     floatingBarManager.setShortcutPreset(loadedUtilitySettings.floatingBarShortcut)
+    SystemAudioCaptureSettings.shared.mode = loadedUtilitySettings.systemAudioMode
     floatingBarManager.registerGlobalShortcut()
     publicReleaseOperations = DesktopPublicReleaseOperations(
       profileRoot: launchConfiguration.profileRoot,
@@ -618,6 +616,10 @@ final class DesktopViewModel: ObservableObject {
       telemetryEnabled: composition.activeSystemBoundaries.contains(.telemetry),
       analyticsConsent: { [weak self] in self?.utilitySettings.analyticsEnabled ?? false },
       onUpdateSnapshot: { [weak self] snapshot in self?.updateSnapshot = snapshot }
+    )
+    publicReleaseOperations.setAutomaticUpdatePreferences(
+      checks: loadedUtilitySettings.automaticallyChecksForUpdates,
+      downloads: loadedUtilitySettings.automaticallyDownloadsUpdates
     )
     reconcileAmbientAudioCapture()
     meetingObserver.start()
@@ -660,7 +662,7 @@ final class DesktopViewModel: ObservableObject {
           "account_email": self.accountEmail ?? NSNull(),
           "onboarding_presented": self.showOnboarding,
           "onboarding_screen_recording_decision": self.onboardingProgress.screenRecordingDecision?.rawValue ?? NSNull(),
-          "onboarding_audio_decision": self.onboardingProgress.audioDecision?.rawValue ?? NSNull(),
+          "onboarding_audio_decision": self.onboardingProgress.microphoneDecision?.rawValue ?? NSNull(),
           "onboarding_completed": self.onboardingProgress.completed,
           "update_phase": self.updateSnapshot.phase.rawValue,
           "manual_update_checks": self.automationManualUpdateChecks,
@@ -768,7 +770,7 @@ final class DesktopViewModel: ObservableObject {
     onboardingProgress = DesktopOnboardingProgress(
       completedSteps: Set(DesktopOnboardingStep.allCases),
       screenRecordingDecision: .deferred,
-      audioDecision: .deferred,
+      microphoneDecision: .deferred,
       completed: true
     )
     try onboardingStore.save(onboardingProgress)
@@ -945,6 +947,21 @@ final class DesktopViewModel: ObservableObject {
     applyRuntimeState(state)
   }
 
+  func signInAndConnectRuntime(provider: DesktopAuthProvider) async {
+    guard composition.activeSystemBoundaries.contains(.network) else {
+      status = "Runtime network is disabled for this launch"
+      return
+    }
+    status = "Connecting Runtime..."
+    applyRuntimeState(await runtimeSession.signInAndConnect(provider: provider))
+  }
+
+  func cancelSignIn() {
+    runtimeSession.cancelSignIn()
+    applyRuntimeState(.signedOut)
+    status = "Sign in cancelled"
+  }
+
   func captureCurrentScreen() async {
     guard composition.activeSystemBoundaries.contains(.capture) else {
       status = "Capture is disabled for this launch"
@@ -1022,6 +1039,36 @@ final class DesktopViewModel: ObservableObject {
     persistUtilitySettings()
     floatingBarManager.setShortcutPreset(shortcut)
     status = "Floating Bar shortcut saved"
+  }
+
+  func setSystemAudioMode(_ mode: SystemAudioCaptureMode) {
+    utilitySettings.systemAudioMode = mode
+    SystemAudioCaptureSettings.shared.mode = mode
+    persistUtilitySettings()
+    reconcileAmbientAudioCapture()
+    status = "System audio preference saved"
+  }
+
+  func setStoreRecordings(_ enabled: Bool) {
+    utilitySettings.storeRecordings = enabled
+    persistUtilitySettings()
+    status = enabled ? "Future audio recordings will be stored locally" : "Future audio recordings will not be stored"
+  }
+
+  func setAutomaticUpdateChecks(_ enabled: Bool) {
+    utilitySettings.automaticallyChecksForUpdates = enabled
+    if !enabled { utilitySettings.automaticallyDownloadsUpdates = false }
+    persistUtilitySettings()
+    publicReleaseOperations.setAutomaticUpdatePreferences(
+      checks: enabled, downloads: utilitySettings.automaticallyDownloadsUpdates)
+  }
+
+  func setAutomaticUpdateDownloads(_ enabled: Bool) {
+    utilitySettings.automaticallyDownloadsUpdates = enabled
+    if enabled { utilitySettings.automaticallyChecksForUpdates = true }
+    persistUtilitySettings()
+    publicReleaseOperations.setAutomaticUpdatePreferences(
+      checks: utilitySettings.automaticallyChecksForUpdates, downloads: enabled)
   }
 
   func setRetentionDays(_ days: Int) {
@@ -1112,7 +1159,7 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func finishOnboarding() {
-    guard onboardingRequirements.nextIncompleteStep == .ready else {
+    guard onboardingRequirements.nextIncompleteStep == nil else {
       status = "Desktop setup is not complete"
       return
     }
@@ -1254,7 +1301,6 @@ final class DesktopViewModel: ObservableObject {
 
   func openFloatingBarFromOnboarding() {
     openFloatingBar()
-    markOnboardingStepReviewed(.textChatShortcut)
   }
 
   func triggerEffect() {
@@ -1874,511 +1920,27 @@ private enum DesktopRuntimeConfiguration {
 
 struct MainWindowView: View {
   @StateObject private var model: DesktopViewModel
+  @StateObject private var presentation: IntentiveOmiPresentationAdapter
   let composition: DesktopApplicationComposition
-  @FocusState private var searchFocused: Bool
 
   @MainActor
   init(model: DesktopViewModel, composition: DesktopApplicationComposition) {
     _model = StateObject(wrappedValue: model)
+    _presentation = StateObject(wrappedValue: IntentiveOmiPresentationAdapter(model: model))
     self.composition = composition
   }
 
   var body: some View {
-    NavigationSplitView {
-      List(selection: $model.selected) {
-        Section("Desktop") {
-          ForEach(composition.mainWindowSections.map(DesktopSection.init)) { section in
-            Label(section.rawValue, systemImage: section.symbol)
-              .tag(section)
-              .accessibilityIdentifier("sidebar-\(section.utilitySection.rawValue)")
-              .accessibilityAddTraits(.isButton)
-              .accessibilityAction { model.selected = section }
-          }
-        }
+    Group {
+      if model.showOnboarding {
+        OmiMacSetupView(model: presentation)
+      } else {
+        OmiSettingsWindow(model: presentation)
       }
-      .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 260)
-    } detail: {
-      VStack(spacing: 0) {
-        if model.privacySnapshot.isPrivateMode {
-          HStack(spacing: 10) {
-            Image(systemName: "hand.raised.fill")
-            Text("Private Mode is on. Screen, microphone, and system-audio sensing are paused.")
-              .fontWeight(.semibold)
-            Spacer()
-            Button("Resume Sensing", action: model.resumeFromPrivateMode)
-          }
-          .padding(.horizontal, 18)
-          .frame(minHeight: 44)
-          .foregroundStyle(.white)
-          .background(Color.red.opacity(0.9))
-        }
-        topBar
-        Divider()
-        content
-      }
-      .background(Color(nsColor: .windowBackgroundColor))
     }
-    .onReceive(NotificationCenter.default.publisher(for: .intentiveFocusScreenMemorySearch)) { _ in
-      model.selected = .screenMemory
-      searchFocused = true
-    }
-    .onChange(of: model.selected) { _, section in model.persistSelectedUtilitySection(section) }
     .task {
       await model.restoreRuntimeSessionIfNeeded()
-      if !model.showOnboarding {
-        await model.performCaptureLaunchReconciliation()
-      }
-    }
-    .sheet(isPresented: $model.showOnboarding) {
-      DesktopOnboardingSheet(model: model)
-    }
-  }
-
-  private var topBar: some View {
-    HStack(spacing: 12) {
-      Label(model.selected.rawValue, systemImage: model.selected.symbol)
-        .font(.headline)
-      Spacer()
-      Text(model.status)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      Button(action: model.openSetup) {
-        Label("Setup", systemImage: "checklist")
-      }
-      Button {
-        Task {
-          await model.signInAndConnectRuntime()
-        }
-      } label: {
-        Label("Connect Runtime", systemImage: "bolt.horizontal.circle")
-      }
-      .keyboardShortcut("r", modifiers: [.command])
-      Button {
-        model.toggleCapture()
-      } label: {
-        Label(
-          model.captureRunning ? "Stop Capture" : "Start Capture",
-          systemImage: model.captureRunning ? "stop.circle" : "camera.viewfinder")
-      }
-      .disabled(
-        model.privacySnapshot.isPrivateMode
-          || !model.compilerSettings.captureEnabled
-          || !model.screenRecordingPermissionGranted
-      )
-      .keyboardShortcut("n", modifiers: [.command])
-    }
-    .padding(.horizontal, 18)
-    .frame(height: 50)
-  }
-
-  @ViewBuilder
-  private var content: some View {
-    switch model.selected {
-    case .screenMemory:
-      ScreenMemoryView(model: model, searchFocused: $searchFocused)
-    case .privacy, .sensing, .account, .updates, .diagnostics:
-      UtilitySettingsView(model: model, section: model.selected)
-    }
-  }
-}
-
-private struct ScreenMemoryView: View {
-  @ObservedObject var model: DesktopViewModel
-  var searchFocused: FocusState<Bool>.Binding
-  @State private var confirmDeletion = false
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Button { model.moveScreenMemoryDay(-1) } label: { Image(systemName: "chevron.left") }
-          .buttonStyle(.borderless)
-          .accessibilityLabel("Previous day")
-          .accessibilityIdentifier(ScreenMemoryAccessibilityID.previousDay)
-        Text(model.timelineState?.selectedDate.formatted(date: .abbreviated, time: .omitted) ?? "Today")
-          .font(.headline).frame(minWidth: 120)
-          .accessibilityIdentifier("screen_memory_selected_date")
-        Button { model.moveScreenMemoryDay(1) } label: { Image(systemName: "chevron.right") }
-          .buttonStyle(.borderless)
-          .accessibilityLabel("Next day")
-          .accessibilityIdentifier(ScreenMemoryAccessibilityID.nextDay)
-        Divider().frame(height: 22)
-        Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
-        TextField("Search Screen Memory", text: $model.query)
-          .textFieldStyle(.plain)
-          .focused(searchFocused)
-          .accessibilityIdentifier(ScreenMemoryAccessibilityID.searchField)
-        Picker("Application", selection: Binding(
-          get: { model.timelineState?.selectedApp ?? "" },
-          set: { model.filterScreenMemory(app: $0.isEmpty ? nil : $0) }
-        )) {
-          Text("All Apps").tag("")
-          ForEach(model.timelineState?.availableApps ?? [], id: \.self) { app in
-            Text(app).tag(app)
-          }
-        }
-        .frame(width: 150)
-      }
-      .padding(10)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-
-      if model.timelineState?.frames.isEmpty != false {
-        ContentUnavailableView(
-          model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "No Screen Memory yet"
-            : "No matching records",
-          systemImage: "clock.arrow.circlepath"
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier(ScreenMemoryAccessibilityID.emptyState)
-      } else {
-        VStack(spacing: 10) {
-          ZStack(alignment: .topLeading) {
-            if let data = model.currentFrameData, let image = NSImage(data: data) {
-              Image(nsImage: image).resizable().scaledToFit()
-                .accessibilityLabel("Captured frame")
-            } else {
-              RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-                .overlay { ProgressView() }
-            }
-            if !model.selectedOCRMatches.isEmpty {
-              VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(model.selectedOCRMatches.enumerated()), id: \.offset) { index, block in
-                  Text(block.text)
-                    .font(.caption2).padding(4)
-                    .background(.yellow.opacity(0.85), in: RoundedRectangle(cornerRadius: 3))
-                    .accessibilityIdentifier(ScreenMemoryAccessibilityID.ocrHighlight(index))
-                }
-              }.padding(8)
-            }
-          }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .accessibilityElement(children: .contain)
-          .accessibilityIdentifier(ScreenMemoryAccessibilityID.currentFrame)
-
-          if let record = model.selectedTimelineRecord {
-            HStack {
-              VStack(alignment: .leading) {
-                Text(record.appName).font(.headline)
-                Text(record.windowTitle).font(.caption).foregroundStyle(.secondary)
-              }
-              Spacer()
-              Text(record.capturedAt).font(.caption).foregroundStyle(.secondary)
-            }
-          }
-
-          HStack {
-            Button { model.stepScreenMemory(-1) } label: { Image(systemName: "backward.frame.fill") }
-              .accessibilityLabel("Previous frame")
-              .accessibilityIdentifier(ScreenMemoryAccessibilityID.scrubBackward)
-            Button(action: model.toggleScreenMemoryPlayback) {
-              Image(systemName: model.screenMemoryPlaying ? "pause.fill" : "play.fill")
-            }
-            .accessibilityLabel(model.screenMemoryPlaying ? "Pause" : "Play")
-            .accessibilityIdentifier("screen_memory_play_pause")
-            Button { model.stepScreenMemory(1) } label: { Image(systemName: "forward.frame.fill") }
-              .accessibilityLabel("Next frame")
-              .accessibilityIdentifier(ScreenMemoryAccessibilityID.scrubForward)
-            if let frames = model.timelineState?.frames, frames.count > 1,
-              let selected = model.timelineState?.selectedRecordID,
-              let index = frames.firstIndex(where: { $0.id == selected.value.uuidString }) {
-              Slider(
-                value: Binding(
-                  get: { Double(index) },
-                  set: { model.scrubScreenMemory(to: Int($0.rounded())) }
-                ),
-                in: 0...Double(max(0, frames.count - 1)), step: 1
-              )
-              .accessibilityLabel("Timeline scrubber")
-            }
-            Button(role: .destructive) {
-              Task {
-                let result = await model.deleteSelectedScreenMemory(confirmChunkDeletion: false)
-                confirmDeletion = result?.requiredChunkConfirmation == true
-              }
-            } label: { Image(systemName: "trash") }
-            .accessibilityLabel("Delete frame")
-            .accessibilityIdentifier(ScreenMemoryAccessibilityID.deleteFrame)
-          }
-
-          ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
-              ForEach(model.timelineState?.frames ?? []) { record in
-                ScreenMemoryThumbnail(
-                  model: model,
-                  record: record,
-                  selected: record.id == model.timelineState?.selectedRecordID?.value.uuidString
-                ) {
-                  model.selectScreenMemory(record)
-                }
-              }
-            }.padding(.vertical, 2)
-          }
-          .frame(height: 86)
-          .accessibilityIdentifier(ScreenMemoryAccessibilityID.filmstrip)
-
-          if let bytes = model.timelineState?.storage?.totalBytes {
-            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
-              .font(.caption).foregroundStyle(.secondary)
-              .accessibilityIdentifier(ScreenMemoryAccessibilityID.storageLabel)
-          }
-        }
-      }
-    }
-    .padding(18)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier(ScreenMemoryAccessibilityID.root)
-    .onAppear { model.rebuildScreenMemoryTimeline() }
-    .onChange(of: model.query) { model.refreshScreenMemorySearch() }
-    .confirmationDialog(
-      "Delete this video-backed capture chunk?",
-      isPresented: $confirmDeletion,
-      titleVisibility: .visible
-    ) {
-      Button("Delete Capture", role: .destructive) {
-        Task { _ = await model.deleteSelectedScreenMemory(confirmChunkDeletion: true) }
-      }
-      .accessibilityIdentifier("screen_memory_confirm_delete")
-      Button("Cancel", role: .cancel) {}
-        .accessibilityIdentifier("screen_memory_cancel_delete")
-    }
-  }
-}
-
-private struct ScreenMemoryThumbnail: View {
-  @ObservedObject var model: DesktopViewModel
-  let record: ScreenMemoryRecord
-  let selected: Bool
-  let action: () -> Void
-  @State private var data: Data?
-
-  var body: some View {
-    Button(action: action) {
-      VStack(alignment: .leading, spacing: 3) {
-        Group {
-          if let data, let image = NSImage(data: data) {
-            Image(nsImage: image).resizable().scaledToFill()
-          } else {
-            RoundedRectangle(cornerRadius: 5)
-              .fill(selected ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12))
-              .overlay { Image(systemName: "rectangle.on.rectangle").foregroundStyle(.secondary) }
-          }
-        }
-        .frame(width: 112, height: 54).clipShape(RoundedRectangle(cornerRadius: 5))
-        Text(record.appName).font(.caption2).lineLimit(1)
-      }
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("\(record.appName), \(record.windowTitle)")
-    .accessibilityIdentifier(
-      UUID(uuidString: record.id).map { ScreenMemoryAccessibilityID.frame(ScreenMemoryRecordID($0)) }
-        ?? record.id)
-    .task(id: record.id) { data = await model.thumbnailData(for: record) }
-  }
-}
-
-private struct UtilitySettingsView: View {
-  @ObservedObject var model: DesktopViewModel
-  let section: DesktopSection
-
-  var body: some View {
-    Form {
-      if section == .sensing {
-        Section("Sensing") {
-          Toggle(
-            "Screen Memory",
-            isOn: Binding(
-              get: { model.compilerSettings.captureEnabled },
-              set: model.setCaptureEnabled
-            )
-          )
-          .accessibilityIdentifier("sensing-screen-memory-toggle")
-          Toggle(
-            "Passive audio context",
-            isOn: Binding(
-              get: { model.compilerSettings.ambientAudioCaptureEnabled },
-              set: model.setAmbientAudioCaptureEnabled
-            )
-          )
-          .accessibilityIdentifier("sensing-passive-audio-toggle")
-          LabeledContent(
-            "Screen Recording",
-            value: model.screenRecordingPermissionGranted ? "Granted" : "Required")
-          LabeledContent(
-            "Microphone",
-            value: model.microphonePermissionStatus.isGranted ? "Granted" : "Not granted")
-          Toggle(
-            "Launch at login",
-            isOn: Binding(get: { model.utilitySettings.launchAtLogin }, set: model.setLaunchAtLogin)
-          )
-          Picker(
-            "Floating Bar shortcut",
-            selection: Binding(
-              get: { model.utilitySettings.floatingBarShortcut }, set: model.setFloatingBarShortcut)
-          ) {
-            Text("⌘O").tag("command+o")
-            Text("⌘⇧Space").tag("command+shift+space")
-            Text("⌥Space").tag("option+space")
-          }
-        }
-      }
-
-      if section == .privacy {
-        Section("Privacy") {
-          HStack {
-            Label(
-              model.privacySnapshot.isPrivateMode ? "Private Mode On" : "Private Mode Off",
-              systemImage: model.privacySnapshot.isPrivateMode ? "hand.raised.fill" : "hand.raised"
-            )
-            Spacer()
-            if model.privacySnapshot.isPrivateMode {
-              Button("Resume Sensing", action: model.resumeFromPrivateMode)
-                .accessibilityIdentifier("privacy-resume-sensing")
-            } else {
-              Button("Enter Private Mode") {
-                Task { await model.enterPrivateMode() }
-              }
-              .accessibilityIdentifier("privacy-enter-private-mode")
-            }
-          }
-
-          HStack {
-            Label("Screen Recording", systemImage: "rectangle.on.rectangle")
-            Spacer()
-            Label(
-              model.screenRecordingPermissionGranted ? "Granted" : "Required",
-              systemImage: model.screenRecordingPermissionGranted
-                ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(model.screenRecordingPermissionGranted ? .green : .orange)
-          }
-
-          HStack {
-            Button(action: model.requestScreenRecordingPermission) {
-              Label("Request Access", systemImage: "hand.raised")
-            }
-            Button(action: model.openScreenRecordingSettings) {
-              Label("Open System Settings", systemImage: "gearshape")
-            }
-            Button(action: model.refreshScreenRecordingPermission) {
-              Label("Refresh", systemImage: "arrow.clockwise")
-            }
-          }
-
-          TextField(
-            "Excluded applications (comma separated)",
-            text: Binding(
-              get: { model.excludedAppsText },
-              set: model.updateExcludedAppsText
-            )
-          )
-          Picker(
-            "Keep Screen Memory",
-            selection: Binding(
-              get: { model.onboardingRetentionPeriod.rawValue }, set: model.setRetentionDays)
-          ) {
-            ForEach(DesktopUtilitySettings.allowedRetentionDays, id: \.self) { days in
-              Text("\(days) days").tag(days)
-            }
-          }
-          Button("Clear local Screen Memory", role: .destructive, action: model.clearLocalData)
-        }
-      }
-
-      if section == .account {
-        Section("Account") {
-          LabeledContent(
-            "Runtime", value: model.runtimeState == .connected ? "Connected" : "Disconnected")
-          Button("Sign Out", action: model.signOut)
-            .accessibilityIdentifier("account-sign-out")
-        }
-      }
-
-      if section == .updates {
-        Section("Updates") {
-          LabeledContent("Application", value: "Intentive Desktop")
-          LabeledContent("Status", value: model.updateSnapshot.phase.displayName)
-          if let version = model.updateSnapshot.availableVersion {
-            LabeledContent("Available version", value: version)
-          }
-          if let failure = model.updateSnapshot.failureMessage {
-            Text(failure).foregroundStyle(.red)
-          }
-          Button("Check for Updates", action: model.checkForUpdates)
-            .accessibilityIdentifier("updates-check")
-            .disabled(model.updateSnapshot.phase == .checking)
-          if model.updateSnapshot.phase == .downloadedAwaitingInstall {
-            Button("Install Downloaded Update", action: model.installDownloadedUpdate)
-          }
-        }
-      }
-
-      if section == .diagnostics {
-        Section("Diagnostics") {
-          Toggle(
-            "Anonymous product analytics",
-            isOn: Binding(
-              get: { model.utilitySettings.analyticsEnabled }, set: model.setAnalyticsEnabled))
-          LabeledContent("Capture", value: model.captureRunning ? "Running" : "Stopped")
-          LabeledContent("Runtime", value: String(describing: model.runtimeState))
-          Button("Export Logs", action: model.exportDiagnostics)
-          Button("Clear Logs", role: .destructive, action: model.clearDiagnostics)
-        }
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
-          Section("Acceptance") {
-            Button("Present PMB", action: model.triggerEffect)
-              .accessibilityIdentifier("acceptance-present-pmb")
-            Button("Open Floating Bar", action: model.openFloatingBar)
-              .accessibilityIdentifier("acceptance-open-floating-bar")
-            Button("Run Expanded Matrix", action: model.acceptanceRunExpandedMatrix)
-              .accessibilityIdentifier("acceptance-run-expanded-matrix")
-            Button("Activate Meeting Audio", action: model.acceptanceActivateMeetingAudio)
-              .accessibilityIdentifier("acceptance-activate-meeting-audio")
-            Button("Emit Microphone PCM", action: model.acceptanceEmitMicrophonePCM)
-              .accessibilityIdentifier("acceptance-emit-microphone-pcm")
-            Button("Capture Sleep", action: model.acceptanceCaptureSleep)
-              .accessibilityIdentifier("acceptance-capture-sleep")
-            Button("Capture Wake", action: model.acceptanceCaptureWake)
-              .accessibilityIdentifier("acceptance-capture-wake")
-            Button("Capture Display Change", action: model.acceptanceCaptureDisplayChange)
-              .accessibilityIdentifier("acceptance-capture-display-change")
-            Button("Degrade Microphone Permission", action: model.acceptanceDegradeMicrophonePermission)
-              .accessibilityIdentifier("acceptance-audio-permission-degrade")
-            Button("Restore Microphone Permission", action: model.acceptanceRestoreMicrophonePermission)
-              .accessibilityIdentifier("acceptance-audio-permission-restore")
-            Button("Apply Retention Expiry", action: model.acceptanceApplyRetentionExpiry)
-              .accessibilityIdentifier("acceptance-retention-expiry")
-            Button("Enqueue Termination Markers", action: model.acceptanceEnqueueDurableTerminationMarkers)
-              .accessibilityIdentifier("acceptance-durable-markers")
-            Button("Enqueue Tombstone Ordering", action: model.acceptanceEnqueueTombstoneOrderingFixture)
-              .accessibilityIdentifier("acceptance-tombstone-ordering")
-            Button("Onboarding Denied", action: model.acceptanceOnboardingDenied)
-              .accessibilityIdentifier("acceptance-onboarding-denied")
-            Button("Onboarding Deferred", action: model.acceptanceOnboardingDeferred)
-              .accessibilityIdentifier("acceptance-onboarding-deferred")
-            Button("Onboarding Granted", action: model.acceptanceOnboardingGranted)
-              .accessibilityIdentifier("acceptance-onboarding-granted")
-            Button("Resume Onboarding", action: model.acceptanceOnboardingResume)
-              .accessibilityIdentifier("acceptance-onboarding-resume")
-          }
-        }
-        #endif
-      }
-    }
-    .padding(24)
-  }
-}
-
-private extension UpdatePhase {
-  var displayName: String {
-    switch self {
-    case .idle: return "Up to date"
-    case .checking: return "Checking"
-    case .downloading: return "Downloading"
-    case .downloadedAwaitingInstall: return "Ready to install"
-    case .installing: return "Installing"
-    case .failed: return "Needs attention"
+      if !model.showOnboarding { await model.performCaptureLaunchReconciliation() }
     }
   }
 }

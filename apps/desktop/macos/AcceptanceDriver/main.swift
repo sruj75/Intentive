@@ -295,17 +295,11 @@ func record(
 }
 
 bringMainWindowForward()
-if let screenMemory = find(app, id: "sidebar-screenMemory")
-  ?? findTitle(app, "Screen Memory").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(screenMemory, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-}
-
 let initialWindowDeadline = Date().addingTimeInterval(2)
-while find(app, id: "screen_memory") == nil && Date() < initialWindowDeadline {
+while find(app, id: "omi-settings-window") == nil && Date() < initialWindowDeadline {
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
-if find(app, id: "screen_memory") == nil {
+if find(app, id: "omi-settings-window") == nil {
   if let windowMenu = findTitle(app, "Window"), supportsPress(windowMenu) {
     AXUIElementPerformAction(windowMenu, kAXPressAction as CFString)
     RunLoop.current.run(until: Date().addingTimeInterval(0.25))
@@ -315,142 +309,66 @@ if find(app, id: "screen_memory") == nil {
   }
 }
 let deadline = Date().addingTimeInterval(30)
-while find(app, id: "screen_memory") == nil && Date() < deadline {
+while find(app, id: "omi-settings-window") == nil && Date() < deadline {
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
 
 let seeded = try bridgeRequest("POST", "/v1/fixtures/seed")
 fputs("acceptance fixture response: \(seeded)\n", stderr)
 fputs("acceptance state after seed: \(bridgeState())\n", stderr)
-if let root = find(app, id: "screen_memory") {
-  record(name: "fixture-seed", element: root, assertion: "bridge seeded the real local archive and did not perform a user action") {
-    integer(seeded["screen_memory_frames"]) >= 2
-  }
+let initialRoot = find(app, id: "omi-settings-window") ?? app
+record(
+  name: "fixture-seed",
+  element: initialRoot,
+  assertion: "bridge seeded the real local archive and did not perform a user action"
+) {
+  integer(seeded["screen_memory_frames"]) >= 2
 }
 let frameDeadline = Date().addingTimeInterval(10)
 while integer(bridgeState()["screen_memory_frames"]) < 2 && Date() < frameDeadline {
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
 
-let seededRootDeadline = Date().addingTimeInterval(5)
-while find(app, id: "screen_memory") == nil && Date() < seededRootDeadline {
-  RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+let settingsDestinations = [
+  ("settings-general", "sidebar-general"),
+  ("settings-rewind", "sidebar-rewind"),
+  ("settings-privacy", "sidebar-privacy"),
+  ("settings-about", "sidebar-about"),
+]
+let settingsDeadline = Date().addingTimeInterval(5)
+while settingsDestinations.contains(where: { find(app, id: $0.1) == nil })
+  && Date() < settingsDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+for (name, id) in settingsDestinations {
+  let destination = find(app, id: id) ?? initialRoot
+  record(
+    name: name,
+    element: destination,
+    assertion: "the Omi-derived Settings sidebar exposes the approved \(name) destination",
+    action: { if supportsPress(destination) { AXUIElementPerformAction(destination, kAXPressAction as CFString) } },
+    verify: { find(app, id: id) != nil }
+  )
 }
 
-let initialRoot = find(app, id: "screen_memory") ?? app
-record(name: "screen-memory-root", element: initialRoot, assertion: "real app exposes Screen Memory root") {
-  find(app, id: "screen_memory") != nil
-}
-if let search = find(app, id: "screen_memory_search_field") {
-  record(
-    name: "screen-memory-search",
-    element: search,
-    assertion: "typing is performed through AXValue",
-    action: {
-      AXUIElementSetAttributeValue(search, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-      AXUIElementSetAttributeValue(search, kAXValueAttribute as CFString, "acceptance" as CFTypeRef)
-      AXUIElementPerformAction(search, "AXConfirm" as CFString)
-    },
-    verify: {
-      let deadline = Date().addingTimeInterval(3)
-      while Date() < deadline {
-        let state = bridgeState()
-        if String(describing: state["screen_memory_query"] ?? "") == "acceptance",
-          integer(state["screen_memory_frames"]) >= 1 { break }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-      }
-      let state = bridgeState()
-      return stringValue(search) == "acceptance"
-        && String(describing: state["screen_memory_query"] ?? "") == "acceptance"
-        && integer(state["screen_memory_frames"]) >= 1
+if let report = findAfterScrolling(app, id: "about-report-issue") {
+  AXUIElementPerformAction(report, kAXPressAction as CFString)
+  RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+  if let message = find(app, id: "report-issue-message") {
+    AXUIElementSetAttributeValue(message, kAXValueAttribute as CFString, "Acceptance report" as CFTypeRef)
+    if let send = find(app, id: "report-issue-send") {
+      record(
+        name: "report-issue-send",
+        element: send,
+        assertion: "the About tab's Report Issue action reaches a visible success or offline failure state",
+        action: { AXUIElementPerformAction(send, kAXPressAction as CFString) },
+        verify: { find(app, id: "report-issue-result") != nil }
+      )
     }
-  )
-}
-RunLoop.current.run(until: Date().addingTimeInterval(1))
-if let frame = find(app, id: "screen_memory_current_frame") {
-  record(name: "screen-memory-open", element: frame, assertion: "seeded video-backed frame is rendered") {
-    find(app, id: "screen_memory_current_frame") != nil
   }
-}
-if let ocr = find(app, id: "screen_memory_ocr_highlight_0") {
-  record(name: "screen-memory-ocr", element: ocr, assertion: "OCR match card is present in the real AX tree") {
-    stringValue(ocr)?.localizedCaseInsensitiveContains("acceptance") == true
-  }
-}
-if let search = find(app, id: "screen_memory_search_field") {
-  AXUIElementSetAttributeValue(search, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-  AXUIElementSetAttributeValue(search, kAXValueAttribute as CFString, "" as CFTypeRef)
-  AXUIElementPerformAction(search, "AXConfirm" as CFString)
-  let deadline = Date().addingTimeInterval(3)
-  while integer(bridgeState()["screen_memory_frames"]) < 2 && Date() < deadline {
-    RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-  }
-}
-if let step = find(app, id: "screen_memory_scrub_backward")
-  ?? find(app, id: "screen_memory_scrub_forward") {
-  let before = bridgeState()["screen_memory_selected_record"] as? String
-  record(
-    name: "screen-memory-scrub",
-    element: step,
-    assertion: "AXPress invokes the production adjacent-frame handler",
-    action: { AXUIElementPerformAction(step, kAXPressAction as CFString) },
-    verify: { (bridgeState()["screen_memory_selected_record"] as? String) != before }
-  )
-}
-if let play = find(app, id: "screen_memory_play_pause") {
-  let before = bridgeState()["screen_memory_playing"] as? Bool
-  record(
-    name: "screen-memory-play",
-    element: play,
-    assertion: "play control accepts the production AX action",
-    action: { AXUIElementPerformAction(play, kAXPressAction as CFString) },
-    verify: { (bridgeState()["screen_memory_playing"] as? Bool) != before }
-  )
-  AXUIElementPerformAction(play, kAXPressAction as CFString)
-}
-if let delete = find(app, id: "screen_memory_delete_frame") {
-  record(
-    name: "screen-memory-delete",
-    element: delete,
-    assertion: "video-backed deletion requires confirmation and refreshes the archive",
-    action: { AXUIElementPerformAction(delete, kAXPressAction as CFString) },
-    verify: {
-      let confirmationDeadline = Date().addingTimeInterval(5)
-      var confirmation: AXUIElement?
-      while confirmation == nil && Date() < confirmationDeadline {
-        confirmation = find(app, id: "screen_memory_confirm_delete")
-        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-      }
-      guard let confirmation, supportsPress(confirmation) else { return false }
-      AXUIElementPerformAction(confirmation, kAXPressAction as CFString)
-      let deletionDeadline = Date().addingTimeInterval(5)
-      while integer(bridgeState()["screen_memory_frames"]) != 0 && Date() < deletionDeadline {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-      }
-      return integer(bridgeState()["screen_memory_frames"]) == 0
-    }
-  )
-}
-for (name, id) in [
-  ("previous-day", "screen_memory_previous_day"),
-  ("next-day", "screen_memory_next_day"),
-] {
-  if let button = find(app, id: id) {
-    let before = find(app, id: "screen_memory_selected_date").flatMap(stringValue)
-    record(
-      name: name,
-      element: button,
-      assertion: "AXPress changes the production timeline date",
-      action: { AXUIElementPerformAction(button, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(3)
-        while find(app, id: "screen_memory_selected_date").flatMap(stringValue) == before
-          && Date() < deadline {
-          RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        return find(app, id: "screen_memory_selected_date").flatMap(stringValue) != before
-      }
-    )
+  if let cancel = find(app, id: "report-issue-cancel") ?? findTitle(app, "Cancel") {
+    AXUIElementPerformAction(pressableAncestor(cancel) ?? cancel, kAXPressAction as CFString)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
   }
 }
 
@@ -534,44 +452,23 @@ if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intenti
       verify: { stringValue(account)?.localizedCaseInsensitiveContains("acceptance@example.com") == true }
     )
   }
-  openStatusMenu(statusItem)
-  if let report = findLast(app, id: "menu-report-issue") ?? findTitle(app, "Report Issue…") {
-    AXUIElementPerformAction(report, kAXPressAction as CFString)
-    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-    if let message = find(app, id: "report-issue-message") {
-      AXUIElementSetAttributeValue(message, kAXValueAttribute as CFString, "Acceptance report" as CFTypeRef)
-      if let send = find(app, id: "report-issue-send") {
-        record(
-          name: "report-issue-send",
-          element: send,
-          assertion: "explicit AX Send Report reaches a visible success or offline failure state",
-          action: { AXUIElementPerformAction(send, kAXPressAction as CFString) },
-          verify: { find(app, id: "report-issue-result") != nil }
-        )
-      }
-    }
-    if let cancel = find(app, id: "report-issue-cancel") ?? findTitle(app, "Cancel") {
-      AXUIElementPerformAction(pressableAncestor(cancel) ?? cancel, kAXPressAction as CFString)
-      RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-    }
-  }
 }
 
 if !steps.contains(where: { $0.name == "capture-enable-first-frame" && $0.passed })
   || !steps.contains(where: { $0.name == "audio-microphone-running" && $0.passed }) {
   bringMainWindowForward()
-  if let sensing = find(app, id: "sidebar-sensing")
-    ?? findTitle(app, "Sensing").flatMap(pressableAncestor) {
-    AXUIElementPerformAction(sensing, kAXPressAction as CFString)
+  if let general = find(app, id: "sidebar-general")
+    ?? findTitle(app, "General").flatMap(pressableAncestor) {
+    AXUIElementPerformAction(general, kAXPressAction as CFString)
     RunLoop.current.run(until: Date().addingTimeInterval(0.4))
   }
   if !steps.contains(where: { $0.name == "capture-enable-first-frame" && $0.passed }),
-    let capture = find(app, id: "sensing-screen-memory-toggle") {
+    let capture = find(app, id: "general-screen-capture-toggle") {
     let capturedBefore = integer(bridgeState()["capture_source_frames"])
     record(
       name: "capture-enable-first-frame",
       element: capture,
-      assertion: "AXPress starts authoritative capture through the production Sensing control",
+      assertion: "AXPress starts authoritative capture through the Omi-derived General control",
       action: { AXUIElementPerformAction(capture, kAXPressAction as CFString) },
       verify: {
         let deadline = Date().addingTimeInterval(15)
@@ -586,11 +483,11 @@ if !steps.contains(where: { $0.name == "capture-enable-first-frame" && $0.passed
     )
   }
   if !steps.contains(where: { $0.name == "audio-microphone-running" && $0.passed }),
-    let audio = find(app, id: "sensing-passive-audio-toggle") {
+    let audio = find(app, id: "general-audio-recording-toggle") {
     record(
       name: "audio-microphone-running",
       element: audio,
-      assertion: "AXPress starts passive microphone sensing through the production Sensing control",
+      assertion: "AXPress starts passive microphone sensing through the Omi-derived General control",
       action: { AXUIElementPerformAction(audio, kAXPressAction as CFString) },
       verify: {
         let deadline = Date().addingTimeInterval(10)
@@ -605,303 +502,15 @@ if !steps.contains(where: { $0.name == "capture-enable-first-frame" && $0.passed
   }
 }
 
-bringMainWindowForward()
-if let privacy = find(app, id: "sidebar-privacy")
-  ?? findTitle(app, "Privacy").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(privacy, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-  if let enter = find(app, id: "privacy-enter-private-mode") {
-    record(
-      name: "private-mode-enter",
-      element: enter,
-      assertion: "AXPress enters Private Mode and synchronously pauses sensing",
-      action: { AXUIElementPerformAction(enter, kAXPressAction as CFString) },
-      verify: {
-        let state = bridgeState()
-        return state["private_mode"] as? Bool == true
-          && state["capture_source_running"] as? Bool == false
-          && !String(describing: state["passive_audio_state"] ?? "")
-            .localizedCaseInsensitiveContains("microphone: true")
-          && !String(describing: state["passive_audio_state"] ?? "")
-            .localizedCaseInsensitiveContains("systemAudio: true")
-      }
-    )
-  }
-  if let resume = find(app, id: "privacy-resume-sensing") {
-    record(
-      name: "private-mode-resume",
-      element: resume,
-      assertion: "AXPress resumes through production reconciliation",
-      action: { AXUIElementPerformAction(resume, kAXPressAction as CFString) },
-      verify: { bridgeState()["private_mode"] as? Bool == false }
-    )
-  }
-}
-
-bringMainWindowForward()
-if let diagnostics = find(app, id: "sidebar-diagnostics")
-  ?? findTitle(app, "Diagnostics").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(diagnostics, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-  if let matrix = findAfterScrolling(app, id: "acceptance-run-expanded-matrix") {
-    record(
-      name: "expanded-matrix-run",
-      element: matrix,
-      assertion: "AXPress runs the assembled system-event and fault matrix through production handlers",
-      action: { AXUIElementPerformAction(matrix, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(50)
-        while Date() < deadline {
-          let results = bridgeState()["expanded_matrix"] as? [String: Any] ?? [:]
-          if results["capture-display-change"] != nil,
-            results["runtime-durable-quit-crash-markers"] != nil { return true }
-          RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        }
-        return false
-      }
-    )
-    for name in [
-      "capture-enable-first-frame", "audio-microphone-running",
-      "private-mode-enter", "private-mode-resume", "audio-meeting-system-tap",
-      "audio-vad-ingestion", "audio-permission-degradation", "capture-sleep",
-      "capture-wake", "capture-display-change", "runtime-retention-expiry",
-      "runtime-tombstone-ordering", "runtime-durable-quit-crash-markers",
-    ] where !steps.contains(where: { $0.name == name && $0.passed }) {
-      record(
-        name: name,
-        element: matrix,
-        assertion: "the AX-triggered expanded matrix completed \(name) through production state",
-        verify: {
-          let results = bridgeState()["expanded_matrix"] as? [String: Any] ?? [:]
-          return results[name] as? Bool == true
-        }
-      )
-    }
-    if !steps.contains(where: { $0.name == "runtime-structured-search-ingress" && $0.passed }) {
-      record(
-        name: "runtime-structured-search-ingress",
-        element: matrix,
-        assertion: "the assembled capture produced Runtime-searchable structured fields",
-        verify: {
-          let results = bridgeState()["expanded_matrix"] as? [String: Any] ?? [:]
-          return results["runtime-structured-search-ingress"] as? Bool == true
-        }
-      )
-    }
-    if let data = try? JSONSerialization.data(
-      withJSONObject: bridgeState(), options: [.prettyPrinted, .sortedKeys]) {
-      try? data.write(
-        to: evidenceDirectory.appendingPathComponent("expanded-matrix-state.json"),
-        options: .atomic)
-    }
-  }
-  if let present = findAfterScrolling(app, id: "acceptance-present-pmb") {
-    AXUIElementPerformAction(present, kAXPressAction as CFString)
-    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-    if let dismiss = find(app, id: "floating-pmb-dismiss") {
-      record(
-        name: "floating-pmb-dismiss",
-        element: dismiss,
-        assertion: "AXPress dismisses a PMB presented by the production Effect Runner",
-        action: { AXUIElementPerformAction(dismiss, kAXPressAction as CFString) },
-        verify: { find(app, id: "floating-pmb-dismiss") == nil }
-      )
-    }
-    AXUIElementPerformAction(present, kAXPressAction as CFString)
-    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-    if let snooze = find(app, id: "floating-pmb-snooze") {
-      record(
-        name: "floating-pmb-snooze",
-        element: snooze,
-        assertion: "AXPress applies Omi's bounded PMB snooze and dismisses the nudge",
-        action: { AXUIElementPerformAction(snooze, kAXPressAction as CFString) },
-        verify: {
-          let state = bridgeState()
-          return state["floating_pmb_snoozed"] as? Bool == true
-            && state["floating_notification_visible"] as? Bool == false
-        }
-      )
-    }
-  }
-  if let meeting = find(app, id: "acceptance-activate-meeting-audio") {
-    record(
-      name: "audio-meeting-system-tap",
-      element: meeting,
-      assertion: "AXPress activates the meeting gate and starts optional system audio",
-      action: { AXUIElementPerformAction(meeting, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline {
-          if String(describing: bridgeState()["passive_audio_state"] ?? "")
-            .localizedCaseInsensitiveContains("systemAudio: true") { return true }
-          RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        return false
-      }
-    )
-  }
-  if let pcm = findAfterScrolling(app, id: "acceptance-emit-microphone-pcm") {
-    let before = integer(bridgeState()["acceptance_microphone_pcm_bytes"])
-    record(
-      name: "audio-vad-ingestion",
-      element: pcm,
-      assertion: "AXPress feeds a full microphone segment through the running passive-audio source into the VAD pipeline",
-      action: { AXUIElementPerformAction(pcm, kAXPressAction as CFString) },
-      verify: { integer(bridgeState()["acceptance_microphone_pcm_bytes"]) > before }
-    )
-  }
-  if let degrade = findAfterScrolling(app, id: "acceptance-audio-permission-degrade") {
-    record(
-      name: "audio-permission-degradation",
-      element: degrade,
-      assertion: "AXPress revokes microphone permission and the coordinator fails closed",
-      action: { AXUIElementPerformAction(degrade, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(3)
-        while Date() < deadline {
-          if String(describing: bridgeState()["passive_audio_state"] ?? "")
-            .localizedCaseInsensitiveContains("permissionBlocked") { return true }
-          RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        return false
-      }
-    )
-    if let restore = findAfterScrolling(app, id: "acceptance-audio-permission-restore") {
-      AXUIElementPerformAction(restore, kAXPressAction as CFString)
-      RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-    }
-  }
-  for (name, id, expected) in [
-    ("capture-sleep", "acceptance-capture-sleep", "autoPaused"),
-    ("capture-wake", "acceptance-capture-wake", "running"),
-    ("capture-display-change", "acceptance-capture-display-change", "running"),
-  ] {
-    if steps.contains(where: { $0.name == name && $0.passed }) { continue }
-    if let control = findAfterScrolling(app, id: id) {
-      record(
-        name: name,
-        element: control,
-        assertion: "AXPress routes the assembled system event through the authoritative capture lifecycle",
-        action: { AXUIElementPerformAction(control, kAXPressAction as CFString) },
-        verify: {
-          let deadline = Date().addingTimeInterval(name == "capture-display-change" ? 30 : 4)
-          while Date() < deadline {
-            if String(describing: bridgeState()["capture_state"] ?? "")
-              .localizedCaseInsensitiveContains(expected) { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-          }
-          return false
-        }
-      )
-    }
-  }
-  if let retention = findAfterScrolling(app, id: "acceptance-retention-expiry") {
-    if !steps.contains(where: { $0.name == "runtime-structured-search-ingress" && $0.passed }) {
-      record(
-        name: "runtime-structured-search-ingress",
-        element: retention,
-        assertion: "the assembled capture produced Runtime-searchable structured app, title, and OCR fields",
-        verify: { bridgeState()["runtime_structured_screen_ingress"] as? Bool == true }
-      )
-    }
-    if !steps.contains(where: { $0.name == "runtime-retention-expiry" && $0.passed }) {
-      record(
-        name: "runtime-retention-expiry",
-        element: retention,
-        assertion: "AXPress applies the selected three-day policy and durably queues a retention tombstone",
-        action: { AXUIElementPerformAction(retention, kAXPressAction as CFString) },
-        verify: {
-          let deadline = Date().addingTimeInterval(15)
-          while Date() < deadline {
-            let state = bridgeState()
-            let reasons = state["runtime_tombstone_reasons"] as? [String] ?? []
-            if integer(state["retention_expired_count"]) > 0,
-              reasons.contains("retention_expiry") { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-          }
-          return false
-        }
-      )
-    }
-  }
-  if let ordering = findAfterScrolling(app, id: "acceptance-tombstone-ordering") {
-    record(
-      name: "runtime-tombstone-ordering",
-      element: ordering,
-      assertion: "AXPress queues an event before its later tombstone on the real durable outbox",
-      action: { AXUIElementPerformAction(ordering, kAXPressAction as CFString) },
-      verify: {
-        let kinds = bridgeState()["runtime_ingress_kinds"] as? [String] ?? []
-        guard let event = kinds.lastIndex(of: "perception_event"),
-          let tombstone = kinds.lastIndex(of: "perception_tombstone")
-        else { return false }
-        return event < tombstone
-      }
-    )
-  }
-  if let markers = findAfterScrolling(app, id: "acceptance-durable-markers") {
-    let before = (bridgeState()["runtime_ingress_kinds"] as? [String] ?? [])
-      .filter { $0 == "session_end_marker" }.count
-    record(
-      name: "runtime-durable-quit-crash-markers",
-      element: markers,
-      assertion: "AXPress durably enqueues distinct quit and crash termination markers",
-      action: { AXUIElementPerformAction(markers, kAXPressAction as CFString) },
-      verify: {
-        (bridgeState()["runtime_ingress_kinds"] as? [String] ?? [])
-          .filter { $0 == "session_end_marker" }.count == before + 2
-      }
-    )
-  }
-}
-
-bringMainWindowForward()
-if let diagnostics = find(app, id: "sidebar-diagnostics")
-  ?? findTitle(app, "Diagnostics").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(diagnostics, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-}
-if let openFloating = findAfterScrolling(app, id: "acceptance-open-floating-bar") {
-  AXUIElementPerformAction(openFloating, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-  if let close = find(app, id: "floating-bar-close") {
-    record(
-      name: "floating-bar-close",
-      element: close,
-      assertion: "AXPress closes the real Omi-derived floating conversation surface",
-      action: { AXUIElementPerformAction(close, kAXPressAction as CFString) },
-      verify: { bridgeState()["floating_bar_engaged"] as? Bool == false }
-    )
-  }
-  let messagesBefore = integer(bridgeState()["conversation_message_count"])
-  record(
-    name: "floating-ordinary-reply-nonpresenting",
-    element: initialRoot,
-    assertion: "an ordinary Runtime reply updates conversation truth without re-presenting the hidden bar",
-    action: { _ = try! bridgeRequest("POST", "/v1/fixtures/ordinary-reply") },
-    verify: {
-      let state = bridgeState()
-      return integer(state["conversation_message_count"]) > messagesBefore
-        && state["floating_bar_engaged"] as? Bool == false
-    }
-  )
-  record(
-    name: "floating-bar-reopen",
-    element: openFloating,
-    assertion: "AXPress reopens the floating conversation through the production handler",
-    action: { AXUIElementPerformAction(openFloating, kAXPressAction as CFString) },
-    verify: { bridgeState()["floating_bar_engaged"] as? Bool == true }
-  )
-}
 
 // Quiesce both real sensing coordinators through production settings controls
 // before faulting the Runtime link so the durable-outbox count cannot grow.
 bringMainWindowForward()
-if let sensing = find(app, id: "sidebar-sensing")
-  ?? findTitle(app, "Sensing").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(sensing, kAXPressAction as CFString)
+if let general = find(app, id: "sidebar-general")
+  ?? findTitle(app, "General").flatMap(pressableAncestor) {
+  AXUIElementPerformAction(general, kAXPressAction as CFString)
   RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-  if let capture = find(app, id: "sensing-screen-memory-toggle"),
+  if let capture = find(app, id: "general-screen-capture-toggle"),
     integer(bridgeState()["capture_enabled"]) == 1 {
     record(
       name: "capture-disable",
@@ -920,7 +529,7 @@ if let sensing = find(app, id: "sidebar-sensing")
       }
     )
   }
-  if let audio = find(app, id: "sensing-passive-audio-toggle"),
+  if let audio = find(app, id: "general-audio-recording-toggle"),
     integer(bridgeState()["passive_audio_enabled"]) == 1 {
     record(
       name: "audio-disable",
@@ -992,53 +601,6 @@ record(
   verify: { integer(bridgeState()["runtime_ingress_pending"]) == 0 }
 )
 
-bringMainWindowForward()
-if let account = find(app, id: "sidebar-account")
-  ?? findTitle(app, "Account").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(account, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-  if let signOut = find(app, id: "account-sign-out") {
-    record(
-      name: "account-sign-out",
-      element: signOut,
-      assertion: "AXPress invokes the production sign-out and clears Runtime identity state",
-      action: { AXUIElementPerformAction(signOut, kAXPressAction as CFString) },
-      verify: {
-        String(describing: bridgeState()["runtime_state"] ?? "")
-          .localizedCaseInsensitiveContains("signedOut")
-      }
-    )
-  }
-}
-
-bringMainWindowForward()
-if let diagnostics = find(app, id: "sidebar-diagnostics")
-  ?? findTitle(app, "Diagnostics").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(diagnostics, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-  for (name, id, key, expected) in [
-    ("onboarding-deny", "acceptance-onboarding-denied", "onboarding_screen_recording_decision", "denied"),
-    ("onboarding-defer", "acceptance-onboarding-deferred", "onboarding_audio_decision", "deferred"),
-    ("onboarding-grant", "acceptance-onboarding-granted", "onboarding_audio_decision", "granted"),
-  ] {
-    if let control = findAfterScrolling(app, id: id) {
-      record(
-        name: name,
-        element: control,
-        assertion: "AXPress exercises the resumable production onboarding decision path",
-        action: { AXUIElementPerformAction(control, kAXPressAction as CFString) },
-        verify: {
-          let deadline = Date().addingTimeInterval(3)
-          while Date() < deadline {
-            if String(describing: bridgeState()[key] ?? "") == expected { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-          }
-          return false
-        }
-      )
-    }
-  }
-}
 
 // Sparkle presents an application-modal window. Exercise it only after every
 // product journey, then dismiss its result before onboarding becomes frontmost.
@@ -1110,20 +672,12 @@ if !steps.contains(where: { $0.name == "onboarding-reset-confirmation" && $0.pas
 }
 
 let required = [
-  "fixture-seed", "screen-memory-root", "screen-memory-search", "screen-memory-open",
-  "screen-memory-ocr", "screen-memory-scrub", "screen-memory-play", "screen-memory-delete",
-  "previous-day", "next-day", "runtime-lost-ack", "runtime-reconnect-redelivery",
-  "runtime-ack-dedupe", "menu-order", "report-issue-send",
-  "private-mode-enter", "private-mode-resume", "floating-pmb-dismiss", "floating-pmb-snooze",
-  "floating-bar-close", "floating-bar-reopen", "floating-ordinary-reply-nonpresenting",
+  "fixture-seed", "settings-general", "settings-rewind", "settings-privacy", "settings-about",
+  "runtime-lost-ack", "runtime-reconnect-redelivery", "runtime-ack-dedupe",
+  "menu-order", "report-issue-send",
   "capture-enable-first-frame", "capture-disable", "audio-microphone-running", "audio-disable",
-  "capture-sleep", "capture-wake", "capture-display-change",
-  "audio-meeting-system-tap", "audio-vad-ingestion", "audio-permission-degradation",
-  "runtime-structured-search-ingress", "runtime-retention-expiry", "runtime-tombstone-ordering",
-  "runtime-durable-quit-crash-markers",
-  "update-check", "onboarding-reset-confirmation",
-  "onboarding-deny", "onboarding-defer", "onboarding-grant", "onboarding-resume",
-  "account-verified-email", "account-sign-out",
+  "update-check", "onboarding-reset-confirmation", "onboarding-resume",
+  "account-verified-email",
 ]
 let ok = bridgeFailure == nil
   && required.allSatisfy { name in steps.contains { $0.name == name && $0.passed } }

@@ -54,6 +54,7 @@ public final class FloatingControlBarManager {
   var sharedFloatingProvider: ChatProvider? { floatingProvider }
 
   private var hotKeyRef: EventHotKeyRef?
+  private var shortcutEnabled = true
   private var eventHandlerRef: EventHandlerRef?
   private var shortcutObserver: NSObjectProtocol?
 
@@ -215,6 +216,8 @@ public final class FloatingControlBarManager {
       }
     }
 
+    guard shortcutEnabled else { return }
+
     let hotKeyID = EventHotKeyID(signature: FourCharCode(0x494E_5456), id: 1)  // "INTV"
     let shortcut = ShortcutSettings.shared.floatingBarShortcut
     var ref: EventHotKeyRef?
@@ -237,7 +240,31 @@ public final class FloatingControlBarManager {
   /// registration mechanism. The utility settings surface persists the preset
   /// identifier; this adapter owns the key-code translation.
   public func setShortcutPreset(_ preset: String) {
+    if preset == "disabled" {
+      shortcutEnabled = false
+      if let hotKeyRef { UnregisterEventHotKey(hotKeyRef); self.hotKeyRef = nil }
+      return
+    }
+    shortcutEnabled = true
+    if preset.hasPrefix("custom:") {
+      let parts = preset.split(separator: ":", maxSplits: 3).map(String.init)
+      if parts.count == 4, let keyCode = UInt32(parts[1]), let modifiers = UInt32(parts[2]) {
+        ShortcutSettings.shared.floatingBarShortcut = .init(
+          keyCode: keyCode, carbonModifiers: modifiers,
+          displayTokens: parts[3].split(separator: ",").map(String.init))
+      }
+      return
+    }
     switch preset {
+    case "command+return":
+      ShortcutSettings.shared.floatingBarShortcut = .init(
+        keyCode: UInt32(kVK_Return), carbonModifiers: UInt32(cmdKey), displayTokens: ["⌘", "↩"])
+    case "command+shift+return":
+      ShortcutSettings.shared.floatingBarShortcut = .init(
+        keyCode: UInt32(kVK_Return), carbonModifiers: UInt32(cmdKey | shiftKey), displayTokens: ["⇧", "⌘", "↩"])
+    case "command+j":
+      ShortcutSettings.shared.floatingBarShortcut = .init(
+        keyCode: UInt32(kVK_ANSI_J), carbonModifiers: UInt32(cmdKey), displayTokens: ["⌘", "J"])
     case "command+shift+space":
       ShortcutSettings.shared.floatingBarShortcut = .init(
         keyCode: UInt32(kVK_Space), carbonModifiers: UInt32(cmdKey | shiftKey),

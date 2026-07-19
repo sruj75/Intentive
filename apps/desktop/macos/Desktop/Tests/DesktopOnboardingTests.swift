@@ -3,120 +3,86 @@ import IntentiveDesktopCore
 import XCTest
 
 final class DesktopOnboardingTests: XCTestCase {
-  func testFreshProfileStartsAtValuePrivacyAndUsesApprovedOrder() {
-    let requirements = requirements()
-
+  func testSignInIsOutsideSixStepRailAndRetainedOrderIsSemantic() {
     XCTAssertEqual(
       DesktopOnboardingStep.allCases,
-      [.valuePrivacy, .authentication, .screenRecording, .audioConsent, .privacyControls,
-       .textChatShortcut, .ready]
+      [.trust, .screenRecording, .microphone, .accessibility, .floatingBarShortcut, .floatingBarDemo]
     )
-    XCTAssertEqual(requirements.nextIncompleteStep, .valuePrivacy)
+    XCTAssertNil(requirements(isAuthenticated: false).nextIncompleteStep)
+    XCTAssertEqual(requirements(isAuthenticated: true).nextIncompleteStep, .trust)
   }
 
-  func testAuthenticationMustCompleteBeforeSensingSetup() {
-    let progress = DesktopOnboardingProgress().completing(.valuePrivacy)
-
-    XCTAssertEqual(requirements(progress: progress, isAuthenticated: false).nextIncompleteStep, .authentication)
-    XCTAssertEqual(requirements(progress: progress, isAuthenticated: true).nextIncompleteStep, .screenRecording)
+  func testCrossClientGateBlocksMacSetupUntilPhoneFinishes() {
+    let state = requirements(isAuthenticated: true, crossClientSetupComplete: false)
+    XCTAssertNil(state.nextIncompleteStep)
+    XCTAssertFalse(state.isComplete)
   }
 
-  func testScreenRecordingDecisionIsHonestAndLiveGrantControlsCaptureReadiness() {
-    let base = DesktopOnboardingProgress()
-      .completing(.valuePrivacy)
+  func testPermissionSkipsResumeAtFirstUnsatisfiedRetainedStep() {
+    let progress = DesktopOnboardingProgress()
+      .completing(.trust)
+      .decidingScreenRecording(.deferred)
+      .decidingMicrophone(.denied)
 
-    for decision in [DesktopPermissionDecision.denied, .deferred] {
-      let progress = base.decidingScreenRecording(decision)
-      let state = requirements(progress: progress, isAuthenticated: true, screenGranted: false)
-      XCTAssertEqual(state.nextIncompleteStep, .audioConsent)
-      XCTAssertFalse(state.captureReady)
-    }
-
-    let granted = base.decidingScreenRecording(.granted)
-    XCTAssertEqual(
-      requirements(progress: granted, isAuthenticated: true, screenGranted: false).screenRecordingState,
-      .grantLost
-    )
-    XCTAssertFalse(requirements(progress: granted, isAuthenticated: true, screenGranted: false).captureReady)
-    XCTAssertTrue(requirements(progress: granted, isAuthenticated: true, screenGranted: true).captureReady)
+    XCTAssertEqual(requirements(progress: progress, isAuthenticated: true).nextIncompleteStep, .accessibility)
   }
 
-  func testOptionalAudioDeniedOrDeferredNeverBlocksTextChatOrCompletion() {
-    for decision in [DesktopPermissionDecision.denied, .deferred] {
-      var progress = progressThroughPrivacy(screen: .deferred, audio: decision)
-      progress = progress.completing(.textChatShortcut).completingOnboarding()
-
-      let state = requirements(
-        progress: progress,
-        isAuthenticated: true,
-        screenGranted: false,
-        microphoneGranted: false,
-        systemAudioGranted: false
-      )
-      XCTAssertTrue(state.isComplete)
-      XCTAssertTrue(state.textChatReady)
-      XCTAssertFalse(state.captureReady)
-    }
+  func testLiveScreenGrantControlsCaptureReadinessWithoutReopeningCompletedSetup() {
+    let progress = completedProgress(screen: .granted, microphone: .deferred)
+    XCTAssertTrue(requirements(progress: progress, isAuthenticated: true, screenGranted: true).captureReady)
+    XCTAssertFalse(requirements(progress: progress, isAuthenticated: true, screenGranted: false).captureReady)
+    XCTAssertTrue(requirements(progress: progress, isAuthenticated: true, screenGranted: false).isComplete)
   }
 
-  func testRelaunchResumesAtFirstIncompleteStep() throws {
+  func testRelaunchPersistsSemanticProgress() throws {
     let suiteName = "DesktopOnboardingTests-\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let store = UserDefaultsDesktopOnboardingProgressStore(defaults: defaults, key: "progress")
-    let saved = DesktopOnboardingProgress()
-      .completing(.valuePrivacy)
+    let progress = DesktopOnboardingProgress()
+      .completing(.trust)
       .decidingScreenRecording(.deferred)
-      .decidingAudio(.denied)
-    try store.save(saved)
-
+    try store.save(progress)
     XCTAssertEqual(
       requirements(progress: store.load(), isAuthenticated: true).nextIncompleteStep,
-      .privacyControls
+      .microphone
     )
   }
 
-  func testCompletionPersistsAndDoesNotReturnOnNextLaunch() throws {
-    let suiteName = "DesktopOnboardingTests-\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = UserDefaultsDesktopOnboardingProgressStore(defaults: defaults, key: "progress")
-    let completed = progressThroughPrivacy(screen: .granted, audio: .deferred)
-      .completing(.textChatShortcut)
-      .completingOnboarding()
-    try store.save(completed)
-
-    let relaunched = requirements(
-      progress: store.load(), isAuthenticated: true, screenGranted: true)
-    XCTAssertTrue(relaunched.isComplete)
-    XCTAssertNil(relaunched.nextIncompleteStep)
-    XCTAssertTrue(relaunched.captureReady)
+  func testCompletedLegacyUserMigratesWithoutSeeingSetupAgain() throws {
+    let legacy = """
+      {"completedSteps":["value_privacy","screen_recording","audio_consent","privacy_controls","text_chat_shortcut","ready"],"completed":true}
+      """.data(using: .utf8)!
+    let progress = try JSONDecoder().decode(DesktopOnboardingProgress.self, from: legacy)
+    XCTAssertTrue(requirements(progress: progress, isAuthenticated: true).isComplete)
+    XCTAssertNil(requirements(progress: progress, isAuthenticated: true).nextIncompleteStep)
   }
 
-  private func progressThroughPrivacy(
+  private func completedProgress(
     screen: DesktopPermissionDecision,
-    audio: DesktopPermissionDecision
+    microphone: DesktopPermissionDecision
   ) -> DesktopOnboardingProgress {
     DesktopOnboardingProgress()
-      .completing(.valuePrivacy)
+      .completing(.trust)
       .decidingScreenRecording(screen)
-      .decidingAudio(audio)
-      .completing(.privacyControls)
+      .decidingMicrophone(microphone)
+      .completing(.accessibility)
+      .completing(.floatingBarShortcut)
+      .completing(.floatingBarDemo)
   }
 
   private func requirements(
     progress: DesktopOnboardingProgress = DesktopOnboardingProgress(),
     isAuthenticated: Bool = false,
-    screenGranted: Bool = false,
-    microphoneGranted: Bool = false,
-    systemAudioGranted: Bool = false
+    crossClientSetupComplete: Bool = true,
+    screenGranted: Bool = false
   ) -> DesktopOnboardingRequirements {
     DesktopOnboardingRequirements(
       progress: progress,
       isAuthenticated: isAuthenticated,
+      crossClientSetupComplete: crossClientSetupComplete,
       screenRecordingPermissionGranted: screenGranted,
-      microphonePermissionGranted: microphoneGranted,
-      systemAudioPermissionGranted: systemAudioGranted
+      microphonePermissionGranted: false
     )
   }
 }

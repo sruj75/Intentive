@@ -57,17 +57,5 @@ struct IntentiveApp: App {
         .frame(minWidth: 940, minHeight: 620)
         .onAppear { appDelegate.attach(model: model) }
     }
-    .commands {
-      CommandGroup(after: .appInfo) {
-        Button("Search Screen Memory") {
-          NotificationCenter.default.post(name: .intentiveFocusScreenMemorySearch, object: nil)
-        }
-        .keyboardShortcut("f", modifiers: [.command])
-      }
-    }
   }
-}
-
-extension Notification.Name {
-  static let intentiveFocusScreenMemorySearch = Notification.Name("intentiveFocusScreenMemorySearch")
 }

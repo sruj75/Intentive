@@ -2,14 +2,32 @@ import Foundation
 import XCTest
 
 final class RenovationAssetGuardTests: XCTestCase {
+  func testPinnedOmiThemeRemainsByteIdentical() throws {
+    let root = try repoRoot()
+    let expectedBlobs = [
+      "OmiButtonStyle.swift": "82dad1c6fda05cae2a65f1b9f01e2ba6f9b7fab2",
+      "OmiChrome.swift": "e15e13b916df08776426ef1eefa03e6ea5bda8fe",
+      "OmiColors.swift": "5a42662ea9c20d7fa5796ffe3be9befa2fd56850",
+      "OmiFont.swift": "d2b0b767baed4567ff80fa4ebfa78e393096cdf4",
+      "OmiMotion.swift": "3a88560f94449043797ce96fffe1da3f505e3075",
+      "OmiSpacing.swift": "3ce994c5615fb058bc059dbc469e8cb76288981e",
+      "OmiToggleStyle.swift": "6f13f4af5ac4ec08676345ffc04558304aaa979d",
+      "OmiType.swift": "8215b50256b63b45fe5e4b9fe0a70e57de9e3770",
+    ]
+    for (name, expected) in expectedBlobs {
+      let relative = "apps/desktop/macos/Desktop/Sources/OmiImported/Theme/\(name)"
+      XCTAssertEqual(try gitBlobHash(root: root, relativePath: relative), expected, "Omi theme drifted: \(name)")
+    }
+  }
+
   func testCriticalRenovatedOmiMechanismsStayCompiled() throws {
     let root = try repoRoot()
     let requiredPaths = [
-      "apps/desktop/macos/Desktop/Sources/Intentive/DesktopOnboardingView.swift",
       "apps/desktop/macos/Desktop/Sources/IntentiveDesktopCore/DesktopOnboarding.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingStepScaffold.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingTrustStepView.swift",
-      "apps/desktop/macos/Desktop/Sources/OnboardingPermissionStepView.swift",
+      "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveOmiPresentationAdapter.swift",
+      "apps/desktop/macos/Desktop/Sources/OmiImported/SignInView.swift",
+      "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/SettingsSidebar.swift",
+      "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/Pages/SettingsPage.swift",
       "apps/desktop/macos/Desktop/Sources/Rewind/Core/RewindStorage.swift",
       "apps/desktop/macos/Desktop/Sources/Rewind/Core/VideoChunkEncoder.swift",
       "apps/desktop/macos/Desktop/Sources/ProactiveAssistants/Services/OverlayService.swift",
@@ -52,7 +70,7 @@ final class RenovationAssetGuardTests: XCTestCase {
       "FloatingBarNotchTransition.swift",
       "FloatingControlBarGeometry.swift",
       "FloatingControlBarManager.swift",
-      "OnboardingStepScaffold.swift",
+      "OmiDesktopUI",
       "OverlayService.swift",
       "GlowBorderView.swift",
       "GlowEdgeWindow.swift",
@@ -110,6 +128,7 @@ final class RenovationAssetGuardTests: XCTestCase {
       "apps/desktop/macos/Desktop/Sources/OnboardingWebResearchService.swift",
       "apps/desktop/macos/Desktop/Sources/OnboardingPagedIntroCoordinator.swift",
       "apps/desktop/macos/Desktop/Sources/PostOnboardingPromptViews.swift",
+      "apps/desktop/macos/Desktop/Sources/Intentive/DesktopOnboardingView.swift",
       "apps/desktop/macos/demo",
     ]
 
@@ -193,6 +212,28 @@ final class RenovationAssetGuardTests: XCTestCase {
     XCTAssertFalse(mainWindow.contains("ChatView("))
     XCTAssertFalse(mainWindow.contains("ConversationView("))
     XCTAssertFalse(mainWindow.contains("OnboardingChatView("))
+    XCTAssertFalse(mainWindow.contains("struct ScreenMemoryView"))
+    XCTAssertFalse(mainWindow.contains("struct ScreenMemoryThumbnail"))
+    XCTAssertFalse(mainWindow.contains("struct UtilitySettingsView"))
+
+    let app = try String(
+      contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Sources/Intentive/IntentiveApp.swift"),
+      encoding: .utf8
+    )
+    XCTAssertFalse(app.contains("Search Screen Memory"))
+    XCTAssertFalse(app.contains("intentiveFocusScreenMemorySearch"))
+
+    let acceptance = try String(
+      contentsOf: root.appendingPathComponent("apps/desktop/macos/AcceptanceDriver/main.swift"),
+      encoding: .utf8
+    )
+    for legacyIdentifier in [
+      "sidebar-screenMemory", "sidebar-sensing", "sidebar-account", "sidebar-diagnostics",
+      "sensing-screen-memory-toggle", "sensing-passive-audio-toggle", "screen_memory_search_field",
+      "privacy-enter-private-mode", "privacy-resume-sensing",
+    ] {
+      XCTAssertFalse(acceptance.contains(legacyIdentifier), "Old Intentive UI acceptance path remains: \(legacyIdentifier)")
+    }
   }
 
   private func swiftFilesRecursively(at root: URL) throws -> [URL] {
@@ -216,5 +257,20 @@ final class RenovationAssetGuardTests: XCTestCase {
       cursor.deleteLastPathComponent()
     }
     throw NSError(domain: "IntentiveTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "repo root not found"])
+  }
+
+  private func gitBlobHash(root: URL, relativePath: String) throws -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+    process.arguments = ["-C", root.path, "hash-object", relativePath]
+    let output = Pipe()
+    process.standardOutput = output
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+      throw NSError(domain: "IntentiveTests", code: 2, userInfo: [NSLocalizedDescriptionKey: "git hash-object failed"])
+    }
+    return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

@@ -27,6 +27,7 @@ apps/desktop/
     Desktop/Sources/IntentiveDesktopCore/
     Desktop/Sources/IntentiveDesktopNativeAdapters/
     Desktop/Sources/Intentive/
+    Desktop/Sources/OmiImported/       # pinned Omi theme + pruned settings/setup UI
     Desktop/Sources/FloatingControlBar/ # renovated Omi panel, glass, notch, and Carbon shortcut
     Desktop/Sources/ProactiveAssistants/ # renovated Omi edge-glow presentation only
     Desktop/Sources/Rewind/Core/       # surgically compiled Omi archive encoder/storage
@@ -60,6 +61,8 @@ apps/desktop/
 - `DesktopLocalProfile.swift`: shared Intentive profile paths. The Desktop Client does not import Omi user data.
 - `ContextCompiler.swift`: deterministic screen and ambient audio analyzers plus `perception_event` publisher with the raw-frame egress guard.
 - `DesktopExperience.swift`: Runtime-truth floating conversation projection, capture coordination, passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Omi's window/geometry/composer/response and Carbon shortcut mechanisms are preserved behind the text-only `FloatingBarController`; conversation is never persisted locally.
+- `OmiImported/`: the compiled `OmiTheme` and `OmiDesktopUI` targets. The theme remains byte-identical to pinned Omi commit `c55f2925eba6d98f0c1658535425f7405e5d5b9b`; the copied Settings and setup views are pruned to four destinations and six semantic setup steps. `IntentiveOmiPresentationAdapter` is the only bridge from those views to `DesktopViewModel`, so Omi UI code never owns auth tokens, capture services, storage, Runtime, diagnostics, or Sparkle.
+- `DesktopUtilitySettings.swift` + `DesktopOnboarding.swift`: persisted four-tab preferences and semantic setup progress, including legacy migration. Sign-in is outside the six-step rail; unfinished cross-client gates remain Control-Plane-owned.
 - `ScreenMemoryCaptureResilience.swift`: the authoritative capture lifecycle state and sole user start/stop entry point, including display-change finalization, power cadence, sleep/lock recovery, Private Mode, and durable session termination.
 - `PassiveAudioCaptureCoordinator.swift`: desired-vs-actual microphone/system-audio reconciliation, meeting gating, generation guards, and synchronous Private Mode cleanup. Native adapters preserve Omi's CoreAudio IOProc/process-tap mechanisms.
 - `ScreenMemoryTimeline.swift` + the executable Screen Memory views: day/search/app-filter timeline, lazy local video frames, filmstrip/player, OCR cards, storage, and confirmation-aware deletion.

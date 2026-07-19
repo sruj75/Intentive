@@ -44,4 +44,9 @@ public final class ASWebAuthenticationHostedAuthSession: NSObject, HostedAuthSes
   public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
     anchorProvider()
   }
+
+  public func cancel() {
+    currentSession?.cancel()
+    currentSession = nil
+  }
 }

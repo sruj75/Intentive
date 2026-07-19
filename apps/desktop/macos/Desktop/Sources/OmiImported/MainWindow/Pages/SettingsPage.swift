@@ -1,656 +1,392 @@
+import AppKit
 import OmiTheme
-import Sparkle
 import SwiftUI
-import UniformTypeIdentifiers
-import WebKit
 
-/// Settings page that wraps SettingsView with proper dark theme styling for the main window
-struct SettingsPage: View {
-  @ObservedObject var appState: AppState
-  @Binding var selectedSection: SettingsContentView.SettingsSection
-  @Binding var highlightedSettingId: String?
-  var chatProvider: ChatProvider? = nil
+/// Omi's Settings shell, reduced to the four approved Intentive destinations.
+/// Backend ownership stays with the conforming presentation adapter.
+public struct OmiSettingsWindow<Model: OmiSettingsPresenting>: View {
+  @ObservedObject private var model: Model
+
+  public init(model: Model) { self.model = model }
+
+  public var body: some View {
+    HStack(spacing: 0) {
+      SettingsSidebar(model: model)
+      Divider().background(OmiColors.backgroundTertiary)
+      SettingsPage(model: model)
+    }
+    .frame(minWidth: 900, idealWidth: 1040, minHeight: 620, idealHeight: 720)
+    .background(OmiColors.backgroundPrimary)
+    .preferredColorScheme(.dark)
+    .accessibilityIdentifier("omi-settings-window")
+  }
+}
+
+private struct SettingsPage<Model: OmiSettingsPresenting>: View {
+  @ObservedObject var model: Model
 
   var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        VStack(spacing: 0) {
-          // Section header
-          HStack {
-            Text(selectedSection.displayTitle)
-              .scaledFont(size: OmiType.title, weight: .bold)
-              .foregroundColor(OmiColors.textPrimary)
-              .id(selectedSection)
-              .transition(.opacity)
-              .omiAnimation(.easeInOut(duration: 0.15), value: selectedSection)
+    ScrollView {
+      VStack(alignment: .leading, spacing: OmiSpacing.xxl) {
+        Text(model.selectedSettingsSection.rawValue)
+          .scaledFont(size: OmiType.title, weight: .bold)
+          .foregroundColor(OmiColors.textPrimary)
+          .id(model.selectedSettingsSection)
+          .transition(.opacity)
+          .omiAnimation(.easeInOut(duration: 0.15), value: model.selectedSettingsSection)
 
-            Spacer()
-          }
-          .padding(.horizontal, OmiSpacing.section)
-          .padding(.top, OmiSpacing.section)
-          .padding(.bottom, OmiSpacing.xxl)
-
-          // Settings content - embedded SettingsView with dark theme override
-          SettingsContentView(
-            appState: appState,
-            selectedSection: $selectedSection,
-            highlightedSettingId: $highlightedSettingId,
-            chatProvider: chatProvider
-          )
-          .padding(.horizontal, OmiSpacing.section)
-
-          Spacer()
-        }
-      }
-      .onChange(of: highlightedSettingId) { _, newId in
-        guard let newId = newId else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-          OmiMotion.withGated(.easeInOut(duration: 0.3)) {
-            proxy.scrollTo(newId, anchor: .center)
+        Group {
+          switch model.selectedSettingsSection {
+          case .general: GeneralSettings(model: model)
+          case .rewind: RewindSettings(model: model)
+          case .privacy: PrivacySettings(model: model)
+          case .about: AboutSettings(model: model)
           }
         }
+        .id(model.selectedSettingsSection)
+        .transition(.opacity)
+        .omiAnimation(.easeInOut(duration: 0.15), value: model.selectedSettingsSection)
       }
+      .frame(maxWidth: 760, alignment: .leading)
+      .padding(.horizontal, OmiSpacing.section)
+      .padding(.vertical, OmiSpacing.section)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(OmiColors.backgroundSecondary.opacity(0.3))
-    .onAppear {
-      AnalyticsManager.shared.settingsPageOpened()
-    }
   }
 }
 
-struct SubscriptionPlanCatalogMerger {
-  static func merge(
-    primary: [SubscriptionPlanOption],
-    fallback: [SubscriptionPlanOption]
-  ) -> [SubscriptionPlanOption] {
-    var mergedById: [String: SubscriptionPlanOption] = [:]
-
-    for plan in fallback {
-      mergedById[plan.id] = plan
-    }
-
-    for plan in primary {
-      if let existing = mergedById[plan.id] {
-        mergedById[plan.id] = SubscriptionPlanOption(
-          id: plan.id,
-          title: plan.title.isEmpty ? existing.title : plan.title,
-          subtitle: plan.subtitle ?? existing.subtitle,
-          description: plan.description ?? existing.description,
-          eyebrow: plan.eyebrow ?? existing.eyebrow,
-          features: plan.features.isEmpty ? existing.features : plan.features,
-          prices: mergePrices(primary: plan.prices, fallback: existing.prices)
-        )
-      } else {
-        mergedById[plan.id] = plan
-      }
-    }
-
-    return Array(mergedById.values)
-  }
-
-  private static func mergePrices(
-    primary: [SubscriptionPriceOption],
-    fallback: [SubscriptionPriceOption]
-  ) -> [SubscriptionPriceOption] {
-    var mergedById: [String: SubscriptionPriceOption] = [:]
-
-    for price in fallback {
-      mergedById[price.id] = price
-    }
-
-    for price in primary {
-      mergedById[price.id] = price
-    }
-
-    return Array(mergedById.values).sorted { lhs, rhs in
-      if lhs.title != rhs.title {
-        return lhs.title < rhs.title
-      }
-      return lhs.id < rhs.id
-    }
-  }
-}
-
-/// Dark-themed settings content matching the main window style
-struct SettingsContentView: View {
-  // AppState for transcription control
-  @ObservedObject var appState: AppState
-
-  // ChatProvider for browser extension setup
-  var chatProvider: ChatProvider? = nil
-  @StateObject var viewModel = SettingsViewModel()
-
-  // Updater view model
-  @ObservedObject var updaterViewModel = UpdaterViewModel.shared
-  @ObservedObject var shortcutSettings = ShortcutSettings.shared
-
-  // Master monitoring state (screen analysis)
-  @State var isMonitoring: Bool
-  @State var screenCaptureHealth: ScreenCaptureHealth
-  @State var isToggling: Bool = false
-  @State var permissionError: String?
-
-  // Ask Omi floating bar state
-  @State var showAskOmiBar: Bool = false
-
-  // Grant for chat screenshot tools (capture_screen / get_screenshot);
-  // read by ChatToolExecutor.physicalExecutionPrecondition. Default on.
-  @AppStorage(DefaultsKey.chatScreenshotSharingEnabled.rawValue)
-  var chatScreenshotSharingEnabled: Bool = true
-
-  // Transcription state
-  @State var isTranscribing: Bool
-  @State var isTogglingTranscription: Bool = false
-  @State var transcriptionError: String?
-
-  // Log export state
-
-  // Focus Assistant states
-  @State var focusEnabled: Bool
-  @State var cooldownInterval: Int
-  @State var glowOverlayEnabled: Bool
-  @State var analysisDelay: Int
-  @State var focusNotificationsEnabled: Bool
-  @State var focusExcludedApps: Set<String>
-
-  // Task Assistant states
-  @State var taskEnabled: Bool
-  @State var taskChatAgentEnabled: Bool
-  @State var taskAgentWorkingDirectory: String
-  @State var taskExtractionInterval: Double
-  @State var taskMinConfidence: Double
-  @State var taskNotificationsEnabled: Bool
-  @State var taskAllowedApps: Set<String>
-  @State var taskBrowserKeywords: [String]
-  @State var isRescoringTasks = false
-
-  // Advice Assistant states
-  @State var insightEnabled: Bool
-  @State var insightExtractionInterval: Double
-  @State var insightMinConfidence: Double
-  @State var insightNotificationsEnabled: Bool
-  @State var insightExcludedApps: Set<String>
-
-  // Memory Assistant states
-  @State var memoryEnabled: Bool
-  @State var memoryExtractionInterval: Double
-  @State var memoryMinConfidence: Double
-  @State var memoryNotificationsEnabled: Bool
-  @State var memoryExcludedApps: Set<String>
-
-  // Goals states
-  @State var goalsAutoGenerateEnabled: Bool = GoalGenerationService.shared
-    .isAutoGenerationEnabled
-
-  // Glow preview state
-  @State var isPreviewRunning: Bool = false
-
-  // Downgrade confirmation alert
-  @State var showDowngradeAlert = false
-
-  // Tier gating (0 = show all, 1-6 = sequential tiers)
-  @AppStorage("currentTierLevel") var currentTierLevel = 0
-
-  // Advanced stats
-  @State var advancedStats: UserStats?
-  @State var isLoadingStats = false
-  @State var chatMessageCount: Int?
-  @State var isLoadingChatMessages = false
-  @State var showProfileAndStats = false
-
-  // AI User Profile
-  @State var aiProfileId: Int64?
-  @State var aiProfileText: String?
-  @State var aiProfileGeneratedAt: Date?
-  @State var aiProfileDataSourcesUsed: Int = 0
-  @State var isGeneratingAIProfile = false
-  @State var isEditingAIProfile = false
-  @State var aiProfileEditText: String = ""
-
-  // Selected section (passed in from parent)
-  @Binding var selectedSection: SettingsSection
-  @Binding var highlightedSettingId: String?
-
-  // Notification settings (from backend)
-  @State var dailySummaryEnabled: Bool = true
-  @State var dailySummaryHour: Int = 22
-  // UI-only date for the Summary Time stepper field; the backend stores whole hours,
-  // so this glides freely while only the hour component is persisted.
-  @State var dailySummaryTime: Date = SettingsControlMetrics.dailySummaryDate(
-    forHour: 22, referenceDate: Date())
-  @State var notificationsEnabled: Bool = true
-  @State var notificationFrequency: Int = 3
-
-  // Privacy settings (from backend)
-  @State var recordingPermissionEnabled: Bool = false
-  @State var privateCloudSyncEnabled: Bool = true
-  @State var isTrackingExpanded: Bool = false
-
-  // Transcription settings (from backend)
-  @State var singleLanguageMode: Bool = false
-  @State var newVocabularyWord: String = ""
-  @State var vocabularyList: [String] = []
-
-  // Language setting
-  @State var userLanguage: String = "en"
-
-  // Loading states
-  @State var userSubscription: UserSubscriptionResponse?
-  @State var chatUsageQuota: APIClient.ChatUsageQuota?
-  @State var isLoadingChatUsage: Bool = false
-  @State var overageInfo: OverageInfoResponse?
-  @State var isLoadingOverage: Bool = false
-  @State var planUsageDetailsRequestID: Int = 0
-  @State var showOverageExplainer: Bool = false
-  @State var fallbackPlanCatalog: [SubscriptionPlanOption] = []
-  @State var activeCheckoutPriceId: String?
-  @State var selectedPlanIdForCheckout: String?
-  @State var upgradePromotionCode: String = ""
-  @State var isPromoCodeExpanded: Bool = false
-  @State var isOpeningCustomerPortal: Bool = false
-  @State var activeBillingWebFlow: BillingWebFlow?
-  @State var pendingSubscriptionPriceId: String?
-  @State var pendingCheckoutSessionId: String?
-
-  var isLoadingSettings: Bool {
-    get { viewModel.isLoadingBackendSettings }
-    nonmutating set { viewModel.isLoadingBackendSettings = newValue }
-  }
-
-  var isLoadingSubscription: Bool {
-    get { viewModel.isLoadingSubscription }
-    nonmutating set { viewModel.isLoadingSubscription = newValue }
-  }
-
-  var subscriptionError: String? {
-    get { viewModel.subscriptionError }
-    nonmutating set { viewModel.subscriptionError = newValue }
-  }
-
-  let cooldownOptions = [1, 2, 5, 10, 15, 30, 60]
-  let analysisDelayOptions = [0, 10, 20, 30, 60, 300]  // seconds: instant, 10s, 20s, 30s, 1 min, 5 min
-  let extractionIntervalOptions: [Double] = [10.0, 600.0, 3600.0]  // 10s, 10min, 1hr
-  let hourOptions = Array(0...23)
-  let frequencyOptions = [
-    (0, "Off"),
-    (1, "Minimal"),
-    (2, "Low"),
-    (3, "Balanced"),
-    (4, "High"),
-    (5, "Maximum"),
-  ]
-  // Use the full language list from AssistantSettings
-  var languageOptions: [(String, String)] {
-    AssistantSettings.supportedLanguages.map { ($0.code, $0.name) }
-  }
-
-  // Language auto-detect state (from local settings)
-  @State var transcriptionAutoDetect: Bool = true
-  @State var transcriptionLanguage: String = "en"
-  @State var vadGateEnabled: Bool = false
-  @State var systemAudioCaptureMode: AssistantSettings.SystemAudioCaptureMode = .always
-
-  // Multi-chat mode setting
-  @AppStorage("multiChatEnabled") var multiChatEnabled = false
-  @AppStorage("conversationsCompactView") var conversationsCompactView = true
-  @AppStorage("useLegacyHomeDesign") var useLegacyHomeDesign = false
-
-  // AI Chat settings
-  @AppStorage("chatBridgeMode") var chatBridgeMode: String = "piMono"
-  @AppStorage("realtimeOmniProvider") var realtimeOmniProvider: String = RealtimeOmniProvider.auto.rawValue
-  @AppStorage("askModeEnabled") var askModeEnabled = false
-  @AppStorage("claudeMdEnabled") var claudeMdEnabled = true
-  @AppStorage("projectClaudeMdEnabled") var projectClaudeMdEnabled = true
-  @AppStorage("aiChatWorkingDirectory") var aiChatWorkingDirectory: String = ""
-  @State var aiChatClaudeMdContent: String?
-  @State var aiChatClaudeMdPath: String?
-  @State var aiChatProjectClaudeMdContent: String?
-  @State var aiChatProjectClaudeMdPath: String?
-  @State var aiChatDiscoveredSkills: [(name: String, description: String, path: String)] =
-    []
-  @State var aiChatProjectDiscoveredSkills: [(name: String, description: String, path: String)] = []
-  @State var aiChatDisabledSkills: Set<String> = []
-  @State var showFileViewer = false
-  @State var fileViewerContent = ""
-  @State var fileViewerTitle = ""
-  @State var skillSearchQuery = ""
-
-  // Dev Mode setting
-  @AppStorage("devModeEnabled") var devModeEnabled = false
-
-  // Browser Extension settings
-  @AppStorage("playwrightUseExtension") var playwrightUseExtension = true
-  @State var playwrightExtensionToken: String = ""
-  @State var showBrowserSetup = false
-
-  // Launch at login manager
-  @ObservedObject var launchAtLoginManager = LaunchAtLoginManager.shared
-
-  enum SettingsSection: String, CaseIterable {
-    case general = "General"
-    case rewind = "Rewind"
-    case transcription = "Transcription"
-    case notifications = "Notifications"
-    case privacy = "Privacy"
-    case account = "Account"
-    case planUsage = "Plan and Usage"
-    case aiChat = "AI Chat"
-    case floatingBar = "Floating Bar"
-    case shortcuts = "Shortcuts"
-    case advanced = "Advanced"
-    case about = "About"
-
-    /// Label shown in the settings sidebar and page header. Merged sections
-    /// (Account + Plan and Usage, Notifications + Privacy) share one nav item,
-    /// so both cases surface the combined title. Raw values stay untouched —
-    /// they are the automation contract (`selectedSettingsSection` snapshots,
-    /// `omi-ctl navigate settings <section>`, e2e flow waits).
-    var displayTitle: String {
-      switch self {
-      case .account, .planUsage: return "Account & Plan"
-      case .notifications, .privacy: return "Notifications & Privacy"
-      default: return rawValue
-      }
-    }
-
-    /// The sidebar nav entry that represents this section. Legacy deep-link
-    /// targets (`privacy`, `planUsage`) remain routable but highlight their
-    /// merged sidebar item.
-    var sidebarItem: SettingsSection {
-      switch self {
-      case .planUsage: return .account
-      case .privacy: return .notifications
-      default: return self
-      }
-    }
-
-    /// Resolve an automation-supplied section name tolerantly (SET-01). The raw values
-    /// are Title Case with spaces ("Plan and Usage"), but `omi-ctl navigate settings
-    /// <section>` sends whatever the caller typed — the documented examples are
-    /// lowercase (`settings rewind`), so a strict `init(rawValue:)` never matched and
-    /// navigation silently stayed on General. Accepts the exact raw value, any
-    /// case/spacing/hyphen/underscore variant of it, or the Swift case name
-    /// (`planUsage`, `floating_bar`, "plan-and-usage", …).
-    nonisolated static func automationMatch(_ raw: String) -> SettingsSection? {
-      if let exact = SettingsSection(rawValue: raw) { return exact }
-      let key = normalizedAutomationKey(raw)
-      guard !key.isEmpty else { return nil }
-      return allCases.first { section in
-        normalizedAutomationKey(section.rawValue) == key
-          || normalizedAutomationKey(String(describing: section)) == key
-      }
-    }
-
-    /// Lowercase and strip everything but letters/digits, so "Plan and Usage",
-    /// "plan_usage", "plan-and-usage", and "planUsage" can meet in one keyspace.
-    private nonisolated static func normalizedAutomationKey(_ value: String) -> String {
-      String(value.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
-        .lowercased()
-    }
-  }
-
-  enum AdvancedSubsection: String, CaseIterable {
-    case resetOnboarding = "Reset Onboarding"
-    case aiUserProfile = "AI User Profile"
-    case stats = "Your Stats"
-    case focusAssistant = "Focus Assistant"
-    case taskAssistant = "Task Assistant"
-    case insightAssistant = "Insight Assistant"
-    case memoryAssistant = "Memory Assistant"
-    case analysisThrottle = "Analysis Throttle"
-    case goals = "Goals"
-    case preferences = "Preferences"
-    case troubleshooting = "Troubleshooting"
-    case gmailReader = "Gmail Reader"
-    case calendarSync = "Calendar Sync"
-    case developerKeys = "Developer API Keys"
-
-    var icon: String {
-      switch self {
-      case .resetOnboarding: return "arrow.counterclockwise"
-      case .aiUserProfile: return "brain"
-      case .stats: return "chart.bar"
-      case .focusAssistant: return "eye.fill"
-      case .taskAssistant: return "checklist"
-      case .insightAssistant: return "lightbulb.fill"
-      case .memoryAssistant: return "brain.head.profile"
-      case .analysisThrottle: return "clock.arrow.2.circlepath"
-      case .goals: return "target"
-      case .preferences: return "slider.horizontal.3"
-      case .troubleshooting: return "wrench.and.screwdriver"
-      case .gmailReader: return "envelope.fill"
-      case .calendarSync: return "calendar"
-      case .developerKeys: return "key"
-      }
-    }
-  }
-
-  @State var showResetOnboardingAlert: Bool = false
-  @State var showRescanFilesAlert: Bool = false
-  @State var showDeleteAccountAlert: Bool = false
-
-  // Gmail Reader states
-  @State var gmailEmails: [GmailEmail] = []
-  @State var isReadingGmail: Bool = false
-  @State var isSavingGmailMemories: Bool = false
-  @State var gmailMemoriesSaved: Int = 0
-  @State var gmailReadError: String?
-  @State var gmailLastFetched: Date?
-
-  // Calendar Sync states
-  @State var calendarEvents: [CalendarEvent] = []
-  @State var isReadingCalendar: Bool = false
-  @State var calendarMemoriesCreated: Int = 0
-  @State var calendarTasksCreated: Int = 0
-  @State var calendarSyncError: String?
-  @State var calendarLastSynced: Date?
-
-  @State var isDeletingAccount: Bool = false
-  @State var deleteAccountError: String?
-
-  // Developer API Key overrides — also double as BYOK free-plan credentials
-  // when all four (Gemini, Anthropic, OpenAI, Deepgram) are provided.
-  @AppStorage("dev_gemini_api_key") var devGeminiKey: String = ""
-  @AppStorage("dev_anthropic_api_key") var devAnthropicKey: String = ""
-  @AppStorage("dev_openai_api_key") var devOpenAIKey: String = ""
-  @AppStorage("dev_deepgram_api_key") var devDeepgramKey: String = ""
-  @State var byokKeyStatuses: [BYOKProvider: BYOKValidator.Status] = [:]
-  @State var byokActivationError: String?
-
-  init(
-    appState: AppState,
-    selectedSection: Binding<SettingsSection>,
-    highlightedSettingId: Binding<String?> = .constant(nil),
-    chatProvider: ChatProvider? = nil
-  ) {
-    self.appState = appState
-    self._selectedSection = selectedSection
-    self._highlightedSettingId = highlightedSettingId
-    self.chatProvider = chatProvider
-    let settings = AssistantSettings.shared
-    _isMonitoring = State(initialValue: ProactiveAssistantsPlugin.shared.isMonitoring)
-    _screenCaptureHealth = State(initialValue: ProactiveAssistantsPlugin.shared.screenCaptureHealth)
-    _isTranscribing = State(initialValue: appState.isTranscribing)
-    _focusEnabled = State(initialValue: FocusAssistantSettings.shared.isEnabled)
-    _cooldownInterval = State(initialValue: FocusAssistantSettings.shared.cooldownInterval)
-    _glowOverlayEnabled = State(initialValue: settings.glowOverlayEnabled)
-    _analysisDelay = State(initialValue: settings.analysisDelay)
-    _focusNotificationsEnabled = State(
-      initialValue: FocusAssistantSettings.shared.notificationsEnabled)
-    _focusExcludedApps = State(initialValue: FocusAssistantSettings.shared.excludedApps)
-    _taskEnabled = State(initialValue: TaskAssistantSettings.shared.isEnabled)
-    _taskChatAgentEnabled = State(initialValue: TaskAgentSettings.shared.isChatEnabled)
-    _taskAgentWorkingDirectory = State(initialValue: TaskAgentSettings.shared.workingDirectory)
-    _taskExtractionInterval = State(initialValue: TaskAssistantSettings.shared.extractionInterval)
-    _taskMinConfidence = State(initialValue: TaskAssistantSettings.shared.minConfidence)
-    _taskNotificationsEnabled = State(
-      initialValue: TaskAssistantSettings.shared.notificationsEnabled)
-    _taskAllowedApps = State(initialValue: TaskAssistantSettings.shared.allowedApps)
-    _taskBrowserKeywords = State(initialValue: TaskAssistantSettings.shared.browserKeywords)
-    _insightEnabled = State(initialValue: InsightAssistantSettings.shared.isEnabled)
-    _insightExtractionInterval = State(
-      initialValue: InsightAssistantSettings.shared.extractionInterval)
-    _insightMinConfidence = State(initialValue: InsightAssistantSettings.shared.minConfidence)
-    _insightNotificationsEnabled = State(
-      initialValue: InsightAssistantSettings.shared.notificationsEnabled)
-    _insightExcludedApps = State(initialValue: InsightAssistantSettings.shared.excludedApps)
-    _memoryEnabled = State(initialValue: MemoryAssistantSettings.shared.isEnabled)
-    _memoryExtractionInterval = State(
-      initialValue: MemoryAssistantSettings.shared.extractionInterval)
-    _memoryMinConfidence = State(initialValue: MemoryAssistantSettings.shared.minConfidence)
-    _memoryNotificationsEnabled = State(
-      initialValue: MemoryAssistantSettings.shared.notificationsEnabled)
-    _memoryExcludedApps = State(initialValue: MemoryAssistantSettings.shared.excludedApps)
-    _vadGateEnabled = State(initialValue: settings.vadGateEnabled)
-    _transcriptionLanguage = State(initialValue: settings.transcriptionLanguage)
-    _transcriptionAutoDetect = State(initialValue: settings.transcriptionAutoDetect)
-    _systemAudioCaptureMode = State(initialValue: settings.systemAudioCaptureMode)
-  }
-
-  /// Computed status text for notifications
-  var notificationStatusText: String {
-    if !appState.hasNotificationPermission {
-      return "Notifications are disabled"
-    } else if appState.isNotificationBannerDisabled {
-      return "Enabled but banners are off"
-    } else {
-      return "Proactive alerts enabled"
-    }
-  }
-
-  /// Divider header used when two legacy sections are stacked on one merged
-  /// settings page (visually mirrors `advancedCategoryHeader` but lives here so
-  /// routing does not depend on the Sections content files).
-  func mergedSectionHeader(title: String, icon: String) -> some View {
-    HStack(spacing: OmiSpacing.sm) {
-      Image(systemName: icon)
-        .scaledFont(size: OmiType.subheading)
-        .foregroundColor(OmiColors.accent)
-      Text(title)
-        .scaledFont(size: OmiType.heading, weight: .semibold)
-        .foregroundColor(OmiColors.textPrimary)
-      Spacer()
-    }
-    .padding(.top, OmiSpacing.lg)
-  }
+private struct GeneralSettings<Model: OmiSettingsPresenting>: View {
+  @ObservedObject var model: Model
 
   var body: some View {
     VStack(spacing: OmiSpacing.xxl) {
-      // Section content
-      Group {
-        switch selectedSection {
-        case .general:
-          generalSection
-        case .rewind:
-          rewindSection
-        case .transcription:
-          transcriptionSection
-        case .notifications, .privacy:
-          notificationsSection
-          mergedSectionHeader(title: "Privacy", icon: "lock.shield")
-          privacySection
-        case .account, .planUsage:
-          accountSection
-          mergedSectionHeader(title: "Plan and Usage", icon: "creditcard")
-          planUsageSection
-        case .aiChat:
-          aiChatSection
-        case .floatingBar:
-          floatingBarSection
-        case .shortcuts:
-          shortcutsSection
-        case .advanced:
-          advancedSection
-        case .about:
-          aboutSection
-        }
+      OmiSettingsCard(title: "Screen Capture", subtitle: "Record your screen to build your Rewind.", icon: "display") {
+        Toggle("", isOn: binding(\.screenCaptureEnabled))
+          .labelsHidden().toggleStyle(OmiToggleStyle())
+          .accessibilityIdentifier("general-screen-capture-toggle")
       }
-      .id(selectedSection)
-      .transition(.opacity)
-      .omiAnimation(.easeInOut(duration: 0.15), value: selectedSection)
-    }
-    .onAppear {
-      if AppBuild.isProductionBundle && selectedSection == .aiChat {
-        selectedSection = .advanced
+      OmiSettingsCard(title: "Audio Recording", subtitle: "Record microphone audio for local context.", icon: "mic.fill") {
+        Toggle("", isOn: binding(\.audioRecordingEnabled))
+          .labelsHidden().toggleStyle(OmiToggleStyle())
+          .accessibilityIdentifier("general-audio-recording-toggle")
       }
-      loadBackendSettings()
-      loadSubscriptionInfo()
-      // Sync transcription state with appState
-      isTranscribing = appState.isTranscribing
-      // Sync floating bar state with persisted preference (not transient visibility)
-      showAskOmiBar = FloatingControlBarManager.shared.isEnabled
-      playwrightExtensionToken =
-        UserDefaults.standard.string(forKey: "playwrightExtensionToken") ?? ""
-      chatProvider?.checkClaudeConnectionStatus()
-      // Refresh notification permission state
-      appState.checkNotificationPermission()
-      screenCaptureHealth = ProactiveAssistantsPlugin.shared.screenCaptureHealth
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .assistantMonitoringStateDidChange)) {
-      notification in
-      if let userInfo = notification.userInfo, let state = userInfo["isMonitoring"] as? Bool {
-        isMonitoring = state
+      OmiSettingsCard(title: "System Audio", subtitle: "Choose when Intentive records audio from other apps.", icon: "speaker.wave.2.fill") {
+        Picker("", selection: binding(\.systemAudioMode)) {
+          ForEach(OmiSystemAudioMode.allCases) { Text($0.rawValue).tag($0) }
+        }.labelsHidden().frame(width: 170)
       }
-      screenCaptureHealth = ProactiveAssistantsPlugin.shared.screenCaptureHealth
-    }
-    .onChange(of: appState.isTranscribing) { _, newValue in
-      isTranscribing = newValue
-    }
-    .onChange(of: selectedSection) { _, newValue in
-      if AppBuild.isProductionBundle && newValue == .aiChat {
-        selectedSection = .advanced
-        return
+      OmiSettingsCard(
+        title: "Notifications",
+        subtitle: model.notificationsAuthorized ? "Notifications are enabled." : "Allow Intentive notifications in macOS.",
+        icon: "bell.fill"
+      ) {
+        Toggle("", isOn: Binding(
+          get: { model.notificationsAuthorized },
+          set: { enabled in if enabled { model.requestNotificationPermission() } }
+        )).labelsHidden().toggleStyle(OmiToggleStyle())
       }
-      if newValue == .planUsage || newValue == .account {
-        // Plan and Usage now renders on the merged "Account & Plan" page, so
-        // entering via either section id must refresh billing state.
-        // Refetch everything for the CURRENT account. Without the trial + limiter
-        // refresh, switching accounts leaves the previous user's "Trial Ended" /
-        // over-limit state painted here (trialMetadata + serverQuota aren't reset
-        // per-account on a section switch).
-        loadSubscriptionInfo()
-        AppState.current?.fetchTrialMetadata()
-        Task { await FloatingBarUsageLimiter.shared.fetchPlan() }
-      }
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .navigateToTaskSettings)) { _ in
-      selectedSection = .advanced
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-        highlightedSettingId = "advanced.taskassistant"
-      }
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .navigateToFloatingBarSettings)) { _ in
-      selectedSection = .floatingBar
-    }
-    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-      // Refresh notification permission when app becomes active (user may have changed it in System Settings)
-      appState.checkNotificationPermission()
-    }
-    .sheet(item: $activeBillingWebFlow) { flow in
-      BillingWebFlowSheet(flow: flow) { outcome in
-        activeBillingWebFlow = nil
-        handleBillingFlowCompletion(outcome)
-      }
-    }
-    .sheet(isPresented: $showBrowserSetup) {
-      BrowserExtensionSetup(
-        onComplete: {
-          showBrowserSetup = false
-          playwrightExtensionToken =
-            UserDefaults.standard.string(forKey: "playwrightExtensionToken") ?? ""
-        },
-        onDismiss: {
-          showBrowserSetup = false
-          playwrightExtensionToken =
-            UserDefaults.standard.string(forKey: "playwrightExtensionToken") ?? ""
-        },
-        chatProvider: chatProvider
-      )
-      .fixedSize()
+      shortcutCard
     }
   }
 
-  @ObservedObject var fontScaleSettings = FontScaleSettings.shared
-  @ObservedObject var rewindSettings = RewindSettings.shared
-  @State var rewindStats: (total: Int, indexed: Int, storageSize: Int64)? = nil
+  private var shortcutCard: some View {
+    VStack(alignment: .leading, spacing: OmiSpacing.lg) {
+      HStack(alignment: .top, spacing: OmiSpacing.md) {
+        OmiCardIcon(systemName: "keyboard")
+        VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
+          Text("Ask Intentive Shortcut").omiCardTitle()
+          Text("Open or hide the Floating Bar from anywhere.").omiCardSubtitle()
+        }
+        Spacer()
+      }
+      HStack(spacing: OmiSpacing.sm) {
+        shortcutButton("command+o", tokens: ["⌘", "O"])
+        shortcutButton("command+return", tokens: ["⌘", "↩"])
+        shortcutButton("command+shift+return", tokens: ["⇧", "⌘", "↩"])
+        shortcutButton("command+j", tokens: ["⌘", "J"])
+        Button("Custom", action: model.recordCustomShortcut)
+          .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
+          .padding(.horizontal, 11).padding(.vertical, 7)
+          .background(model.floatingBarShortcut.hasPrefix("custom:") ? OmiColors.accent.opacity(0.18) : OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: 8))
+          .overlay(RoundedRectangle(cornerRadius: 8).stroke(model.floatingBarShortcut.hasPrefix("custom:") ? OmiColors.accent : .clear, lineWidth: 1.5))
+          .foregroundColor(OmiColors.textSecondary)
+        shortcutButton("disabled", tokens: ["Disable"])
+      }
+    }
+    .omiCard()
+    .accessibilityIdentifier("general-shortcut")
+  }
+
+  private func shortcutButton(_ value: String, tokens: [String]) -> some View {
+    Button { model.floatingBarShortcut = value } label: {
+      HStack(spacing: 4) {
+        ForEach(tokens, id: \.self) { token in
+          Text(token).font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundColor(OmiColors.textPrimary)
+        }
+      }
+      .padding(.horizontal, 10).padding(.vertical, 7)
+      .background(model.floatingBarShortcut == value ? OmiColors.accent.opacity(0.18) : OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: 8))
+      .overlay(RoundedRectangle(cornerRadius: 8).stroke(model.floatingBarShortcut == value ? OmiColors.accent : .clear, lineWidth: 1.5))
+    }.buttonStyle(.plain)
+  }
+
+  private func binding<Value>(_ path: ReferenceWritableKeyPath<Model, Value>) -> Binding<Value> {
+    Binding(get: { model[keyPath: path] }, set: { model[keyPath: path] = $0 })
+  }
+}
+
+private struct RewindSettings<Model: OmiSettingsPresenting>: View {
+  @ObservedObject var model: Model
+  @State private var appToAdd = ""
+
+  var body: some View {
+    VStack(spacing: OmiSpacing.xxl) {
+      OmiSettingsCard(title: "Storage", subtitle: "Screen recordings are stored locally on this Mac.", icon: "internaldrive.fill") {
+        Text(model.storageSummary).foregroundColor(OmiColors.textSecondary).font(.system(size: 13, weight: .medium))
+      }
+      excludedAppsCard
+      OmiSettingsCard(title: "Battery Optimization", subtitle: "Capture frequency adapts automatically to power state.", icon: "battery.75percent") {
+        Text("Automatic").foregroundColor(OmiColors.textSecondary).font(.system(size: 13, weight: .medium))
+      }
+      OmiSettingsCard(title: "Data Retention", subtitle: "Choose how long to keep local screen recordings.", icon: "calendar.badge.clock") {
+        Picker("", selection: Binding(get: { model.retentionDays }, set: { model.retentionDays = $0 })) {
+          ForEach([3, 7, 14, 30], id: \.self) { Text("\($0) days").tag($0) }
+        }.labelsHidden().frame(width: 130)
+      }
+    }
+  }
+
+  private var excludedAppsCard: some View {
+    VStack(alignment: .leading, spacing: OmiSpacing.lg) {
+      HStack(alignment: .top, spacing: OmiSpacing.md) {
+        OmiCardIcon(systemName: "eye.slash.fill")
+        VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
+          Text("Excluded Apps").omiCardTitle()
+          Text("Screen capture pauses while these apps are active.").omiCardSubtitle()
+        }
+        Spacer()
+        Button("Reset to Defaults", action: model.resetExcludedApplications)
+          .buttonStyle(OmiButtonStyle(.primary, size: .compact))
+      }
+      Divider().overlay(Color.white.opacity(0.08))
+      if model.excludedApplications.isEmpty {
+        HStack {
+          Spacer()
+          Label("No apps excluded", systemImage: "checkmark.shield")
+            .font(.system(size: 12)).foregroundColor(OmiColors.textSecondary)
+          Spacer()
+        }
+          .padding(.vertical, OmiSpacing.lg)
+      } else {
+        LazyVStack(spacing: OmiSpacing.sm) {
+          ForEach(model.excludedApplications, id: \.self) { bundleID in
+            HStack(spacing: OmiSpacing.md) {
+              RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.7)).frame(width: 22, height: 22)
+              Text(model.runningApplications.first(where: { $0.id == bundleID })?.name ?? bundleID)
+                .font(.system(size: 13, weight: .medium)).foregroundColor(OmiColors.textSecondary)
+              Spacer()
+              Button { model.removeExcludedApplication(bundleID: bundleID) } label: { Image(systemName: "xmark.circle.fill") }
+                .buttonStyle(.plain)
+            }
+          }
+        }
+      }
+      Divider().overlay(Color.white.opacity(0.08))
+      VStack(alignment: .leading, spacing: OmiSpacing.sm) {
+        Text("Add App to Exclusion List").font(.system(size: 12, weight: .medium)).foregroundColor(OmiColors.textSecondary)
+        HStack {
+          TextField("App name (e.g., Passwords)", text: $appToAdd).textFieldStyle(.plain)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: 7))
+          Button("Add") {
+            let value = appToAdd.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return }
+            model.addExcludedApplication(bundleID: value)
+            appToAdd = ""
+          }.buttonStyle(OmiButtonStyle(.secondary, size: .compact)).disabled(appToAdd.isEmpty)
+        }
+        Text("Currently Running Apps").font(.system(size: 12, weight: .medium)).foregroundColor(OmiColors.textSecondary)
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: OmiSpacing.sm) {
+            ForEach(model.runningApplications.filter { !model.excludedApplications.contains($0.id) }) { app in
+              Button { model.addExcludedApplication(bundleID: app.id) } label: {
+                HStack(spacing: 5) { Image(systemName: "app"); Text(app.name); Image(systemName: "plus.circle.fill") }
+                  .font(.system(size: 11, weight: .medium)).foregroundColor(OmiColors.textSecondary)
+                  .padding(.horizontal, 8).padding(.vertical, 6)
+                  .background(OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: 7))
+              }.buttonStyle(.plain)
+            }
+          }
+        }
+      }
+    }.omiCard()
+  }
+}
+
+private struct PrivacySettings<Model: OmiSettingsPresenting>: View {
+  @ObservedObject var model: Model
+  @State private var trackingExpanded = false
+
+  var body: some View {
+    VStack(spacing: OmiSpacing.xxl) {
+      VStack(alignment: .leading, spacing: OmiSpacing.lg) {
+        Text("Data Controls").font(.system(size: 15, weight: .semibold)).foregroundColor(OmiColors.textPrimary)
+        OmiControlRow(title: "Store Recordings", subtitle: "Keep future audio recordings locally on this Mac.", icon: "waveform") {
+          Toggle("", isOn: Binding(get: { model.storeRecordings }, set: { model.storeRecordings = $0 }))
+            .labelsHidden().toggleStyle(OmiToggleStyle())
+        }
+        Divider().overlay(Color.white.opacity(0.08))
+        OmiControlRow(title: "Private Cloud Sync", subtitle: "Securely sync your private data across devices.", icon: "icloud") {
+          HStack(spacing: 8) {
+            Text("Coming Soon").font(.system(size: 11, weight: .semibold)).foregroundColor(OmiColors.textTertiary)
+            Toggle("", isOn: .constant(false)).labelsHidden().toggleStyle(OmiToggleStyle()).disabled(true)
+          }
+        }
+      }.omiCard()
+      VStack(alignment: .leading, spacing: OmiSpacing.md) {
+        HStack(spacing: OmiSpacing.md) { OmiCardIcon(systemName: "shield.lefthalf.filled"); Text("Encryption").omiCardTitle(); Spacer() }
+        HStack(spacing: OmiSpacing.sm) {
+          Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+          Text("On-device protection").font(.system(size: 13, weight: .medium)).foregroundColor(OmiColors.textPrimary)
+          Text("Active").font(.system(size: 11, weight: .semibold)).foregroundColor(.green)
+            .padding(.horizontal, 6).padding(.vertical, 2).background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+        }
+        Text("Your data is stored locally and protected by macOS and your signed-in user account.").omiCardSubtitle()
+      }.omiCard()
+
+      Button { trackingExpanded.toggle() } label: {
+        VStack(alignment: .leading, spacing: OmiSpacing.md) {
+          HStack(spacing: OmiSpacing.md) {
+            OmiCardIcon(systemName: "list.bullet")
+            Text("What We Track").omiCardTitle()
+            Spacer()
+            Image(systemName: trackingExpanded ? "chevron.down" : "chevron.right").foregroundColor(OmiColors.textTertiary)
+          }
+          if trackingExpanded {
+            Text("Local screen records, permitted audio context, app identity, and diagnostic metadata. Raw media does not leave this Mac in V1.").omiCardSubtitle()
+          }
+        }.omiCard()
+      }.buttonStyle(.plain)
+
+      VStack(alignment: .leading, spacing: OmiSpacing.md) {
+        HStack(spacing: OmiSpacing.md) { OmiCardIcon(systemName: "hand.raised.fill"); Text("Privacy Guarantees").omiCardTitle(); Spacer() }
+        ForEach([
+          "Existing recordings remain when storage is turned off",
+          "No personal content is stored in analytics",
+          "Raw media stays on this Mac in V1",
+          "Private Mode stops sensing immediately",
+        ], id: \.self) { guarantee in
+          HStack(alignment: .top, spacing: OmiSpacing.sm) {
+            Image(systemName: "checkmark").foregroundColor(.green)
+            Text(guarantee).font(.system(size: 13)).foregroundColor(OmiColors.textSecondary)
+          }
+        }
+      }.omiCard()
+    }
+  }
+}
+
+private struct AboutSettings<Model: OmiSettingsPresenting>: View {
+  @ObservedObject var model: Model
+
+  var body: some View {
+    VStack(spacing: OmiSpacing.xxl) {
+      VStack(alignment: .leading, spacing: OmiSpacing.lg) {
+        HStack(spacing: OmiSpacing.lg) {
+          if let icon = NSApp.applicationIconImage {
+            Image(nsImage: icon).resizable().scaledToFit().frame(width: 54, height: 54)
+          }
+          VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
+            Text("Intentive").font(.system(size: 20, weight: .bold)).foregroundColor(OmiColors.textPrimary)
+            Text(model.versionText).omiCardSubtitle()
+          }
+          Spacer()
+        }
+        Divider().overlay(Color.white.opacity(0.08))
+        ForEach(["What's New", "Visit Website", "Help Center", "Privacy Policy", "Terms of Service"], id: \.self) { title in
+          HStack { Text(title); Spacer(); Image(systemName: "arrow.up.right") }
+            .font(.system(size: 13, weight: .medium)).foregroundColor(OmiColors.textTertiary)
+            .padding(.vertical, 4)
+        }
+      }.omiCard().opacity(0.65).accessibilityHint("Links will be enabled when Intentive destinations are configured")
+
+      VStack(alignment: .leading, spacing: OmiSpacing.lg) {
+        OmiControlRow(title: "Software Updates", subtitle: model.updateStatus, icon: "arrow.triangle.2.circlepath") {
+          Button("Check Now", action: model.checkForUpdates).buttonStyle(OmiButtonStyle(.secondary))
+        }
+        Divider().overlay(Color.white.opacity(0.08))
+        OmiControlRow(title: "Automatic Updates", subtitle: "Check for updates automatically.", icon: "clock.arrow.circlepath") {
+          Toggle("", isOn: Binding(get: { model.automaticallyChecksForUpdates }, set: { model.automaticallyChecksForUpdates = $0 }))
+            .labelsHidden().toggleStyle(OmiToggleStyle())
+        }
+        OmiControlRow(title: "Auto-Install Updates", subtitle: "Download updates automatically when available.", icon: "arrow.down.circle") {
+          Toggle("", isOn: Binding(get: { model.automaticallyDownloadsUpdates }, set: { model.automaticallyDownloadsUpdates = $0 }))
+            .labelsHidden().toggleStyle(OmiToggleStyle())
+        }
+        OmiControlRow(title: "Update Channel", subtitle: "Choose which releases to receive.", icon: "point.3.connected.trianglepath.dotted") {
+          Picker("", selection: .constant("Stable")) {
+            Text("Stable").tag("Stable")
+            Text("Beta — Coming Soon").tag("Beta")
+          }.labelsHidden().frame(width: 170)
+        }
+      }.omiCard()
+
+      OmiSettingsCard(title: "Report an Issue", subtitle: "Send feedback with local diagnostics to help us improve Intentive.", icon: "exclamationmark.bubble.fill") {
+        Button("Report Issue", action: model.reportIssue)
+          .buttonStyle(OmiButtonStyle(.secondary)).disabled(!model.reportIssueAvailable)
+          .accessibilityIdentifier("about-report-issue")
+      }
+    }
+  }
+}
+
+private struct OmiSettingsCard<Accessory: View>: View {
+  let title: String, subtitle: String, icon: String
+  @ViewBuilder let accessory: Accessory
+  var body: some View {
+    HStack(alignment: .center, spacing: OmiSpacing.md) {
+      OmiCardIcon(systemName: icon)
+      VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
+        Text(title).omiCardTitle(); Text(subtitle).omiCardSubtitle()
+      }
+      Spacer(minLength: OmiSpacing.lg); accessory
+    }.omiCard()
+  }
+}
+
+private struct OmiControlRow<Accessory: View>: View {
+  let title: String, subtitle: String, icon: String
+  @ViewBuilder let accessory: Accessory
+  var body: some View {
+    HStack(spacing: OmiSpacing.md) {
+      OmiCardIcon(systemName: icon)
+      VStack(alignment: .leading, spacing: OmiSpacing.xxs) { Text(title).omiCardTitle(); Text(subtitle).omiCardSubtitle() }
+      Spacer(); accessory
+    }
+  }
+}
+
+private struct OmiCardIcon: View {
+  let systemName: String
+  var body: some View {
+    Image(systemName: systemName).font(.system(size: 14, weight: .semibold)).foregroundColor(.white.opacity(0.9))
+      .frame(width: 32, height: 32)
+      .background(RoundedRectangle(cornerRadius: OmiChrome.elementRadius).fill(OmiColors.backgroundSecondary))
+  }
+}
+
+private extension View {
+  func omiCard() -> some View {
+    self.padding(OmiSpacing.lg).background(
+      RoundedRectangle(cornerRadius: OmiChrome.cardRadius, style: .continuous)
+        .fill(OmiColors.backgroundTertiary.opacity(0.55))
+        .overlay(RoundedRectangle(cornerRadius: OmiChrome.cardRadius).stroke(Color.white.opacity(0.06), lineWidth: 1)))
+  }
+}
+
+private extension Text {
+  func omiCardTitle() -> some View { font(.system(size: 14, weight: .semibold)).foregroundColor(OmiColors.textPrimary) }
+  func omiCardSubtitle() -> some View { font(.system(size: 12)).foregroundColor(OmiColors.textSecondary).lineSpacing(2) }
 }

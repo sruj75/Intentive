@@ -8,9 +8,9 @@ The Desktop Client is the macOS half of Intentive. It captures local context, co
 The macOS capture substrate: permissions, screen/window/audio capture, power awareness, excluded-app rules, and local capture backpressure.
 _Avoid_: raw upload path, cloud capture, capture-only app
 
-**Screen Memory**:
+**Rewind**:
 The local timeline and search surface for screen records created on the Mac. It stores local OCR, metadata, local embeddings, retention policy, and user-facing search.
-_Avoid_: Rewind
+_Avoid_: Screen Memory
 
 **Desktop Context Compiler**:
 The local compiler that turns captured frames and OCR into compact, redacted Protocol `perception_event` records. It is deterministic in v1; local vision models are an upgrade path.
@@ -34,6 +34,6 @@ _Avoid_: chat lab, agent pill, delegation bar
 - The Desktop Client may synchronize compact text and metadata records only; media sync requires a future explicit decision.
 - Provider API keys never live on the Mac.
 - The Desktop Context Compiler emits evidence and candidate artifacts; the Agent Runtime decides whether to act.
-- Screen Memory is local truth for screen records. Conversation History is Runtime truth.
+- Rewind is local truth for screen records. Conversation History is Runtime truth.
 - Passive microphone and meeting-gated system-audio sensing is local, on by default, and separate from conversation input. It emits only filtered local transcript summaries.
 - Post-Message-Back is the only proactive presentation trigger. Intentive does not duplicate a floating nudge with a product macOS notification.
