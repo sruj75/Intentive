@@ -12,6 +12,7 @@ let package = Package(
     .library(name: "IntentiveDesktopNativeAdapters", targets: ["IntentiveDesktopNativeAdapters"]),
     .library(name: "IntentiveDesktopNativeAssets", targets: ["IntentiveDesktopNativeAssets"]),
     .library(name: "IntentiveDesktopOmiArchive", targets: ["IntentiveDesktopOmiArchive"]),
+    .library(name: "OmiTheme", targets: ["OmiTheme"]),
   ],
   dependencies: [
     // Omi's production release boundaries, renovated behind Intentive-owned
@@ -31,6 +32,12 @@ let package = Package(
     ),
   ],
   targets: [
+    // Byte-identical visual primitives copied from Omi commit
+    // c55f2925eba6d98f0c1658535425f7405e5d5b9b. See OMI_PROVENANCE.md.
+    .target(
+      name: "OmiTheme",
+      path: "Sources/OmiImported/Theme"
+    ),
     .target(
       name: "IntentiveDesktopCore",
       path: "Sources/IntentiveDesktopCore"
@@ -71,6 +78,7 @@ let package = Package(
         "IntentiveDesktopNativeAdapters",
         "Resources/AppIcon.icns",
         "Rewind",
+        "OmiImported",
       ],
       sources: [
         "IntentiveNativeBuildShims.swift",
