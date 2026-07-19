@@ -83,6 +83,15 @@ export interface LaunchStateStore {
   setConsent: (status: GateStatus) => void;
   /** Onboarding funnel (name → source → permissions) completed (optimistic). */
   setOnboarding: (status: GateStatus) => void;
+  /**
+   * The two-zone onboarding funnel completed. The `(onboarding)` zone is the one
+   * pre-chat surface the two-zone frontend presents, so its completion folds the
+   * shared Pre-Chat Gates it stands in for (consent, sibling, trial) — see ADR
+   * 0025. Optimistic and terminal for the session: it bumps the read generation
+   * so a still-in-flight hydration can't clobber the funnel result, letting the
+   * `RootNavigator` cross the user into `/chat`.
+   */
+  completeOnboardingFunnel: () => void;
   /** Sibling Client Invitation answered — `completed` or `skipped` (optimistic). */
   setSiblingInvitation: (status: GateStatus) => void;
   /** Free Trial gate answered (optimistic). */
@@ -159,6 +168,16 @@ export function LaunchStateProvider({
       },
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
       setOnboarding: (status) => setState((s) => ({ ...s, onboarding: status })),
+      completeOnboardingFunnel: () => {
+        readGenerationRef.current += 1;
+        setState((s) => ({
+          ...s,
+          consent: "completed",
+          onboarding: "completed",
+          siblingInvitation: "skipped",
+          trial: "completed",
+        }));
+      },
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
       setTrial: (status) => setState((s) => ({ ...s, trial: status })),
     }),

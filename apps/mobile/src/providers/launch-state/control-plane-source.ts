@@ -11,6 +11,7 @@
  */
 import { mapAccountStateToLaunchState } from "../../domains/onboarding/service/account-state-to-launch-state.js";
 import { createControlPlaneAccountStateSource } from "../account-state/control-plane-account-state-source.js";
+import type { AccountStateSource } from "../account-state/source.js";
 import type { LaunchStateSource } from "./source.js";
 import type { LaunchState } from "./types.js";
 
@@ -32,6 +33,13 @@ export interface ControlPlaneLaunchStateSourceDeps {
   /** Returns the current Neon Auth User JWT, or null when there is no session. */
   getUserJwt: () => Promise<string | null>;
   fetch: FetchLike;
+  /**
+   * The shared `GET /me` reader. Injected by the composition root so Launch State
+   * and the Account State projection read through one Account State Source instead
+   * of constructing the seam twice (ADR-0027). Defaults to a fresh source built
+   * from the fetch deps, keeping the standalone/test call sites unchanged.
+   */
+  accountStateSource?: AccountStateSource;
 }
 
 // Walk-safe signed-out projection: the resolver short-circuits on `signedIn:
@@ -47,7 +55,7 @@ const SIGNED_OUT: LaunchState = {
 export function createControlPlaneLaunchStateSource(
   deps: ControlPlaneLaunchStateSourceDeps,
 ): LaunchStateSource {
-  const accountStateSource = createControlPlaneAccountStateSource(deps);
+  const accountStateSource = deps.accountStateSource ?? createControlPlaneAccountStateSource(deps);
 
   return {
     async read(): Promise<LaunchState> {

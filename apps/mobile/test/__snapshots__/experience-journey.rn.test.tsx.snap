@@ -239,7 +239,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     undefined,
                   ]
                 }
-                testID="continue-with-phone"
+                testID="continue-with-google"
               >
                 <Text
                   style={
@@ -251,7 +251,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     }
                   }
                 >
-                  Continue with Phone Number
+                  Continue with Google
                 </Text>
               </View>
               <Text

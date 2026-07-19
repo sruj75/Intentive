@@ -148,7 +148,7 @@ describe("Huracán local experience", () => {
     });
     expect(screen.toJSON()).toMatchSnapshot("A-auth");
 
-    fireEvent.press(screen.getByTestId("continue-with-phone"));
+    fireEvent.press(screen.getByTestId("continue-with-google"));
     const nameInput = screen.getByTestId("full-name-input");
     expect(screen.toJSON()).toMatchSnapshot("B1-name");
 
@@ -283,13 +283,13 @@ describe("Huracán local experience", () => {
     fireEvent.press(screen.getByTestId("open-settings"));
     fireEvent.press(screen.getByTestId("log-out"));
 
-    expect(screen.getByTestId("continue-with-phone")).toBeTruthy();
+    expect(screen.getByTestId("continue-with-google")).toBeTruthy();
     expectNoCapabilityCalls();
   });
 
   it("reconstructs a fresh controller at A after a cold launch", () => {
     const firstLaunch = renderExperience();
-    fireEvent.press(firstLaunch.getByTestId("continue-with-phone"));
+    fireEvent.press(firstLaunch.getByTestId("continue-with-google"));
     fireEvent.changeText(firstLaunch.getByTestId("full-name-input"), "Srujan Gowda");
     fireEvent.press(firstLaunch.getByTestId("submit-name"));
     fireEvent.press(firstLaunch.getByTestId("add-friends-intro"));
@@ -300,7 +300,7 @@ describe("Huracán local experience", () => {
     firstLaunch.unmount();
 
     const coldLaunch = renderExperience();
-    expect(coldLaunch.getByTestId("continue-with-phone")).toBeTruthy();
+    expect(coldLaunch.getByTestId("continue-with-google")).toBeTruthy();
     expect(coldLaunch.queryByTestId("chat-ready-state")).toBeNull();
     expectNoCapabilityCalls();
   });

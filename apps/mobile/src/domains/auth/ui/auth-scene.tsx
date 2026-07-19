@@ -3,8 +3,17 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } fr
 import { PrimaryButton } from "../../../design/primitives";
 import { mobileTheme as theme } from "../../../design/theme";
 import { authContent as content } from "../config/content";
+import type { AuthProviderId } from "../types/auth";
 
-export function AuthScene({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
+/**
+ * Presentation for the Identity Gate. The two sign-in options are Apple and
+ * Google; each button just names the **Auth Provider** it should try. It owns
+ * no capability honesty — the composed `onSignIn` (route → Auth Adapter)
+ * decides whether that provider genuinely runs (a not-yet-configured provider
+ * short-circuits to `not-configured`), and the entrypoint advances only on a
+ * real `signed-in` outcome. See ADR 0012 / 0024.
+ */
+export function AuthScene({ onSignIn }: { readonly onSignIn: (provider: AuthProviderId) => void }) {
   const { height } = useWindowDimensions();
 
   return (
@@ -30,7 +39,7 @@ export function AuthScene({ onAuthenticated }: { readonly onAuthenticated: () =>
       <View style={styles.authActions}>
         <Pressable
           accessibilityRole="button"
-          onPress={onAuthenticated}
+          onPress={() => onSignIn("apple")}
           style={({ pressed }) => [styles.appleButton, pressed && styles.pressed]}
           testID="continue-with-apple"
         >
@@ -38,9 +47,9 @@ export function AuthScene({ onAuthenticated }: { readonly onAuthenticated: () =>
           <Text style={styles.appleLabel}>{content.apple}</Text>
         </Pressable>
         <PrimaryButton
-          label={content.phone}
-          onPress={onAuthenticated}
-          testID="continue-with-phone"
+          label={content.google}
+          onPress={() => onSignIn("google")}
+          testID="continue-with-google"
         />
         <Text selectable style={styles.legal}>
           {content.legal}

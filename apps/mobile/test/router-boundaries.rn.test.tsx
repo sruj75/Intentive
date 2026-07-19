@@ -3,10 +3,16 @@ import { router } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import MainRoute from "../app/(main)/chat";
-import OnboardingRoute from "../app/(onboarding)/index";
+import { ChatEntry } from "../src/entrypoints/chat-entry";
+import { OnboardingEntry } from "../src/entrypoints/onboarding-entry";
 import { ProfileProvider } from "../src/providers/profile/profile-provider";
 import { createProfileStore, type ProfileStore } from "../src/providers/profile/profile-store";
+
+// The route files compose the real platform (native Neon client, telemetry);
+// these boundary assertions drive the entrypoints' offline default path, which
+// is the same navigation logic the routes mount.
+const OnboardingRoute = <OnboardingEntry />;
+const MainRoute = <ChatEntry />;
 
 jest.mock("expo-router", () => ({ router: { replace: jest.fn() } }));
 
@@ -32,14 +38,14 @@ describe("Mobile Router boundaries", () => {
   beforeEach(() => jest.clearAllMocks());
 
   it("cold launch starts at A without replacing", () => {
-    const { screen } = renderRoute(<OnboardingRoute />);
-    expect(screen.getByTestId("continue-with-phone")).toBeTruthy();
+    const { screen } = renderRoute(OnboardingRoute);
+    expect(screen.getByTestId("continue-with-google")).toBeTruthy();
     expect(router.replace).not.toHaveBeenCalled();
   });
 
   it("replaces onboarding with /chat after D", () => {
-    const { screen, store } = renderRoute(<OnboardingRoute />);
-    fireEvent.press(screen.getByTestId("continue-with-phone"));
+    const { screen, store } = renderRoute(OnboardingRoute);
+    fireEvent.press(screen.getByTestId("continue-with-google"));
     fireEvent.changeText(screen.getByTestId("full-name-input"), "Srujan Gowda");
     fireEvent.press(screen.getByTestId("submit-name"));
     fireEvent.press(screen.getByTestId("add-friends-intro"));
@@ -52,7 +58,7 @@ describe("Mobile Router boundaries", () => {
   it("resets the profile and replaces logout with /", () => {
     const store = createProfileStore();
     store.setName("Srujan Gowda");
-    const { screen } = renderRoute(<MainRoute />, store);
+    const { screen } = renderRoute(MainRoute, store);
     fireEvent.press(screen.getByTestId("identity-control"));
     fireEvent.press(screen.getByTestId("open-settings"));
     fireEvent.press(screen.getByTestId("log-out"));

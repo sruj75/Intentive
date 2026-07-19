@@ -3,24 +3,34 @@ import { router } from "expo-router";
 
 import { ScreenFrame } from "../design/screen-frame";
 import { AccountSettingsBoundary } from "../domains/account/ui/account-settings";
+import { deriveFeatureAccess } from "../domains/account/service/feature-access";
 import { createLocalConversationSession } from "../domains/chat/runtime/local-conversation-session";
 import type { ConversationSession } from "../domains/chat/types/conversation-timeline";
 import { ComposerBoundary } from "../domains/chat/ui/composer-boundary";
 import { ConversationScene } from "../domains/chat/ui/conversation-scene";
 import { EducationDeck } from "../domains/onboarding/ui/education-deck";
+import { useAccountStateProjection } from "../providers/account-state";
+import type { AccountStateSource } from "../providers/account-state";
 import { useProfileSnapshot, useProfileStore } from "../providers/profile/profile-provider";
 
 const defaultCreateSession = (firstName: string) => createLocalConversationSession({ firstName });
 
 export function ChatEntry({
   createSession = defaultCreateSession,
+  accountStateSource,
   onLogout,
 }: {
   readonly createSession?: (firstName: string) => ConversationSession;
+  readonly accountStateSource?: AccountStateSource;
   readonly onLogout?: () => void;
 } = {}) {
   const profileStore = useProfileStore();
   const profile = useProfileSnapshot();
+  // Real Control-Plane account state gates Companion affordances. With no injected
+  // source (the offline default) this projects null, so the gate stays open and
+  // the local experience is unchanged (ADR-0027).
+  const { accountState } = useAccountStateProjection(accountStateSource);
+  const featureAccess = deriveFeatureAccess(accountState);
   const [mode, setMode] = useState<"welcome" | "education" | "ready">("welcome");
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const session = useMemo(
@@ -56,7 +66,7 @@ export function ChatEntry({
                     setSessionGeneration((current) => current + 1);
                     setMode("education");
                   }}
-                  proactiveSuggestions={proactiveSuggestions}
+                  proactiveSuggestions={proactiveSuggestions && featureAccess.proactiveSuggestions}
                   renderSettings={renderSettings}
                   session={session}
                 />
