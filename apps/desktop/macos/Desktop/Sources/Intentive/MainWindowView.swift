@@ -2,7 +2,7 @@ import AppKit
 import IntentiveDesktopCore
 import IntentiveDesktopNativeAdapters
 import IntentiveDesktopNativeAssets
-import OmiDesktopUI
+import IntentiveDesktopPresentation
 import ServiceManagement
 import SwiftUI
 
@@ -1879,22 +1879,22 @@ private enum DesktopRuntimeConfiguration {
 
 struct MainWindowView: View {
   @StateObject private var model: DesktopViewModel
-  @StateObject private var presentation: IntentiveOmiPresentationAdapter
+  @StateObject private var presentation: IntentiveDesktopPresentationAdapter
   let composition: DesktopApplicationComposition
 
   @MainActor
   init(model: DesktopViewModel, composition: DesktopApplicationComposition) {
     _model = StateObject(wrappedValue: model)
-    _presentation = StateObject(wrappedValue: IntentiveOmiPresentationAdapter(model: model))
+    _presentation = StateObject(wrappedValue: IntentiveDesktopPresentationAdapter(model: model))
     self.composition = composition
   }
 
   var body: some View {
     Group {
       if model.showOnboarding {
-        OmiMacSetupView(model: presentation)
+        IntentiveMacSetupView(model: presentation)
       } else {
-        OmiSettingsWindow(model: presentation)
+        IntentiveSettingsWindow(model: presentation)
       }
     }
     .task {

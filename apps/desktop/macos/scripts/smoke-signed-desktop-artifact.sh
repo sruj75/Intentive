@@ -234,6 +234,7 @@ assert_native_boundaries() {
   [[ -d "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" ]] || fail "Sparkle.framework missing"
   [[ -d "$APP_BUNDLE/Contents/Frameworks/Sentry.framework" ]] || fail "Sentry.framework missing"
   [[ -s "$resources/AppIcon.icns" ]] || fail "AppIcon.icns missing"
+  [[ -s "$resources/IntentiveDesktop_Intentive.bundle/IntentiveMenuBarIcon.png" ]] || fail "Intentive menu-bar icon missing"
   [[ -s "$resources/IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx" ]] \
     || fail "local passive-audio VAD asset missing"
   pass "Native framework integrity passed"

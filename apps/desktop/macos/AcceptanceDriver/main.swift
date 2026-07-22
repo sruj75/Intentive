@@ -294,10 +294,10 @@ func record(
 
 bringMainWindowForward()
 let initialWindowDeadline = Date().addingTimeInterval(2)
-while find(app, id: "omi-settings-window") == nil && Date() < initialWindowDeadline {
+while find(app, id: "intentive-settings-window") == nil && Date() < initialWindowDeadline {
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
-if find(app, id: "omi-settings-window") == nil {
+if find(app, id: "intentive-settings-window") == nil {
   if let windowMenu = findTitle(app, "Window"), supportsPress(windowMenu) {
     AXUIElementPerformAction(windowMenu, kAXPressAction as CFString)
     RunLoop.current.run(until: Date().addingTimeInterval(0.25))
@@ -307,14 +307,14 @@ if find(app, id: "omi-settings-window") == nil {
   }
 }
 let deadline = Date().addingTimeInterval(30)
-while find(app, id: "omi-settings-window") == nil && Date() < deadline {
+while find(app, id: "intentive-settings-window") == nil && Date() < deadline {
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
 
 let seeded = try bridgeRequest("POST", "/v1/fixtures/seed")
 fputs("acceptance fixture response: \(seeded)\n", stderr)
 fputs("acceptance state after seed: \(bridgeState())\n", stderr)
-let initialRoot = find(app, id: "omi-settings-window") ?? app
+let initialRoot = find(app, id: "intentive-settings-window") ?? app
 record(
   name: "fixture-seed",
   element: initialRoot,

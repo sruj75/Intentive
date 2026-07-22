@@ -8,10 +8,10 @@ The files under this directory were copied before adaptation from:
 
 The Theme directory remains byte-identical and is compiled as the `OmiTheme`
 SwiftPM target. Settings and setup sources were copied in the import checkpoint,
-then pruned in place into the compiled `OmiDesktopUI` target. Deleted rows below
+then pruned in place into the compiled `IntentiveDesktopPresentation` target. Deleted rows below
 document copied material evaluated and removed during pruning; the retained
 Settings shell and setup views are adapted at their original paths. Backend
-bindings live exclusively in `IntentiveOmiPresentationAdapter.swift`.
+bindings live exclusively in `IntentiveDesktopPresentationAdapter.swift`.
 
 | Imported source | Git blob |
 | --- | --- |

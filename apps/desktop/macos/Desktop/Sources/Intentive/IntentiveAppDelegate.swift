@@ -111,12 +111,7 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   private func setUpStatusItem() {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     if let button = statusItem.button {
-      // Neutral placeholder glyph; the branded mark lands with the future
-      // branding revamp (deferred).
-      let symbol = NSImage(
-        systemSymbolName: "waveform.circle", accessibilityDescription: "Intentive")
-      symbol?.isTemplate = true
-      button.image = symbol
+      button.image = intentiveMenuBarImage()
       button.toolTip = "Intentive"
       button.setAccessibilityIdentifier("menu-status-item")
     }
@@ -124,6 +119,19 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     menu.delegate = self
     statusItem.menu = menu
     self.statusItem = statusItem
+  }
+
+  private func intentiveMenuBarImage() -> NSImage? {
+    guard let url = Bundle.module.url(forResource: "IntentiveMenuBarIcon", withExtension: "png"),
+      let image = NSImage(contentsOf: url)
+    else {
+      return nil
+    }
+
+    image.size = NSSize(width: 18, height: 18)
+    image.isTemplate = true
+    image.accessibilityDescription = "Intentive"
+    return image
   }
 
   // MARK: - NSMenuDelegate

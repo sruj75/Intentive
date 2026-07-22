@@ -1,7 +1,7 @@
 import OmiTheme
 import SwiftUI
 
-public enum OmiSettingsSection: String, CaseIterable, Identifiable, Sendable {
+public enum IntentiveSettingsSection: String, CaseIterable, Identifiable, Sendable {
   case general = "General"
   case rewind = "Rewind"
   case privacy = "Privacy"
@@ -19,30 +19,30 @@ public enum OmiSettingsSection: String, CaseIterable, Identifiable, Sendable {
   }
 }
 
-public enum OmiSystemAudioMode: String, CaseIterable, Identifiable, Sendable {
+public enum IntentiveSystemAudioMode: String, CaseIterable, Identifiable, Sendable {
   case never = "Never"
   case meetings = "Meetings Only"
   case always = "Always"
   public var id: String { rawValue }
 }
 
-public struct OmiRunningApplication: Identifiable, Hashable, Sendable {
+public struct IntentiveRunningApplication: Identifiable, Hashable, Sendable {
   public let id: String
   public let name: String
   public init(id: String, name: String) { self.id = id; self.name = name }
 }
 
 @MainActor
-public protocol OmiSettingsPresenting: ObservableObject {
-  var selectedSettingsSection: OmiSettingsSection { get set }
+public protocol IntentiveSettingsPresenting: ObservableObject {
+  var selectedSettingsSection: IntentiveSettingsSection { get set }
   var screenCaptureEnabled: Bool { get set }
   var audioRecordingEnabled: Bool { get set }
-  var systemAudioMode: OmiSystemAudioMode { get set }
+  var systemAudioMode: IntentiveSystemAudioMode { get set }
   var notificationsAuthorized: Bool { get }
   var floatingBarShortcut: String { get set }
   var storageSummary: String { get }
   var excludedApplications: [String] { get }
-  var runningApplications: [OmiRunningApplication] { get }
+  var runningApplications: [IntentiveRunningApplication] { get }
   var retentionDays: Int { get set }
   var storeRecordings: Bool { get set }
   var updateStatus: String { get }
@@ -64,7 +64,7 @@ struct SettingsSearchItem: Identifiable {
   let name: String
   let subtitle: String
   let keywords: [String]
-  let section: OmiSettingsSection
+  let section: IntentiveSettingsSection
 
   static let all: [SettingsSearchItem] = [
     .init(id: "general.capture", name: "Screen Capture", subtitle: "Record your screen locally", keywords: ["monitor", "recording"], section: .general),
@@ -85,7 +85,7 @@ struct SettingsSearchItem: Identifiable {
   ]
 }
 
-struct SettingsSidebar<Model: OmiSettingsPresenting>: View {
+struct SettingsSidebar<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
   @State private var searchQuery = ""
   @FocusState private var searchFocused: Bool
@@ -112,7 +112,7 @@ struct SettingsSidebar<Model: OmiSettingsPresenting>: View {
       ScrollView(showsIndicators: false) {
         VStack(alignment: .leading, spacing: OmiSpacing.hairline) {
           if searchQuery.isEmpty {
-            ForEach(OmiSettingsSection.allCases) { section in sidebarItem(section) }
+            ForEach(IntentiveSettingsSection.allCases) { section in sidebarItem(section) }
           } else if results.isEmpty {
             Text("No results")
               .scaledFont(size: OmiType.body)
@@ -151,7 +151,7 @@ struct SettingsSidebar<Model: OmiSettingsPresenting>: View {
     )
   }
 
-  private func sidebarItem(_ section: OmiSettingsSection) -> some View {
+  private func sidebarItem(_ section: IntentiveSettingsSection) -> some View {
     Button {
       OmiMotion.withGated(.easeInOut(duration: 0.15)) { model.selectedSettingsSection = section }
     } label: {

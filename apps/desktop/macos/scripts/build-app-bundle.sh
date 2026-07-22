@@ -17,6 +17,7 @@ POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-}"
 POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
 APP_ICON_SOURCE="$PACKAGE_PATH/Sources/Resources/AppIcon.icns"
 NATIVE_ASSETS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAssets.bundle"
+INTENTIVE_UI_BUNDLE_NAME="IntentiveDesktop_Intentive.bundle"
 
 if [[ -z "$SPARKLE_FEED_URL" && -n "${GITHUB_REPOSITORY:-}" ]]; then
   SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml"
@@ -45,6 +46,7 @@ POSTHOG_HOST_XML="$(xml_escape "$POSTHOG_HOST")"
 BUILD_DIR="$("$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH" --show-bin-path)"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 NATIVE_ASSETS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ASSETS_BUNDLE_NAME"
+INTENTIVE_UI_BUNDLE_SOURCE="$BUILD_DIR/$INTENTIVE_UI_BUNDLE_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Frameworks"
@@ -76,6 +78,11 @@ if [[ ! -d "$NATIVE_ASSETS_BUNDLE_SOURCE" ]]; then
   exit 1
 fi
 cp -R "$NATIVE_ASSETS_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
+if [[ ! -d "$INTENTIVE_UI_BUNDLE_SOURCE" ]]; then
+  echo "Missing Intentive UI resources bundle: $INTENTIVE_UI_BUNDLE_SOURCE" >&2
+  exit 1
+fi
+cp -R "$INTENTIVE_UI_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$INTENTIVE_UI_BUNDLE_NAME"
 
 # Bundled LaunchAgent for launch-at-login (ADR 0011). Registered on demand via
 # `SMAppService.agent(plistName:)`; `BundleProgram` keeps the executable path

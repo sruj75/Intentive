@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Omi's Settings shell, reduced to the four approved Intentive destinations.
 /// Backend ownership stays with the conforming presentation adapter.
-public struct OmiSettingsWindow<Model: OmiSettingsPresenting>: View {
+public struct IntentiveSettingsWindow<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject private var model: Model
 
   public init(model: Model) { self.model = model }
@@ -18,11 +18,11 @@ public struct OmiSettingsWindow<Model: OmiSettingsPresenting>: View {
     .frame(minWidth: 900, idealWidth: 1040, minHeight: 620, idealHeight: 720)
     .background(OmiColors.backgroundPrimary)
     .preferredColorScheme(.dark)
-    .accessibilityIdentifier("omi-settings-window")
+    .accessibilityIdentifier("intentive-settings-window")
   }
 }
 
-private struct SettingsPage<Model: OmiSettingsPresenting>: View {
+private struct SettingsPage<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
 
   var body: some View {
@@ -56,27 +56,27 @@ private struct SettingsPage<Model: OmiSettingsPresenting>: View {
   }
 }
 
-private struct GeneralSettings<Model: OmiSettingsPresenting>: View {
+private struct GeneralSettings<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
 
   var body: some View {
     VStack(spacing: OmiSpacing.xxl) {
-      OmiSettingsCard(title: "Screen Capture", subtitle: "Record your screen to build your Rewind.", icon: "display") {
+      IntentiveSettingsCard(title: "Screen Capture", subtitle: "Record your screen to build your Rewind.", icon: "display") {
         Toggle("", isOn: binding(\.screenCaptureEnabled))
           .labelsHidden().toggleStyle(OmiToggleStyle())
           .accessibilityIdentifier("general-screen-capture-toggle")
       }
-      OmiSettingsCard(title: "Audio Recording", subtitle: "Record microphone audio for local context.", icon: "mic.fill") {
+      IntentiveSettingsCard(title: "Audio Recording", subtitle: "Record microphone audio for local context.", icon: "mic.fill") {
         Toggle("", isOn: binding(\.audioRecordingEnabled))
           .labelsHidden().toggleStyle(OmiToggleStyle())
           .accessibilityIdentifier("general-audio-recording-toggle")
       }
-      OmiSettingsCard(title: "System Audio", subtitle: "Choose when Intentive records audio from other apps.", icon: "speaker.wave.2.fill") {
+      IntentiveSettingsCard(title: "System Audio", subtitle: "Choose when Intentive records audio from other apps.", icon: "speaker.wave.2.fill") {
         Picker("", selection: binding(\.systemAudioMode)) {
-          ForEach(OmiSystemAudioMode.allCases) { Text($0.rawValue).tag($0) }
+          ForEach(IntentiveSystemAudioMode.allCases) { Text($0.rawValue).tag($0) }
         }.labelsHidden().frame(width: 170)
       }
-      OmiSettingsCard(
+      IntentiveSettingsCard(
         title: "Notifications",
         subtitle: model.notificationsAuthorized ? "Notifications are enabled." : "Allow Intentive notifications in macOS.",
         icon: "bell.fill"
@@ -93,10 +93,10 @@ private struct GeneralSettings<Model: OmiSettingsPresenting>: View {
   private var shortcutCard: some View {
     VStack(alignment: .leading, spacing: OmiSpacing.lg) {
       HStack(alignment: .top, spacing: OmiSpacing.md) {
-        OmiCardIcon(systemName: "keyboard")
+        IntentiveCardIcon(systemName: "keyboard")
         VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-          Text("Ask Intentive Shortcut").omiCardTitle()
-          Text("Open or hide the Floating Bar from anywhere.").omiCardSubtitle()
+          Text("Ask Intentive Shortcut").intentiveCardTitle()
+          Text("Open or hide the Floating Bar from anywhere.").intentiveCardSubtitle()
         }
         Spacer()
       }
@@ -114,7 +114,7 @@ private struct GeneralSettings<Model: OmiSettingsPresenting>: View {
         shortcutButton("disabled", tokens: ["Disable"])
       }
     }
-    .omiCard()
+    .intentiveCard()
     .accessibilityIdentifier("general-shortcut")
   }
 
@@ -137,20 +137,20 @@ private struct GeneralSettings<Model: OmiSettingsPresenting>: View {
   }
 }
 
-private struct RewindSettings<Model: OmiSettingsPresenting>: View {
+private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
   @State private var appToAdd = ""
 
   var body: some View {
     VStack(spacing: OmiSpacing.xxl) {
-      OmiSettingsCard(title: "Storage", subtitle: "Screen recordings are stored locally on this Mac.", icon: "internaldrive.fill") {
+      IntentiveSettingsCard(title: "Storage", subtitle: "Screen recordings are stored locally on this Mac.", icon: "internaldrive.fill") {
         Text(model.storageSummary).foregroundColor(OmiColors.textSecondary).font(.system(size: 13, weight: .medium))
       }
       excludedAppsCard
-      OmiSettingsCard(title: "Battery Optimization", subtitle: "Capture frequency adapts automatically to power state.", icon: "battery.75percent") {
+      IntentiveSettingsCard(title: "Battery Optimization", subtitle: "Capture frequency adapts automatically to power state.", icon: "battery.75percent") {
         Text("Automatic").foregroundColor(OmiColors.textSecondary).font(.system(size: 13, weight: .medium))
       }
-      OmiSettingsCard(title: "Data Retention", subtitle: "Choose how long to keep local screen recordings.", icon: "calendar.badge.clock") {
+      IntentiveSettingsCard(title: "Data Retention", subtitle: "Choose how long to keep local screen recordings.", icon: "calendar.badge.clock") {
         Picker("", selection: Binding(get: { model.retentionDays }, set: { model.retentionDays = $0 })) {
           ForEach([3, 7, 14, 30], id: \.self) { Text("\($0) days").tag($0) }
         }.labelsHidden().frame(width: 130)
@@ -161,10 +161,10 @@ private struct RewindSettings<Model: OmiSettingsPresenting>: View {
   private var excludedAppsCard: some View {
     VStack(alignment: .leading, spacing: OmiSpacing.lg) {
       HStack(alignment: .top, spacing: OmiSpacing.md) {
-        OmiCardIcon(systemName: "eye.slash.fill")
+        IntentiveCardIcon(systemName: "eye.slash.fill")
         VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-          Text("Excluded Apps").omiCardTitle()
-          Text("Screen capture pauses while these apps are active.").omiCardSubtitle()
+          Text("Excluded Apps").intentiveCardTitle()
+          Text("Screen capture pauses while these apps are active.").intentiveCardSubtitle()
         }
         Spacer()
         Button("Reset to Defaults", action: model.resetExcludedApplications)
@@ -221,11 +221,11 @@ private struct RewindSettings<Model: OmiSettingsPresenting>: View {
           }
         }
       }
-    }.omiCard()
+    }.intentiveCard()
   }
 }
 
-private struct PrivacySettings<Model: OmiSettingsPresenting>: View {
+private struct PrivacySettings<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
   @State private var trackingExpanded = false
 
@@ -233,45 +233,45 @@ private struct PrivacySettings<Model: OmiSettingsPresenting>: View {
     VStack(spacing: OmiSpacing.xxl) {
       VStack(alignment: .leading, spacing: OmiSpacing.lg) {
         Text("Data Controls").font(.system(size: 15, weight: .semibold)).foregroundColor(OmiColors.textPrimary)
-        OmiControlRow(title: "Store Recordings", subtitle: "Keep future audio recordings locally on this Mac.", icon: "waveform") {
+        IntentiveControlRow(title: "Store Recordings", subtitle: "Keep future audio recordings locally on this Mac.", icon: "waveform") {
           Toggle("", isOn: Binding(get: { model.storeRecordings }, set: { model.storeRecordings = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
         }
         Divider().overlay(Color.white.opacity(0.08))
-        OmiControlRow(title: "Private Cloud Sync", subtitle: "Securely sync your private data across devices.", icon: "icloud") {
+        IntentiveControlRow(title: "Private Cloud Sync", subtitle: "Securely sync your private data across devices.", icon: "icloud") {
           HStack(spacing: 8) {
             Text("Coming Soon").font(.system(size: 11, weight: .semibold)).foregroundColor(OmiColors.textTertiary)
             Toggle("", isOn: .constant(false)).labelsHidden().toggleStyle(OmiToggleStyle()).disabled(true)
           }
         }
-      }.omiCard()
+      }.intentiveCard()
       VStack(alignment: .leading, spacing: OmiSpacing.md) {
-        HStack(spacing: OmiSpacing.md) { OmiCardIcon(systemName: "shield.lefthalf.filled"); Text("Encryption").omiCardTitle(); Spacer() }
+        HStack(spacing: OmiSpacing.md) { IntentiveCardIcon(systemName: "shield.lefthalf.filled"); Text("Encryption").intentiveCardTitle(); Spacer() }
         HStack(spacing: OmiSpacing.sm) {
           Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
           Text("On-device protection").font(.system(size: 13, weight: .medium)).foregroundColor(OmiColors.textPrimary)
           Text("Active").font(.system(size: 11, weight: .semibold)).foregroundColor(.green)
             .padding(.horizontal, 6).padding(.vertical, 2).background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
         }
-        Text("Your data is stored locally and protected by macOS and your signed-in user account.").omiCardSubtitle()
-      }.omiCard()
+        Text("Your data is stored locally and protected by macOS and your signed-in user account.").intentiveCardSubtitle()
+      }.intentiveCard()
 
       Button { trackingExpanded.toggle() } label: {
         VStack(alignment: .leading, spacing: OmiSpacing.md) {
           HStack(spacing: OmiSpacing.md) {
-            OmiCardIcon(systemName: "list.bullet")
-            Text("What We Track").omiCardTitle()
+            IntentiveCardIcon(systemName: "list.bullet")
+            Text("What We Track").intentiveCardTitle()
             Spacer()
             Image(systemName: trackingExpanded ? "chevron.down" : "chevron.right").foregroundColor(OmiColors.textTertiary)
           }
           if trackingExpanded {
-            Text("Local screen records, permitted audio context, app identity, and diagnostic metadata. Raw media does not leave this Mac in V1.").omiCardSubtitle()
+            Text("Local screen records, permitted audio context, app identity, and diagnostic metadata. Raw media does not leave this Mac in V1.").intentiveCardSubtitle()
           }
-        }.omiCard()
+        }.intentiveCard()
       }.buttonStyle(.plain)
 
       VStack(alignment: .leading, spacing: OmiSpacing.md) {
-        HStack(spacing: OmiSpacing.md) { OmiCardIcon(systemName: "hand.raised.fill"); Text("Privacy Guarantees").omiCardTitle(); Spacer() }
+        HStack(spacing: OmiSpacing.md) { IntentiveCardIcon(systemName: "hand.raised.fill"); Text("Privacy Guarantees").intentiveCardTitle(); Spacer() }
         ForEach([
           "Existing recordings remain when storage is turned off",
           "No personal content is stored in analytics",
@@ -283,12 +283,12 @@ private struct PrivacySettings<Model: OmiSettingsPresenting>: View {
             Text(guarantee).font(.system(size: 13)).foregroundColor(OmiColors.textSecondary)
           }
         }
-      }.omiCard()
+      }.intentiveCard()
     }
   }
 }
 
-private struct AboutSettings<Model: OmiSettingsPresenting>: View {
+private struct AboutSettings<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
 
   var body: some View {
@@ -300,7 +300,7 @@ private struct AboutSettings<Model: OmiSettingsPresenting>: View {
           }
           VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
             Text("Intentive").font(.system(size: 20, weight: .bold)).foregroundColor(OmiColors.textPrimary)
-            Text(model.versionText).omiCardSubtitle()
+            Text(model.versionText).intentiveCardSubtitle()
           }
           Spacer()
         }
@@ -310,30 +310,30 @@ private struct AboutSettings<Model: OmiSettingsPresenting>: View {
             .font(.system(size: 13, weight: .medium)).foregroundColor(OmiColors.textTertiary)
             .padding(.vertical, 4)
         }
-      }.omiCard().opacity(0.65).accessibilityHint("Links will be enabled when Intentive destinations are configured")
+      }.intentiveCard().opacity(0.65).accessibilityHint("Links will be enabled when Intentive destinations are configured")
 
       VStack(alignment: .leading, spacing: OmiSpacing.lg) {
-        OmiControlRow(title: "Software Updates", subtitle: model.updateStatus, icon: "arrow.triangle.2.circlepath") {
+        IntentiveControlRow(title: "Software Updates", subtitle: model.updateStatus, icon: "arrow.triangle.2.circlepath") {
           Button("Check Now", action: model.checkForUpdates).buttonStyle(OmiButtonStyle(.secondary))
         }
         Divider().overlay(Color.white.opacity(0.08))
-        OmiControlRow(title: "Automatic Updates", subtitle: "Check for updates automatically.", icon: "clock.arrow.circlepath") {
+        IntentiveControlRow(title: "Automatic Updates", subtitle: "Check for updates automatically.", icon: "clock.arrow.circlepath") {
           Toggle("", isOn: Binding(get: { model.automaticallyChecksForUpdates }, set: { model.automaticallyChecksForUpdates = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
         }
-        OmiControlRow(title: "Auto-Install Updates", subtitle: "Download updates automatically when available.", icon: "arrow.down.circle") {
+        IntentiveControlRow(title: "Auto-Install Updates", subtitle: "Download updates automatically when available.", icon: "arrow.down.circle") {
           Toggle("", isOn: Binding(get: { model.automaticallyDownloadsUpdates }, set: { model.automaticallyDownloadsUpdates = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
         }
-        OmiControlRow(title: "Update Channel", subtitle: "Choose which releases to receive.", icon: "point.3.connected.trianglepath.dotted") {
+        IntentiveControlRow(title: "Update Channel", subtitle: "Choose which releases to receive.", icon: "point.3.connected.trianglepath.dotted") {
           Picker("", selection: .constant("Stable")) {
             Text("Stable").tag("Stable")
             Text("Beta — Coming Soon").tag("Beta")
           }.labelsHidden().frame(width: 170)
         }
-      }.omiCard()
+      }.intentiveCard()
 
-      OmiSettingsCard(title: "Report an Issue", subtitle: "Send feedback with local diagnostics to help us improve Intentive.", icon: "exclamationmark.bubble.fill") {
+      IntentiveSettingsCard(title: "Report an Issue", subtitle: "Send feedback with local diagnostics to help us improve Intentive.", icon: "exclamationmark.bubble.fill") {
         Button("Report Issue", action: model.reportIssue)
           .buttonStyle(OmiButtonStyle(.secondary)).disabled(!model.reportIssueAvailable)
           .accessibilityIdentifier("about-report-issue")
@@ -342,33 +342,33 @@ private struct AboutSettings<Model: OmiSettingsPresenting>: View {
   }
 }
 
-private struct OmiSettingsCard<Accessory: View>: View {
+private struct IntentiveSettingsCard<Accessory: View>: View {
   let title: String, subtitle: String, icon: String
   @ViewBuilder let accessory: Accessory
   var body: some View {
     HStack(alignment: .center, spacing: OmiSpacing.md) {
-      OmiCardIcon(systemName: icon)
+      IntentiveCardIcon(systemName: icon)
       VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-        Text(title).omiCardTitle(); Text(subtitle).omiCardSubtitle()
+        Text(title).intentiveCardTitle(); Text(subtitle).intentiveCardSubtitle()
       }
       Spacer(minLength: OmiSpacing.lg); accessory
-    }.omiCard()
+    }.intentiveCard()
   }
 }
 
-private struct OmiControlRow<Accessory: View>: View {
+private struct IntentiveControlRow<Accessory: View>: View {
   let title: String, subtitle: String, icon: String
   @ViewBuilder let accessory: Accessory
   var body: some View {
     HStack(spacing: OmiSpacing.md) {
-      OmiCardIcon(systemName: icon)
-      VStack(alignment: .leading, spacing: OmiSpacing.xxs) { Text(title).omiCardTitle(); Text(subtitle).omiCardSubtitle() }
+      IntentiveCardIcon(systemName: icon)
+      VStack(alignment: .leading, spacing: OmiSpacing.xxs) { Text(title).intentiveCardTitle(); Text(subtitle).intentiveCardSubtitle() }
       Spacer(); accessory
     }
   }
 }
 
-private struct OmiCardIcon: View {
+private struct IntentiveCardIcon: View {
   let systemName: String
   var body: some View {
     Image(systemName: systemName).font(.system(size: 14, weight: .semibold)).foregroundColor(.white.opacity(0.9))
@@ -378,7 +378,7 @@ private struct OmiCardIcon: View {
 }
 
 private extension View {
-  func omiCard() -> some View {
+  func intentiveCard() -> some View {
     self.padding(OmiSpacing.lg).background(
       RoundedRectangle(cornerRadius: OmiChrome.cardRadius, style: .continuous)
         .fill(OmiColors.backgroundTertiary.opacity(0.55))
@@ -387,6 +387,6 @@ private extension View {
 }
 
 private extension Text {
-  func omiCardTitle() -> some View { font(.system(size: 14, weight: .semibold)).foregroundColor(OmiColors.textPrimary) }
-  func omiCardSubtitle() -> some View { font(.system(size: 12)).foregroundColor(OmiColors.textSecondary).lineSpacing(2) }
+  func intentiveCardTitle() -> some View { font(.system(size: 14, weight: .semibold)).foregroundColor(OmiColors.textPrimary) }
+  func intentiveCardSubtitle() -> some View { font(.system(size: 12)).foregroundColor(OmiColors.textSecondary).lineSpacing(2) }
 }

@@ -24,7 +24,7 @@ final class RenovationAssetGuardTests: XCTestCase {
     let root = try repoRoot()
     let requiredPaths = [
       "apps/desktop/macos/Desktop/Sources/IntentiveDesktopCore/DesktopOnboarding.swift",
-      "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveOmiPresentationAdapter.swift",
+      "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveDesktopPresentationAdapter.swift",
       "apps/desktop/macos/Desktop/Sources/OmiImported/SignInView.swift",
       "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/SettingsSidebar.swift",
       "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/Pages/SettingsPage.swift",
@@ -70,7 +70,7 @@ final class RenovationAssetGuardTests: XCTestCase {
       "FloatingBarNotchTransition.swift",
       "FloatingControlBarGeometry.swift",
       "FloatingControlBarManager.swift",
-      "OmiDesktopUI",
+      "IntentiveDesktopPresentation",
       "OverlayService.swift",
       "GlowBorderView.swift",
       "GlowEdgeWindow.swift",
@@ -79,6 +79,35 @@ final class RenovationAssetGuardTests: XCTestCase {
     ]
     let uncompiled = requiredCompiledPaths.filter { !manifest.contains($0) }
     XCTAssertTrue(uncompiled.isEmpty, "Critical renovated assets left the package graph: \(uncompiled)")
+  }
+
+  func testIntentivePresentationAPIsDoNotUseOmiNames() throws {
+    let root = try repoRoot()
+    let presentationPaths = [
+      "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveDesktopPresentationAdapter.swift",
+      "apps/desktop/macos/Desktop/Sources/OmiImported/SignInView.swift",
+      "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/SettingsSidebar.swift",
+      "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/Pages/SettingsPage.swift",
+    ]
+    let staleDeclaration = try NSRegularExpression(
+      pattern: #"\b(?:public|private|final)?\s*(?:enum|protocol|struct|class)\s+Omi[A-Za-z0-9_]*\b"#
+    )
+    let staleHelper = try NSRegularExpression(pattern: #"\bfunc\s+omi[A-Z][A-Za-z0-9_]*\b"#)
+    let stalePaths = try presentationPaths.filter { path in
+      let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+      let range = NSRange(source.startIndex..., in: source)
+      return staleDeclaration.firstMatch(in: source, range: range) != nil
+        || staleHelper.firstMatch(in: source, range: range) != nil
+        || source.contains("omi-settings-window")
+    }
+
+    XCTAssertTrue(stalePaths.isEmpty, "Intentive presentation APIs still use Omi names: \(stalePaths)")
+
+    let manifest = try String(
+      contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Package.swift"),
+      encoding: .utf8
+    )
+    XCTAssertFalse(manifest.contains("OmiDesktopUI"), "Stale Omi presentation target remains in package graph")
   }
 
   func testRejectedCapabilitiesAndMigrationStubsStayDeleted() throws {

@@ -13,7 +13,7 @@ let package = Package(
     .library(name: "IntentiveDesktopNativeAssets", targets: ["IntentiveDesktopNativeAssets"]),
     .library(name: "IntentiveDesktopOmiArchive", targets: ["IntentiveDesktopOmiArchive"]),
     .library(name: "OmiTheme", targets: ["OmiTheme"]),
-    .library(name: "OmiDesktopUI", targets: ["OmiDesktopUI"]),
+    .library(name: "IntentiveDesktopPresentation", targets: ["IntentiveDesktopPresentation"]),
   ],
   dependencies: [
     // Omi's production release boundaries, renovated behind Intentive-owned
@@ -40,7 +40,7 @@ let package = Package(
       path: "Sources/OmiImported/Theme"
     ),
     .target(
-      name: "OmiDesktopUI",
+      name: "IntentiveDesktopPresentation",
       dependencies: ["OmiTheme"],
       path: "Sources/OmiImported",
       exclude: ["Theme", "OMI_PROVENANCE.md"]
@@ -63,7 +63,7 @@ let package = Package(
       dependencies: [
         "IntentiveDesktopCore",
         "IntentiveDesktopOmiArchive",
-        "OmiDesktopUI",
+        "IntentiveDesktopPresentation",
         .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
         .product(name: "FluidAudio", package: "FluidAudio"),
       ],
@@ -129,7 +129,11 @@ let package = Package(
         .product(name: "Sentry", package: "sentry-cocoa"),
         .product(name: "PostHog", package: "posthog-ios"),
       ],
-      path: "Sources/Intentive"
+      path: "Sources/Intentive",
+      resources: [
+        // The compact, transparent Intentive mark used by the macOS menu bar.
+        .copy("Resources/IntentiveMenuBarIcon.png")
+      ]
     ),
     .testTarget(
       name: "IntentiveDesktopCoreTests",

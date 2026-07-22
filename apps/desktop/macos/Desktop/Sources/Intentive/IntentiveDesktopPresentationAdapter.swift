@@ -3,11 +3,11 @@ import ApplicationServices
 import Combine
 import Carbon.HIToolbox.Events
 import IntentiveDesktopCore
-import OmiDesktopUI
+import IntentiveDesktopPresentation
 import UserNotifications
 
 @MainActor
-final class IntentiveOmiPresentationAdapter: @preconcurrency ObservableObject {
+final class IntentiveDesktopPresentationAdapter: @preconcurrency ObservableObject {
   let objectWillChange = ObservableObjectPublisher()
   private let model: DesktopViewModel
   private var observation: AnyCancellable?
@@ -28,8 +28,8 @@ final class IntentiveOmiPresentationAdapter: @preconcurrency ObservableObject {
   }
 }
 
-extension IntentiveOmiPresentationAdapter: OmiSettingsPresenting {
-  var selectedSettingsSection: OmiSettingsSection {
+extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
+  var selectedSettingsSection: IntentiveSettingsSection {
     get {
       switch model.selected {
       case .general: .general
@@ -59,7 +59,7 @@ extension IntentiveOmiPresentationAdapter: OmiSettingsPresenting {
     set { model.setAmbientAudioCaptureEnabled(newValue) }
   }
 
-  var systemAudioMode: OmiSystemAudioMode {
+  var systemAudioMode: IntentiveSystemAudioMode {
     get {
       switch model.utilitySettings.systemAudioMode {
       case .never: .never
@@ -123,11 +123,11 @@ extension IntentiveOmiPresentationAdapter: OmiSettingsPresenting {
     model.privacySnapshot.excludedApplications.map(\.displayName).sorted()
   }
 
-  var runningApplications: [OmiRunningApplication] {
+  var runningApplications: [IntentiveRunningApplication] {
     var seen = Set<String>()
     return NSWorkspace.shared.runningApplications.compactMap { app in
       guard let name = app.localizedName, !name.isEmpty, seen.insert(name).inserted else { return nil }
-      return OmiRunningApplication(id: name, name: name)
+      return IntentiveRunningApplication(id: name, name: name)
     }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
   }
 
@@ -172,7 +172,7 @@ extension IntentiveOmiPresentationAdapter: OmiSettingsPresenting {
   func reportIssue() { FeedbackWindow.show(model: model) }
 }
 
-extension IntentiveOmiPresentationAdapter: OmiSetupPresenting {
+extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
   var isAuthenticated: Bool { model.onboardingRequirements.isAuthenticated }
   var crossClientSetupComplete: Bool { model.onboardingRequirements.crossClientSetupComplete }
   var authenticationLoading: Bool {
@@ -185,7 +185,7 @@ extension IntentiveOmiPresentationAdapter: OmiSetupPresenting {
     if case .failed(let message) = model.runtimeState { return message }
     return nil
   }
-  var setupStep: OmiSetupStep {
+  var setupStep: IntentiveSetupStep {
     switch model.onboardingRequirements.nextIncompleteStep ?? .floatingBarDemo {
     case .trust: .trust
     case .screenRecording: .screenRecording
@@ -207,7 +207,7 @@ extension IntentiveOmiPresentationAdapter: OmiSetupPresenting {
     }
   }
 
-  func signIn(provider: OmiAuthProvider) {
+  func signIn(provider: IntentiveAuthProvider) {
     Task { await model.signInAndConnectRuntime(provider: provider == .apple ? .apple : .google) }
   }
   func cancelSignIn() { model.cancelSignIn() }

@@ -2,9 +2,9 @@ import AppKit
 import OmiTheme
 import SwiftUI
 
-public enum OmiAuthProvider: Sendable { case apple, google }
+public enum IntentiveAuthProvider: Sendable { case apple, google }
 
-public enum OmiSetupStep: String, CaseIterable, Identifiable, Sendable {
+public enum IntentiveSetupStep: String, CaseIterable, Identifiable, Sendable {
   case trust
   case screenRecording
   case microphone
@@ -15,17 +15,17 @@ public enum OmiSetupStep: String, CaseIterable, Identifiable, Sendable {
 }
 
 @MainActor
-public protocol OmiSetupPresenting: ObservableObject {
+public protocol IntentiveSetupPresenting: ObservableObject {
   var isAuthenticated: Bool { get }
   var crossClientSetupComplete: Bool { get }
   var authenticationLoading: Bool { get }
   var authenticationError: String? { get }
-  var setupStep: OmiSetupStep { get }
+  var setupStep: IntentiveSetupStep { get }
   var screenRecordingGranted: Bool { get }
   var microphoneGranted: Bool { get }
   var accessibilityGranted: Bool { get }
   var shortcutLabel: String { get }
-  func signIn(provider: OmiAuthProvider)
+  func signIn(provider: IntentiveAuthProvider)
   func cancelSignIn()
   func completeCurrentSetupStep()
   func skipCurrentSetupStep()
@@ -38,7 +38,7 @@ public protocol OmiSetupPresenting: ObservableObject {
   func openFloatingBar()
 }
 
-public struct OmiMacSetupView<Model: OmiSetupPresenting>: View {
+public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
   @ObservedObject private var model: Model
   @State private var demoTimedOut = false
 
@@ -86,7 +86,7 @@ public struct OmiMacSetupView<Model: OmiSetupPresenting>: View {
     }
   }
 
-  private func authButton<Icon: View>(provider: OmiAuthProvider, label: String, @ViewBuilder icon: () -> Icon) -> some View {
+  private func authButton<Icon: View>(provider: IntentiveAuthProvider, label: String, @ViewBuilder icon: () -> Icon) -> some View {
     Button { model.signIn(provider: provider) } label: {
       HStack(spacing: OmiSpacing.sm) { icon(); Text(label).scaledFont(size: OmiType.subheading, weight: .medium) }
         .foregroundColor(.black).frame(maxWidth: .infinity).frame(height: 50)
@@ -131,7 +131,7 @@ public struct OmiMacSetupView<Model: OmiSetupPresenting>: View {
 
   private var progressRail: some View {
     HStack(spacing: OmiSpacing.sm) {
-      ForEach(Array(OmiSetupStep.allCases.enumerated()), id: \.element) { index, _ in
+      ForEach(Array(IntentiveSetupStep.allCases.enumerated()), id: \.element) { index, _ in
         Capsule().fill(index <= stepIndex ? Color.white : Color.white.opacity(0.1))
           .frame(width: index == stepIndex ? 28 : 8, height: 6)
       }
@@ -169,16 +169,16 @@ public struct OmiMacSetupView<Model: OmiSetupPresenting>: View {
         Text("Press").foregroundColor(OmiColors.textSecondary)
         Text(model.shortcutLabel).font(.system(size: 28, weight: .semibold, design: .rounded)).foregroundColor(.black)
           .padding(.horizontal, 24).padding(.vertical, 14).background(Color.white, in: RoundedRectangle(cornerRadius: 14))
-        Text("Use this shortcut from anywhere to open the Floating Bar.").omiSetupDetail()
+        Text("Use this shortcut from anywhere to open the Floating Bar.").intentiveSetupDetail()
         primary("Continue", action: model.completeCurrentSetupStep)
-      }.omiSetupCard()
+      }.intentiveSetupCard()
     case .floatingBarDemo:
       VStack(spacing: OmiSpacing.xl) {
         Image(systemName: "text.bubble.fill").font(.system(size: 40)).foregroundColor(.white)
         Text("Try the real Floating Bar").font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
-        Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message, or skip if you're offline.").omiSetupDetail()
+        Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message, or skip if you're offline.").intentiveSetupDetail()
         HStack { primary("Open Floating Bar", action: model.openFloatingBar); Button("Finish", action: model.completeCurrentSetupStep).buttonStyle(OmiButtonStyle(.secondary)) }
-      }.omiSetupCard()
+      }.intentiveSetupCard()
       .task {
         try? await Task.sleep(for: .seconds(12))
         guard !Task.isCancelled else { return }
@@ -194,7 +194,7 @@ public struct OmiMacSetupView<Model: OmiSetupPresenting>: View {
         .font(.system(size: 13, weight: .medium)).foregroundColor(granted ? .green : OmiColors.textTertiary)
       if granted { primary("Continue", action: model.completeCurrentSetupStep) }
       else { primary("Open \(title) settings", action: request) }
-    }.omiSetupCard()
+    }.intentiveSetupCard()
   }
 
   private func permissionRow(icon: String, title: String, detail: String) -> some View {
@@ -213,7 +213,7 @@ public struct OmiMacSetupView<Model: OmiSetupPresenting>: View {
     Button(title, action: action).buttonStyle(OmiButtonStyle(.primary)).keyboardShortcut(.defaultAction)
   }
 
-  private var stepIndex: Int { OmiSetupStep.allCases.firstIndex(of: model.setupStep) ?? 0 }
+  private var stepIndex: Int { IntentiveSetupStep.allCases.firstIndex(of: model.setupStep) ?? 0 }
   private var stepCopy: (eyebrow: String, title: String, detail: String) {
     switch model.setupStep {
     case .trust: ("Before we continue", "I’m going to ask for a few permissions.", "Intentive is private by design. These permissions help it understand your work and help in the right places.")
@@ -236,11 +236,11 @@ private struct GoogleLogo: View {
 }
 
 private extension View {
-  func omiSetupCard() -> some View {
+  func intentiveSetupCard() -> some View {
     padding(OmiSpacing.xl).background(RoundedRectangle(cornerRadius: OmiChrome.cardRadius)
       .fill(OmiColors.backgroundTertiary.opacity(0.55)))
   }
-  func omiSetupDetail() -> some View {
+  func intentiveSetupDetail() -> some View {
     font(.system(size: 14)).foregroundColor(OmiColors.textSecondary).multilineTextAlignment(.center)
   }
 }
