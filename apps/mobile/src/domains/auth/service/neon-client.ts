@@ -17,14 +17,16 @@
  * The client points at the Neon Auth base URL, whose Better Auth server is the
  * same one whose JWKS backs the shared verifier (#15). Mobile uses Better Auth
  * directly (not neon-js's React-DOM adapter the Desktop Client uses) because
- * only the Better Auth native plugin handles session persistence and the OAuth
- * callback. See apps/mobile/docs/adr/0012-*.
+ * the Expo plugin owns SecureStore session persistence. Google authentication
+ * is native and reaches Better Auth through its idToken branch; the `intentive`
+ * scheme remains for the app's general deep-link surface.
  *
- * The native path differs from BetterAuth's web SDK; its setup gotchas (the
- * scheme/trusted-origins constraint above is one) live in the Expo guide:
+ * The native path differs from BetterAuth's web SDK; its setup gotchas (native
+ * client configuration and session persistence) live in the Expo guide:
  * https://better-auth.com/docs/integrations/expo
  */
 import { expoClient } from "@better-auth/expo/client";
+import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
 import { createAuthClient } from "better-auth/client";
 import * as SecureStore from "expo-secure-store";
 
@@ -32,21 +34,6 @@ import type { NeonAttempt, NeonAuthClientPort, SocialProvider } from "./ports.js
 
 /** Read from app config; the Neon Auth base URL is a public endpoint. */
 const NEON_AUTH_BASE_URL = process.env.EXPO_PUBLIC_NEON_AUTH_BASE_URL ?? "";
-
-/**
- * Which social providers are a *working* sign-in capability on mobile today —
- * deliberately empty.
- *
- * Capability honesty (ADR 0012): "enabled" must mean "completes a sign-in", not
- * "has credentials". Google has Neon's shared OAuth credentials, but its
- * on-device round-trip cannot complete because Neon's managed `trusted_origins`
- * rejects the custom `intentive://` callback scheme — so advertising it would
- * open a flow that dead-ends. Apple has no credentials at all. Both therefore
- * report `not-configured`, and the only working path is the `__DEV__` dev
- * provider until #23 lands the https-based callback; re-enable `"google"` (and
- * later `"apple"`) here once that round-trip actually completes.
- */
-export const NEON_ENABLED_PROVIDERS: ReadonlySet<SocialProvider> = new Set<SocialProvider>();
 
 function createClient() {
   return createAuthClient({
@@ -65,8 +52,21 @@ function createClient() {
  * Build the real `NeonAuthClientPort`. Session/token persistence is owned by
  * the Better Auth native plugin (SecureStore) — the Mobile Client hand-rolls none of it.
  */
-export function createNeonAuthClient(): NeonAuthClientPort {
+export function createNeonAuthClient(options: { googleIosClientId: string }): NeonAuthClientPort {
   const client = createClient();
+  const googleIosClientId = options.googleIosClientId.trim();
+  let googleConfigurationError: string | null = null;
+
+  // Native auth initialization belongs here, behind the Auth Adapter's
+  // platform boundary. A missing public client ID leaves Google unconfigured.
+  if (googleIosClientId) {
+    try {
+      GoogleSignin.configure({ iosClientId: googleIosClientId });
+    } catch (error) {
+      googleConfigurationError =
+        error instanceof Error ? error.message : "Google configuration failed.";
+    }
+  }
 
   return {
     async signInSocial(provider: SocialProvider): Promise<NeonAttempt> {
@@ -74,15 +74,41 @@ export function createNeonAuthClient(): NeonAuthClientPort {
       // provider/adapter chain stays a pure outcome map. SDK/network throws are
       // collapsed into `failed` here, the same recoverable shape as a returned error.
       try {
-        // The Better Auth native plugin opens the system browser and returns once the deep-link
-        // callback fires (or the user dismisses it).
-        const { error } = await client.signIn.social({ provider, callbackURL: "/" });
+        if (provider !== "google") {
+          return { result: "failed", message: "Apple sign-in is not configured." };
+        }
+        if (!googleIosClientId) {
+          return { result: "failed", message: "Google sign-in is not configured." };
+        }
+        if (googleConfigurationError) {
+          return { result: "failed", message: googleConfigurationError };
+        }
+
+        const response = await GoogleSignin.signIn();
+        if (!isSuccessResponse(response)) {
+          return { result: "dismissed" };
+        }
+
+        const tokens = await GoogleSignin.getTokens();
+        if (!tokens.idToken) {
+          return { result: "failed", message: "Google did not return an ID token." };
+        }
+
+        const { error } = await client.signIn.social({
+          provider: "google",
+          idToken: {
+            token: tokens.idToken,
+            accessToken: tokens.accessToken,
+          },
+        });
         if (error) {
           return { result: "failed", message: error.message ?? "Sign-in failed." };
         }
-        // A dismissed browser leaves no session; a completed flow sets one.
+
         const session = await client.getSession();
-        return session.data ? { result: "authenticated" } : { result: "dismissed" };
+        return session.data
+          ? { result: "authenticated" }
+          : { result: "failed", message: "Google sign-in did not establish a session." };
       } catch (err) {
         return {
           result: "failed",

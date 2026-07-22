@@ -18,6 +18,7 @@
     "@intentive/api-contract": "workspace:*",
     "@intentive/domain-types": "workspace:*",
     "@intentive/protocol": "workspace:*",
+    "@react-native-google-signin/google-signin": "16.1.2",
     "@sentry/react-native": "~7.11.0",
     "better-auth": "1.6.20",
     "expo": "^56.0.12",

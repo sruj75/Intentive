@@ -11,6 +11,16 @@ All notable changes to the Intentive Mobile Client (`apps/mobile/`). Format foll
 - **Two-zone layered frontend** ([ADR 0023](adr/0023-mobile-two-zone-layered-frontend.md)) — preserved the Huracán A–L output while moving authentication, onboarding, education, chat, account settings, profile state, and design primitives from the catch-all frontend directory into layered domain owners, explicit entrypoints, and an in-memory Profile Store.
 - Added `/` and `/chat` Router zones, a replaceable local `ConversationSession`, split controller/session tests, Router replacement coverage, and hard Mobile source-root/domain-layer lint enforcement.
 
+### Added
+
+- **Native Google ID-token sign-in** — added `@react-native-google-signin/google-signin`
+  and its Expo config plugin. The Auth Adapter now obtains native Google tokens,
+  exchanges them through Better Auth's `idToken` branch, confirms the resulting
+  session, and leaves SecureStore/session/JWT ownership unchanged. Supplying the
+  public Google iOS client ID deliberately enables Google in an internal build;
+  external distribution still waits on the physical TestFlight real-token gate.
+  This requires a new iOS binary and does not use an `intentive://` OAuth callback.
+
 ### Rebuilt
 
 - **Huracán frontend foundation** ([ADR 0022](adr/0022-mobile-scene-driven-local-frontend-foundation.md)) — replaced the mounted route-per-gate and assistant-ui presentation with one scene-driven, locally simulated Expo experience. E and K now render as `welcome` and `ready` modes of the same chat surface. Added configurable content/theme, five education scenes, drawer/settings overlays, keyboard composer behavior, and deterministic L1-L4 response phases.

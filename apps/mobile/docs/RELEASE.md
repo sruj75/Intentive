@@ -74,6 +74,10 @@ prebuild` writes it into `Expo.plist` as `EXUpdatesRuntimeVersion`. Bump
   requires a **new binary** (OTA cannot add this plugin to an older build). Set
   `EXPO_PUBLIC_SENTRY_DSN` in the EAS build environment for production error
   capture; leave blank in local dev to keep telemetry disabled.
+- `app.config.js` adds `@react-native-google-signin/google-signin` when
+  `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` is present and derives its required reversed
+  iOS URL scheme. The existing `intentive` scheme remains in `app.json`. This
+  native module/config-plugin change requires a **new iOS binary**.
 
 **2. `eas.json`** (committed) — each build profile is bound to an update **channel**
 and an EAS **environment** (so `EXPO_PUBLIC_*` vars from EAS inject at build time):
@@ -113,12 +117,23 @@ To pull EAS vars for local simulator runs against a specific environment:
 eas env:pull --environment preview   # writes .env.local (gitignored)
 ```
 
-Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL) follow the same
-pattern when they differ per environment. See [Expo EAS environment variables](https://docs.expo.dev/eas/environment-variables/).
+Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL, and the public
+Google iOS client ID) follow the same pattern when they differ per environment.
+The Google client ID is public configuration, not a secret. See [Expo EAS
+environment variables](https://docs.expo.dev/eas/environment-variables/).
+
+**Google provider configuration (Google Cloud + Neon Auth).** Create the iOS
+OAuth client for bundle ID `com.heyintentive.expo`; retain the web client and
+secret for the Better Auth server. In Neon Auth, configure Google's provider
+with the approved web, iOS, and Android client-ID array and its required
+provider secret. Do not commit secrets. Supplying
+`EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` deliberately installs the native plugin and
+enables Google in that build; use it first for the internal TestFlight proof,
+not external distribution.
 
 **3. Generated iOS native (CNG)** (`ios/Intentive/Supporting/Expo.plist`,
 `ios/Intentive/Intentive.entitlements`) — `ios/` is **not** committed; `expo
-prebuild` generates it from `app.json` + config plugins at build time ([ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
+prebuild` generates it from `app.json`, `app.config.js`, and config plugins at build time ([ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
 EAS Build prebuilds automatically when `ios/` is absent. The generated plist
 carries the resolved values:
 
@@ -233,6 +248,14 @@ client** (`Updates.channel` is `null` there).
 ```bash
 eas build:list --platform ios --limit 1
 ```
+
+For the native Google gate, use that physical TestFlight binary to complete
+Google sign-in, confirm the app returns without an `intentive://` OAuth callback,
+relaunch and verify SecureStore session restoration, then verify the shared
+`getUserJwt()` token is accepted by Control Plane `GET /me` and `GET /agent`.
+Do not distribute the build externally until all checks pass. If any fail,
+remove the Google client ID from the next build environment and hand off the
+exact Neon compatibility or configuration error.
 
 **Push** only works on a **physical device** with a real build — never in the
 simulator, Expo Go, or a dev client (`getExpoPushTokenAsync` is gated on
