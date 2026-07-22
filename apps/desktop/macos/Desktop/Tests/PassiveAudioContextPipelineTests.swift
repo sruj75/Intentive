@@ -4,9 +4,9 @@ import XCTest
 
 /// Slice 08 — passive local audio perception. Proves the source-neutral
 /// `PassiveAudioContextPipeline`: VAD-gated microphone, meeting/activity-gated
-/// system audio, Private Mode stops both sources, per-source fail-closed
-/// permissions, hard-secret filtering, retain-no-raw-audio, and that passive audio
-/// never populates the composer or produces a spoken response.
+/// system audio, per-source fail-closed permissions, hard-secret filtering,
+/// retain-no-raw-audio, and that passive audio never populates the composer or
+/// produces a spoken response.
 @MainActor
 final class PassiveAudioContextPipelineTests: XCTestCase {
   private let pcm = Data([1, 2, 3, 4, 5, 6, 7, 8])
@@ -21,7 +21,6 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     hasSpeech: Bool = true,
     transcript: String = "review the launch checklist before standup",
     settings: CompilerSettings = CompilerSettings(ambientAudioCaptureEnabled: true),
-    privateMode: Bool = false,
     microphonePermission: Bool = true,
     systemAudioPermission: Bool = true,
     systemAudioMode: SystemAudioCaptureMode = .onlyDuringMeetings,
@@ -41,7 +40,6 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
       voiceGate: StubVoiceActivityGate(hasSpeech: hasSpeech),
       transcription: StubTranscription(text: transcript),
       settingsProvider: { settings },
-      privacySnapshotProvider: { ScreenMemoryPrivacySnapshot(isPrivateMode: privateMode) },
       microphonePermissionProvider: { microphonePermission },
       systemAudioPermissionProvider: { systemAudioPermission },
       systemAudioModeProvider: { systemAudioMode },
@@ -126,19 +124,6 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     let outcome = await h.pipeline.ingest(pcm16k: pcm, source: .systemAudio)
 
     XCTAssertEqual(outcome, .skipped("system audio capture disabled"))
-  }
-
-  // MARK: - Private Mode
-
-  func testPrivateModeStopsMicrophoneAndSystemAudio() async {
-    let h = makeHarness(privateMode: true, systemAudioMode: .always, meetingActive: true)
-
-    let micOutcome = await h.pipeline.ingest(pcm16k: pcm, source: .microphone)
-    let systemOutcome = await h.pipeline.ingest(pcm16k: pcm, source: .systemAudio)
-
-    XCTAssertEqual(micOutcome, .skipped("Private Mode"))
-    XCTAssertEqual(systemOutcome, .skipped("Private Mode"))
-    XCTAssertTrue(h.runtime.perceptionEvents.isEmpty)
   }
 
   // MARK: - Permissions fail closed, per source

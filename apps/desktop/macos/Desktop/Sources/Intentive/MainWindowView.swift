@@ -202,7 +202,7 @@ final class DesktopViewModel: ObservableObject {
     },
     permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
     privacySnapshotProvider: { [weak self] in
-      self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+      self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot()
     },
     intervalProvider: { [weak self] in
       // Battery-aware cadence: 3s on AC, 9s on battery (Omi:
@@ -224,7 +224,7 @@ final class DesktopViewModel: ObservableObject {
       self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
     },
     privacySnapshotProvider: { [weak self] in
-      self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
+      self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot()
     },
     microphonePermissionProvider: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
     systemAudioPermissionProvider: { true },
@@ -263,9 +263,6 @@ final class DesktopViewModel: ObservableObject {
       pipeline: passiveAudioPipeline,
       microphonePermission: { [weak self] in self?.microphonePermissionStatus.isGranted ?? false },
       systemAudioPermission: { true },
-      privacySnapshot: { [weak self] in
-        self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
-      },
       systemAudioMode: { SystemAudioCaptureSettings.shared.mode }
     )
     coordinator.onStateChange = { [weak self] state in
@@ -277,26 +274,6 @@ final class DesktopViewModel: ObservableObject {
   private lazy var meetingObserver = AppKitMeetingObserver { [weak self] active in
     self?.passiveAudioCoordinator.setMeetingActive(active)
   }
-  private lazy var screenPrivateModeGate = RememberingScreenMemorySensingGate(
-    isRunning: { [weak self] in self?.captureState.isRunning ?? false },
-    pause: { [weak self] in
-      self?.captureLifecycle?.reconcile()
-    },
-    resume: { [weak self] in self?.captureLifecycle?.reconcile() }
-  )
-  private lazy var microphonePrivateModeGate = RememberingScreenMemorySensingGate(
-    isRunning: { [weak self] in self?.passiveAudioState.isRecording ?? false },
-    pause: { [weak self] in self?.passiveAudioCoordinator.stopSynchronously() },
-    resume: { [weak self] in self?.reconcileAmbientAudioCapture() }
-  )
-  private lazy var privacyCoordinator = ScreenMemoryPrivacyCoordinator(
-    policy: privacyPolicy,
-    archiveProvider: { [weak self] in self?.screenMemory.activeArchive },
-    sensingGates: [
-      screenPrivateModeGate,
-      microphonePrivateModeGate,
-    ]
-  )
   /// Capture-lifecycle resilience controller: auto-start, sleep/wake/lock,
   /// battery cadence, competing-recorder yield, stop → session_end_marker.
   /// Renovated from Omi's `ProactiveAssistantsPlugin` cycle at the Intentive
@@ -330,9 +307,6 @@ final class DesktopViewModel: ObservableObject {
         self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
       },
       permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
-      privacySnapshotProvider: { [weak self] in
-        self?.privacyPolicy.snapshot ?? ScreenMemoryPrivacySnapshot(isPrivateMode: true)
-      },
       captureBoundaryEnabled: usesCaptureBoundary
     )
     controller.onStateChange = { [weak self] state in
@@ -623,7 +597,6 @@ final class DesktopViewModel: ObservableObject {
     )
     reconcileAmbientAudioCapture()
     meetingObserver.start()
-    privacyCoordinator.enforcePersistedState()
     rebuildScreenMemoryTimeline()
     #if DEBUG
     if let tokenPath = ProcessInfo.processInfo.environment["INTENTIVE_AUTOMATION_TOKEN_FILE"] {
@@ -656,7 +629,6 @@ final class DesktopViewModel: ObservableObject {
           "screen_memory_selected_record": self.timelineState?.selectedRecordID?.value.uuidString ?? NSNull(),
           "screen_memory_playing": self.screenMemoryPlaying,
           "screen_memory_selected_date": self.timelineState?.selectedDate.protocolTimestamp ?? NSNull(),
-          "private_mode": self.privacySnapshot.isPrivateMode,
           "capture_enabled": self.compilerSettings.captureEnabled,
           "passive_audio_enabled": self.compilerSettings.ambientAudioCaptureEnabled,
           "account_email": self.accountEmail ?? NSNull(),
@@ -671,8 +643,6 @@ final class DesktopViewModel: ObservableObject {
           "visible_windows": NSApp.windows.filter(\.isVisible).count,
           "floating_bar_visible": self.floatingBarManager.isVisible,
           "floating_bar_engaged": self.floatingBarManager.isConversationEngaged,
-          "floating_notification_visible": self.floatingBarManager.isShowingNotification,
-          "floating_pmb_snoozed": self.floatingBarManager.isProactivePresentationSnoozed,
           "conversation_message_count": self.messageStore.messages.count,
           "runtime_ingress_pending": pendingIngress.count,
           "runtime_ingress_kinds": pendingIngress.map(\.kind.rawValue),
@@ -735,6 +705,20 @@ final class DesktopViewModel: ObservableObject {
           body: "Ordinary acceptance reply",
           emittedAt: Date().protocolTimestamp,
           viaPostMessageBack: false
+        )
+        try self.runtime.handleSocketEvent(ProtocolEventCodec.encode(message))
+        self.floatingBarManager.refreshMessages()
+        return ["message_id": message.messageId]
+      } emitProactiveMessage: { [weak self] in
+        guard let self else { return [:] }
+        // A real Post-Message-Back reply travels the production socket path:
+        // `handleSocketEvent` lands it in the shared store and fires the
+        // `onCompanionMessage` effect that auto-opens the bar in-thread.
+        let message = CompanionMessage(
+          messageId: "acceptance-proactive-\(UUID().uuidString)",
+          body: "Proactive acceptance nudge",
+          emittedAt: Date().protocolTimestamp,
+          viaPostMessageBack: true
         )
         try self.runtime.handleSocketEvent(ProtocolEventCodec.encode(message))
         self.floatingBarManager.refreshMessages()
@@ -1012,11 +996,16 @@ final class DesktopViewModel: ObservableObject {
       status = "Launch at login is unavailable in this deterministic launch"
       return
     }
+    // Login-at-login runs the app headless: the bundled LaunchAgent passes
+    // `--background` (which `SMAppService.mainApp` cannot do) so the delegate
+    // stays menu-bar-only. Only the registration mechanism changes; the
+    // `launchAtLogin` toggle contract is unchanged. See ADR 0011.
+    let loginAgent = SMAppService.agent(plistName: "com.heyintentive.desktop.login.plist")
     do {
       if enabled {
-        try SMAppService.mainApp.register()
+        try loginAgent.register()
       } else {
-        try SMAppService.mainApp.unregister()
+        try loginAgent.unregister()
       }
     } catch {
       status = "Launch at login could not be changed: \(error.localizedDescription)"
@@ -1348,14 +1337,6 @@ final class DesktopViewModel: ObservableObject {
       automationExpandedMatrixDetails["audio-microphone-running"] = String(
         describing: passiveAudioState)
 
-      await enterPrivateMode()
-      automationExpandedMatrix["private-mode-enter"] = privacySnapshot.isPrivateMode
-        && captureLifecycle?.loop.state.isRunning == false
-        && !passiveAudioState.isRecording
-      resumeFromPrivateMode()
-      try? await Task.sleep(nanoseconds: 500_000_000)
-      automationExpandedMatrix["private-mode-resume"] = !privacySnapshot.isPrivateMode
-
       passiveAudioCoordinator.setMeetingActive(true)
       try? await Task.sleep(nanoseconds: 500_000_000)
       if case .running(_, let systemAudio) = passiveAudioState {
@@ -1534,28 +1515,6 @@ final class DesktopViewModel: ObservableObject {
       status = "Screen Memory is off"
     }
     reconcileAmbientAudioCapture()
-  }
-
-  func enterPrivateMode() async {
-    do {
-      try await privacyCoordinator.enterPrivateMode()
-      privacySnapshot = privacyCoordinator.snapshot
-      captureLifecycle?.reconcile()
-      status = "Private Mode — all sensing paused"
-    } catch {
-      status = "Could not enter Private Mode: \(error.localizedDescription)"
-    }
-  }
-
-  func resumeFromPrivateMode() {
-    do {
-      try privacyCoordinator.resume()
-      privacySnapshot = privacyCoordinator.snapshot
-      captureLifecycle?.reconcile()
-      status = "Private Mode ended"
-    } catch {
-      status = "Could not resume sensing: \(error.localizedDescription)"
-    }
   }
 
   func setAmbientAudioCaptureEnabled(_ enabled: Bool) {

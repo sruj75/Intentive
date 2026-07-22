@@ -37,20 +37,16 @@ public struct PrivacyZoneApplication: Codable, Equatable, Hashable, Sendable {
 }
 
 public struct ScreenMemoryPrivacySnapshot: Equatable, Sendable {
-  public let isPrivateMode: Bool
   public let excludedApplications: Set<PrivacyZoneApplication>
 
   public init(
-    isPrivateMode: Bool,
     excludedApplications: Set<PrivacyZoneApplication> = []
   ) {
-    self.isPrivateMode = isPrivateMode
     self.excludedApplications = excludedApplications
   }
 
   public func allows(appBundleID: String?, appName: String) -> Bool {
-    guard !isPrivateMode else { return false }
-    return !excludedApplications.contains { exclusion in
+    !excludedApplications.contains { exclusion in
       exclusion.matches(appBundleID: appBundleID, appName: appName)
     }
   }
@@ -97,14 +93,13 @@ public final class InMemoryScreenMemoryPrivacyPersistence: ScreenMemoryPrivacyPe
 }
 
 private struct PersistedScreenMemoryPrivacyState: Codable {
-  var isPrivateMode: Bool
   var excludedApplications: Set<PrivacyZoneApplication>
   var removedDefaultIdentities: Set<String>
 }
 
 /// The source-neutral Privacy Zones decision point. This is the Omi settings
 /// merge/removal mechanism adapted away from singleton state and display-name-
-/// only matching, with persistent Private Mode added for Intentive.
+/// only matching.
 public final class ScreenMemoryPrivacyPolicy {
   public static let defaultExcludedApplications: Set<PrivacyZoneApplication> = [
     PrivacyZoneApplication(bundleID: "com.apple.Passwords", displayName: "Passwords"),
@@ -142,7 +137,6 @@ public final class ScreenMemoryPrivacyPolicy {
         PrivacyZoneApplication(displayName: $0)
       }
       state = PersistedScreenMemoryPrivacyState(
-        isPrivateMode: false,
         excludedApplications: Self.defaultExcludedApplications.union(migrated),
         removedDefaultIdentities: []
       )
@@ -152,23 +146,12 @@ public final class ScreenMemoryPrivacyPolicy {
 
   public var snapshot: ScreenMemoryPrivacySnapshot {
     ScreenMemoryPrivacySnapshot(
-      isPrivateMode: state.isPrivateMode,
       excludedApplications: state.excludedApplications
     )
   }
 
   public func allows(appBundleID: String?, appName: String) -> Bool {
     snapshot.allows(appBundleID: appBundleID, appName: appName)
-  }
-
-  public func enterPrivateMode() throws {
-    state.isPrivateMode = true
-    try persist()
-  }
-
-  public func exitPrivateMode() throws {
-    state.isPrivateMode = false
-    try persist()
   }
 
   public func exclude(_ application: PrivacyZoneApplication) throws {
@@ -214,81 +197,5 @@ public final class ScreenMemoryPrivacyPolicy {
 
   private func persist() throws {
     try persistence.savePrivacyState(encoder.encode(state))
-  }
-}
-
-@MainActor
-public protocol ScreenMemorySensingGate: AnyObject {
-  var isPaused: Bool { get }
-  func pause()
-  func resumeIfEnabled()
-}
-
-@MainActor
-public final class RememberingScreenMemorySensingGate: ScreenMemorySensingGate {
-  private let isRunningProvider: () -> Bool
-  private let pauseAction: () -> Void
-  private let resumeAction: () -> Void
-  private var shouldResume = false
-
-  public init(
-    isRunning: @escaping () -> Bool,
-    pause: @escaping () -> Void,
-    resume: @escaping () -> Void
-  ) {
-    isRunningProvider = isRunning
-    pauseAction = pause
-    resumeAction = resume
-  }
-
-  public var isPaused: Bool { !isRunningProvider() }
-
-  public func pause() {
-    shouldResume = isRunningProvider()
-    pauseAction()
-  }
-
-  public func resumeIfEnabled() {
-    guard shouldResume else { return }
-    shouldResume = false
-    resumeAction()
-  }
-}
-
-/// Coordinates the Omi-derived flush-before-stop lifecycle across every local
-/// sensing source. Private Mode is persisted independently of Screen Memory's
-/// saved capture-enabled preference.
-@MainActor
-public final class ScreenMemoryPrivacyCoordinator {
-  private let policy: ScreenMemoryPrivacyPolicy
-  private let archiveProvider: () -> ScreenMemoryArchive?
-  private let sensingGates: [any ScreenMemorySensingGate]
-
-  public init(
-    policy: ScreenMemoryPrivacyPolicy,
-    archiveProvider: @escaping () -> ScreenMemoryArchive?,
-    sensingGates: [any ScreenMemorySensingGate]
-  ) {
-    self.policy = policy
-    self.archiveProvider = archiveProvider
-    self.sensingGates = sensingGates
-  }
-
-  public var snapshot: ScreenMemoryPrivacySnapshot { policy.snapshot }
-
-  public func enterPrivateMode() async throws {
-    try await archiveProvider()?.finalizeActiveVideoChunk()
-    try policy.enterPrivateMode()
-    sensingGates.forEach { $0.pause() }
-  }
-
-  public func enforcePersistedState() {
-    guard policy.snapshot.isPrivateMode else { return }
-    sensingGates.forEach { $0.pause() }
-  }
-
-  public func resume() throws {
-    try policy.exitPrivateMode()
-    sensingGates.forEach { $0.resumeIfEnabled() }
   }
 }

@@ -15,15 +15,6 @@ final class FloatingBarGeometryTests: XCTestCase {
     XCTAssertEqual(frame, NSRect(x: 640, y: 858, width: 160, height: 34))
   }
 
-  func testProactiveNudgeFrameIsContextualTopRightInsideVisibleFrame() {
-    let frame = FloatingControlBarGeometry.proactiveNudgeFrame(
-      size: NSSize(width: 430, height: 156),
-      visibleFrame: visibleFrame,
-      margin: 20
-    )
-    XCTAssertEqual(frame, NSRect(x: 990, y: 724, width: 430, height: 156))
-  }
-
   func testNotchChromeActivationIgnoresTransparentOutsets() {
     let windowFrame = NSRect(x: 500, y: 800, width: 360, height: 58)
     XCTAssertTrue(

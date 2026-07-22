@@ -52,7 +52,7 @@ public final class PassiveAudioContextPipeline {
     transcription: LocalTranscriptionService,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
-      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
+      ScreenMemoryPrivacySnapshot()
     },
     microphonePermissionProvider: @escaping () -> Bool = { true },
     systemAudioPermissionProvider: @escaping () -> Bool = { true },
@@ -88,11 +88,6 @@ public final class PassiveAudioContextPipeline {
   ) async -> PassiveAudioIngestOutcome {
     let settings = settingsProvider()
 
-    // Private Mode pauses screen, microphone, and system-audio sensing — both
-    // passive-audio sources fail closed here (slice 4 boundary).
-    guard !privacySnapshotProvider().isPrivateMode else {
-      return .skipped("Private Mode")
-    }
     guard settings.captureEnabled else {
       return .skipped("capture disabled")
     }
@@ -149,11 +144,6 @@ public final class PassiveAudioContextPipeline {
 
     do {
       let rawTranscript = try await transcription.transcribe(pcm16k)
-      // Re-check Private Mode after the (potentially slow) transcription so a mode
-      // flip mid-segment still suppresses emission.
-      guard !privacySnapshotProvider().isPrivateMode else {
-        return .skipped("Private Mode")
-      }
       let transcriptText = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !transcriptText.isEmpty else {
         return .skipped("empty transcript")

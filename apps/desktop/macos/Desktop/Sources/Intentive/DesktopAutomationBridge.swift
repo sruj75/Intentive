@@ -19,6 +19,7 @@ final class DesktopAutomationBridge {
   private let reconnectRuntime: Operation
   private let emitPendingAck: Operation
   private let emitOrdinaryReply: Operation
+  private let emitProactiveMessage: Operation
   private var faults = Faults()
   private var fixtureName = "empty"
 
@@ -31,7 +32,8 @@ final class DesktopAutomationBridge {
     disconnectRuntime: @escaping Operation,
     reconnectRuntime: @escaping Operation,
     emitPendingAck: @escaping Operation,
-    emitOrdinaryReply: @escaping Operation
+    emitOrdinaryReply: @escaping Operation,
+    emitProactiveMessage: @escaping Operation
   ) {
     guard ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil else {
       return nil
@@ -45,6 +47,7 @@ final class DesktopAutomationBridge {
     self.reconnectRuntime = reconnectRuntime
     self.emitPendingAck = emitPendingAck
     self.emitOrdinaryReply = emitOrdinaryReply
+    self.emitProactiveMessage = emitProactiveMessage
   }
 
   func start() throws {
@@ -159,6 +162,11 @@ final class DesktopAutomationBridge {
         let result = try await emitOrdinaryReply()
         return Self.response(status: 200, body: result.merging(["ok": true]) { current, _ in current })
       } catch { return Self.response(status: 500, body: ["error": "ordinary_reply_failed"]) }
+    case ("POST", "/v1/fixtures/proactive-message"):
+      do {
+        let result = try await emitProactiveMessage()
+        return Self.response(status: 200, body: result.merging(["ok": true]) { current, _ in current })
+      } catch { return Self.response(status: 500, body: ["error": "proactive_message_failed"]) }
     default:
       return Self.response(status: 404, body: ["error": "not_found"])
     }

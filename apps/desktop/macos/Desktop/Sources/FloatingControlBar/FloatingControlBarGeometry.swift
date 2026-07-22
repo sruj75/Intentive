@@ -87,19 +87,6 @@ enum FloatingControlBarGeometry {
         return NSRect(origin: NSPoint(x: x, y: y), size: size)
     }
 
-    static func proactiveNudgeFrame(
-        size: NSSize,
-        visibleFrame: NSRect,
-        margin: CGFloat
-    ) -> NSRect {
-        NSRect(
-            x: visibleFrame.maxX - size.width - margin,
-            y: visibleFrame.maxY - size.height - margin,
-            width: size.width,
-            height: size.height
-        )
-    }
-
     static func compactFrame(
         currentFrame: NSRect,
         placement: CompactPlacement,

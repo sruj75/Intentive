@@ -20,10 +20,31 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   private var statusItem: NSStatusItem?
   private weak var model: DesktopViewModel?
 
+  /// True when the app was auto-launched at login by the bundled LaunchAgent,
+  /// which passes `--background` (see ADR 0011). Drives the menu-bar-only path.
+  private var launchedInBackground = false
+  /// The menu-bar-app launch decision runs exactly once, either from the DEBUG
+  /// acceptance carve-out below or when the view model attaches.
+  private var didResolveLaunchPresentation = false
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     setUpStatusItem()
+    launchedInBackground = CommandLine.arguments.contains("--background")
+
+    // Menu-bar-app pattern (ADR 0011): default to `.accessory` (no Dock, no
+    // window) so a background login launch never flashes a Dock icon. The final
+    // decision — whether to promote to `.regular` and show a window — is made in
+    // `resolveLaunchPresentation()` once the view model attaches and we know the
+    // onboarding state. `openApp()` and `applicationShouldHandleReopen` promote
+    // on demand.
+    NSApp.setActivationPolicy(.accessory)
+
     #if DEBUG
     if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      // The AX driver expects a normal windowed app; force the window forward and
+      // pin the presentation decision so the later model attach does not re-hide it.
+      didResolveLaunchPresentation = true
+      NSApp.setActivationPolicy(.regular)
       NSApp.activate(ignoringOtherApps: true)
       Task { @MainActor in
         try? await Task.sleep(nanoseconds: 250_000_000)
@@ -32,6 +53,16 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
       }
     }
     #endif
+  }
+
+  /// A Dock click or `open` on an already-running instance reopens the window.
+  /// In the menu-bar-only (background) state there is no Dock icon, so this fires
+  /// only after the app has been promoted to `.regular`; it re-fronts the window.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool)
+    -> Bool
+  {
+    presentPrimaryWindow()
+    return true
   }
 
   /// Slice 07 — quit path. Omi's `OmiApp.applicationWillTerminate` flushes the
@@ -43,9 +74,38 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     model?.requestQuit()
   }
 
-  /// Wires the menu to the app's shared view model once SwiftUI has created it.
+  /// Wires the menu to the app's shared view model once SwiftUI has created it,
+  /// and finalizes the launch presentation now that onboarding state is known.
   func attach(model: DesktopViewModel) {
     self.model = model
+    resolveLaunchPresentation()
+  }
+
+  /// Finalizes the menu-bar-app launch decision (ADR 0011) once the view model is
+  /// available. Runs once. A background (login) launch with onboarding already
+  /// complete stays menu-bar-only — no Dock, no window, sensing headless — with
+  /// the eager `WindowGroup` window merely ordered out so a later "Open Intentive"
+  /// can front it again. Every other launch (first run / onboarding incomplete, or
+  /// a user Finder/Dock launch) shows the window with a Dock icon.
+  private func resolveLaunchPresentation() {
+    guard !didResolveLaunchPresentation, let model else { return }
+    didResolveLaunchPresentation = true
+    let onboardingComplete = !model.showOnboarding
+    if launchedInBackground && onboardingComplete {
+      NSApp.setActivationPolicy(.accessory)
+      NSApp.windows.forEach { $0.orderOut(nil) }
+    } else {
+      presentPrimaryWindow()
+    }
+  }
+
+  /// Promotes the app to a regular Dock app and fronts its window. Used by the
+  /// user-facing entry points (menu "Open Intentive", Dock reopen) and by the
+  /// window-showing launch paths.
+  private func presentPrimaryWindow() {
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate(ignoringOtherApps: true)
+    NSApp.windows.forEach { $0.makeKeyAndOrderFront(nil) }
   }
 
   private func setUpStatusItem() {
@@ -150,8 +210,7 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   }
 
   @objc private func openApp() {
-    NSApp.activate(ignoringOtherApps: true)
-    NSApp.windows.forEach { $0.makeKeyAndOrderFront(nil) }
+    presentPrimaryWindow()
   }
 
   @objc private func checkForUpdates() {

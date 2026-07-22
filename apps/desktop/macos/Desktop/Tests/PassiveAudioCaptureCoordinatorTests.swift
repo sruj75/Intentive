@@ -29,19 +29,17 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
     if case .degraded = coordinator.state {} else { XCTFail("expected degraded state") }
   }
 
-  func testPrivateModeStopsAndClearsBothSources() async {
-    var privateMode = false
+  func testDisableStopsAndClearsBothSources() async {
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy()
     let coordinator = makeCoordinator(
-      mic: mic, system: system, pipeline: PassiveAudioPipelineSpy(), privateMode: { privateMode })
+      mic: mic, system: system, pipeline: PassiveAudioPipelineSpy())
     coordinator.setMeetingActive(true)
     coordinator.setUserEnabled(true)
     await settle()
-    privateMode = true
-    coordinator.reconcile()
+    coordinator.setUserEnabled(false)
     await settle()
-    XCTAssertEqual(coordinator.state, .privateMode)
+    XCTAssertEqual(coordinator.state, .disabled)
     XCTAssertFalse(mic.isRunning)
     XCTAssertFalse(system.isRunning)
     XCTAssertGreaterThanOrEqual(mic.clearCount, 1)
@@ -76,30 +74,26 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
     XCTAssertEqual(coordinator.state, .disabled)
   }
 
-  func testPrivateModeTearsDownSystemAudioStartThatCompletesAfterStop() async {
-    var privateMode = false
+  func testDisableTearsDownSystemAudioStartThatCompletesAfterStop() async {
     let system = StreamingAudioSourceSpy(startSuspended: true)
     let coordinator = makeCoordinator(
-      mic: StreamingAudioSourceSpy(), system: system, pipeline: PassiveAudioPipelineSpy(),
-      privateMode: { privateMode })
+      mic: StreamingAudioSourceSpy(), system: system, pipeline: PassiveAudioPipelineSpy())
     coordinator.setMeetingActive(true)
     coordinator.setUserEnabled(true)
     await settle()
 
-    privateMode = true
-    coordinator.reconcile()
+    coordinator.setUserEnabled(false)
     system.completeStart()
     await settle()
 
     XCTAssertFalse(system.isRunning)
-    XCTAssertEqual(coordinator.state, .privateMode)
+    XCTAssertEqual(coordinator.state, .disabled)
   }
 
   private func makeCoordinator(
     mic: StreamingAudioSourceSpy,
     system: StreamingAudioSourceSpy,
     pipeline: PassiveAudioPipelineSpy,
-    privateMode: @escaping () -> Bool = { false },
     segmentBytes: Int = 8
   ) -> PassiveAudioCaptureCoordinator {
     PassiveAudioCaptureCoordinator(
@@ -108,7 +102,6 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
       pipeline: pipeline,
       microphonePermission: { true },
       systemAudioPermission: { true },
-      privacySnapshot: { ScreenMemoryPrivacySnapshot(isPrivateMode: privateMode()) },
       segmentBytes: segmentBytes
     )
   }

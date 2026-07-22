@@ -7,17 +7,15 @@ public enum ScreenMemoryCapturePauseReason: String, Equatable, Sendable {
   case screenLock
   case competingScreenRecorder
   case permissionLost
-  case privateMode
   case userToggle
   case displayChange
 }
 
 /// The one observable capture truth consumed by settings, the status menu,
-/// onboarding, Private Mode, and acceptance automation.
+/// onboarding, and acceptance automation.
 public enum ScreenMemoryCaptureLifecycleState: Equatable, Sendable {
   case disabled
   case permissionBlocked
-  case privateMode
   case starting
   case running
   case autoPaused(ScreenMemoryCapturePauseReason)
@@ -300,7 +298,6 @@ public final class ScreenMemoryCaptureLifecycleController {
   public let lockFile: CaptureSessionLockFile?
   public let settingsProvider: () -> CompilerSettings
   public let permissionProvider: () -> Bool
-  public let privacySnapshotProvider: () -> ScreenMemoryPrivacySnapshot
   public let captureBoundaryEnabled: Bool
   public let now: () -> Date
 
@@ -339,9 +336,6 @@ public final class ScreenMemoryCaptureLifecycleController {
     lockFile: CaptureSessionLockFile? = nil,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
-    privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
-      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
-    },
     captureBoundaryEnabled: Bool = true,
     recorderGate: ProactiveScreenRecorderYieldGate = ProactiveScreenRecorderYieldGate(),
     now: @escaping () -> Date = { Date() },
@@ -358,7 +352,6 @@ public final class ScreenMemoryCaptureLifecycleController {
     self.lockFile = lockFile
     self.settingsProvider = settingsProvider
     self.permissionProvider = permissionProvider
-    self.privacySnapshotProvider = privacySnapshotProvider
     self.captureBoundaryEnabled = captureBoundaryEnabled
     self.recorderGate = recorderGate
     self.now = now
@@ -470,12 +463,6 @@ public final class ScreenMemoryCaptureLifecycleController {
       state = .permissionBlocked
       return
     }
-    guard !privacySnapshotProvider().isPrivateMode else {
-      loop.stop()
-      pausedReason = .privateMode
-      state = .privateMode
-      return
-    }
     guard !loop.state.isRunning else {
       pausedReason = nil
       state = .running
@@ -509,7 +496,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     pausedReason = reason
     if reason != .userToggle {
       wasAutoPaused = true
-      state = reason == .privateMode ? .privateMode : .autoPaused(reason)
+      state = .autoPaused(reason)
     }
   }
 
@@ -518,8 +505,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     guard wasAutoPaused else { return }
     defer { wasAutoPaused = false }
     guard settings().captureEnabled,
-          permissionProvider(),
-          !privacySnapshotProvider().isPrivateMode
+          permissionProvider()
     else {
       pausedReason = nil
       return
@@ -666,8 +652,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     }
 
     guard settings().captureEnabled,
-          permissionProvider(),
-          !privacySnapshotProvider().isPrivateMode
+          permissionProvider()
     else { return }
     userEnabled = true
     reconcile()

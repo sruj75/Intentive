@@ -91,9 +91,10 @@ public protocol DesktopNotificationSink: AnyObject {
 }
 
 public protocol DesktopOverlaySink: AnyObject {
-  var isEngaged: Bool { get }
-  var isSnoozed: Bool { get }
-  func showNudge(body: String)
+  /// Surfaces a Post-Message-Back companion message in the one conversation
+  /// thread, auto-opening the bar near the notch. Multiple messages stack
+  /// chronologically; the user replies inline or ignores.
+  func presentProactiveMessage(body: String)
 }
 
 public final class RecordingNotificationSink: DesktopNotificationSink {
@@ -107,35 +108,12 @@ public final class RecordingNotificationSink: DesktopNotificationSink {
 }
 
 public final class RecordingOverlaySink: DesktopOverlaySink {
-  public private(set) var nudges: [String] = []
-  public var isEngaged: Bool
-  public var isSnoozed: Bool
+  public private(set) var proactiveMessages: [String] = []
 
-  public init(isEngaged: Bool = false, isSnoozed: Bool = false) {
-    self.isEngaged = isEngaged
-    self.isSnoozed = isSnoozed
-  }
+  public init() {}
 
-  public func showNudge(body: String) {
-    nudges.append(body)
-  }
-}
-
-public final class ProactivePresentationSnooze {
-  private let now: () -> Date
-  private var snoozedUntil: Date?
-
-  public init(now: @escaping () -> Date = Date.init) {
-    self.now = now
-  }
-
-  public var isActive: Bool {
-    guard let snoozedUntil else { return false }
-    return now() < snoozedUntil
-  }
-
-  public func snooze(for duration: TimeInterval) {
-    snoozedUntil = now().addingTimeInterval(max(0, duration))
+  public func presentProactiveMessage(body: String) {
+    proactiveMessages.append(body)
   }
 }
 
@@ -151,11 +129,14 @@ public final class EffectRunner {
     self.runtimeClient = runtimeClient
   }
 
+  /// A Post-Message-Back companion message always surfaces in the one
+  /// conversation thread and is acknowledged. If the bar is already open the
+  /// message just appends to the visible thread; if it is closed the overlay
+  /// auto-opens. The user replies inline or ignores — there is no snooze,
+  /// mute, or separate dismiss.
   public func handle(_ message: CompanionMessage) throws {
     guard message.viaPostMessageBack else { return }
-    if !overlay.isEngaged, !overlay.isSnoozed {
-      overlay.showNudge(body: message.body)
-    }
+    overlay.presentProactiveMessage(body: message.body)
     try runtimeClient.acknowledge(messageId: message.messageId)
   }
 }
@@ -477,7 +458,7 @@ public final class ScreenMemoryCaptureLoop {
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
     privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
-      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
+      ScreenMemoryPrivacySnapshot()
     },
     now: @escaping () -> Date = { Date() },
     intervalSeconds: TimeInterval = ScreenMemoryCaptureLoop.defaultIntervalSeconds,
@@ -534,9 +515,6 @@ public final class ScreenMemoryCaptureLoop {
   public func captureTick() async -> ScreenMemoryCaptureLoopEvent {
     let settings = settingsProvider()
     let privacy = privacySnapshotProvider()
-    guard !privacy.isPrivateMode else {
-      return recordSkip("Private Mode")
-    }
     guard settings.captureEnabled else {
       return recordSkip("capture disabled")
     }
@@ -672,7 +650,7 @@ public final class AmbientAudioCaptureLoop {
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
     privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
-      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
+      ScreenMemoryPrivacySnapshot()
     },
     activeWindowProvider: (() throws -> DesktopWindowContext?)? = nil,
     now: @escaping () -> Date = { Date() },
@@ -735,11 +713,8 @@ public final class AmbientAudioCaptureLoop {
 
   public func captureTick() async -> AmbientAudioCaptureLoopEvent {
     let settings = settingsProvider()
-    // Cheap pre-capture guards so the microphone engine never spins up while paused,
-    // disabled, or unpermitted. The pipeline re-validates these authoritatively.
-    guard !privacySnapshotProvider().isPrivateMode else {
-      return recordSkip("Private Mode")
-    }
+    // Cheap pre-capture guards so the microphone engine never spins up while
+    // disabled or unpermitted. The pipeline re-validates these authoritatively.
     guard settings.captureEnabled else {
       return recordSkip("capture disabled")
     }

@@ -4,7 +4,7 @@ import XCTest
 @testable import IntentiveDesktopCore
 
 final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
-  func testPrivateModeAndOmiPasswordManagerDefaultsPersistAcrossPolicyRecreation() throws {
+  func testOmiPasswordManagerDefaultsPersistAcrossPolicyRecreation() throws {
     let persistence = InMemoryScreenMemoryPrivacyPersistence()
     let policy = ScreenMemoryPrivacyPolicy(persistence: persistence)
 
@@ -16,12 +16,11 @@ final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
       )
     )
 
-    try policy.enterPrivateMode()
-    XCTAssertTrue(policy.snapshot.isPrivateMode)
-
     let relaunched = ScreenMemoryPrivacyPolicy(persistence: persistence)
-    XCTAssertTrue(relaunched.snapshot.isPrivateMode)
-    XCTAssertFalse(relaunched.allows(appBundleID: "com.apple.Safari", appName: "Safari"))
+    XCTAssertTrue(relaunched.allows(appBundleID: "com.apple.Safari", appName: "Safari"))
+    XCTAssertFalse(
+      relaunched.allows(appBundleID: "com.1password.1password", appName: "1Password")
+    )
   }
 
   func testBundleIdentifierWinsAndRemovedOmiDefaultDoesNotResurrect() throws {
@@ -106,52 +105,21 @@ final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
   }
 
   @MainActor
-  func testPrivateModeFlushesVideoPausesAllSensingAndExcludedAppsNeverCapture() async throws {
+  func testExcludedAppsNeverCapture() async throws {
     let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent("intentive-private-mode-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent("intentive-excluded-apps-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let profile = try ScreenMemoryProfile(userID: "private-user", rootURL: root)
-    let video = PrivacyFixtureVideoArchive()
+    let profile = try ScreenMemoryProfile(userID: "excluded-user", rootURL: root)
     let analyzer = CountingPrivacyFixtureAnalyzer()
     let archive = try ScreenMemoryArchive(
       profile: profile,
       imageAnalyzer: analyzer,
-      videoArchive: video,
+      videoArchive: PrivacyFixtureVideoArchive(),
       retentionPersistence: InMemoryScreenMemoryRetentionPersistence(initial: .sevenDays)
     )
-    let allowedOutcome = try await archive.ingest(
-      ScreenMemoryCaptureInput(
-        userID: profile.userID,
-        imageData: Data("allowed".utf8),
-        capturedAt: "2025-07-15T00:00:00.000Z",
-        appBundleID: "com.apple.Safari",
-        appName: "Safari",
-        windowTitle: "Allowed"
-      )
-    )
-    guard case .stored(let allowedID) = allowedOutcome else {
-      return XCTFail("expected allowed frame to be stored")
-    }
 
     let persistence = InMemoryScreenMemoryPrivacyPersistence()
     let policy = ScreenMemoryPrivacyPolicy(persistence: persistence)
-    let screenGate = PrivacyFixtureSensingGate()
-    let microphoneGate = PrivacyFixtureSensingGate()
-    let systemAudioGate = PrivacyFixtureSensingGate()
-    let privacy = ScreenMemoryPrivacyCoordinator(
-      policy: policy,
-      archiveProvider: { archive },
-      sensingGates: [screenGate, microphoneGate, systemAudioGate]
-    )
-
-    try await privacy.enterPrivateMode()
-
-    let finalizedFrame = try await archive.videoFrame(for: allowedID)
-    XCTAssertNotNil(finalizedFrame)
-    XCTAssertTrue(screenGate.isPaused)
-    XCTAssertTrue(microphoneGate.isPaused)
-    XCTAssertTrue(systemAudioGate.isPaused)
-    XCTAssertTrue(ScreenMemoryPrivacyPolicy(persistence: persistence).snapshot.isPrivateMode)
 
     let runtime = PrivacyFixtureRuntimeClient()
     let captureSource = PrivacyFixtureCaptureSource(
@@ -173,20 +141,15 @@ final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
       privacyPolicy: policy
     )
 
-    let privateModeEvents = try await capture.captureOnce(from: captureSource)
-    XCTAssertEqual(privateModeEvents, [])
+    // 1Password is a default Privacy Zone, so a capture over it never reads a
+    // pixel, never analyzes, and never lands in the archive/outbox/runtime.
+    let excludedEvents = try await capture.captureOnce(from: captureSource)
+    XCTAssertEqual(excludedEvents, [])
     XCTAssertEqual(captureSource.pixelCaptureCount, 0)
-    XCTAssertEqual(analyzer.recognitionCount, 1)
+    XCTAssertEqual(analyzer.recognitionCount, 0)
     XCTAssertTrue(archive.search("Vault", limit: 10).isEmpty)
     XCTAssertTrue(try archive.pendingPerceptionEvents(limit: 10).isEmpty)
     XCTAssertTrue(runtime.perceptionEvents.isEmpty)
-
-    try privacy.resume()
-    XCTAssertFalse(policy.snapshot.isPrivateMode)
-    XCTAssertFalse(screenGate.isPaused)
-    let excludedEventsAfterResume = try await capture.captureOnce(from: captureSource)
-    XCTAssertEqual(excludedEventsAfterResume, [])
-    XCTAssertEqual(captureSource.pixelCaptureCount, 0)
   }
 
   func testExpiryDeletesWholeChunkFromEarliestFrameAndKeepsUnexpiredChunk() async throws {
@@ -583,13 +546,6 @@ private actor PrivacyFixtureVideoArchive: ScreenMemoryVideoArchiving {
     active = false
     finalized = false
   }
-}
-
-@MainActor
-private final class PrivacyFixtureSensingGate: ScreenMemorySensingGate {
-  private(set) var isPaused = false
-  func pause() { isPaused = true }
-  func resumeIfEnabled() { isPaused = false }
 }
 
 private final class PrivacyFixtureCaptureSource: DesktopWindowContextSource {

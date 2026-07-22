@@ -6,7 +6,7 @@ import SwiftUI
 
 /// Owns the salvaged Omi floating bar window and its ⌘O global hotkey, and is the
 /// single seam the app talks to (`configure`, `show`, `toggleAIInput`, `hide`,
-/// `refreshMessages`, `showNudge`).
+/// `refreshMessages`, `presentProactiveMessage`).
 ///
 /// Omi drove the same `FloatingControlBarWindow` from a ~2,300-line manager welded
 /// to a GRDB/network `ChatProvider`, agent routing, notification queues, and voice
@@ -17,9 +17,6 @@ import SwiftUI
 @MainActor
 public final class FloatingControlBarManager {
   public static let shared = FloatingControlBarManager()
-
-  /// Omi's bounded notification snooze interval, retained for proactive PMB.
-  public static let snoozeTwoHoursDuration: TimeInterval = 2 * 60 * 60
 
   private var window: FloatingControlBarWindow?
   private var controller: FloatingBarController?
@@ -34,19 +31,13 @@ public final class FloatingControlBarManager {
   /// the *next* companion message (this question's answer), never the previous
   /// turn's answer already sitting in the store.
   private var lastCompanionReplyId: String?
-  private let proactiveSnooze = ProactivePresentationSnooze()
 
   public var isConversationEngaged: Bool {
     guard let window else { return false }
     return window.isVisible && window.state.showingAIConversation
   }
 
-  public var isProactivePresentationSnoozed: Bool {
-    proactiveSnooze.isActive
-  }
-
   public var isVisible: Bool { window?.isVisible == true }
-  public var isShowingNotification: Bool { window?.state.currentNotification != nil }
 
   /// The floating bar's transcript view. Fed from Core's `MessageStore` via
   /// `refreshMessages()`; the salvaged view reads it through `sharedFloatingProvider`.
@@ -85,8 +76,13 @@ public final class FloatingControlBarManager {
   public func showComposer() {
     let window = ensureWindow()
     synchronizeConversation(in: window)
-    window.showAIConversation()
     window.normalizeForTemporaryShow()
+    // Size to the target surface synchronously *before* ordering front. A cold
+    // window — e.g. opened from the onboarding "Try Floating Bar" demo under the
+    // modal onboarding sheet — otherwise displays mid-animation as it grows from
+    // the 160×34 pill, which renders "sliced / compressed". The ⌘O path opens a
+    // warm window and never showed the artifact; sizing synchronously fixes both.
+    window.showAIConversation(animated: false)
     window.makeKeyAndOrderFront(nil)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak window] in
       _ = window?.focusInputField()
@@ -128,24 +124,26 @@ public final class FloatingControlBarManager {
     window.resizeToResponseHeightPublic(animated: true)
   }
 
-  /// Presents a proactive nudge (a companion message with no preceding question)
-  /// as the bar's in-app notification.
-  public func showNudge(_ body: String) {
+  /// Surfaces a Post-Message-Back companion message in the one conversation
+  /// thread and auto-opens the bar near the notch (top-center). The message is
+  /// already in the shared `MessageStore` by the time this runs, so
+  /// `synchronizeConversation` pulls it into the viewport — `body` is that same
+  /// text, kept for the seam. There is no separate notification chrome: the
+  /// user replies inline or ignores.
+  public func presentProactiveMessage(_ body: String) {
     let window = ensureWindow()
-    let notification = FloatingBarNotification(
-      title: "Intentive",
-      message: body
-    )
-    // Preserve Omi's real four-window, click-through edge glow around the
-    // app the user was working in before Intentive takes key focus.
+    // Preserve Omi's real four-window, click-through edge glow around the app
+    // the user was working in before the bar surfaces.
     OverlayService.shared.showGlowAroundActiveWindow(colorMode: .focused)
+    synchronizeConversation(in: window)
     window.normalizeForTemporaryShow()
-    window.makeKeyAndOrderFront(nil)
-    // Resolve the Omi resize synchronously before applying Intentive's
-    // contextual top-right anchor; an in-flight top-anchor animation would
-    // otherwise race the final placement back toward the old pill origin.
-    window.showNotification(notification, animated: false)
-    window.positionProactiveNudgeTopRight()
+    // Size to the response surface synchronously before ordering front so the
+    // panel never displays mid-animation from the compact pill.
+    window.resizeToResponseHeightPublic(animated: false)
+    // Order front without stealing keyboard focus: the panel is a
+    // `.nonactivatingPanel`, so the user keeps typing in their current app. The
+    // bar becomes key only when they click it to reply.
+    window.orderFront(nil)
   }
 
   // MARK: - Window lifecycle
@@ -340,21 +338,10 @@ public final class FloatingControlBarManager {
     )
   }
 
-  // MARK: - Proactive presentation
-
-  func snooze(for duration: TimeInterval) {
-    proactiveSnooze.snooze(for: duration)
-    dismissCurrentNotification()
-  }
-  func dismissCurrentNotification() {
-    window?.dismissNotification()
-  }
-  func openNotificationAsChat() {
-    showComposer()
-  }
 }
 
-/// Bridges the Core `DesktopOverlaySink` (proactive nudges) onto the floating bar.
+/// Bridges the Core `DesktopOverlaySink` (proactive Post-Message-Back messages)
+/// onto the floating bar's one conversation thread.
 public final class FloatingBarOverlaySink: DesktopOverlaySink {
   private let manager: FloatingControlBarManager
 
@@ -362,17 +349,9 @@ public final class FloatingBarOverlaySink: DesktopOverlaySink {
     self.manager = manager
   }
 
-  public var isEngaged: Bool {
-    MainActor.assumeIsolated { manager.isConversationEngaged }
-  }
-
-  public var isSnoozed: Bool {
-    MainActor.assumeIsolated { manager.isProactivePresentationSnoozed }
-  }
-
-  public func showNudge(body: String) {
+  public func presentProactiveMessage(body: String) {
     Task { @MainActor [manager] in
-      manager.showNudge(body)
+      manager.presentProactiveMessage(body)
     }
   }
 }

@@ -34,13 +34,12 @@ final class DesktopUtilitySettingsTests: XCTestCase {
     let relaunched = DesktopUtilitySettingsCoordinator(store: store)
 
     XCTAssertEqual(relaunched.settings, settings)
-    XCTAssertFalse(relaunched.captureShouldRun(permissionGranted: true, privateMode: false))
+    XCTAssertFalse(relaunched.captureShouldRun(permissionGranted: true))
 
     settings.screenCaptureEnabled = true
     try relaunched.update(settings)
-    XCTAssertTrue(relaunched.captureShouldRun(permissionGranted: true, privateMode: false))
-    XCTAssertFalse(relaunched.captureShouldRun(permissionGranted: false, privateMode: false))
-    XCTAssertFalse(relaunched.captureShouldRun(permissionGranted: true, privateMode: true))
+    XCTAssertTrue(relaunched.captureShouldRun(permissionGranted: true))
+    XCTAssertFalse(relaunched.captureShouldRun(permissionGranted: false))
   }
 
   func testInvalidPersistedSettingsFallBackToSafeDefaults() {

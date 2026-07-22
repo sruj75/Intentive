@@ -76,6 +76,38 @@ if [[ ! -d "$NATIVE_ASSETS_BUNDLE_SOURCE" ]]; then
   exit 1
 fi
 cp -R "$NATIVE_ASSETS_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
+
+# Bundled LaunchAgent for launch-at-login (ADR 0011). Registered on demand via
+# `SMAppService.agent(plistName:)`; `BundleProgram` keeps the executable path
+# bundle-relative so it survives moves, and `--background` marks the login launch
+# so the app stays menu-bar-only. Bundled unconditionally; it is inert until the
+# user enables launch-at-login.
+mkdir -p "$APP_BUNDLE/Contents/Library/LaunchAgents"
+cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.heyintentive.desktop.login</string>
+  <key>BundleProgram</key>
+  <string>Contents/MacOS/Intentive</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>Contents/MacOS/Intentive</string>
+    <string>--background</string>
+  </array>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>$BUNDLE_ID_XML</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+PLIST
+plutil -lint "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist" >/dev/null
+
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

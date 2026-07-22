@@ -14,9 +14,7 @@ struct FloatingControlBarView: View {
 
   var body: some View {
     Group {
-      if let notification = state.currentNotification {
-        notificationView(notification)
-      } else if state.showingAIConversation {
+      if state.showingAIConversation {
         conversationView
       } else {
         compactBar
@@ -94,40 +92,6 @@ struct FloatingControlBarView: View {
       }
     }
     .frame(width: 430)
-  }
-
-  private func notificationView(_ notification: FloatingBarNotification) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Text(notification.title)
-          .scaledFont(size: 12, weight: .semibold)
-        Spacer()
-        Button(action: { FloatingControlBarManager.shared.dismissCurrentNotification() }) {
-          Image(systemName: "xmark")
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Dismiss nudge")
-        .accessibilityIdentifier("floating-pmb-dismiss")
-      }
-      Text(notification.message)
-        .scaledFont(size: 13)
-        .fixedSize(horizontal: false, vertical: true)
-      HStack {
-        Button("Reply") {
-          FloatingControlBarManager.shared.openNotificationAsChat()
-        }
-        .buttonStyle(.borderedProminent)
-        .accessibilityIdentifier("floating-pmb-reply")
-        Button("Snooze") {
-          FloatingControlBarManager.shared.snooze(
-            for: FloatingControlBarManager.snoozeTwoHoursDuration)
-        }
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier("floating-pmb-snooze")
-      }
-    }
-    .padding(16)
-    .frame(width: 430, alignment: .leading)
   }
 
   private func submit(_ message: String) {

@@ -14,3 +14,4 @@ Numbering is local to `apps/desktop/`.
 | 0008 | Floating control bar — minimal-diff restoration; voice/subagent behavior superseded | [0008-floating-bar-strip-and-salvage.md](0008-floating-bar-strip-and-salvage.md) |
 | 0009 | Desktop v1 surface and Runtime boundary | [0009-desktop-v1-surface-and-runtime-boundary.md](0009-desktop-v1-surface-and-runtime-boundary.md) |
 | 0010 | Passive audio sensing is on by default | [0010-passive-audio-sensing-default-on.md](0010-passive-audio-sensing-default-on.md) |
+| 0011 | Launch / activation lifecycle — menu-bar-app pattern (Option A, accepted) | [0011-launch-activation-lifecycle.md](0011-launch-activation-lifecycle.md) |

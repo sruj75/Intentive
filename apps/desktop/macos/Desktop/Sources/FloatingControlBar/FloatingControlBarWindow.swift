@@ -56,10 +56,9 @@ final class FloatingControlBarWindow: NSPanel, NSWindowDelegate {
     setFrame(defaultFrame(size: compactSize), display: false)
   }
 
-  func showAIConversation() {
-    state.currentNotification = nil
+  func showAIConversation(animated: Bool = true) {
     state.present(state.hasMainConversation ? .mainResponse : .mainInput)
-    resizeForCurrentSurface(animated: true)
+    resizeForCurrentSurface(animated: animated)
   }
 
   func focusInputField() -> Bool {
@@ -72,41 +71,13 @@ final class FloatingControlBarWindow: NSPanel, NSWindowDelegate {
     resizeForCurrentSurface(animated: animated)
   }
 
-  func showNotification(_ notification: FloatingBarNotification, animated: Bool = true) {
-    state.currentNotification = notification
-    state.hideConversationSurface()
-    resizeForCurrentSurface(animated: animated)
-  }
-
-  func positionProactiveNudgeTopRight() {
-    let screen = screen ?? NSScreen.main ?? NSScreen.screens.first
-    guard let screen else { return }
-    let target = FloatingControlBarGeometry.proactiveNudgeFrame(
-      size: notificationSize,
-      visibleFrame: screen.visibleFrame,
-      margin: 20
-    )
-    setFrame(target, display: true)
-  }
-
-  func dismissNotification(animated: Bool = true) {
-    state.currentNotification = nil
-    if state.hasMainConversation {
-      state.present(.mainResponse)
-      resizeForCurrentSurface(animated: animated)
-    } else {
-      state.present(.closed)
-      orderOut(nil)
-    }
-  }
-
   func normalizeForTemporaryShow() {
     alphaValue = 1
     syncActiveIsland()
   }
 
   var hasSettledClosedForAutomation: Bool {
-    !isVisible && state.conversationSurface == .closed && state.currentNotification == nil
+    !isVisible && state.conversationSurface == .closed
   }
 
   func syncActiveIsland() {
@@ -127,7 +98,7 @@ final class FloatingControlBarWindow: NSPanel, NSWindowDelegate {
   }
 
   func windowDidResignKey(_ notification: Notification) {
-    guard state.currentNotification == nil, !state.showingAIConversation else { return }
+    guard !state.showingAIConversation else { return }
     onHide?()
   }
 
@@ -138,7 +109,6 @@ final class FloatingControlBarWindow: NSPanel, NSWindowDelegate {
   private var responseSize: NSSize {
     NSSize(width: 430, height: min(380, max(180, state.responseContentHeight + 96)))
   }
-  private var notificationSize: NSSize { NSSize(width: 430, height: 156) }
 
   private func setupViews() {
     let root = FloatingControlBarView(
@@ -163,14 +133,10 @@ final class FloatingControlBarWindow: NSPanel, NSWindowDelegate {
 
   private func resizeForCurrentSurface(animated: Bool) {
     let size: NSSize
-    if state.currentNotification != nil {
-      size = notificationSize
-    } else {
-      switch state.conversationSurface {
-      case .closed: size = compactSize
-      case .mainInput: size = inputSize
-      case .mainResponse: size = responseSize
-      }
+    switch state.conversationSurface {
+    case .closed: size = compactSize
+    case .mainInput: size = inputSize
+    case .mainResponse: size = responseSize
     }
     let target = FloatingControlBarGeometry.topCenterAnchoredFrame(
       currentFrame: frame,

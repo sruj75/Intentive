@@ -180,9 +180,7 @@ func findAfterScrolling(_ root: AXUIElement, id: String) -> AXUIElement? {
   let scrollAreas = ([root] + descendants(root)).filter {
     (value($0, kAXRoleAttribute as CFString) as? String) == (kAXScrollAreaRole as String)
   }
-  guard let scrollArea = scrollAreas.first(where: {
-    find($0, id: "acceptance-present-pmb") != nil
-  }) ?? scrollAreas.first else { return nil }
+  guard let scrollArea = scrollAreas.first else { return nil }
   for action in ["AXScrollUp", "AXScrollDown"] {
     for _ in 0..<16 {
       if let element = find(root, id: id) { return element }
@@ -350,6 +348,30 @@ for (name, id) in settingsDestinations {
     verify: { find(app, id: id) != nil }
   )
 }
+
+// A Post-Message-Back reply surfaces in the one conversation thread (no separate
+// notification/snooze surface): the bar auto-opens engaged, the message lands in
+// the thread, and its reply composer is present so the user can answer inline.
+let proactiveMessagesBefore = integer(bridgeState()["conversation_message_count"])
+_ = try bridgeRequest("POST", "/v1/fixtures/proactive-message")
+record(
+  name: "proactive-pmb-in-thread",
+  element: initialRoot,
+  assertion: "a Post-Message-Back message appears in the one conversation thread and can be replied to inline",
+  verify: {
+    let settle = Date().addingTimeInterval(4)
+    while Date() < settle {
+      let state = bridgeState()
+      if state["floating_bar_visible"] as? Bool == true,
+        state["floating_bar_engaged"] as? Bool == true,
+        integer(state["conversation_message_count"]) > proactiveMessagesBefore {
+        return true
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    return false
+  }
+)
 
 if let report = findAfterScrolling(app, id: "about-report-issue") {
   AXUIElementPerformAction(report, kAXPressAction as CFString)

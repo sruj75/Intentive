@@ -230,7 +230,6 @@ final class RenovationAssetGuardTests: XCTestCase {
     for legacyIdentifier in [
       "sidebar-screenMemory", "sidebar-sensing", "sidebar-account", "sidebar-diagnostics",
       "sensing-screen-memory-toggle", "sensing-passive-audio-toggle", "screen_memory_search_field",
-      "privacy-enter-private-mode", "privacy-resume-sensing",
     ] {
       XCTAssertFalse(acceptance.contains(legacyIdentifier), "Old Intentive UI acceptance path remains: \(legacyIdentifier)")
     }

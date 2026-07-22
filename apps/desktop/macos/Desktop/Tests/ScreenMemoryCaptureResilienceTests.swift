@@ -27,27 +27,6 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     XCTAssertEqual(ctrl.state, .permissionBlocked)
   }
 
-  func testPrivateModeStopsTheSourceAndReconcilesThroughController() {
-    var privateMode = false
-    let loop = makeLoop(intervalSeconds: 30)
-    let ctrl = makeController(
-      loop: loop,
-      privacySnapshotProvider: { ScreenMemoryPrivacySnapshot(isPrivateMode: privateMode) }
-    )
-    ctrl.setUserEnabled(true)
-    XCTAssertEqual(ctrl.state, .running)
-
-    privateMode = true
-    ctrl.reconcile()
-    XCTAssertFalse(loop.state.isRunning)
-    XCTAssertEqual(ctrl.state, .privateMode)
-
-    privateMode = false
-    ctrl.reconcile()
-    XCTAssertTrue(loop.state.isRunning)
-    XCTAssertEqual(ctrl.state, .running)
-  }
-
   func testDisplayChangeFinalizesThenRestartsAfterSettle() async {
     let observer = RecordingCaptureSystemEventObserver()
     let archive = FinalizingArchiveSpy()
@@ -488,9 +467,6 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     lockFile: CaptureSessionLockFile? = nil,
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings(captureEnabled: true) },
     permissionProvider: @escaping () -> Bool = { true },
-    privacySnapshotProvider: @escaping () -> ScreenMemoryPrivacySnapshot = {
-      ScreenMemoryPrivacySnapshot(isPrivateMode: false)
-    },
     captureBoundaryEnabled: Bool = true,
     now: @escaping () -> Date = { Date() }
   ) -> ScreenMemoryCaptureLifecycleController {
@@ -506,7 +482,6 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       lockFile: lockFile,
       settingsProvider: settingsProvider,
       permissionProvider: permissionProvider,
-      privacySnapshotProvider: privacySnapshotProvider,
       captureBoundaryEnabled: captureBoundaryEnabled,
       now: now
     )
@@ -531,7 +506,6 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       source: resolvedSource,
       settingsProvider: { CompilerSettings(captureEnabled: true) },
       permissionProvider: { true },
-      privacySnapshotProvider: { ScreenMemoryPrivacySnapshot(isPrivateMode: false) },
       now: now,
       intervalSeconds: intervalSeconds,
       intervalProvider: intervalProvider,

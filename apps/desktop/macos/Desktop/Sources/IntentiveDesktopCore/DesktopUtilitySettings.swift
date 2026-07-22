@@ -139,7 +139,7 @@ public final class DesktopUtilitySettingsCoordinator {
     try store.save(settings)
   }
 
-  public func captureShouldRun(permissionGranted: Bool, privateMode: Bool) -> Bool {
-    settings.screenCaptureEnabled && permissionGranted && !privateMode
+  public func captureShouldRun(permissionGranted: Bool) -> Bool {
+    settings.screenCaptureEnabled && permissionGranted
   }
 }

@@ -43,6 +43,7 @@ curl --fail --silent "http://127.0.0.1:$FEED_PORT/appcast.xml" >/dev/null
 APP_BUNDLE="$(
   CONFIGURATION=debug \
   INTENTIVE_APP_NAME=Intentive-Acceptance \
+  INTENTIVE_BUNDLE_ID=com.heyintentive.desktop.dev \
   INTENTIVE_SPARKLE_FEED_URL="http://127.0.0.1:$FEED_PORT/appcast.xml" \
   INTENTIVE_SPARKLE_PUBLIC_ED_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" \
   "$MACOS_DIR/scripts/build-app-bundle.sh" | tail -n 1

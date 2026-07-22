@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class ProactiveEffectRunnerTests: XCTestCase {
-  func testPostMessageBackPresentsInAppAndAcknowledges() throws {
+  func testPostMessageBackPresentsInThreadAndAcknowledges() throws {
     let runtime = RecordingRuntimeClient()
     let overlay = RecordingOverlaySink()
     let runner = EffectRunner(overlay: overlay, runtimeClient: runtime)
@@ -17,7 +17,7 @@ final class ProactiveEffectRunnerTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(overlay.nudges, ["Take a reset"])
+    XCTAssertEqual(overlay.proactiveMessages, ["Take a reset"])
     XCTAssertEqual(runtime.acknowledgements, ["pmb-1"])
   }
 
@@ -35,61 +35,29 @@ final class ProactiveEffectRunnerTests: XCTestCase {
       )
     )
 
-    XCTAssertTrue(overlay.nudges.isEmpty)
+    XCTAssertTrue(overlay.proactiveMessages.isEmpty)
     XCTAssertTrue(runtime.acknowledgements.isEmpty)
   }
 
-  func testEngagedConversationAcknowledgesWithoutPresentingAgain() throws {
+  func testMultipleProactiveMessagesStackChronologically() throws {
     let runtime = RecordingRuntimeClient()
-    let overlay = RecordingOverlaySink(isEngaged: true)
+    let overlay = RecordingOverlaySink()
     let runner = EffectRunner(overlay: overlay, runtimeClient: runtime)
 
-    try runner.handle(
-      CompanionMessage(
-        messageId: "pmb-engaged",
-        body: "You are already here",
-        emittedAt: "2026-07-16T10:00:00.000Z",
-        viaPostMessageBack: true
+    for (id, body) in [("pmb-1", "First"), ("pmb-2", "Second")] {
+      try runner.handle(
+        CompanionMessage(
+          messageId: id,
+          body: body,
+          emittedAt: "2026-07-16T10:00:00.000Z",
+          viaPostMessageBack: true
+        )
       )
-    )
+    }
 
-    XCTAssertTrue(overlay.nudges.isEmpty)
-    XCTAssertEqual(runtime.acknowledgements, ["pmb-engaged"])
-  }
-
-  func testSnoozeSuppressesPresentationWithoutSuppressingAcknowledgement() throws {
-    let runtime = RecordingRuntimeClient()
-    let overlay = RecordingOverlaySink(isSnoozed: true)
-    let runner = EffectRunner(overlay: overlay, runtimeClient: runtime)
-    var now = Date(timeIntervalSince1970: 1_000)
-    let snooze = ProactivePresentationSnooze(now: { now })
-    snooze.snooze(for: 120)
-
-    try runner.handle(
-      CompanionMessage(
-        messageId: "pmb-snoozed",
-        body: "Held quietly",
-        emittedAt: "2026-07-16T10:00:00.000Z",
-        viaPostMessageBack: true
-      )
-    )
-
-    XCTAssertTrue(snooze.isActive)
-    XCTAssertTrue(overlay.nudges.isEmpty)
-    XCTAssertEqual(runtime.acknowledgements, ["pmb-snoozed"])
-
-    now.addTimeInterval(120)
-    overlay.isSnoozed = snooze.isActive
-    try runner.handle(
-      CompanionMessage(
-        messageId: "pmb-after-snooze",
-        body: "Visible again",
-        emittedAt: "2026-07-16T10:02:00.000Z",
-        viaPostMessageBack: true
-      )
-    )
-
-    XCTAssertEqual(overlay.nudges, ["Visible again"])
-    XCTAssertEqual(runtime.acknowledgements, ["pmb-snoozed", "pmb-after-snooze"])
+    // Each PMB surfaces in the thread even while the bar is already open, and
+    // every one is acknowledged.
+    XCTAssertEqual(overlay.proactiveMessages, ["First", "Second"])
+    XCTAssertEqual(runtime.acknowledgements, ["pmb-1", "pmb-2"])
   }
 }

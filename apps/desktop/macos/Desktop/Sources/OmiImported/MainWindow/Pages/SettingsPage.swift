@@ -276,7 +276,7 @@ private struct PrivacySettings<Model: OmiSettingsPresenting>: View {
           "Existing recordings remain when storage is turned off",
           "No personal content is stored in analytics",
           "Raw media stays on this Mac in V1",
-          "Private Mode stops sensing immediately",
+          "Screen capture and audio recording toggle independently",
         ], id: \.self) { guarantee in
           HStack(alignment: .top, spacing: OmiSpacing.sm) {
             Image(systemName: "checkmark").foregroundColor(.green)

@@ -54,31 +54,14 @@ enum FloatingConversationSurface: Equatable {
   }
 }
 
-struct FloatingBarNotification: Identifiable, Equatable {
-  let id = UUID()
-  let title: String
-  let message: String
-
-  init(
-    title: String,
-    message: String
-  ) {
-    self.title = title
-    self.message = message
-  }
-
-  static func == (lhs: FloatingBarNotification, rhs: FloatingBarNotification) -> Bool {
-    lhs.id == rhs.id
-  }
-}
-
-/// Omi-derived floating-bar state narrowed to one text conversation and PMB
-/// presentation. It deliberately has no agent, attachment, model, or audio state.
+/// Omi-derived floating-bar state narrowed to one text conversation. A
+/// Post-Message-Back message surfaces in that same conversation thread, so
+/// there is no separate notification surface. It deliberately has no agent,
+/// attachment, model, or audio state.
 @MainActor
 final class FloatingControlBarState: NSObject, ObservableObject {
   @Published var isDragging = false
   @Published var isHoveringBar = false
-  @Published var currentNotification: FloatingBarNotification?
   @Published var showingAIConversation = false
   @Published var showingAIResponse = false
   @Published var isAILoading = false
@@ -94,7 +77,6 @@ final class FloatingControlBarState: NSObject, ObservableObject {
   @Published var usesNotchIsland = false
   @Published var notchRevealProgress: CGFloat = 1
 
-  var isShowingNotification: Bool { currentNotification != nil }
   var hasMainConversation: Bool {
     !displayedQuery.isEmpty || localAnswerOverride != nil || chatViewport.questionMessageId != nil
       || chatViewport.answerMessageId != nil || !chatViewport.archivedExchanges.isEmpty

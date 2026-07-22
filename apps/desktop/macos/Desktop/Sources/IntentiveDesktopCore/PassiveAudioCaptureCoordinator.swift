@@ -17,7 +17,6 @@ extension PassiveAudioContextPipeline: PassiveAudioIngesting {}
 public enum PassiveAudioCaptureState: Equatable, Sendable {
   case disabled
   case permissionBlocked(PassiveAudioSource)
-  case privateMode
   case starting
   case running(microphone: Bool, systemAudio: Bool)
   case degraded(String)
@@ -40,7 +39,6 @@ public final class PassiveAudioCaptureCoordinator {
   private let pipeline: any PassiveAudioIngesting
   private let microphonePermission: () -> Bool
   private let systemAudioPermission: () -> Bool
-  private let privacySnapshot: () -> ScreenMemoryPrivacySnapshot
   private let systemAudioMode: () -> SystemAudioCaptureMode
   private let segmentBytes: Int
   private var desiredEnabled = false
@@ -60,7 +58,6 @@ public final class PassiveAudioCaptureCoordinator {
     pipeline: any PassiveAudioIngesting,
     microphonePermission: @escaping () -> Bool,
     systemAudioPermission: @escaping () -> Bool,
-    privacySnapshot: @escaping () -> ScreenMemoryPrivacySnapshot,
     systemAudioMode: @escaping () -> SystemAudioCaptureMode = { .onlyDuringMeetings },
     segmentBytes: Int = 16_000 * 2 * 4
   ) {
@@ -69,7 +66,6 @@ public final class PassiveAudioCaptureCoordinator {
     self.pipeline = pipeline
     self.microphonePermission = microphonePermission
     self.systemAudioPermission = systemAudioPermission
-    self.privacySnapshot = privacySnapshot
     self.systemAudioMode = systemAudioMode
     self.segmentBytes = max(2, segmentBytes)
   }
@@ -102,12 +98,11 @@ public final class PassiveAudioCaptureCoordinator {
     microphone.clearPendingBuffers()
     systemAudio.clearPendingBuffers()
     buffers.removeAll(keepingCapacity: false)
-    state = privacySnapshot().isPrivateMode ? .privateMode : .disabled
+    state = .disabled
   }
 
   private func applyPolicy(generation current: Int) async {
     guard desiredEnabled else { stopSynchronously(); return }
-    guard !privacySnapshot().isPrivateMode else { stopSynchronously(); return }
     guard microphonePermission() else {
       stopSynchronously()
       state = .permissionBlocked(.microphone)
@@ -160,7 +155,7 @@ public final class PassiveAudioCaptureCoordinator {
 
   /// A cancelled CoreAudio start is allowed to finish after a newer policy has
   /// already stopped the source. Tear that late start down and reconcile the
-  /// newest policy again so Private Mode/disable cannot leak a live IOProc.
+  /// newest policy again so a disable cannot leak a live IOProc.
   private func discardStaleStart(
     _ source: any PassiveAudioStreamingSource,
     source kind: PassiveAudioSource
@@ -168,12 +163,11 @@ public final class PassiveAudioCaptureCoordinator {
     source.stop()
     source.clearPendingBuffers()
     buffers[kind] = nil
-    if desiredEnabled && !privacySnapshot().isPrivateMode {
+    if desiredEnabled {
       let latest = generation
       Task { @MainActor [weak self] in
         await Task.yield()
-        guard let self, self.generation == latest, self.desiredEnabled,
-          !self.privacySnapshot().isPrivateMode
+        guard let self, self.generation == latest, self.desiredEnabled
         else { return }
         self.reconcile()
       }
@@ -181,7 +175,7 @@ public final class PassiveAudioCaptureCoordinator {
   }
 
   private func receive(_ data: Data, from source: PassiveAudioSource) {
-    guard !data.isEmpty, desiredEnabled, !privacySnapshot().isPrivateMode else { return }
+    guard !data.isEmpty, desiredEnabled else { return }
     var buffer = buffers[source] ?? Data()
     buffer.append(data)
     guard buffer.count >= segmentBytes else { buffers[source] = buffer; return }
