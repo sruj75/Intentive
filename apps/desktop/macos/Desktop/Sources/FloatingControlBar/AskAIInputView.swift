@@ -37,9 +37,10 @@ struct AskAIInputView: View {
             guard abs(textHeight - height) > 1 else { return }
             textHeight = height
             onHeightChange(height)
-          }
+          },
+          // On the inner NSTextView so AX value writes land on the text element.
+          accessibilityIdentifier: "floating-composer-input"
         )
-        .accessibilityIdentifier("floating-composer-input")
       }
       .padding(.horizontal, 4)
       .frame(height: textHeight)

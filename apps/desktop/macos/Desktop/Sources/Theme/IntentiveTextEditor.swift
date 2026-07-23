@@ -36,6 +36,25 @@ private class IntentiveNSTextView: NSTextView {
         publishMarkedTextStatus()
     }
 
+    /// Route an Accessibility-driven value set (assistive tech, and the desktop
+    /// acceptance driver's `AXUIElementSetAttributeValue(kAXValue)`) through the
+    /// same `shouldChangeText`/`replaceCharacters`/`didChangeText` triple a real
+    /// edit uses, so the `NSTextViewDelegate.textDidChange` fires and the SwiftUI
+    /// binding updates. The default setter can mutate the storage without
+    /// notifying the delegate, which left the composer's `@State` empty on submit
+    /// even though the field visibly showed the text.
+    override func setAccessibilityValue(_ value: Any?) {
+        guard let string = value as? String else {
+            super.setAccessibilityValue(value)
+            return
+        }
+        let fullRange = NSRange(location: 0, length: (self.string as NSString).length)
+        guard shouldChangeText(in: fullRange, replacementString: string) else { return }
+        replaceCharacters(in: fullRange, with: string)
+        didChangeText()
+        publishMarkedTextStatus()
+    }
+
     private func publishMarkedTextStatus() {
         onMarkedTextStatusChange?(hasMarkedText())
     }
@@ -61,6 +80,13 @@ struct IntentiveTextEditor: NSViewRepresentable {
     var maxHeight: CGFloat? = nil
     var onHeightChange: ((CGFloat) -> Void)? = nil
 
+    /// Identifier applied to the inner `NSTextView` (the `AXTextArea`), not the
+    /// wrapping `NSScrollView`. Accessibility value writes must land on the text
+    /// element itself — a write to the scroll area is a no-op — so callers that
+    /// need the composer to be AX-addressable set this rather than SwiftUI's
+    /// `.accessibilityIdentifier`, which would label the scroll area instead.
+    var accessibilityIdentifier: String? = nil
+
     func makeNSView(context: Context) -> NSScrollView {
         let textView = IntentiveNSTextView()
         textView.font = .systemFont(ofSize: fontSize)
@@ -75,6 +101,9 @@ struct IntentiveTextEditor: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.onMarkedTextStatusChange = { [weak coordinator = context.coordinator] hasMarkedText in
             coordinator?.updateMarkedTextState(hasMarkedText)
+        }
+        if let accessibilityIdentifier {
+            textView.setAccessibilityIdentifier(accessibilityIdentifier)
         }
 
         textView.textContainer?.lineFragmentPadding = lineFragmentPadding

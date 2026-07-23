@@ -239,11 +239,17 @@ func bringMainWindowForward() {
 
 // Open the floating bar's conversation composer through its real AX control when
 // it is not already showing (a PMB auto-presents it; a plain text send does not).
+// The click affordance is the status-bar "Open Floating Conversation" item — the
+// bar has no resting on-screen pill to press, so summon it through the menu.
 func openFloatingBar() {
   NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
-  if find(app, id: "floating-composer-input") == nil,
-    let open = find(app, id: "floating-bar-open")
-      ?? findTitle(app, "Open Intentive conversation") {
+  guard find(app, id: "floating-composer-input") == nil else { return }
+  guard let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intentive") else {
+    return
+  }
+  openStatusMenu(statusItem)
+  if let open = findLast(app, id: "menu-open-conversation")
+    ?? findTitle(app, "Open Floating Conversation") {
     AXUIElementPerformAction(pressableAncestor(open) ?? open, kAXPressAction as CFString)
     RunLoop.current.run(until: Date().addingTimeInterval(0.4))
   }
@@ -597,9 +603,9 @@ if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intenti
     action: { AXUIElementPerformAction(statusItem, kAXPressAction as CFString) },
     verify: {
       let expected = [
-        "menu-screen-capture-switch", "menu-audio-recording-switch", "menu-open-intentive",
-        "menu-check-updates", "menu-account", "menu-reset-onboarding", "menu-report-issue",
-        "menu-sign-out", "menu-quit-intentive",
+        "menu-screen-capture-switch", "menu-audio-recording-switch", "menu-open-conversation",
+        "menu-open-intentive", "menu-check-updates", "menu-account", "menu-reset-onboarding",
+        "menu-report-issue", "menu-sign-out", "menu-quit-intentive",
       ]
       let positioned = expected.compactMap { id -> (String, CGFloat)? in
         guard let element = find(app, id: id), let y = positionY(element) else { return nil }

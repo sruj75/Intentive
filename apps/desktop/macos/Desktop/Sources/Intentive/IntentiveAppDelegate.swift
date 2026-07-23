@@ -128,7 +128,7 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
       return nil
     }
 
-    image.size = NSSize(width: 18, height: 18)
+    image.size = NSSize(width: 21, height: 21)
     image.isTemplate = true
     image.accessibilityDescription = "Intentive"
     return image
@@ -162,6 +162,16 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
       action: #selector(toggleAudio(_:))
     )
     menu.addItem(audioItem)
+
+    // The floating bar is the sole conversation surface. Besides the ⌘O global
+    // hotkey and a Post-Message-Back auto-presenting it, this is the click
+    // affordance that opens the composer — restored after the menu redesign
+    // dropped it and orphaned `openFloatingBar()`.
+    let conversationItem = NSMenuItem(
+      title: "Open Floating Conversation", action: #selector(openConversation), keyEquivalent: "")
+    conversationItem.target = self
+    conversationItem.setAccessibilityIdentifier("menu-open-conversation")
+    menu.addItem(conversationItem)
 
     let openItem = NSMenuItem(
       title: "Open Intentive", action: #selector(openApp), keyEquivalent: "o")
@@ -219,6 +229,10 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
   @objc private func openApp() {
     presentPrimaryWindow()
+  }
+
+  @objc private func openConversation() {
+    model?.openFloatingBar()
   }
 
   @objc private func checkForUpdates() {

@@ -10,6 +10,7 @@ struct AIResponseView: View {
   var onSendFollowUp: (String) -> Void
 
   @State private var followUpText = ""
+  @State private var hasMarkedText = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -30,22 +31,53 @@ struct AIResponseView: View {
       .frame(maxHeight: 240)
 
       HStack(spacing: 8) {
-        TextField("Reply…", text: $followUpText)
-          .textFieldStyle(.plain)
-          .scaledFont(size: 13)
-          .foregroundColor(IntentiveColors.textPrimary)
-          .onSubmit(sendFollowUp)
+        // The follow-up composer is the same real `NSTextView`-backed editor as
+        // AskAIInputView, not a plain SwiftUI `TextField`. A plain `TextField`
+        // does not relay an AX-driven `kAXValueAttribute` write back into its
+        // `@State` binding, so Accessibility (and the acceptance driver) could set
+        // the displayed text yet `followUpText` stayed empty and the send no-oped.
+        // `IntentiveTextEditor`'s `NSTextViewDelegate.textDidChange` writes the
+        // binding on any mutation, including automation-driven ones.
+        ZStack(alignment: .topLeading) {
+          if followUpText.isEmpty && !hasMarkedText {
+            Text("Reply…")
+              .scaledFont(size: 13)
+              .foregroundColor(.secondary)
+              .padding(.horizontal, 8)
+          }
+
+          IntentiveTextEditor(
+            text: $followUpText,
+            lineFragmentPadding: 8,
+            onSubmit: sendFollowUp,
+            // A Post-Message-Back presents this surface without making the panel
+            // key, so it must not grab focus and steal the user's typing in their
+            // current app. The AX write no longer depends on focus: the id sits on
+            // the inner NSTextView and `setAccessibilityValue` routes through the
+            // real edit path, so `sendThroughComposer` lands the text regardless.
+            focusOnAppear: false,
+            onMarkedTextChange: { hasMarkedText = $0 },
+            minHeight: 20,
+            maxHeight: 96,
+            // Same id as AskAIInputView's composer, on the inner NSTextView: the
+            // response surface is the ongoing-conversation form of the one text
+            // composer, so Accessibility targets it identically whether the bar
+            // opened fresh or as a follow-up.
+            accessibilityIdentifier: "floating-composer-input"
+          )
+        }
+        .foregroundColor(IntentiveColors.textPrimary)
 
         Button(action: sendFollowUp) {
           Image(systemName: "arrow.up.circle.fill")
             .scaledFont(size: 18)
             .foregroundColor(
-              followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? IntentiveColors.textQuaternary
-                : IntentiveColors.purplePrimary
+              canSend ? IntentiveColors.purplePrimary : IntentiveColors.textQuaternary
             )
         }
+        .disabled(!canSend)
         .buttonStyle(.plain)
+        .accessibilityIdentifier("floating-composer-send")
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
@@ -89,9 +121,13 @@ struct AIResponseView: View {
     }
   }
 
+  private var canSend: Bool {
+    !hasMarkedText && !followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   private func sendFollowUp() {
+    guard canSend else { return }
     let trimmed = followUpText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
     followUpText = ""
     onSendFollowUp(trimmed)
   }

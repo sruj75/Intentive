@@ -323,10 +323,6 @@ final class DesktopViewModel: ObservableObject {
   }()
   private var didRunLaunchReconciliation = false
 
-  func openFloatingConversation() {
-    floatingBarManager.showComposer()
-  }
-
   /// Screen Memory results for the current `query`, refreshed on query change
   /// rather than per-render so the on-device semantic pass runs at most once per
   /// keystroke. Renovated from Omi's `RewindViewModel.performSearch`.
@@ -1457,8 +1453,26 @@ final class DesktopViewModel: ObservableObject {
       automationExpandedMatrix["capture-display-change"] =
         captureLifecycle?.loop.state.isRunning == true
 
-      let hadStructuredScreenIngress = ((try? screenMemory.pendingIngress(limit: 1_000)) ?? [])
-        .contains { item in
+      // Deterministically drive one structured capture through the real
+      // compile→publish→ingress path before observing the outbox. Relying on the
+      // ambient loop's own frame does not work here: its acceptance fixture is a
+      // static image whose stateful dHash dedups after the first store, and any
+      // structured record it did publish earlier was already drained by the
+      // preceding ack-fixture steps — so no pending structured record remains to
+      // observe. A direct `accept` runs the same `SearchableScreenRecordAnalyzer`
+      // that builds the app_name/window_title/ocr_text signals a live capture
+      // ships, and (there being no auto-ack in the assembled build) the event
+      // stays in `pendingIngress` for the check.
+      _ = try? capture.accept(
+        frame: CapturedFrame(
+          id: UUID().uuidString,
+          capturedAt: Date().protocolTimestamp,
+          appBundleID: "com.heyintentive.acceptance.fixture",
+          appName: "Intentive Acceptance",
+          windowTitle: "Structured search ingress fixture",
+          ocrText: "Structured search ingress fixture"))
+      let structuredPending = ((try? screenMemory.pendingIngress(limit: 1_000)) ?? [])
+      let hadStructuredScreenIngress = structuredPending.contains { item in
           guard case .perceptionEvent(let event) = item,
             event.artifactType == .searchableScreenRecord
           else { return false }
@@ -1467,6 +1481,14 @@ final class DesktopViewModel: ObservableObject {
             && event.signals["ocr_text"] != nil
         }
       automationExpandedMatrix["runtime-structured-search-ingress"] = hadStructuredScreenIngress
+      let structuredSearchableCount = structuredPending.filter {
+        if case .perceptionEvent(let event) = $0 {
+          return event.artifactType == .searchableScreenRecord
+        }
+        return false
+      }.count
+      automationExpandedMatrixDetails["runtime-structured-search-ingress"] =
+        "pending=\(structuredPending.count), searchableScreenRecord=\(structuredSearchableCount)"
 
       if let archive = screenMemory.activeArchive {
         do {
