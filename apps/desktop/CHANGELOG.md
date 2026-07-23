@@ -4,6 +4,16 @@ All notable changes to the Desktop Client. Format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-23
+
+First public stable Desktop release: a Developer ID signed, notarized, and stapled
+`Intentive.app` delivered from a signed DMG with Sparkle updates.
+
+- **Supported OS/architecture** — macOS 14 (Sonoma) or later, Apple Silicon (`arm64`) only.
+- **Installation** — download the signed DMG from the GitHub Release, open it, and
+  drag `Intentive.app` into the `/Applications` link. In-app updates are delivered
+  through Sparkle from `releases/latest/download/appcast.xml`.
+
 ### Added
 
 - **Intentive SwiftPM desktop renovation** — native macOS package with a testable `IntentiveDesktopCore` target and a SwiftUI `Intentive` executable for capture, Screen Memory, passive audio, text-only Floating Bar, and local Effect Runner seams.
@@ -16,4 +26,5 @@ All notable changes to the Desktop Client. Format follows [Keep a Changelog](htt
 ### Changed
 
 - **Omi renovation complete** — the active build preserves the proven Omi-derived archive, capture, Floating Bar, passive-audio, onboarding, proactive presentation, settings, and Sparkle mechanisms behind Intentive-owned seams; rejected Omi product systems and superseded replacements are absent.
-- **Bundle identity and release harness** — the native bundle smoke verifies Intentive app identity, auth callback scheme, privacy strings, Sparkle metadata, app icon, executable, and native VAD assets.
+- **Bundle identity and release harness** — the native bundle smoke verifies Intentive app identity, auth callback scheme, privacy strings, Sparkle metadata, app icon, executable, and the `IntentiveDesktopNativeAdapters` VAD bundle.
+- **Privacy without a global Private Mode** — sensing is governed per source by macOS permissions, explicit enable switches, excluded apps, retention, and clear-all rather than a single global mode; Post-Message-Back is reply-or-ignore with no dismiss/snooze control (ADR 0012).

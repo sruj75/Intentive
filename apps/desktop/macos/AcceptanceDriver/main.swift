@@ -237,6 +237,33 @@ func bringMainWindowForward() {
   }
 }
 
+// Open the floating bar's conversation composer through its real AX control when
+// it is not already showing (a PMB auto-presents it; a plain text send does not).
+func openFloatingBar() {
+  NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+  if find(app, id: "floating-composer-input") == nil,
+    let open = find(app, id: "floating-bar-open")
+      ?? findTitle(app, "Open Intentive conversation") {
+    AXUIElementPerformAction(pressableAncestor(open) ?? open, kAXPressAction as CFString)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+  }
+}
+
+// Operate the real floating composer through Accessibility: set the input value
+// and press the send button, mirroring the working Report Issue AX pattern. The
+// bridge is only observed to confirm the turn landed; it never performs the send.
+@discardableResult
+func sendThroughComposer(_ text: String) -> Bool {
+  openFloatingBar()
+  guard let input = find(app, id: "floating-composer-input") else { return false }
+  AXUIElementSetAttributeValue(input, kAXValueAttribute as CFString, text as CFTypeRef)
+  RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+  guard let send = find(app, id: "floating-composer-send") else { return false }
+  AXUIElementPerformAction(pressableAncestor(send) ?? send, kAXPressAction as CFString)
+  RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+  return true
+}
+
 func snapshot(_ root: AXUIElement, name: String) throws -> String {
   let rows = ([root] + descendants(root)).prefix(500).map { element -> [String: String] in
     [
@@ -327,6 +354,45 @@ while integer(bridgeState()["screen_memory_frames"]) < 2 && Date() < frameDeadli
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
 
+// Rewind has no shipped viewer (the main window is intentionally utility-only), so
+// the journey is proven through the headless ScreenMemoryTimelineSmoke — the same
+// ScreenMemoryTimeline backend a viewer would drive — over the seeded archive. The
+// bridge runs the smoke and reports the per-step matrix; the driver requires each.
+let rewindResponse = try bridgeRequest("POST", "/v1/fixtures/rewind-smoke")
+let rewindMatrix = rewindResponse["rewind_smoke"] as? [String: Any] ?? [:]
+let rewindProofs: [(String, String)] = [
+  ("rewind-open", "the day view loads seeded frames"),
+  ("rewind-search", "searching indexed OCR/title content returns matching frames"),
+  ("rewind-filter-open", "an app filter opens a specific frame"),
+  ("rewind-scrub", "scrubbing changes the selected frame"),
+  ("rewind-render-frame", "the selected frame renders real bytes (play/pause + OCR overlay surface)"),
+  ("rewind-delete", "deleting the current frame removes it through the real deletion path"),
+]
+for (key, description) in rewindProofs {
+  record(
+    name: key,
+    element: initialRoot,
+    assertion: "headless Rewind timeline proves \(description)"
+  ) {
+    (rewindMatrix[key] as? Bool) == true
+  }
+}
+
+// Onboarding records a granted/denied/deferred decision per permission through its
+// real path (the seed defers both). Verify the app persisted a valid decision
+// rather than adding fake Grant/Deny controls the product does not ship.
+record(
+  name: "onboarding-decisions-recorded",
+  element: initialRoot,
+  assertion: "the app recorded a granted/denied/deferred decision for each onboarding permission"
+) {
+  let valid = Set(["granted", "denied", "deferred"])
+  let state = bridgeState()
+  let screen = state["onboarding_screen_recording_decision"] as? String
+  let audio = state["onboarding_audio_decision"] as? String
+  return screen.map(valid.contains) == true && audio.map(valid.contains) == true
+}
+
 let settingsDestinations = [
   ("settings-general", "sidebar-general"),
   ("settings-rewind", "sidebar-rewind"),
@@ -349,24 +415,101 @@ for (name, id) in settingsDestinations {
   )
 }
 
-// A Post-Message-Back reply surfaces in the one conversation thread (no separate
-// notification/snooze surface): the bar auto-opens engaged, the message lands in
-// the thread, and its reply composer is present so the user can answer inline.
-let proactiveMessagesBefore = integer(bridgeState()["conversation_message_count"])
+// The Floating Bar is the sole conversation surface. Prove its real behaviors
+// through Accessibility, observing only bridge state for the outcome:
+//   1. an ordinary Runtime reply lands in the thread but does not auto-present;
+//   2. typing into the real composer and pressing send posts a user turn;
+//   3. closing and reopening the bar preserves the one thread;
+//   4. a Post-Message-Back auto-presents the bar engaged;
+//   5. the user replies to the PMB by operating the real composer (reply-or-ignore).
+let ordinaryBefore = integer(bridgeState()["conversation_message_count"])
+record(
+  name: "floating-bar-ordinary-reply-silent",
+  element: initialRoot,
+  assertion: "an ordinary Runtime reply lands in the one thread without auto-presenting the bar",
+  action: { _ = try! bridgeRequest("POST", "/v1/fixtures/ordinary-reply") },
+  verify: {
+    let settle = Date().addingTimeInterval(3)
+    var landed = false
+    while Date() < settle {
+      let state = bridgeState()
+      if integer(state["conversation_message_count"]) > ordinaryBefore { landed = true }
+      if state["floating_bar_engaged"] as? Bool == true { return false }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    return landed && bridgeState()["floating_bar_engaged"] as? Bool != true
+  }
+)
+
+let textSendBefore = integer(bridgeState()["conversation_message_count"])
+record(
+  name: "floating-bar-text-send",
+  element: find(app, id: "floating-composer-send") ?? initialRoot,
+  assertion: "typing into the real composer and pressing send posts a user turn through the Runtime seam",
+  action: { _ = sendThroughComposer("Acceptance composer text send") },
+  verify: {
+    let deadline = Date().addingTimeInterval(4)
+    while Date() < deadline {
+      let state = bridgeState()
+      if integer(state["conversation_message_count"]) > textSendBefore,
+        state["floating_bar_engaged"] as? Bool == true { return true }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    return false
+  }
+)
+
+let continuityCount = integer(bridgeState()["conversation_message_count"])
+if let close = find(app, id: "floating-bar-close") {
+  AXUIElementPerformAction(pressableAncestor(close) ?? close, kAXPressAction as CFString)
+  RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+}
+record(
+  name: "floating-bar-close-reopen-continuity",
+  element: initialRoot,
+  assertion: "closing and reopening the bar preserves the one conversation thread",
+  action: { openFloatingBar() },
+  verify: {
+    let deadline = Date().addingTimeInterval(3)
+    while Date() < deadline {
+      let state = bridgeState()
+      if state["floating_bar_visible"] as? Bool == true,
+        integer(state["conversation_message_count"]) == continuityCount { return true }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    return false
+  }
+)
+
+let pmbBefore = integer(bridgeState()["conversation_message_count"])
 _ = try bridgeRequest("POST", "/v1/fixtures/proactive-message")
 record(
-  name: "proactive-pmb-in-thread",
+  name: "proactive-pmb-auto-present",
   element: initialRoot,
-  assertion: "a Post-Message-Back message appears in the one conversation thread and can be replied to inline",
+  assertion: "a Post-Message-Back auto-presents the bar engaged with the message in the one thread",
   verify: {
     let settle = Date().addingTimeInterval(4)
     while Date() < settle {
       let state = bridgeState()
       if state["floating_bar_visible"] as? Bool == true,
         state["floating_bar_engaged"] as? Bool == true,
-        integer(state["conversation_message_count"]) > proactiveMessagesBefore {
-        return true
-      }
+        integer(state["conversation_message_count"]) > pmbBefore { return true }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    return false
+  }
+)
+
+let pmbReplyBefore = integer(bridgeState()["conversation_message_count"])
+record(
+  name: "pmb-reply-through-composer",
+  element: find(app, id: "floating-composer-input") ?? initialRoot,
+  assertion: "the user replies to the PMB by operating the real composer through Accessibility (reply-or-ignore)",
+  action: { _ = sendThroughComposer("Acceptance PMB reply") },
+  verify: {
+    let deadline = Date().addingTimeInterval(4)
+    while Date() < deadline {
+      if integer(bridgeState()["conversation_message_count"]) > pmbReplyBefore { return true }
       RunLoop.current.run(until: Date().addingTimeInterval(0.2))
     }
     return false
@@ -623,6 +766,34 @@ record(
   verify: { integer(bridgeState()["runtime_ingress_pending"]) == 0 }
 )
 
+// Sleep/wake/display recovery, meeting-gated system audio, mic VAD ingestion,
+// permission degradation, retention expiry, tombstone ordering, and durable
+// termination markers have no user control to press. The bridge simulates them
+// over the real coordinators and reports a matrix; the driver promotes each
+// previously-optional entry to a required proof.
+let matrixResponse = try bridgeRequest("POST", "/v1/fixtures/expanded-matrix")
+let expandedMatrix = matrixResponse["expanded_matrix"] as? [String: Any] ?? [:]
+let matrixProofs: [(String, String)] = [
+  ("audio-vad-ingestion", "Silero-gated microphone PCM reaches the transcription seam"),
+  ("audio-meeting-system-tap", "system audio starts only for a detected meeting"),
+  ("audio-permission-degradation", "revoking microphone permission fails the source closed"),
+  ("capture-sleep", "system sleep stops the capture source"),
+  ("capture-wake", "system wake restarts the capture source"),
+  ("capture-display-change", "a display change finalizes and resumes capture"),
+  ("runtime-structured-search-ingress", "captured screens emit structured searchable perception ingress"),
+  ("runtime-retention-expiry", "retention expiry drops records and emits a retention-expiry tombstone"),
+  ("runtime-tombstone-ordering", "a perception event is never reordered behind its later tombstone"),
+  ("runtime-durable-quit-crash-markers", "quit and crash session-end markers are durably enqueued"),
+]
+for (key, description) in matrixProofs {
+  record(
+    name: key,
+    element: initialRoot,
+    assertion: "expanded acceptance matrix proves \(description)"
+  ) {
+    (expandedMatrix[key] as? Bool) == true
+  }
+}
 
 // Sparkle presents an application-modal window. Exercise it only after every
 // product journey, then dismiss its result before onboarding becomes frontmost.
@@ -652,6 +823,30 @@ if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intenti
       AXUIElementPerformAction(dismiss, kAXPressAction as CFString)
       RunLoop.current.run(until: Date().addingTimeInterval(0.2))
     }
+  }
+}
+
+// Sign-out is a real menu action; observe the resulting signed-out state.
+if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intentive") {
+  openStatusMenu(statusItem)
+  if let signOut = findLast(app, id: "menu-sign-out") ?? findTitle(app, "Sign Out") {
+    record(
+      name: "sign-out",
+      element: signOut,
+      assertion: "AXPress signs out and the app reports a signed-out state",
+      action: { AXUIElementPerformAction(pressableAncestor(signOut) ?? signOut, kAXPressAction as CFString) },
+      verify: {
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline {
+          let state = bridgeState()
+          if (state["app_status"] as? String)?.localizedCaseInsensitiveContains("signed out") == true
+            || String(describing: state["runtime_state"] ?? "")
+              .localizedCaseInsensitiveContains("signedout") { return true }
+          RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
+      }
+    )
   }
 }
 
@@ -695,10 +890,23 @@ if !steps.contains(where: { $0.name == "onboarding-reset-confirmation" && $0.pas
 
 let required = [
   "fixture-seed", "settings-general", "settings-rewind", "settings-privacy", "settings-about",
+  // Rewind journey (headless timeline smoke over the seeded archive).
+  "rewind-open", "rewind-search", "rewind-filter-open", "rewind-scrub",
+  "rewind-render-frame", "rewind-delete",
+  // Floating Bar is the sole conversation surface, driven through the real composer.
+  "floating-bar-ordinary-reply-silent", "floating-bar-text-send",
+  "floating-bar-close-reopen-continuity", "proactive-pmb-auto-present",
+  "pmb-reply-through-composer",
   "runtime-lost-ack", "runtime-reconnect-redelivery", "runtime-ack-dedupe",
+  // Environment behaviors with no user control, simulated over the real coordinators.
+  "audio-vad-ingestion", "audio-meeting-system-tap", "audio-permission-degradation",
+  "capture-sleep", "capture-wake", "capture-display-change",
+  "runtime-structured-search-ingress", "runtime-retention-expiry",
+  "runtime-tombstone-ordering", "runtime-durable-quit-crash-markers",
   "menu-order", "report-issue-send",
   "capture-enable-first-frame", "capture-disable", "audio-microphone-running", "audio-disable",
-  "update-check", "onboarding-reset-confirmation", "onboarding-resume",
+  "update-check", "sign-out",
+  "onboarding-decisions-recorded", "onboarding-reset-confirmation", "onboarding-resume",
   "account-verified-email",
 ]
 let ok = bridgeFailure == nil

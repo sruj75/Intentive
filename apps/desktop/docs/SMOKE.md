@@ -85,7 +85,7 @@ Confirm the generated `Info.plist` contains:
 6. `SUFeedURL` and `SUPublicEDKey` when Sparkle update metadata is provided.
 7. `IntentiveSentryDSN`, `IntentivePostHogProjectKey`, and `IntentivePostHogHost` when release telemetry metadata is provided.
 8. `Contents/Frameworks/Sparkle.framework` and `Contents/Frameworks/Sentry.framework` for the production release boundaries.
-9. `Contents/Resources/IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx` for SwiftPM `Bundle.module` lookup.
+9. `Contents/Resources/IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle/silero_vad.onnx` for SwiftPM `Bundle.module` lookup (owned by the `IntentiveDesktopNativeAdapters` target).
 
 For the mechanical local check:
 

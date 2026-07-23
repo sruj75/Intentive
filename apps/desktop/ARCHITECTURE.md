@@ -46,7 +46,7 @@ apps/desktop/
 - Screen Memory stores local records and local embeddings. It does not store Conversation History.
 - Effect Runner behavior is deterministic local execution of an already-chosen Runtime output.
 - The Floating Bar is the only Desktop conversation surface and accepts text only.
-- Passive audio sensing is a local perception source, not a conversation-input path, and is on by default (consent- and privacy-gated: requires mic permission, honors Private Mode and excluded apps). Its active microphone path uses Omi-derived Silero VAD through ONNX Runtime and FluidAudio/Parakeet transcription behind source-neutral Core seams.
+- Passive audio sensing is a local perception source, not a conversation-input path, and is on by default (consent- and privacy-gated: requires mic permission, honors its per-source enable switch and excluded apps; there is no global Private Mode — see ADR 0012). Its active microphone path uses Omi-derived Silero VAD through ONNX Runtime and FluidAudio/Parakeet transcription behind source-neutral Core seams.
 - Product nudges are presented in-app for Post-Message-Back messages. Ordinary replies do not interrupt and no duplicate macOS banner is emitted.
 
 ## Core Modules
@@ -63,8 +63,8 @@ apps/desktop/
 - `DesktopExperience.swift`: Runtime-truth floating conversation projection, capture coordination, passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Omi's window/geometry/composer/response and Carbon shortcut mechanisms are preserved behind the text-only `FloatingBarController`; conversation is never persisted locally.
 - `OmiImported/`: the compiled `OmiTheme` and `IntentiveDesktopPresentation` targets. The theme remains byte-identical to pinned Omi commit `c55f2925eba6d98f0c1658535425f7405e5d5b9b`; the copied Settings and setup views are pruned to four destinations and six semantic setup steps. `IntentiveDesktopPresentationAdapter` is the only bridge from those views to `DesktopViewModel`, so Omi UI code never owns auth tokens, capture services, storage, Runtime, diagnostics, or Sparkle.
 - `DesktopUtilitySettings.swift` + `DesktopOnboarding.swift`: persisted four-tab preferences and semantic setup progress, including legacy migration. Sign-in is outside the six-step rail; unfinished cross-client gates remain Control-Plane-owned.
-- `ScreenMemoryCaptureResilience.swift`: the authoritative capture lifecycle state and sole user start/stop entry point, including display-change finalization, power cadence, sleep/lock recovery, Private Mode, and durable session termination.
-- `PassiveAudioCaptureCoordinator.swift`: desired-vs-actual microphone/system-audio reconciliation, meeting gating, generation guards, and synchronous Private Mode cleanup. Native adapters preserve Omi's CoreAudio IOProc/process-tap mechanisms.
+- `ScreenMemoryCaptureResilience.swift`: the authoritative capture lifecycle state and sole user start/stop entry point, including display-change finalization, power cadence, sleep/lock recovery, and durable session termination.
+- `PassiveAudioCaptureCoordinator.swift`: desired-vs-actual microphone/system-audio reconciliation, meeting gating, generation guards, and synchronous cleanup when a source is disabled or its permission is revoked. Native adapters preserve Omi's CoreAudio IOProc/process-tap mechanisms.
 - `ScreenMemoryTimeline.swift` + the executable Screen Memory views: day/search/app-filter timeline, lazy local video frames, filmstrip/player, OCR cards, storage, and confirmation-aware deletion.
 - `DesktopAutomationBridge.swift` (debug acceptance builds only): loopback observation/fixture/fault control. External acceptance performs every user action through macOS Accessibility.
 

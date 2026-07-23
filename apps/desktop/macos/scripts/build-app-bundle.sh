@@ -16,7 +16,10 @@ SENTRY_DSN="${INTENTIVE_SENTRY_DSN:-}"
 POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-}"
 POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
 APP_ICON_SOURCE="$PACKAGE_PATH/Sources/Resources/AppIcon.icns"
-NATIVE_ASSETS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAssets.bundle"
+# The Silero VAD weights are a resource of the IntentiveDesktopNativeAdapters
+# target that owns the microphone voice-activity gate, so SwiftPM emits them in
+# that target's bundle. Copy it under its real name; do not duplicate the model.
+NATIVE_ADAPTERS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle"
 INTENTIVE_UI_BUNDLE_NAME="IntentiveDesktop_Intentive.bundle"
 
 if [[ -z "$SPARKLE_FEED_URL" && -n "${GITHUB_REPOSITORY:-}" ]]; then
@@ -45,7 +48,7 @@ POSTHOG_HOST_XML="$(xml_escape "$POSTHOG_HOST")"
 "$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH"
 BUILD_DIR="$("$SWIFTPM" build -c "$CONFIGURATION" --package-path "$PACKAGE_PATH" --show-bin-path)"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
-NATIVE_ASSETS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ASSETS_BUNDLE_NAME"
+NATIVE_ADAPTERS_BUNDLE_SOURCE="$BUILD_DIR/$NATIVE_ADAPTERS_BUNDLE_NAME"
 INTENTIVE_UI_BUNDLE_SOURCE="$BUILD_DIR/$INTENTIVE_UI_BUNDLE_NAME"
 
 rm -rf "$APP_BUNDLE"
@@ -73,11 +76,11 @@ for framework in Sparkle.framework Sentry.framework; do
   cp -R "$BUILD_DIR/$framework" "$APP_BUNDLE/Contents/Frameworks/$framework"
 done
 cp "$APP_ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-if [[ ! -d "$NATIVE_ASSETS_BUNDLE_SOURCE" ]]; then
-  echo "Missing native assets bundle: $NATIVE_ASSETS_BUNDLE_SOURCE" >&2
+if [[ ! -d "$NATIVE_ADAPTERS_BUNDLE_SOURCE" ]]; then
+  echo "Missing native adapters bundle: $NATIVE_ADAPTERS_BUNDLE_SOURCE" >&2
   exit 1
 fi
-cp -R "$NATIVE_ASSETS_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
+cp -R "$NATIVE_ADAPTERS_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$NATIVE_ADAPTERS_BUNDLE_NAME"
 if [[ ! -d "$INTENTIVE_UI_BUNDLE_SOURCE" ]]; then
   echo "Missing Intentive UI resources bundle: $INTENTIVE_UI_BUNDLE_SOURCE" >&2
   exit 1

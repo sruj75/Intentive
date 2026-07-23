@@ -138,6 +138,8 @@ final class DesktopViewModel: ObservableObject {
   private var automationRetentionExpiredCount = 0
   private var automationExpandedMatrix: [String: Bool] = [:]
   private var automationExpandedMatrixDetails: [String: String] = [:]
+  private var automationRewindSmoke: [String: Bool] = [:]
+  private var automationRewindSmokeDetails: [String: String] = [:]
   #endif
   private let alreadyAcknowledgedRuntimeClient = AlreadyAcknowledgedRuntimeClient()
   private let runtimeSocket = URLSessionRuntimeSocket()
@@ -651,6 +653,8 @@ final class DesktopViewModel: ObservableObject {
           "retention_expired_count": self.automationRetentionExpiredCount,
           "expanded_matrix": self.automationExpandedMatrix,
           "expanded_matrix_details": self.automationExpandedMatrixDetails,
+          "rewind_smoke": self.automationRewindSmoke,
+          "rewind_smoke_details": self.automationRewindSmokeDetails,
         ]
       } resetFixture: { [weak self] in
         guard let self else { return [:] }
@@ -723,6 +727,14 @@ final class DesktopViewModel: ObservableObject {
         try self.runtime.handleSocketEvent(ProtocolEventCodec.encode(message))
         self.floatingBarManager.refreshMessages()
         return ["message_id": message.messageId]
+      } runRewindSmoke: { [weak self] in
+        guard let self else { return [:] }
+        await self.acceptanceRunRewindSmoke()
+        return ["rewind_smoke": self.automationRewindSmoke]
+      } runExpandedMatrix: { [weak self] in
+        guard let self else { return [:] }
+        await self.acceptanceRunExpandedMatrix()
+        return ["expanded_matrix": self.automationExpandedMatrix]
       }
       try? automationBridge?.start()
     }
@@ -1316,8 +1328,88 @@ final class DesktopViewModel: ObservableObject {
   func acceptanceCaptureWake() { captureLifecycle?.receiveSystemEvent(.systemWake) }
   func acceptanceCaptureDisplayChange() { captureLifecycle?.receiveSystemEvent(.displayChange) }
 
-  func acceptanceRunExpandedMatrix() {
-    Task { @MainActor [weak self] in
+  /// Prove the Rewind journey (search, open, scrub, play/pause render, OCR
+  /// display, deletion) against the exact `ScreenMemoryTimeline` backend a viewer
+  /// would drive. The main window is intentionally utility-only, so this exercises
+  /// the same seam the `ScreenMemoryAccessibilityID`-addressed headless smoke uses
+  /// over the seeded fixture, rather than a viewer we do not ship.
+  func acceptanceRunRewindSmoke() async {
+    automationRewindSmoke = [:]
+    automationRewindSmokeDetails = [:]
+    guard let archive = screenMemory.activeArchive else {
+      automationRewindSmokeDetails["rewind"] = "no signed-in archive"
+      return
+    }
+    let now = Date()
+    let timeline = ScreenMemoryTimeline(archive: archive, selectedDate: now)
+    let smoke = ScreenMemoryTimelineSmoke(timeline: timeline)
+
+    await smoke.launch(on: now)
+    let launched = smoke.snapshot()
+    automationRewindSmoke["rewind-open"] = !launched.frames.isEmpty
+    automationRewindSmokeDetails["rewind-open"] =
+      "frames=\(launched.frames.count), apps=\(launched.appFilterIdentifiers.count)"
+
+    // Search a term indexed in FTS (the Safari seed's window title), then open a
+    // matching frame so OCR-highlight identifiers can be recorded as evidence.
+    await smoke.typeSearch("Invoice")
+    let searched = smoke.snapshot()
+    automationRewindSmoke["rewind-search"] =
+      !searched.frames.isEmpty && searched.searchQuery == "Invoice"
+    automationRewindSmokeDetails["rewind-search"] = "matches=\(searched.frames.count)"
+    if let firstMatch = searched.frames.first?.identifier {
+      _ = smoke.tapFrame(firstMatch)
+    }
+    automationRewindSmokeDetails["rewind-ocr-highlights"] =
+      "count=\(smoke.snapshot().ocrHighlightIdentifiers.count)"
+    await smoke.typeSearch("")
+
+    // Filter by the first app and open its first frame.
+    let dayFrames = smoke.snapshot()
+    if let firstApp = dayFrames.appFilterIdentifiers.first {
+      await smoke.tapAppFilter(firstApp)
+    }
+    let filtered = smoke.snapshot()
+    var opened = false
+    if let firstFrame = filtered.frames.first?.identifier {
+      opened = smoke.tapFrame(firstFrame)
+    }
+    automationRewindSmoke["rewind-filter-open"] =
+      opened && smoke.snapshot().selectedFrameIdentifier != nil
+    await smoke.tapAppFilter(nil)
+
+    // Scrub forward and back changes the selected frame.
+    let beforeScrub = smoke.snapshot().selectedFrameIdentifier
+    smoke.tapScrubForward()
+    let afterForward = smoke.snapshot().selectedFrameIdentifier
+    smoke.tapScrubBackward()
+    let afterBack = smoke.snapshot().selectedFrameIdentifier
+    automationRewindSmoke["rewind-scrub"] =
+      beforeScrub != nil && afterForward != nil
+      && (afterForward != beforeScrub || afterBack == beforeScrub)
+    automationRewindSmokeDetails["rewind-scrub"] =
+      "before=\(beforeScrub ?? "nil"), fwd=\(afterForward ?? "nil"), back=\(afterBack ?? "nil")"
+
+    // Render the current frame — the play/pause surface produces real bytes and is
+    // the target a viewer overlays OCR highlights onto.
+    let frameBytes = await smoke.renderCurrentFrame()
+    automationRewindSmoke["rewind-render-frame"] = (frameBytes?.isEmpty == false)
+
+    // Delete the current frame through the timeline's real deletion path.
+    let framesBeforeDelete = smoke.snapshot().frames.count
+    let deletion = await smoke.tapDeleteCurrentFrame(confirmChunkDeletion: true)
+    let framesAfterDelete = smoke.snapshot().frames.count
+    automationRewindSmoke["rewind-delete"] =
+      deletion != nil && framesAfterDelete < framesBeforeDelete
+    automationRewindSmokeDetails["rewind-delete"] =
+      "before=\(framesBeforeDelete), after=\(framesAfterDelete)"
+
+    // Restore the timeline the utility surface reads so later steps see truth.
+    rebuildScreenMemoryTimeline()
+  }
+
+  func acceptanceRunExpandedMatrix() async {
+    await Task { @MainActor [weak self] in
       guard let self else { return }
       automationExpandedMatrix = [:]
       automationExpandedMatrixDetails = [:]
@@ -1422,7 +1514,7 @@ final class DesktopViewModel: ObservableObject {
       let markersAfter = ((try? screenMemory.pendingIngress(limit: 1_000)) ?? [])
         .filter { $0.kind == .sessionEndMarker }.count
       automationExpandedMatrix["runtime-durable-quit-crash-markers"] = markersAfter == markersBefore + 2
-    }
+    }.value
   }
 
   func acceptanceDegradeMicrophonePermission() {

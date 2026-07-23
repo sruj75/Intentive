@@ -20,6 +20,8 @@ final class DesktopAutomationBridge {
   private let emitPendingAck: Operation
   private let emitOrdinaryReply: Operation
   private let emitProactiveMessage: Operation
+  private let runRewindSmoke: Operation
+  private let runExpandedMatrix: Operation
   private var faults = Faults()
   private var fixtureName = "empty"
 
@@ -33,7 +35,9 @@ final class DesktopAutomationBridge {
     reconnectRuntime: @escaping Operation,
     emitPendingAck: @escaping Operation,
     emitOrdinaryReply: @escaping Operation,
-    emitProactiveMessage: @escaping Operation
+    emitProactiveMessage: @escaping Operation,
+    runRewindSmoke: @escaping Operation,
+    runExpandedMatrix: @escaping Operation
   ) {
     guard ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil else {
       return nil
@@ -48,6 +52,8 @@ final class DesktopAutomationBridge {
     self.emitPendingAck = emitPendingAck
     self.emitOrdinaryReply = emitOrdinaryReply
     self.emitProactiveMessage = emitProactiveMessage
+    self.runRewindSmoke = runRewindSmoke
+    self.runExpandedMatrix = runExpandedMatrix
   }
 
   func start() throws {
@@ -167,6 +173,21 @@ final class DesktopAutomationBridge {
         let result = try await emitProactiveMessage()
         return Self.response(status: 200, body: result.merging(["ok": true]) { current, _ in current })
       } catch { return Self.response(status: 500, body: ["error": "proactive_message_failed"]) }
+    // Rewind has no shipped viewer (the main window is utility-only), so this runs
+    // the headless timeline smoke over the seeded archive — the same backend a
+    // viewer would drive. It is an observation/fixture, not a user action.
+    case ("POST", "/v1/fixtures/rewind-smoke"):
+      do {
+        let result = try await runRewindSmoke()
+        return Self.response(status: 200, body: result.merging(["ok": true]) { current, _ in current })
+      } catch { return Self.response(status: 500, body: ["error": "rewind_smoke_failed"]) }
+    // Sleep/wake/display-change, meeting gating, and permission degradation have no
+    // user-facing controls to press; this simulates them and records the matrix.
+    case ("POST", "/v1/fixtures/expanded-matrix"):
+      do {
+        let result = try await runExpandedMatrix()
+        return Self.response(status: 200, body: result.merging(["ok": true]) { current, _ in current })
+      } catch { return Self.response(status: 500, body: ["error": "expanded_matrix_failed"]) }
     default:
       return Self.response(status: 404, body: ["error": "not_found"])
     }

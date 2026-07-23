@@ -13,7 +13,8 @@ SPARKLE_PUBLIC_ED_KEY="${INTENTIVE_SPARKLE_PUBLIC_ED_KEY:-desktop-bundle-smoke-p
 SENTRY_DSN="${INTENTIVE_SENTRY_DSN:-https://public@example.invalid/1}"
 POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-phc_desktop_bundle_smoke}"
 POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
-NATIVE_ASSETS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAssets.bundle"
+# Silero VAD weights ship in the IntentiveDesktopNativeAdapters target bundle.
+NATIVE_ADAPTERS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle"
 INTENTIVE_UI_BUNDLE_NAME="IntentiveDesktop_Intentive.bundle"
 
 fail() {
@@ -60,18 +61,18 @@ APP_BUNDLE="$(
 PLIST="$APP_BUNDLE/Contents/Info.plist"
 EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Intentive"
 APP_ICON="$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-NATIVE_ASSETS_BUNDLE="$APP_BUNDLE/Contents/Resources/$NATIVE_ASSETS_BUNDLE_NAME"
+NATIVE_ADAPTERS_BUNDLE="$APP_BUNDLE/Contents/Resources/$NATIVE_ADAPTERS_BUNDLE_NAME"
 INTENTIVE_UI_BUNDLE="$APP_BUNDLE/Contents/Resources/$INTENTIVE_UI_BUNDLE_NAME"
 MENU_BAR_ICON="$INTENTIVE_UI_BUNDLE/IntentiveMenuBarIcon.png"
-VAD_MODEL="$NATIVE_ASSETS_BUNDLE/silero_vad.onnx"
+VAD_MODEL="$NATIVE_ADAPTERS_BUNDLE/silero_vad.onnx"
 SPARKLE_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
 
 [[ -f "$PLIST" ]] || fail "Info.plist missing"
 [[ -x "$EXECUTABLE" ]] || fail "executable missing or not executable: $EXECUTABLE"
 [[ -s "$APP_ICON" ]] || fail "AppIcon.icns missing or empty"
-[[ -d "$NATIVE_ASSETS_BUNDLE" ]] || fail "native assets bundle missing: $NATIVE_ASSETS_BUNDLE"
-[[ -s "$VAD_MODEL" ]] || fail "silero_vad.onnx missing from native assets bundle"
+[[ -d "$NATIVE_ADAPTERS_BUNDLE" ]] || fail "native adapters bundle missing: $NATIVE_ADAPTERS_BUNDLE"
+[[ -s "$VAD_MODEL" ]] || fail "silero_vad.onnx missing from native adapters bundle"
 [[ -s "$MENU_BAR_ICON" ]] || fail "Intentive menu-bar icon missing from UI resources bundle"
 [[ -d "$SPARKLE_FRAMEWORK" ]] || fail "Sparkle.framework missing"
 [[ -d "$SENTRY_FRAMEWORK" ]] || fail "Sentry.framework missing"

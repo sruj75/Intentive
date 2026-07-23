@@ -36,7 +36,7 @@ The old Tauri updater keys are not reused: Sparkle has its own Ed25519 format. A
 5. The workflow creates a **draft** GitHub Release. Draft status is load-bearing: artifacts are not exposed through Sparkle before dedicated-Mac acceptance.
 6. Run `desktop-release-acceptance.yml` with the draft tag. The self-hosted Apple Silicon Mac downloads the immutable draft assets, matches the DMG digest to CI evidence, mounts the DMG, and launches the signed installed payload.
 7. Configure the dedicated release Mac with executable drivers in `DESKTOP_STAGE2_SPARKLE_DRIVER`, `DESKTOP_STAGE2_TART_DRIVER`, and `DESKTOP_STAGE2_FULL_STACK_DRIVER`. They drive the real N-1 loopback update, clean-TCC Tart checklist, and signed-in full-stack journey respectively; each receives the exact tag, SHA, DMG digest, a fresh output path, and evidence root.
-8. The protected `desktop-release-stage2-proof` job downloads the exact draft and runs `run-stage2-release-proof.sh`. That repository-owned entry point freshly installs and launches the notarized DMG from `/Applications`, executes all three dedicated-Mac drivers, validates four newly produced proof families (`installed-dmg.json`, `sparkle-update.json`, `tart-tcc.json`, and `full-stack.json`) plus attachments and identity/digest binding, attaches them to the draft, and only then publishes it. Pre-existing evidence is deleted and cannot satisfy the gate.
+8. The protected `desktop-release-stage2-proof` job downloads the exact draft and runs `run-stage2-release-proof.sh`. That repository-owned entry point freshly installs and launches the notarized DMG from `/Applications`, runs the repository-owned launch-at-login proof (`verify-launch-at-login.sh`), executes all three dedicated-Mac drivers, validates five newly produced proof families (`installed-dmg.json`, `launch-at-login.json`, `sparkle-update.json`, `tart-tcc.json`, and `full-stack.json`) plus attachments and identity/digest binding, attaches them to the draft, and only then publishes it. Pre-existing evidence is deleted and cannot satisfy the gate. The launch-at-login proof validates the bundled LaunchAgent registration (bundle-relative `BundleProgram`, `--background`, `RunAtLoad`) and a menu-bar-only background launch; the physical login cycle (no Dock/window flash) and the “Open Intentive” Dock/window restore remain operator-observed and are recorded alongside its JSON.
 8. Set `publish=true` only when every artifact matches the tag and candidate digest. Publishing never rebuilds the accepted payload.
 
 ## Deterministic gates
@@ -63,8 +63,8 @@ Inside the visible VM, copy the shared `Intentive.app` to `/Applications`, then 
 1. Fresh onboarding explains local raw-media boundaries before asking for access.
 2. Screen Recording can be granted, denied, or deferred; capture starts only after a live grant and survives relaunch.
 3. Optional microphone/system-audio consent fails closed; neither source can fill the text composer.
-4. Screen Memory captures/searches a known screen; Private Mode stops screen and audio sensing until explicitly resumed.
-5. Retention/exclusion choices survive relaunch.
+4. Screen Memory captures/searches a known screen; disabling a source's enable switch (or revoking its macOS permission) stops that source and finalizes the active chunk. There is no global Private Mode (ADR 0012).
+5. Retention/exclusion choices survive relaunch; clear-all removes local records/media and emits a tombstone.
 6. The Floating Bar remains text-only and ordinary replies do not re-present it.
 7. A PMB message presents the bar/edge glow, then acknowledges without a duplicate macOS notification.
 8. Updates expose manual check/download/deferred install state without silently installing.

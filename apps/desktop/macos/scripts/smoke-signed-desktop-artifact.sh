@@ -235,7 +235,7 @@ assert_native_boundaries() {
   [[ -d "$APP_BUNDLE/Contents/Frameworks/Sentry.framework" ]] || fail "Sentry.framework missing"
   [[ -s "$resources/AppIcon.icns" ]] || fail "AppIcon.icns missing"
   [[ -s "$resources/IntentiveDesktop_Intentive.bundle/IntentiveMenuBarIcon.png" ]] || fail "Intentive menu-bar icon missing"
-  [[ -s "$resources/IntentiveDesktop_IntentiveDesktopNativeAssets.bundle/silero_vad.onnx" ]] \
+  [[ -s "$resources/IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle/silero_vad.onnx" ]] \
     || fail "local passive-audio VAD asset missing"
   pass "Native framework integrity passed"
   pass "Local Screen Memory assets and privacy metadata passed"

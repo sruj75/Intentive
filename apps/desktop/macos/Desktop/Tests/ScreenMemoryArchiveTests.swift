@@ -328,7 +328,8 @@ final class ScreenMemoryArchiveTests: XCTestCase {
           ScreenMemoryVideoChunkFinalization(chunkID: finalizedChunkID, sampleCount: 1)
         ),
         frameData: [finalizedLocation: finalizedBytes]
-      )
+      ),
+      now: try retentionSafeNow()
     )
     _ = try await first.ingest(
       captureInput(
@@ -351,7 +352,8 @@ final class ScreenMemoryArchiveTests: XCTestCase {
       idFactory: { interruptedRecordID },
       videoArchive: FixtureVideoArchive(
         appendOutcomes: [.accepted(location: interruptedLocation, finalizedChunks: [])]
-      )
+      ),
+      now: try retentionSafeNow()
     )
     _ = try await second.ingest(
       captureInput(
@@ -373,7 +375,8 @@ final class ScreenMemoryArchiveTests: XCTestCase {
       videoArchive: FixtureVideoArchive(
         frameData: [finalizedLocation: finalizedBytes],
         recoveryStates: [interruptedChunkID: .staged]
-      )
+      ),
+      now: try retentionSafeNow()
     )
 
     let interruptedFrame = try await reopened.videoFrame(for: ScreenMemoryRecordID(interruptedRecordID))
@@ -795,7 +798,8 @@ final class ScreenMemoryArchiveTests: XCTestCase {
     let initialArchive = try ScreenMemoryArchive(
       profile: profile,
       imageAnalyzer: initialAnalyzer,
-      idFactory: { storedID }
+      idFactory: { storedID },
+      now: try retentionSafeNow()
     )
     let input = ScreenMemoryCaptureInput(
       userID: "reopened-user",
@@ -811,7 +815,11 @@ final class ScreenMemoryArchiveTests: XCTestCase {
       hashes: [0b0001_1111],
       ocr: ScreenMemoryOCRResult(fullText: "must not be recognized", blocks: [])
     )
-    let reopenedArchive = try ScreenMemoryArchive(profile: profile, imageAnalyzer: reopenedAnalyzer)
+    let reopenedArchive = try ScreenMemoryArchive(
+      profile: profile,
+      imageAnalyzer: reopenedAnalyzer,
+      now: try retentionSafeNow()
+    )
 
     let outcome = try await reopenedArchive.ingest(input)
 
@@ -947,6 +955,18 @@ final class ScreenMemoryArchiveTests: XCTestCase {
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     guard let date = formatter.date(from: value) else { throw FixtureImageError.invalidDate }
     return date
+  }
+
+  /// A clock pinned inside the seven-day retention window of the `2026-07-15`
+  /// fixtures. Reopen-then-ingest fixtures re-run launch-time expiry on the
+  /// second archive; without a fixed `now` the wall clock eventually advances
+  /// past the fixtures' real expiry and prunes them mid-test. This only pins
+  /// the fixtures' clock — production retention and recovery are unchanged.
+  private func retentionSafeNow(
+    _ value: String = "2026-07-15T09:30:00.000Z"
+  ) throws -> @Sendable () -> Date {
+    let reference = try fixtureDate(value)
+    return { reference }
   }
 
   private func assertDominantColor(

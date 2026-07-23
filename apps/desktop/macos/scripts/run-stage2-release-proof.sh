@@ -15,6 +15,8 @@ referenced evidence files into the fresh output directory:
 EOF
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 fail() { echo "Stage 2 proof failed: $*" >&2; exit 1; }
 
 DMG=""
@@ -104,6 +106,14 @@ path.write_text(json.dumps({
 }, indent=2, sort_keys=True) + "\n")
 PY
 
+# Launch-at-login proof against the freshly installed, signed artifact (ADR 0011).
+# Repository-owned; the interactive login cycle is operator-observed and recorded
+# alongside the JSON this emits.
+"$SCRIPT_DIR/verify-launch-at-login.sh" \
+  --app "$INSTALLED_APP" --output "$OUTPUT_DIR/launch-at-login.json" \
+  --evidence-root "$OUTPUT_DIR" --release-tag "$RELEASE_TAG" \
+  --candidate-sha "$CANDIDATE_SHA" --dmg-sha256 "$DMG_SHA256"
+
 "$DESKTOP_STAGE2_SPARKLE_DRIVER" \
   --candidate-dmg "$DMG" --appcast "$APPCAST" --release-tag "$RELEASE_TAG" \
   --candidate-sha "$CANDIDATE_SHA" --dmg-sha256 "$DMG_SHA256" \
@@ -120,7 +130,7 @@ PY
 python3 - "$OUTPUT_DIR" "$RELEASE_TAG" "$CANDIDATE_SHA" "$DMG_SHA256" <<'PY'
 import json, pathlib, sys
 root, tag, sha, digest = pathlib.Path(sys.argv[1]).resolve(), sys.argv[2], sys.argv[3], sys.argv[4]
-for name in ("installed-dmg.json", "sparkle-update.json", "tart-tcc.json", "full-stack.json"):
+for name in ("installed-dmg.json", "launch-at-login.json", "sparkle-update.json", "tart-tcc.json", "full-stack.json"):
     path = root / name
     proof = json.loads(path.read_text())
     if proof.get("ok") is not True:

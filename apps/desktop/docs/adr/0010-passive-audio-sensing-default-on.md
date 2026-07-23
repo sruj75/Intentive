@@ -3,6 +3,9 @@
 ## Status
 
 Accepted. Supersedes the "deferred / optional" framing of passive audio in ADR 0009.
+The Private Mode clauses below are superseded by ADR 0012: there is no global
+Private Mode; sensing is governed by per-source permissions, enable switches,
+exclusions, retention, and clear-all. The rest of this ADR stands.
 
 ## Context
 
@@ -21,8 +24,10 @@ source for a proactive companion, not an off-by-default extra, so it should defa
 - Existing users who previously toggled the setting keep their persisted choice; the new
   default only affects fresh or never-toggled installs.
 - No safety gate is weakened by this change: capture still requires macOS microphone
-  permission, still pauses in Private Mode, still honors excluded apps, still never retains
-  raw audio, and system audio still only runs `.onlyDuringMeetings`. "Default-on" means
+  permission, still honors excluded apps, still never retains raw audio, and system
+  audio still only runs `.onlyDuringMeetings`. (The original "still pauses in Private
+  Mode" clause is superseded by ADR 0012 — sensing is stopped by disabling the source
+  or revoking its permission, not by a global mode.) "Default-on" means
   passive audio activates automatically once the user grants microphone permission during
   onboarding, not that it listens without consent.
 
