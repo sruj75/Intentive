@@ -62,6 +62,13 @@ export interface PerceptionEmbedder {
   embed(text: string): Promise<number[] | null>;
 }
 
+export interface StorePerceptionEmbeddingInput {
+  readonly modelId: string;
+  readonly vector: number[];
+  /** Exact projected content used to compute `vector`; stale writes are rejected. */
+  readonly expectedRecord: PerceptionRecord;
+}
+
 export interface PerceptionRecordsRepo {
   appendQuery(record: PerceptionRecord): Promise<{ id: string }[]>;
   /**
@@ -74,11 +81,6 @@ export interface PerceptionRecordsRepo {
    * Best-effort out-of-transaction enrichment: store Agent Runtime-computed vector
    * for one record. No-op if the record no longer exists (e.g. tombstoned).
    */
-  storeEmbedding(input: {
-    readonly userId: string;
-    readonly eventId: string;
-    readonly modelId: string;
-    readonly vector: number[];
-  }): Promise<void>;
+  storeEmbedding(input: StorePerceptionEmbeddingInput): Promise<void>;
   search(input: ScreenContextSearchInput): Promise<ScreenContextSearchResult[]>;
 }

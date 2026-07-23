@@ -35,6 +35,7 @@ const embedder = {
 const degradedEmbedder = { modelId: "test-embed", dim: 3, embed: async () => null };
 const queryVectors = {
   "accounts payable ledger": [1, 0, 0],
+  "payroll secret": [1, 0, 0],
 };
 
 before(async () => {
@@ -129,12 +130,16 @@ test("hybrid search recalls a term-disjoint neighbour, and degrades to FTS", { s
   const hybridRepo = createPerceptionRecordsRepo(sql, embedder);
   const ftsOnlyRepo = createPerceptionRecordsRepo(sql, degradedEmbedder);
   const userId = randomUUID();
-  await appendRecord(hybridRepo, userId, "vec_1", "invoice reconciliation spreadsheet");
-  await hybridRepo.storeEmbedding({
+  const embeddedEvent = await appendRecord(
+    hybridRepo,
     userId,
-    eventId: "vec_1",
+    "vec_1",
+    "invoice reconciliation spreadsheet",
+  );
+  await hybridRepo.storeEmbedding({
     modelId: embedder.modelId,
     vector: [1, 0, 0],
+    expectedRecord: toPerceptionRecord(userId, embeddedEvent),
   });
 
   // The query shares no literal tokens with the summary, so FTS returns nothing.
@@ -147,6 +152,42 @@ test("hybrid search recalls a term-disjoint neighbour, and degrades to FTS", { s
     ["vec_1"],
   );
 });
+
+test(
+  "redacted re-emission invalidates stale semantic recall and rejects a late vector write",
+  { skip },
+  async () => {
+    const repo = createPerceptionRecordsRepo(sql, embedder);
+    const userId = randomUUID();
+    const permitted = screenEvent("redaction_1", false);
+    const redacted = screenEvent("redaction_1", true);
+
+    await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, permitted))]);
+    await repo.storeEmbedding({
+      modelId: embedder.modelId,
+      vector: [1, 0, 0],
+      expectedRecord: toPerceptionRecord(userId, permitted),
+    });
+
+    // A transport retry with identical embedding inputs keeps the valid vector.
+    await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, permitted))]);
+    assert.deepEqual(
+      (await repo.search({ userId, query: "payroll secret" })).map((row) => row.eventId),
+      ["redaction_1"],
+    );
+
+    await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, redacted))]);
+    assert.deepEqual(await repo.search({ userId, query: "payroll secret" }), []);
+
+    // Simulate the original embedding request finishing after the redacted upsert.
+    await repo.storeEmbedding({
+      modelId: embedder.modelId,
+      vector: [1, 0, 0],
+      expectedRecord: toPerceptionRecord(userId, permitted),
+    });
+    assert.deepEqual(await repo.search({ userId, query: "payroll secret" }), []);
+  },
+);
 
 async function appendRecord(repo, userId, eventId, summary, overrides = {}) {
   const event = {
@@ -172,4 +213,34 @@ async function appendRecord(repo, userId, eventId, summary, overrides = {}) {
     local_record_ref: `screen-memory://${eventId}`,
   };
   await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, event))]);
+  return event;
+}
+
+function screenEvent(eventId, contentRedacted) {
+  return {
+    type: "perception_event",
+    event_id: eventId,
+    source_client: "desktop",
+    captured_at: "2026-06-09T00:00:00.000Z",
+    period_start: "2026-06-08T23:55:00.000Z",
+    period_end: "2026-06-09T00:00:00.000Z",
+    artifact_type: "searchable_screen_record",
+    summary: contentRedacted ? "redacted view" : "confidential compensation",
+    signals: {
+      content_redacted: contentRedacted,
+      bundle_id: "com.example.Payroll",
+      app_name: "Payroll",
+      ...(contentRedacted
+        ? {}
+        : {
+            window_title: "payroll secret",
+            ocr_text: "payroll secret",
+          }),
+    },
+    sensitivity_label: "secret_detected",
+    retention_class: "screen_memory_30d",
+    confidence: 0.91,
+    expires_at: "2099-06-09T00:00:00.000Z",
+    local_record_ref: `screen-memory://${eventId}`,
+  };
 }

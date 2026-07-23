@@ -34,6 +34,8 @@ export type PerceptionArrivedSink = (
   event: PerceptionEvent | SessionEndMarker,
 ) => void;
 
+export type PerceptionProjectedSink = (session: BoundSession, event: PerceptionEvent) => void;
+
 export interface LedgerRecord {
   readonly userId: string;
   readonly kind: RuntimeEventKind;

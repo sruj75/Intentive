@@ -40,10 +40,10 @@ import { createInternalApp } from "./domains/internal/ui/app.js";
 import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
 import {
   createPerceptionRecordsRepo,
-  embeddingText,
   toPerceptionRecord,
 } from "./domains/perception/repo/perception-records.js";
 import { createOpenRouterPerceptionEmbedder } from "./domains/perception/service/perception-embedder.js";
+import { createPerceptionIngressHooks } from "./domains/perception/service/perception-ingress-hooks.js";
 import { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
@@ -247,6 +247,19 @@ const monitoringTurn = createMonitoringTurn({
   floorResolver,
   turn,
 });
+const perceptionIngressHooks = createPerceptionIngressHooks({
+  embedder: perceptionEmbedder,
+  storeEmbedding: (input) => retryTransientDb(() => perceptionRecords.storeEmbedding(input)),
+  enqueueMonitoring: (userId) =>
+    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "perception_event")),
+  onEmbeddingError: (error, context) => {
+    log.error("perception.embedding_failed", error, {
+      user_id: context.userId,
+      event_id: context.eventId,
+      status: "failed",
+    });
+  },
+});
 channel = createPerUserChannel({
   sql: resilientSql,
   ledger,
@@ -269,30 +282,7 @@ channel = createPerUserChannel({
     return queries;
   },
   runTurn,
-  onPerceptionArrived: (session, event) => {
-    if (event.type === "perception_event") {
-      const text = embeddingText(event);
-      const { event_id: eventId } = event;
-      // Best-effort, out-of-transaction: compute Agent Runtime's own vector for the
-      // freshly-ingested record so hybrid search can recall it. A degraded
-      // embedder (null) or a since-tombstoned row simply leaves it FTS-only.
-      channel.enqueueBestEffort(session.userId, async () => {
-        const vector = await perceptionEmbedder.embed(text);
-        if (!vector) return;
-        await retryTransientDb(() =>
-          perceptionRecords.storeEmbedding({
-            userId: session.userId,
-            eventId,
-            modelId: perceptionEmbedder.modelId,
-            vector,
-          }),
-        );
-      });
-    }
-    channel.enqueueBestEffort(session.userId, () =>
-      monitoringTurn(session.userId, "perception_event"),
-    );
-  },
+  ...perceptionIngressHooks,
   logger: log,
 });
 const startSession = createStartSession({

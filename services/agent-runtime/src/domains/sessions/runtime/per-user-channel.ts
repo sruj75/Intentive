@@ -10,6 +10,7 @@ import type {
   LedgerRecord,
   PerUserChannel,
   PerceptionArrivedSink,
+  PerceptionProjectedSink,
   RuntimeIngressEvent,
 } from "../types/event.js";
 import { createUserQueue } from "./user-queue.js";
@@ -35,6 +36,7 @@ export function createPerUserChannel(deps: {
   project: (session: BoundSession, event: RuntimeIngressEvent) => SqlQuery[];
   runTurn?: TurnRunner;
   onPerceptionArrived?: PerceptionArrivedSink;
+  onPerceptionProjected?: PerceptionProjectedSink;
   onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
   logger?: Logger;
 }): PerUserChannel {
@@ -51,6 +53,9 @@ export function createPerUserChannel(deps: {
         ]);
         const inserted = insertedLedgerRow(results);
         logger.info("session.ingress_committed", ingressAttrs(session, event, inserted));
+        if (event.type === "perception_event") {
+          deps.onPerceptionProjected?.(session, event);
+        }
         if (inserted && isPerceptionEvent(event)) {
           deps.onPerceptionArrived?.(session, event);
         }

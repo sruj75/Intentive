@@ -204,6 +204,7 @@ test("runTurn is called once for a new user message and not for duplicates or no
 
 test("onPerceptionArrived fires once for new perception events only", async () => {
   const perceptions = [];
+  const projectedPerceptions = [];
   const turnEvents = [];
   const transactionResults = [
     [[{ id: "snapshot_ledger" }]],
@@ -221,6 +222,9 @@ test("onPerceptionArrived fires once for new perception events only", async () =
     onPerceptionArrived: (seenSession, event) => {
       perceptions.push([seenSession.userId, event.type]);
     },
+    onPerceptionProjected: (seenSession, event) => {
+      projectedPerceptions.push([seenSession.userId, event.type]);
+    },
     runTurn: async (_session, event) => {
       turnEvents.push(event.type);
     },
@@ -235,6 +239,10 @@ test("onPerceptionArrived fires once for new perception events only", async () =
   assert.deepEqual(perceptions, [
     [session.userId, "perception_event"],
     [session.userId, "session_end_marker"],
+  ]);
+  assert.deepEqual(projectedPerceptions, [
+    [session.userId, "perception_event"],
+    [session.userId, "perception_event"],
   ]);
   assert.deepEqual(turnEvents, ["user_message"]);
 });

@@ -143,6 +143,18 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Perception-trigger and embedding isolation** — perception-driven Monitoring
+  Turns now exclusively use the Per-User Channel's collapsible best-effort slot;
+  Runtime-owned embedding enrichment runs independently after every committed
+  perception projection, including re-emits. A content-reconciling upsert clears
+  the old vector atomically only when embedding-relevant content changed (exact
+  duplicates preserve it), and completed embedding writes compare against the
+  exact artifact type, summary, and signals that produced them, preventing an
+  older secret-derived vector from landing after redaction. Tests:
+  `test/perception-ingress-hooks.test.mjs`,
+  `test/perception-records-query.test.mjs`, extended
+  `test/per-user-channel.test.mjs`, and
+  `test/perception-expiry-tombstone.integration.test.mjs`.
 - **Turn Execution spine owns floor resolution and the Runtime Turn anchor** ([ADR-0031](docs/adr/0031-agent-runtime-turn-execution-spine-owns-runtime-turn-anchor-and-floor-resolution.md)) —
   `createTurn` now resolves `TurnExecution.floor()` inside its `try`, appends exactly
   one `runtime_turns` row (ok or failed) after each caller's trigger-specific rows in

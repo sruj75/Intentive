@@ -94,7 +94,28 @@ export function createPerceptionRecordsRepo(
           retention_class = excluded.retention_class,
           confidence = excluded.confidence,
           expires_at = excluded.expires_at,
-          local_record_ref = excluded.local_record_ref
+          local_record_ref = excluded.local_record_ref,
+          embedding_model_id = CASE
+            WHEN perception_records.artifact_type IS DISTINCT FROM excluded.artifact_type
+              OR perception_records.summary IS DISTINCT FROM excluded.summary
+              OR perception_records.signals IS DISTINCT FROM excluded.signals
+            THEN NULL
+            ELSE perception_records.embedding_model_id
+          END,
+          embedding_dim = CASE
+            WHEN perception_records.artifact_type IS DISTINCT FROM excluded.artifact_type
+              OR perception_records.summary IS DISTINCT FROM excluded.summary
+              OR perception_records.signals IS DISTINCT FROM excluded.signals
+            THEN NULL
+            ELSE perception_records.embedding_dim
+          END,
+          embedding = CASE
+            WHEN perception_records.artifact_type IS DISTINCT FROM excluded.artifact_type
+              OR perception_records.summary IS DISTINCT FROM excluded.summary
+              OR perception_records.signals IS DISTINCT FROM excluded.signals
+            THEN NULL
+            ELSE perception_records.embedding
+          END
         RETURNING id
       `;
     },
@@ -113,14 +134,18 @@ export function createPerceptionRecordsRepo(
       `;
     },
 
-    async storeEmbedding({ userId, eventId, modelId, vector }) {
+    async storeEmbedding({ modelId, vector, expectedRecord }) {
       await sql`
         UPDATE agent_runtime.perception_records
         SET
           embedding_model_id = ${modelId},
           embedding_dim = ${vector.length},
           embedding = ${vectorLiteral(vector)}::vector
-        WHERE user_id = ${userId} AND event_id = ${eventId}
+        WHERE user_id = ${expectedRecord.userId}
+          AND event_id = ${expectedRecord.eventId}
+          AND artifact_type = ${expectedRecord.artifactType}
+          AND summary = ${expectedRecord.summary}
+          AND signals = ${JSON.stringify(expectedRecord.signals)}::jsonb
       `;
     },
 

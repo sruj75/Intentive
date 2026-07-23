@@ -80,12 +80,15 @@ export {
   nullPerceptionEmbedder,
 } from "./domains/perception/service/perception-embedder.js";
 export { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
+export { createPerceptionIngressHooks } from "./domains/perception/service/perception-ingress-hooks.js";
+export type { PerceptionIngressHooks } from "./domains/perception/service/perception-ingress-hooks.js";
 export type {
   PerceptionEmbedder,
   PerceptionRecord,
   PerceptionRecordsRepo,
   ScreenContextSearchInput,
   ScreenContextSearchResult,
+  StorePerceptionEmbeddingInput,
 } from "./domains/perception/types/perception.js";
 export { computeNextFireAt, parseSchedule, resolveTz } from "./domains/cron/config/schedule.js";
 export { createCronBackend } from "./domains/cron/repo/cron-backend.js";
@@ -155,6 +158,7 @@ export type {
   LedgerRecord,
   PerUserChannel,
   PerceptionArrivedSink,
+  PerceptionProjectedSink,
   RuntimeEventKind,
   RuntimeIngressEvent,
 } from "./domains/sessions/types/event.js";
