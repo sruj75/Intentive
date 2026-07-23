@@ -750,6 +750,39 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
           .text("+\(period.rawValue) days"),
         ]
       )
+      try execute(
+        """
+        UPDATE runtime_ingress_outbox
+        SET payload_json = json_set(
+              payload_json,
+              '$.retention_class',
+              CASE
+                WHEN json_extract(payload_json, '$.retention_class') LIKE 'audio_memory_%'
+                  THEN ?
+                ELSE ?
+              END,
+              '$.expires_at',
+              strftime(
+                '%Y-%m-%dT%H:%M:%fZ',
+                json_extract(payload_json, '$.captured_at'),
+                ?
+              )
+            ),
+            expires_at = strftime(
+              '%Y-%m-%dT%H:%M:%fZ',
+              json_extract(payload_json, '$.captured_at'),
+              ?
+            )
+        WHERE ingress_kind = ?
+        """,
+        bindings: [
+          .text(period.audioRetentionClass),
+          .text(period.retentionClass),
+          .text("+\(period.rawValue) days"),
+          .text("+\(period.rawValue) days"),
+          .text(RuntimeIngressKind.perceptionEvent.rawValue),
+        ]
+      )
     }
   }
 
@@ -1865,7 +1898,7 @@ public struct ScreenMemoryRetentionPolicy {
   public var excludedApps: Set<String>
   public var defaultRetentionClass: String
 
-  public init(excludedApps: Set<String> = [], defaultRetentionClass: String = "screen_memory_30d") {
+  public init(excludedApps: Set<String> = [], defaultRetentionClass: String = "screen_memory_7d") {
     self.excludedApps = excludedApps
     self.defaultRetentionClass = defaultRetentionClass
   }

@@ -95,6 +95,23 @@ public protocol HostedAuthSessionRunner: AnyObject {
 
 public extension HostedAuthSessionRunner { func cancel() {} }
 
+private final class SynchronousHTTPResult: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: Result<(Data, HTTPURLResponse), Error>?
+
+  func store(_ value: Result<(Data, HTTPURLResponse), Error>) {
+    lock.lock()
+    self.value = value
+    lock.unlock()
+  }
+
+  func get() -> Result<(Data, HTTPURLResponse), Error> {
+    lock.lock()
+    defer { lock.unlock() }
+    return value!
+  }
+}
+
 public final class NeonAuthProvider: AuthAdapter {
   public private(set) var cachedUserJWT: String?
 
@@ -183,7 +200,10 @@ public final class NeonAuthProvider: AuthAdapter {
     guard tokenExchangeURL != nil else {
       throw DesktopAuthError.missingToken
     }
-    throw DesktopAuthError.missingToken
+    let token = try exchangeCodeForTokenSynchronously(code)
+    tokenStore.writeToken(token)
+    cachedUserJWT = token
+    return token
   }
 
   public func completeHostedCallback(_ callbackURL: URL, expectedState: String?) async throws -> String {
@@ -215,6 +235,31 @@ public final class NeonAuthProvider: AuthAdapter {
   public func cancelSignIn() { authSession?.cancel() }
 
   private func exchangeCodeForToken(_ code: String) async throws -> String {
+    let request = try tokenExchangeRequest(code: code)
+    let (data, response) = try await transport.send(request)
+    return try decodeTokenExchange(data: data, response: response)
+  }
+
+  private func exchangeCodeForTokenSynchronously(_ code: String) throws -> String {
+    let request = try tokenExchangeRequest(code: code)
+    let semaphore = DispatchSemaphore(value: 0)
+    let result = SynchronousHTTPResult()
+    DispatchQueue.global().async {
+      Task {
+        do {
+          result.store(.success(try await self.transport.send(request)))
+        } catch {
+          result.store(.failure(error))
+        }
+        semaphore.signal()
+      }
+    }
+    semaphore.wait()
+    let (data, response) = try result.get().get()
+    return try decodeTokenExchange(data: data, response: response)
+  }
+
+  private func tokenExchangeRequest(code: String) throws -> URLRequest {
     guard let tokenExchangeURL else { throw DesktopAuthError.missingToken }
     var request = URLRequest(url: tokenExchangeURL)
     request.httpMethod = "POST"
@@ -225,7 +270,10 @@ public final class NeonAuthProvider: AuthAdapter {
         redirectURI: "\(callbackScheme)://auth/callback"
       )
     )
-    let (data, response) = try await transport.send(request)
+    return request
+  }
+
+  private func decodeTokenExchange(data: Data, response: HTTPURLResponse) throws -> String {
     guard (200..<300).contains(response.statusCode) else {
       throw DesktopAuthError.tokenExchangeFailed(response.statusCode)
     }

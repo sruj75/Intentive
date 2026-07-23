@@ -157,6 +157,39 @@ final class PerceptionSyncTests: XCTestCase {
     XCTAssertEqual(try store.pendingPerceptionEvents(limit: 100).map(\.eventId), ["fresh"])
   }
 
+  func testExtendingRetentionRefreshesPendingOutboxPayloadAndPreventsPrematureDrop() throws {
+    let store = try SQLiteScreenMemoryStore(databaseURL: temporaryDatabaseURL())
+    let capturedAt = "2026-07-05T10:00:00.000Z"
+    try store.enqueuePerceptionEvent(
+      PerceptionEvent(
+        eventId: UUID().uuidString,
+        capturedAt: capturedAt,
+        periodStart: capturedAt,
+        periodEnd: capturedAt,
+        artifactType: .searchableScreenRecord,
+        summary: "pending historical record",
+        sensitivityLabel: .normal,
+        retentionClass: "screen_memory_7d",
+        confidence: 0.9,
+        expiresAt: "2026-07-12T10:00:00.000Z",
+        localRecordRef: UUID().uuidString
+      )
+    )
+
+    try store.applyRetentionPeriod(.thirtyDays)
+
+    let pending = try XCTUnwrap(store.pendingPerceptionEvents(limit: 10).first)
+    XCTAssertEqual(pending.retentionClass, "screen_memory_30d")
+    XCTAssertEqual(pending.expiresAt, "2026-08-04T10:00:00.000Z")
+    XCTAssertEqual(
+      try store.dropExpiredPerceptionEvents(
+        now: try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-07-20T10:00:00Z"))
+      ),
+      0
+    )
+    XCTAssertEqual(try store.pendingPerceptionEvents(limit: 10).count, 1)
+  }
+
   func testTombstoneQueuesOfflineAndPropagatesOnReconnect() throws {
     let store = InMemoryScreenMemoryStore()
     let client = ScriptedPerceptionRuntimeClient()

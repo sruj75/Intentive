@@ -72,7 +72,7 @@ export const perceptionEmbeddingRef = z
   .object({
     model_id: z.string().min(1),
     dim: z.number().int().positive(),
-    vector: z.array(z.number()),
+    vector: z.array(z.number().finite()),
   })
   .strict()
   .refine((embedding) => embedding.vector.length === embedding.dim, {

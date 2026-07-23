@@ -255,6 +255,21 @@ test("perception_event rejects stale context_snapshot fields and bad embedding d
   assert.equal(badEmbedding.success, false);
 });
 
+test("perception_event rejects non-finite embedding vector values at both parse seams", () => {
+  for (const value of [Infinity, -Infinity]) {
+    const event = {
+      ...readJsonFixture("perception-event.json"),
+      embedding_ref: {
+        model_id: "local-test-embedding",
+        dim: 3,
+        vector: [0.1, value, 0.3],
+      },
+    };
+    assert.equal(protocol.perception_event.safeParse(event).success, false);
+    assert.equal(protocol.clientToRuntimeEvent.safeParse(event).success, false);
+  }
+});
+
 test("history_backfill_response reuses the session_snapshot shape under a type tag", () => {
   const valid = protocol.runtimeToClientEvent.safeParse({
     type: "history_backfill_response",

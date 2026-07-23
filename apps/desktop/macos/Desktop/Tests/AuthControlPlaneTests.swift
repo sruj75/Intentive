@@ -116,6 +116,30 @@ final class AuthControlPlaneTests: XCTestCase {
     XCTAssertEqual(object["redirect_uri"] as? String, "intentive-desktop://auth/callback")
   }
 
+  func testSyncHostedCallbackExchangesCodeThroughConfiguredServerEndpoint() throws {
+    let tokenStore = InMemoryTokenStore()
+    let transport = RecordingHTTPTransport(
+      responses: [
+        response(statusCode: 200, body: #"{"token":"sync-exchanged-jwt"}"#)
+      ]
+    )
+    let provider = NeonAuthProvider(
+      hostedAuthURL: URL(string: "https://auth.test/sign-in")!,
+      tokenStore: tokenStore,
+      tokenExchangeURL: URL(string: "https://auth.test/desktop/token")!,
+      transport: transport
+    )
+
+    let token = try provider.completeHostedCallback(
+      URL(string: "intentive-desktop://auth/callback?state=state-1&code=oauth-code")!,
+      expectedState: "state-1"
+    )
+
+    XCTAssertEqual(token, "sync-exchanged-jwt")
+    XCTAssertEqual(tokenStore.readToken(), "sync-exchanged-jwt")
+    XCTAssertEqual(transport.requests.first?.url?.absoluteString, "https://auth.test/desktop/token")
+  }
+
   func testHostedSignInRequiresTokenExchangeWhenCallbackOnlyHasCode() async {
     let session = FakeHostedAuthSession(
       callbackURL: URL(string: "intentive-desktop://auth/callback?state=state-1&code=oauth-code")!

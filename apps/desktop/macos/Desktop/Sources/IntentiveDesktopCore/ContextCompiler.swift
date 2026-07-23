@@ -312,7 +312,11 @@ public struct SearchableScreenRecordAnalyzer {
 public struct FocusSignalAnalyzer {
   public init() {}
 
-  public func analyze(_ frame: CapturedFrame, previous: CapturedFrame?) -> CompiledPerceptionArtifact? {
+  public func analyze(
+    _ frame: CapturedFrame,
+    previous: CapturedFrame?,
+    retentionClass: String = "screen_memory_7d"
+  ) -> CompiledPerceptionArtifact? {
     guard let previous, previous.appName != frame.appName || previous.windowTitle != frame.windowTitle else {
       return nil
     }
@@ -328,7 +332,7 @@ public struct FocusSignalAnalyzer {
         "previous_app": .string(previous.appName),
         "current_app": .string(frame.appName),
       ],
-      retentionClass: "screen_memory_30d",
+      retentionClass: retentionClass,
       sensitivityLabel: .normal,
       confidence: 0.8,
       localRecordRef: identity,
@@ -340,7 +344,10 @@ public struct FocusSignalAnalyzer {
 public struct ActivitySummaryAnalyzer {
   public init() {}
 
-  public func summarize(frames: [CapturedFrame]) -> CompiledPerceptionArtifact? {
+  public func summarize(
+    frames: [CapturedFrame],
+    retentionClass: String = "screen_memory_7d"
+  ) -> CompiledPerceptionArtifact? {
     guard let first = frames.first, let last = frames.last else { return nil }
     let apps = Set(frames.map(\.appName)).sorted().joined(separator: ", ")
     let identity = DeterministicPerceptionID.uuid(from: "activity:\(last.id)")
@@ -355,7 +362,7 @@ public struct ActivitySummaryAnalyzer {
         "frame_count": .number(Double(frames.count)),
         "app_count": .number(Double(Set(frames.map(\.appName)).count)),
       ],
-      retentionClass: "screen_memory_30d",
+      retentionClass: retentionClass,
       sensitivityLabel: .normal,
       confidence: 0.72,
       localRecordRef: identity,
@@ -444,7 +451,7 @@ public struct AmbientAudioCadenceGate: Sendable {
 
 public final class ContextCompiler {
   private var settings: CompilerSettings
-  private let retentionPolicy: ScreenMemoryRetentionPolicy
+  private var retentionPolicy: ScreenMemoryRetentionPolicy
   private let screenAnalyzer: SearchableScreenRecordAnalyzer
   private let focusAnalyzer: FocusSignalAnalyzer
   private var previousFrame: CapturedFrame?
@@ -469,6 +476,10 @@ public final class ContextCompiler {
     self.settings = settings
   }
 
+  public func update(retentionPeriod: ScreenMemoryRetentionPeriod) {
+    retentionPolicy.defaultRetentionClass = retentionPeriod.retentionClass
+  }
+
   public func compile(frame: CapturedFrame) throws -> [CompiledPerceptionArtifact] {
     guard settings.captureEnabled, !settings.isExcluded(appName: frame.appName),
       retentionPolicy.allows(appName: frame.appName)
@@ -479,7 +490,11 @@ public final class ContextCompiler {
     var artifacts: [CompiledPerceptionArtifact] = [
       try screenAnalyzer.analyze(frame, retentionClass: retentionPolicy.defaultRetentionClass)
     ]
-    if let focus = focusAnalyzer.analyze(frame, previous: previousFrame) {
+    if let focus = focusAnalyzer.analyze(
+      frame,
+      previous: previousFrame,
+      retentionClass: retentionPolicy.defaultRetentionClass
+    ) {
       artifacts.append(focus)
     }
     previousFrame = frame

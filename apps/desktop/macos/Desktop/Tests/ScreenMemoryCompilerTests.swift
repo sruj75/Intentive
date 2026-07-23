@@ -185,6 +185,46 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertNil(artifacts.first?.embedding)
   }
 
+  func testCompilerAppliesSelectedRetentionToScreenAndFocusArtifacts() throws {
+    let compiler = ContextCompiler()
+    compiler.update(retentionPeriod: .threeDays)
+    _ = try compiler.compile(
+      frame: CapturedFrame(
+        id: UUID().uuidString,
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Safari",
+        windowTitle: "First",
+        ocrText: "first frame"
+      )
+    )
+
+    let artifacts = try compiler.compile(
+      frame: CapturedFrame(
+        id: UUID().uuidString,
+        capturedAt: "2026-07-05T10:01:00.000Z",
+        appName: "Xcode",
+        windowTitle: "Second",
+        ocrText: "second frame"
+      )
+    )
+
+    XCTAssertEqual(artifacts.map(\.retentionClass), ["screen_memory_3d", "screen_memory_3d"])
+  }
+
+  func testCompilerDefaultsPublishedArtifactsToSevenDayRetention() throws {
+    let artifacts = try ContextCompiler().compile(
+      frame: CapturedFrame(
+        id: UUID().uuidString,
+        capturedAt: "2026-07-05T10:00:00.000Z",
+        appName: "Safari",
+        windowTitle: "Default",
+        ocrText: "default retention"
+      )
+    )
+
+    XCTAssertEqual(artifacts.first?.retentionClass, "screen_memory_7d")
+  }
+
   func testSearchableRecordEmitsPermittedStrictSignalsAndUUIDIdentity() throws {
     let frame = CapturedFrame(
       id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",

@@ -166,7 +166,12 @@ final class DesktopViewModel: ObservableObject {
   private lazy var floatingBarController = FloatingBarController(
     runtimeClient: runtime, messageStore: messageStore)
   private let floatingBarManager = FloatingControlBarManager.shared
-  private lazy var compiler = ContextCompiler(settings: compilerSettings)
+  private lazy var compiler = ContextCompiler(
+    settings: compilerSettings,
+    retentionPolicy: ScreenMemoryRetentionPolicy(
+      defaultRetentionClass: onboardingRetentionPeriod.retentionClass
+    )
+  )
   private lazy var publisher = PerceptionPublisher(
     runtimeClient: runtime,
     outbox: screenMemory,
@@ -1266,6 +1271,7 @@ final class DesktopViewModel: ObservableObject {
   func setOnboardingRetentionDays(_ days: Int) {
     guard let period = ScreenMemoryRetentionPeriod(rawValue: days) else { return }
     onboardingRetentionPeriod = period
+    compiler.update(retentionPeriod: period)
     let userID = runtimeSession.accountState?.userId ?? DesktopLocalProfile.anonymousUserID
     do {
       try UserDefaultsScreenMemoryRetentionPersistence(userID: userID).saveRetentionPeriod(period)
