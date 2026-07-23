@@ -21,6 +21,7 @@ module.exports = ({ config = appJson }) => {
   const plugins = [...(config.plugins ?? [])];
 
   if (clientId) {
+    plugins.push("./plugins/with-modular-headers");
     plugins.push([
       "@react-native-google-signin/google-signin",
       { iosUrlScheme: googleIosUrlScheme(clientId) },

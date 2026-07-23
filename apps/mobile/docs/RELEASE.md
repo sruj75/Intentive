@@ -79,8 +79,10 @@ prebuild` writes it into `Expo.plist` as `EXUpdatesRuntimeVersion`. Bump
   this before release if the app later adds non-exempt encryption functionality.
 - `app.config.js` adds `@react-native-google-signin/google-signin` when
   `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` is present and derives its required reversed
-  iOS URL scheme. The existing `intentive` scheme remains in `app.json`. This
-  native module/config-plugin change requires a **new iOS binary**.
+  iOS URL scheme. It also applies the local modular-header config plugin required
+  for the Google App Check CocoaPods dependency graph. The existing `intentive`
+  scheme remains in `app.json`. This native module/config-plugin change requires
+  a **new iOS binary**.
 
 **2. `eas.json`** (committed) — each build profile is bound to an update **channel**
 and an EAS **environment** (so `EXPO_PUBLIC_*` vars from EAS inject at build time):
