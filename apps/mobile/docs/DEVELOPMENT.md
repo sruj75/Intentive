@@ -150,8 +150,8 @@ cache (fresh temp dir every run, always ~10–20 min) and doesn't seed the `pnpm
 cache (see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight)):
 
 ```bash
-# build the portable artifact  →  apps/mobile/build-<ts>.tar.gz
-eas build --platform ios --profile development --local --non-interactive
+# build the portable simulator artifact  →  apps/mobile/build-<ts>.tar.gz
+eas build --platform ios --profile development-simulator --local --non-interactive
 # (if `eas` isn't on PATH, use `npx eas-cli build …` — same flags)
 
 # extract + install onto the booted sim, then start Metro + launch with steps 5–6 above

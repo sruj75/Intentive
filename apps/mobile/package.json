@@ -47,6 +47,7 @@
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
+    "@sentry/cli": "2.58.4",
     "@testing-library/react-native": "*",
     "@types/react": "*",
     "babel-preset-expo": "~56.0.15",

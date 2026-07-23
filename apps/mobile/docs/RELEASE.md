@@ -238,13 +238,36 @@ SENTRY_CLI_EXECUTABLE="$(cd ../../.. && node -p 'require.resolve(\"@sentry/cli-d
   CODE_SIGNING_ALLOWED=NO build
 ```
 
+Finally, run EAS's local builder. It uses the `local-preview` profile solely
+for this no-quota gate: it extends `preview`, fetches the same managed signing
+credentials, and runs Fastlane's archive/export pipeline. It deliberately
+disables only Sentry source-map upload because EAS secret variables are not
+available to a local builder; the cloud `preview` profile retains authenticated
+uploads. A successful command writes a signed internal-distribution IPA.
+
+```bash
+pnpm dlx eas-cli@latest build --local --profile local-preview --platform ios \
+  --output /tmp/Intentive-preview-preflight.ipa
+```
+
 `expo prebuild --clean` runs CocoaPods. The unsigned Xcode command verifies
 the generated physical-device Release app without using Apple signing or EAS
 quota; local Sentry upload is deliberately disabled, while EAS keeps its
-authenticated upload. Treat all four commands as release blockers. Only submit
+authenticated upload. The local EAS build adds Fastlane, signing, and IPA export
+to that proof. Treat all five commands as release blockers. Only submit
 to EAS after they pass and after `eas env:list <environment>` confirms the
 public endpoint, Google client-ID, Sentry DSN, and Sentry build-token values
 required by that profile.
+
+Before the one production cloud build, repeat the local builder gate from the
+merged `main` commit with `local-production`. That profile extends `production`
+and disables only local Sentry upload, so its channel, environment, store
+distribution, and other production settings remain unchanged.
+
+```bash
+pnpm dlx eas-cli@latest build --local --profile local-production --platform ios \
+  --output /tmp/Intentive-production-preflight.ipa
+```
 
 ---
 
