@@ -52,16 +52,25 @@ function createClient() {
  * Build the real `NeonAuthClientPort`. Session/token persistence is owned by
  * the Better Auth native plugin (SecureStore) — the Mobile Client hand-rolls none of it.
  */
-export function createNeonAuthClient(options: { googleIosClientId: string }): NeonAuthClientPort {
+export function createNeonAuthClient(options: {
+  googleIosClientId: string;
+  googleWebClientId: string;
+}): NeonAuthClientPort {
   const client = createClient();
   const googleIosClientId = options.googleIosClientId.trim();
+  const googleWebClientId = options.googleWebClientId.trim();
   let googleConfigurationError: string | null = null;
 
   // Native auth initialization belongs here, behind the Auth Adapter's
   // platform boundary. A missing public client ID leaves Google unconfigured.
-  if (googleIosClientId) {
+  if (googleIosClientId && googleWebClientId) {
     try {
-      GoogleSignin.configure({ iosClientId: googleIosClientId });
+      GoogleSignin.configure({
+        iosClientId: googleIosClientId,
+        // Neon Auth is configured with this existing web client. Supplying it
+        // here makes Google's native ID token carry that accepted audience.
+        webClientId: googleWebClientId,
+      });
     } catch (error) {
       googleConfigurationError =
         error instanceof Error ? error.message : "Google configuration failed.";
@@ -77,7 +86,7 @@ export function createNeonAuthClient(options: { googleIosClientId: string }): Ne
         if (provider !== "google") {
           return { result: "failed", message: "Apple sign-in is not configured." };
         }
-        if (!googleIosClientId) {
+        if (!googleIosClientId || !googleWebClientId) {
           return { result: "failed", message: "Google sign-in is not configured." };
         }
         if (googleConfigurationError) {

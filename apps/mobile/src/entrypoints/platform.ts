@@ -78,7 +78,10 @@ function createPlatform(): Platform {
   initTelemetry({ dsn: config.sentryDsn, environment: config.environment });
   const telemetry = createSentryTelemetry();
 
-  const neonClient = createNeonAuthClient({ googleIosClientId: config.googleIosClientId });
+  const neonClient = createNeonAuthClient({
+    googleIosClientId: config.googleIosClientId,
+    googleWebClientId: config.googleWebClientId,
+  });
   const auth = createAuthAdapter({
     client: neonClient,
     enabled: config.enabledAuthProviders,

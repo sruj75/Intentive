@@ -25,6 +25,8 @@ export interface RuntimeConfig {
   readonly sentryDsn: string;
   /** Public Google iOS OAuth client ID, or "" until native auth is configured. */
   readonly googleIosClientId: string;
+  /** Public Google web OAuth client ID used as the native ID-token audience. */
+  readonly googleWebClientId: string;
   /** Sentry environment tag and general build environment label. */
   readonly environment: string;
   /** Client version reported to the Agent Runtime `connect` handshake. */
@@ -45,17 +47,20 @@ export function createRuntimeConfig(): RuntimeConfig {
   const controlPlaneBaseUrl = process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL?.trim() ?? "";
   const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() ?? "";
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? "";
+  const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "";
   return {
     controlPlaneBaseUrl,
     sentryDsn,
     googleIosClientId,
+    googleWebClientId,
     environment: isDev ? "development" : "production",
     clientVersion: Constants.expoConfig?.version ?? "0.0.0",
     isDev,
-    // The public iOS client ID is the deliberate internal-TestFlight gate: it
-    // both installs the native config plugin and permits the Auth Adapter to
-    // exercise Google. Apple remains disabled. External release still waits on
-    // the physical-device proof documented in RELEASE.md.
-    enabledAuthProviders: new Set<SocialProvider>(googleIosClientId ? ["google"] : []),
+    // Native Google needs both client IDs: iOS identifies the app and the web
+    // client is the ID-token audience Neon Auth verifies. The iOS value also
+    // installs the native config plugin. Apple remains disabled.
+    enabledAuthProviders: new Set<SocialProvider>(
+      googleIosClientId && googleWebClientId ? ["google"] : [],
+    ),
   };
 }

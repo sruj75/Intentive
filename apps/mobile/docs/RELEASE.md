@@ -118,18 +118,18 @@ eas env:pull --environment preview   # writes .env.local (gitignored)
 ```
 
 Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL, and the public
-Google iOS client ID) follow the same pattern when they differ per environment.
-The Google client ID is public configuration, not a secret. See [Expo EAS
+Google iOS and web client IDs) follow the same pattern when they differ per environment.
+Both Google client IDs are public configuration, not secrets. See [Expo EAS
 environment variables](https://docs.expo.dev/eas/environment-variables/).
 
 **Google provider configuration (Google Cloud + Neon Auth).** Create the iOS
 OAuth client for bundle ID `com.heyintentive.expo`; retain the web client and
-secret for the Better Auth server. In Neon Auth, configure Google's provider
-with the approved web, iOS, and Android client-ID array and its required
-provider secret. Do not commit secrets. Supplying
-`EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` deliberately installs the native plugin and
-enables Google in that build; use it first for the internal TestFlight proof,
-not external distribution.
+secret already configured in Neon Auth. In the Mobile Client, supply both
+`EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`:
+the former identifies the native app and installs its reversed URL scheme, while
+the latter is the audience of the Google ID token that Neon Auth verifies. Do
+not commit secrets. Use the resulting physical-device internal build for proof
+before external distribution.
 
 **3. Generated iOS native (CNG)** (`ios/Intentive/Supporting/Expo.plist`,
 `ios/Intentive/Intentive.entitlements`) — `ios/` is **not** committed; `expo
@@ -249,8 +249,8 @@ client** (`Updates.channel` is `null` there).
 eas build:list --platform ios --limit 1
 ```
 
-For the native Google gate, use that physical TestFlight binary to complete
-Google sign-in, confirm the app returns without an `intentive://` OAuth callback,
+For the native Google gate, use a physical-device internal-distribution build to
+complete Google sign-in, confirm the app returns without an `intentive://` OAuth callback,
 relaunch and verify SecureStore session restoration, then verify the shared
 `getUserJwt()` token is accepted by Control Plane `GET /me` and `GET /agent`.
 Do not distribute the build externally until all checks pass. If any fail,
