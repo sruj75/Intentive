@@ -1,20 +1,32 @@
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { PrimaryButton } from "../../../design/primitives";
 import { mobileTheme as theme } from "../../../design/theme";
 import { authContent as content } from "../config/content";
-import type { AuthProviderId } from "../types/auth";
 
 /**
- * Presentation for the Identity Gate. The two sign-in options are Apple and
- * Google; each button just names the **Auth Provider** it should try. It owns
- * no capability honesty — the composed `onSignIn` (route → Auth Adapter)
- * decides whether that provider genuinely runs (a not-yet-configured provider
- * short-circuits to `not-configured`), and the entrypoint advances only on a
- * real `signed-in` outcome. See ADR 0012 / 0024.
+ * Presentation for the Identity Gate — a single Google button plus an
+ * actionable retry notice. It owns no auth logic: `onPress` runs the entrypoint's
+ * sign-in flow; `pending` and `notice` are the entrypoint's projection of the
+ * in-flight outcome. `disabled` (Google not a working capability) plus `pending`
+ * drive the button's disabled state so a build without the public client IDs
+ * shows the button disabled rather than opening a dead OAuth flow. See ADR 0012
+ * / 0024 / 0030.
  */
-export function AuthScene({ onSignIn }: { readonly onSignIn: (provider: AuthProviderId) => void }) {
+export function AuthScene({
+  disabled,
+  pending,
+  notice,
+  onPress,
+}: {
+  readonly disabled: boolean;
+  readonly pending: boolean;
+  readonly notice: string | null;
+  readonly onPress: () => void;
+}) {
   const { height } = useWindowDimensions();
+  const buttonDisabled = disabled || pending;
+  const label = pending ? content.googlePending : content.google;
 
   return (
     <ScrollView
@@ -37,20 +49,17 @@ export function AuthScene({ onSignIn }: { readonly onSignIn: (provider: AuthProv
         </Text>
       </View>
       <View style={styles.authActions}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onSignIn("apple")}
-          style={({ pressed }) => [styles.appleButton, pressed && styles.pressed]}
-          testID="continue-with-apple"
-        >
-          <Text style={styles.appleMark}>●</Text>
-          <Text style={styles.appleLabel}>{content.apple}</Text>
-        </Pressable>
         <PrimaryButton
-          label={content.google}
-          onPress={() => onSignIn("google")}
+          disabled={buttonDisabled}
+          label={label}
+          onPress={onPress}
           testID="continue-with-google"
         />
+        {notice ? (
+          <Text accessibilityLiveRegion="polite" selectable style={styles.notice}>
+            {notice}
+          </Text>
+        ) : null}
         <Text selectable style={styles.legal}>
           {content.legal}
         </Text>
@@ -60,7 +69,6 @@ export function AuthScene({ onSignIn }: { readonly onSignIn: (provider: AuthProv
 }
 
 const styles = StyleSheet.create({
-  pressed: { opacity: theme.component.auth.pressedOpacity },
   authContent: {
     paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.xxl,
@@ -81,18 +89,13 @@ const styles = StyleSheet.create({
   },
   authAccent: { color: theme.color.accent },
   authActions: { gap: theme.space.sm },
-  appleButton: {
-    minHeight: theme.component.auth.appleButtonMinHeight,
-    borderWidth: theme.stroke.hairline,
-    borderColor: theme.color.hairline,
-    borderRadius: theme.radius.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.space.sm,
+  notice: {
+    ...theme.type.caption,
+    color: theme.color.error,
+    textAlign: "center",
+    paddingHorizontal: theme.space.lg,
+    paddingTop: theme.space.xs,
   },
-  appleMark: { color: theme.color.ink, fontSize: theme.component.auth.appleMarkSize },
-  appleLabel: { ...theme.type.label, color: theme.color.ink },
   legal: {
     ...theme.type.caption,
     color: theme.color.secondaryInk,

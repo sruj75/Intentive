@@ -61,7 +61,7 @@ test("native Google tokens exchange through Better Auth and confirm a session", 
     googleWebClientId: "web.apps.googleusercontent.com",
   });
 
-  await expect(auth.signInSocial("google")).resolves.toEqual({ result: "authenticated" });
+  await expect(auth.signInWithGoogle()).resolves.toEqual({ result: "authenticated" });
   expect(googleSignin.configure).toHaveBeenCalledWith({
     iosClientId: "123.apps.googleusercontent.com",
     webClientId: "web.apps.googleusercontent.com",
@@ -86,7 +86,7 @@ test("native Google cancellation maps to dismissal without an exchange", async (
     createNeonAuthClient({
       googleIosClientId: "123.apps.googleusercontent.com",
       googleWebClientId: "web.apps.googleusercontent.com",
-    }).signInSocial("google"),
+    }).signInWithGoogle(),
   ).resolves.toEqual({ result: "dismissed" });
   expect(client.signIn.social).not.toHaveBeenCalled();
   expect(googleSignin.getTokens).not.toHaveBeenCalled();
@@ -100,7 +100,7 @@ test("native Google prompt failures become recoverable auth failures", async () 
     createNeonAuthClient({
       googleIosClientId: "123.apps.googleusercontent.com",
       googleWebClientId: "web.apps.googleusercontent.com",
-    }).signInSocial("google"),
+    }).signInWithGoogle(),
   ).resolves.toEqual({ result: "failed", message: "Google unavailable" });
   expect(client.signIn.social).not.toHaveBeenCalled();
 });
@@ -113,7 +113,7 @@ test("a missing Google ID token never reaches Better Auth", async () => {
     createNeonAuthClient({
       googleIosClientId: "123.apps.googleusercontent.com",
       googleWebClientId: "web.apps.googleusercontent.com",
-    }).signInSocial("google"),
+    }).signInWithGoogle(),
   ).resolves.toEqual({ result: "failed", message: "Google did not return an ID token." });
   expect(client.signIn.social).not.toHaveBeenCalled();
   expect(client.getSession).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ test("an exchange without a Better Auth session is not authenticated", async () 
     createNeonAuthClient({
       googleIosClientId: "123.apps.googleusercontent.com",
       googleWebClientId: "web.apps.googleusercontent.com",
-    }).signInSocial("google"),
+    }).signInWithGoogle(),
   ).resolves.toEqual({ result: "failed", message: "Google sign-in did not establish a session." });
 });
 
@@ -155,27 +155,50 @@ test("JWT delegation reads the Better Auth token endpoint", async () => {
   expect(client.$fetch).toHaveBeenCalledWith("/token");
 });
 
-test("Google is enabled only when the build carries both public client IDs", () => {
+test("Google is configured only when the build carries both public client IDs", () => {
   const originalIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
   const originalWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+  const originalDev = (global as { __DEV__?: boolean }).__DEV__;
   try {
+    (global as { __DEV__?: boolean }).__DEV__ = true;
     delete process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
     delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-    expect(createRuntimeConfig().enabledAuthProviders.has("google")).toBe(false);
+    expect(createRuntimeConfig().googleAuthConfigured).toBe(false);
 
     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "123.apps.googleusercontent.com";
-    expect(createRuntimeConfig().enabledAuthProviders.has("google")).toBe(false);
+    expect(createRuntimeConfig().googleAuthConfigured).toBe(false);
 
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = "web.apps.googleusercontent.com";
     const config = createRuntimeConfig();
     expect(config.googleIosClientId).toBe("123.apps.googleusercontent.com");
     expect(config.googleWebClientId).toBe("web.apps.googleusercontent.com");
-    expect(config.enabledAuthProviders).toEqual(new Set(["google"]));
-    expect(config.enabledAuthProviders.has("apple")).toBe(false);
+    expect(config.googleAuthConfigured).toBe(true);
   } finally {
     if (originalIosClientId === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
     else process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = originalIosClientId;
     if (originalWebClientId === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
     else process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = originalWebClientId;
+    (global as { __DEV__?: boolean }).__DEV__ = originalDev;
+  }
+});
+
+test("production config resolution fails when either Google client ID is missing", () => {
+  const originalIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const originalWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+  const originalDev = (global as { __DEV__?: boolean }).__DEV__;
+  try {
+    (global as { __DEV__?: boolean }).__DEV__ = false; // production / internal-production build
+    delete process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    expect(() => createRuntimeConfig()).toThrow(/Google/i);
+
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "123.apps.googleusercontent.com";
+    expect(() => createRuntimeConfig()).toThrow(/Google/i); // web client ID still missing
+  } finally {
+    if (originalIosClientId === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    else process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = originalIosClientId;
+    if (originalWebClientId === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    else process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = originalWebClientId;
+    (global as { __DEV__?: boolean }).__DEV__ = originalDev;
   }
 });

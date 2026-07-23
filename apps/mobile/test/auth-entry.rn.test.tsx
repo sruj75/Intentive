@@ -15,7 +15,22 @@ function createAuthAdapter(outcome: SignInOutcome): AuthAdapter {
   };
 }
 
-function renderEntry(outcome: SignInOutcome) {
+function createThrowingAuthAdapter(error: Error): AuthAdapter {
+  return {
+    signIn: jest.fn().mockRejectedValue(error),
+    signOut: jest.fn().mockResolvedValue(undefined),
+    restoreSession: jest.fn().mockResolvedValue(false),
+    getUserJwt: jest.fn().mockResolvedValue(null),
+  };
+}
+
+function renderEntry(
+  outcome: SignInOutcome,
+  {
+    authAdapter = createAuthAdapter(outcome),
+    googleAuthConfigured = true,
+  }: { authAdapter?: AuthAdapter; googleAuthConfigured?: boolean } = {},
+) {
   return render(
     <SafeAreaProvider
       initialMetrics={{
@@ -24,11 +39,18 @@ function renderEntry(outcome: SignInOutcome) {
       }}
     >
       <ProfileProvider store={createProfileStore()}>
-        <OnboardingEntry authAdapter={createAuthAdapter(outcome)} />
+        <OnboardingEntry authAdapter={authAdapter} googleAuthConfigured={googleAuthConfigured} />
       </ProfileProvider>
     </SafeAreaProvider>,
   );
 }
+
+test("neither Apple nor dev sign-in controls are present at the Identity Gate", () => {
+  const screen = renderEntry({ status: "signed-in" });
+  expect(screen.queryByTestId("continue-with-apple")).toBeNull();
+  expect(screen.queryByTestId("continue-with-dev")).toBeNull();
+  expect(screen.getByTestId("continue-with-google")).toBeTruthy();
+});
 
 test("Identity Gate advances only after the auth exchange reports a session", async () => {
   const screen = renderEntry({ status: "signed-in" });
@@ -46,4 +68,34 @@ test("Identity Gate stays put when native auth is cancelled", async () => {
 
   await waitFor(() => expect(screen.getByTestId("continue-with-google")).toBeTruthy());
   expect(screen.queryByTestId("full-name-input")).toBeNull();
+  // Cancellation is silent: no retry notice.
+  expect(screen.queryByText(/try again/i)).toBeNull();
+});
+
+test("a recoverable failure shows an actionable retry notice and stays on the gate", async () => {
+  const screen = renderEntry({ status: "error", message: "exchange failed" } as SignInOutcome);
+
+  fireEvent.press(screen.getByTestId("continue-with-google"));
+
+  await waitFor(() => expect(screen.queryByText(/try again/i)).toBeTruthy());
+  expect(screen.getByTestId("continue-with-google")).toBeTruthy();
+  expect(screen.queryByTestId("full-name-input")).toBeNull();
+});
+
+test("a thrown sign-in failure clears pending state and offers a retry", async () => {
+  const authAdapter = createThrowingAuthAdapter(new Error("native Google failure"));
+  const screen = renderEntry({ status: "error", message: "unused" }, { authAdapter });
+
+  fireEvent.press(screen.getByTestId("continue-with-google"));
+
+  await waitFor(() => expect(screen.getByText(/try again/i)).toBeTruthy());
+  expect(screen.getByTestId("continue-with-google")).toBeEnabled();
+  expect(screen.getByTestId("continue-with-google")).toHaveTextContent("Continue with Google");
+  expect(screen.queryByTestId("full-name-input")).toBeNull();
+});
+
+test("a missing configuration disables the button and shows a not-configured notice", () => {
+  const screen = renderEntry({ status: "not-configured" }, { googleAuthConfigured: false });
+  expect(screen.getByText(/isn’t configured/i)).toBeTruthy();
+  expect(screen.getByTestId("continue-with-google")).toBeDisabled();
 });

@@ -7,37 +7,37 @@ The Mobile Client is an iPhone-first Expo deployable with two orthogonal structu
 - Expo Router owns navigation zones: `(onboarding)` serves A–D at `/`; `(main)` serves E–L at `/chat`.
 - Layered domains own product behavior through `types → config → repo → service → runtime → ui`.
 
-The mounted frontend is local and in-memory. It preserves the A–L interaction contract while production auth, Control Plane, notifications, telemetry, and Agent Runtime adapters remain unmounted.
+The mounted frontend preserves the A–L interaction contract while live routes inject production auth, Control Plane, notifications, telemetry, and Agent Runtime seams from one composition root. Capability-free entrypoint defaults keep the local A–L harness deterministic.
 
 ```text
-app/(onboarding) ──> OnboardingEntry ──> auth + onboarding
-                                            │
-                                            └── ProfileStore ──────────┐
-                                                                      │
-app/(main)/chat ──> ChatEntry ──> welcome | education | ready <──────┘
-                                      │
-                                      ├── Account settings UI
+app/_layout ──> Launch State + Notifications + Launch Curtain
+      │
+      ├── app/(onboarding) ──> OnboardingEntry ──> Google Auth + onboarding
+      │
+      └── app/(main)/chat ──> ChatEntry ──> welcome | education | ready
+                                      ├── Account State + settings UI
                                       └── ConversationSession
-                                              └── local runtime adapter
+                                              ├── Runtime Adapter (live route)
+                                              └── local session (offline default)
 ```
 
 `(onboarding)` and `(main)` are navigation zones, not business domains. B2, K2, education pages, drawer/settings, F/G overlays, and L1–L4 remain component or domain-session state rather than routes.
 
 ## Codemap
 
-- `app/_layout.tsx` — root gesture and in-memory profile composition.
+- `app/_layout.tsx` — root gesture/profile/Launch State composition, navigation, push lifecycle, and launch curtain.
 - `app/(onboarding)/` — headerless `/` route for A–D.
 - `app/(main)/` — headerless `/chat` route for E–L.
 - `src/entrypoints/` — cross-domain composition and Router replacement callbacks only.
-- `src/domains/auth/` — local authentication presentation for A; production adapters remain in its service layer but are unmounted.
+- `src/domains/auth/` — Google-only Identity Gate presentation, Auth Adapter, and native Better Auth boundary.
 - `src/domains/onboarding/` — B–D journey types, copy, validation/controller, Education Deck, and UI.
-- `src/domains/chat/` — Conversation Timeline Item, local conversation contract/runtime, drawer, composer, and shared E/K/L surface.
+- `src/domains/chat/` — Conversation Timeline Item, local/runtime conversation implementations, drawer, composer, and shared E/K/L surface.
 - `src/domains/account/` — settings copy and session-only settings/logout presentation.
-- `src/domains/notifications/` — dormant notification registration types, ports, and services.
+- `src/domains/notifications/` — notification permission, Expo Push Token, device fingerprint, and Control Plane registration.
 - `src/providers/profile/` — one non-durable Profile Store shared across Router zones.
-- `src/providers/account-state/`, `launch-state/`, `telemetry/` — dormant production provider seams.
+- `src/providers/account-state/`, `launch-state/`, `telemetry/` — live Control Plane projections and errors-only telemetry.
 - `src/design/` — global theme, brand identity, and prop-only visual primitives.
-- `test/` — pure domain/session tests, Router boundary tests, dormant-adapter tests, and the unchanged 19-snapshot A–L journey.
+- `test/` — pure domain/session tests, live-seam boundary tests, Router lifecycle tests, and the 19-snapshot A–L journey.
 
 ## Architectural Invariants
 
@@ -48,8 +48,8 @@ app/(main)/chat ──> ChatEntry ──> welcome | education | ready <───
 - E and K are `welcome` and `ready` modes of one conversation surface. Education is a mode between them, not a second chat implementation.
 - `ConversationTimelineItem` is UI-owned. Protocol or server records must be translated before reaching visual components.
 - `ConversationSession` is the chat runtime seam: `getSnapshot`, `subscribe`, `send`, and `dispose`. Timers are cancellable on replacement turns and disposal.
-- Profile and account settings are memory-only. Cold launch always starts at A; logout resets profile state and replaces to `/`.
-- Mounted code performs no auth, permissions, Contacts, notification, HTTP, WebSocket, SecureStore, durable storage, telemetry, Control Plane, or Agent Runtime calls.
+- Profile and account settings are memory-only. Cold launch resolves Control-Plane gate truth before exposing `/` or `/chat`; logout resets profile state and replaces to `/`.
+- Live routes may call only the capabilities injected by the composition root. Capability-free entrypoint defaults perform no auth, permissions, Contacts, notification, HTTP, WebSocket, SecureStore, durable storage, telemetry, Control Plane, or Agent Runtime calls.
 - A–L copy, interactions, test IDs, and 390×844 snapshots are regression contracts during this architecture-only refactor.
 
 These rules are enforced by the Intentive architecture ESLint plugin, including `mobile-source-structure`, layer direction, cross-domain/deployable checks, and Providers-only cross-cutting access.
@@ -59,16 +59,16 @@ These rules are enforced by the Intentive architecture ESLint plugin, including 
 - Router boundary: onboarding completion writes the in-memory Profile Store and calls `router.replace("/chat")`; logout resets it and calls `router.replace("/")`.
 - Profile boundary: `ProfileStore` exposes `getSnapshot`, `subscribe`, `setName`, and `reset`; it has no persistence adapter.
 - Onboarding boundary: `OnboardingJourneyController` owns B–D transitions and name validation; `EducationDeckController` owns slide navigation, skip, completion, and reset.
-- Conversation boundary: chat UI owns composer text, focus, gestures, and overlays; the injected `ConversationSession` owns timeline projection and local reply timing.
+- Conversation boundary: chat UI owns composer text, focus, gestures, and overlays; the injected `ConversationSession` owns either Runtime translation/WebSocket lifecycle or deterministic local reply timing.
 - Account boundary: account UI owns settings copy and session-only preferences; composition passes only callbacks and the proactive-suggestions presentation value.
 - Design boundary: `src/design/` is domain-agnostic and accepts props; domain-specific copy stays in each domain's `config/` layer.
-- Production boundary: existing auth, Runtime Adapter, Control Plane, notification, and telemetry modules remain source-controlled and tested but unreachable from the mounted route-to-entrypoint tree.
+- Production boundary: `src/entrypoints/platform.ts` constructs auth, Runtime Adapter, Control Plane, notification, and telemetry capabilities once; routes inject only their narrow public seams.
 
-Future production reconnection must supply adapters at the existing domain/provider seams and translate Runtime data into `ConversationTimelineItem`. It must not bypass Providers, add durable Mobile Conversation History, or put product logic in routes.
+Future integrations must enter through the existing domain/provider seams and translate Runtime data into `ConversationTimelineItem`. They must not bypass Providers, add durable Mobile Conversation History, or put product logic in routes.
 
 ## Cross-cutting Concerns
 
-- Auth, telemetry, and feature flags enter through `packages/providers/` or an explicit deployable/domain provider seam; mounted Huracán code initializes none of them.
+- Auth, telemetry, and feature flags enter through `packages/providers/` or an explicit deployable/domain provider seam; the composition root initializes them and domains receive only injected ports.
 - Safe areas, keyboard behavior, gestures, and motion use Expo-compatible React Native primitives and remain responsive across iPhone sizes.
 - Disabled capabilities remain visible and accessibility-disabled until a separately approved integration mounts them.
 - Pure behavior runs under `node:test`; Router/UI behavior and golden output run under Jest with React Native Testing Library.

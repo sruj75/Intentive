@@ -33,7 +33,7 @@ The UI-owned union rendered by the conversation surface: capability card, sugges
 _Avoid_: Protocol message in UI, server record in UI
 
 **Conversation Session**:
-The replaceable chat runtime contract exposing `getSnapshot`, `subscribe`, `send`, and `dispose`. The mounted implementation is deterministic and in-memory.
+The replaceable chat runtime contract exposing `getSnapshot`, `subscribe`, `send`, and `dispose`. The live route injects the Agent-Runtime-backed implementation; capability-free entrypoints use the deterministic local implementation.
 _Avoid_: global controller, chat singleton
 
 **Composer**:
@@ -44,29 +44,29 @@ _Avoid_: input bar, footer, text box
 The deterministic frontend sequence `user_sent → thinking → composing → replied`. Its timers are cancellable and it never calls the Agent Runtime.
 _Avoid_: fake Runtime, simulated API call
 
-**Dormant Production Adapters**:
-Stable auth, Control Plane, Protocol, notification, and telemetry modules retained for later reconnection but unreachable from mounted entrypoints. Their presence does not imply a mounted capability.
-_Avoid_: dead code, active production wiring
+**Production Integration Seams**:
+The auth, Control Plane, Protocol, notification, and telemetry boundaries composed once by `src/entrypoints/platform.ts` and injected by live routes. Capability-free entrypoint defaults remain for deterministic frontend tests.
+_Avoid_: dormant adapters, route-owned SDK client
 
-## Dormant production language
+## Production integration language
 
 **Auth Adapter**:
-The dormant boundary that hides concrete authentication providers and exposes sign-in, sign-out, and User JWT access.
+The live Google-only boundary that exposes sign-in, sign-out, session restoration, and User JWT access while hiding native Google and Better Auth details.
 
 **Launch State Resolver**:
-The dormant pure function that maps Control-Plane-owned Pre-Chat Gate truth to a Launch Destination.
+The mounted pure function that maps Control-Plane-owned Pre-Chat Gate truth to a Launch Destination.
 
 **Runtime Adapter**:
-The dormant Mobile-internal Protocol WebSocket module. It owns handshake, ordering, reconnect recovery, delivery reconciliation, and the in-memory Message Store.
+The live Mobile-internal Protocol WebSocket module. It owns handshake, ordering, reconnect recovery, delivery reconciliation, and the in-memory Message Store.
 
 **Message Store**:
-The dormant Runtime Adapter's transient projection of server-truth Conversation History. It remains non-durable.
+The Runtime Adapter's transient projection of server-truth Conversation History. It remains non-durable.
 
 **Control Plane Source**:
-A dormant account or Launch State reader backed by Control Plane HTTP contracts.
+A live account or Launch State reader backed by Control Plane HTTP contracts.
 
 **Telemetry**:
-The dormant errors-only Sentry provider seam. The mounted Huracán frontend does not initialize it.
+The errors-only Sentry provider seam initialized by the composition root when a DSN is configured; a blank DSN keeps it the no-op.
 
 ## Relationships
 
@@ -76,4 +76,4 @@ The dormant errors-only Sentry provider seam. The mounted Huracán frontend does
 - Chat UI owns composer and overlay presentation; Conversation Session owns timeline phases and timer cleanup.
 - Account UI owns session-only preferences and logout presentation.
 - The conversation surface renders only Conversation Timeline Item values.
-- Dormant Production Adapters may be reconnected only through explicit provider/runtime translation seams.
+- Production Integration Seams enter mounted routes only through explicit provider/runtime translation boundaries.

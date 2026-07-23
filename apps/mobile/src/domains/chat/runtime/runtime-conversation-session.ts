@@ -13,6 +13,7 @@
  * (the injectable offline default) and mirrors its lifecycle: it opens the
  * connection eagerly on creation and closes it on `dispose`.
  */
+import { createRuntimeAdapter, type RuntimeAdapterDeps } from "./runtime-adapter.js";
 import { createReadyTimeline } from "../config/content.js";
 import type {
   ChatPhase,
@@ -21,17 +22,21 @@ import type {
   ConversationTimelineItem,
 } from "../types/conversation-timeline.js";
 import type { RuntimeAdapterState } from "../types/conversation.js";
-import { createRuntimeAdapter, type RuntimeAdapterDeps } from "./runtime-adapter.js";
 
 /**
  * Project the Runtime Adapter's server-truth message window onto the timeline
- * the UI renders. The ready scaffold (capability card + suggestions) is kept as
- * the opening rows so the runtime-backed ready state matches the local one, then
- * each `ConversationMessage` becomes a user/companion row. A live "thinking"
- * Agent State appends the activity indicator the scene already knows how to draw.
+ * the UI renders. The ready scaffold (capability card + suggestions) is shown
+ * only while the conversation holds zero messages: the capability card and
+ * suggestions are the empty-state surface, and as soon as a user, historical,
+ * or Companion message exists the timeline projects only server-truth rows plus
+ * any active thinking indicator. This keeps the runtime-backed ready state
+ * behaviorally aligned with the local session, which drops the scaffold on its
+ * first turn, without changing the shared `ConversationSession` interface
+ * (ADR 0030, conversation scaffold ownership).
  */
 export function projectTimeline(state: RuntimeAdapterState): readonly ConversationTimelineItem[] {
-  const items: ConversationTimelineItem[] = [...createReadyTimeline()];
+  const items: ConversationTimelineItem[] =
+    state.messages.length === 0 ? [...createReadyTimeline()] : [];
   for (const message of state.messages) {
     items.push(
       message.author === "user"

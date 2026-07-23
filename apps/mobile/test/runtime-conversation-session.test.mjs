@@ -9,7 +9,21 @@ import {
 
 const at = "2026-06-12T00:00:00.000Z";
 
-test("projectTimeline keeps the ready scaffold and maps server messages to rows", () => {
+test("projectTimeline shows the ready scaffold only when there are zero messages", () => {
+  const empty = projectTimeline({
+    messages: [],
+    beforeCursor: null,
+    agentState: "available",
+    connectionState: "connected",
+    error: null,
+  });
+  assert.deepEqual(
+    empty.map((item) => item.kind),
+    ["capability_card", "suggestion_group"],
+  );
+});
+
+test("projectTimeline projects only server-truth rows once a message exists", () => {
   const timeline = projectTimeline({
     messages: [
       { id: "c1", author: "companion", body: "hello", at, viaPostMessageBack: false },
@@ -20,9 +34,11 @@ test("projectTimeline keeps the ready scaffold and maps server messages to rows"
     connectionState: "connected",
     error: null,
   });
+  // The scaffold (capability_card + suggestion_group) drops as soon as any
+  // user, historical, or Companion message exists.
   assert.deepEqual(
     timeline.map((item) => item.kind),
-    ["capability_card", "suggestion_group", "companion_message", "user_message"],
+    ["companion_message", "user_message"],
   );
   assert.equal(timeline.at(-2).text, "hello");
   assert.equal(timeline.at(-1).text, "hi back");
@@ -86,9 +102,11 @@ test("session opens the connection, projects the hello_ok snapshot, and notifies
   });
 
   const snapshot = session.getSnapshot();
+  // A companion message exists, so the scaffold is dropped: only the
+  // server-truth companion row projects.
   assert.deepEqual(
     snapshot.timeline.map((item) => item.kind),
-    ["capability_card", "suggestion_group", "companion_message"],
+    ["companion_message"],
   );
   assert.equal(snapshot.timeline.at(-1).text, "Welcome");
   assert.equal(snapshot.phase, "replied");

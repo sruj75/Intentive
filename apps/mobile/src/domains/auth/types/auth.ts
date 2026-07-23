@@ -2,22 +2,18 @@
  * auth domain — the public contract for the Identity Gate's sign-in boundary.
  *
  * The **Auth Adapter** is the single deep module the rest of the Mobile Client
- * sees: it hides which **Auth Provider** answered (Neon Auth Google/Apple, or
- * the dev provider) and hides the **User JWT** entirely from the UI. See
- * apps/mobile/docs/adr/0012-mobile-auth-adapter-with-dev-provider.md and
- * apps/mobile/CONTEXT.md (Auth Adapter, Auth Provider, User JWT).
+ * sees: it hides the native Google sign-in path and the **User JWT** entirely
+ * from the UI. See apps/mobile/docs/adr/0030-mobile-google-only-production-auth.md
+ * and apps/mobile/CONTEXT.md (Auth Adapter, User JWT).
  */
-
-/** Which sign-in path the user picked. `dev` is `__DEV__`-only (a launch fake). */
-export type AuthProviderId = "google" | "apple" | "dev";
 
 /**
  * The result of a sign-in attempt — deliberately token-free, so the Identity Gate
  * learns only whether to advance, retry, or explain:
  *   - `signed-in`      success; the Identity Gate flips Launch State via `markSignedIn`.
  *   - `cancelled`      the user backed out — NOT an error; return silently.
- *   - `not-configured` the provider has no credentials yet (e.g. Apple today);
- *                      surfaced honestly, never as a fake success.
+ *   - `not-configured` Google has no credentials yet (e.g. a build without the public
+ *                      client IDs); surfaced honestly, never as a fake success.
  *   - `error`          a recoverable failure; the gate offers a retry.
  */
 export type SignInOutcome =
@@ -28,26 +24,13 @@ export type SignInOutcome =
 
 /**
  * The boundary the Identity Gate calls. Deep module: four methods over all the
- * SDK / provider / token complexity. `restoreSession` exists for #23
- * (cold-launch hydration) and `getUserJwt` for #33 (the WebSocket
- * handshake) — neither is wired in #19, and the UI never calls
- * `getUserJwt`.
+ * SDK / token complexity. `signIn` is Google-only (ADR 0030): it takes no
+ * provider argument. `restoreSession` exists for cold-launch hydration and
+ * `getUserJwt` for the WebSocket handshake — the UI never calls `getUserJwt`.
  */
 export interface AuthAdapter {
-  signIn(provider: AuthProviderId): Promise<SignInOutcome>;
+  signIn(): Promise<SignInOutcome>;
   signOut(): Promise<void>;
   restoreSession(): Promise<boolean>;
   getUserJwt(): Promise<string | null>;
-}
-
-/**
- * One concrete sign-in path behind the **Auth Adapter** — a sign-in *strategy*,
- * nothing more. A provider's only job is to answer "did this sign-in attempt
- * succeed, cancel, or fail"; the **Auth Adapter** owns provider selection and
- * delegates session, token, and sign-out straight to the shared Neon client, so
- * those never flow through a provider (in particular, the dev fake never serves
- * a `restoreSession`/`getUserJwt` — those always come from the real client).
- */
-export interface AuthProvider {
-  signIn(): Promise<SignInOutcome>;
 }

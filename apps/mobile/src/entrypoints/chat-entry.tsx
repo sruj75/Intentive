@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
 
 import { ScreenFrame } from "../design/screen-frame";
@@ -28,11 +28,14 @@ export function ChatEntry({
   const profile = useProfileSnapshot();
   // Real Control-Plane account state gates Companion affordances. With no injected
   // source (the offline default) this projects null, so the gate stays open and
-  // the local experience is unchanged (ADR-0027).
-  const { accountState } = useAccountStateProjection(accountStateSource);
+  // the local experience is unchanged (ADR-0027). `refreshAccountState` is the
+  // seam the education replay restart uses so feature gating reflects updated
+  // account state instead of remaining stuck on the original projection (ADR-0030).
+  const { accountState, refreshAccountState } = useAccountStateProjection(accountStateSource);
   const featureAccess = deriveFeatureAccess(accountState);
   const [mode, setMode] = useState<"welcome" | "education" | "ready">("welcome");
   const [sessionGeneration, setSessionGeneration] = useState(0);
+  const [educationSource, setEducationSource] = useState<"onboarding" | "replay">("onboarding");
   const session = useMemo(
     () => createSession(profile.firstName),
     [createSession, profile.firstName, sessionGeneration],
@@ -45,6 +48,22 @@ export function ChatEntry({
     else router.replace("/");
   };
 
+  // Education replay becomes one named restart operation: when the Education Deck
+  // returns from a *replay*, a fresh conversation session is created (bumping the
+  // generation disposes the prior runtime/local session) and Account State is
+  // refreshed before the ready surface returns, so updated feature access can
+  // change gating after the replay (ADR-0030). The first onboarding run keeps the
+  // welcome session and only refreshes nothing — no extra reads.
+  const restartConversation = useCallback(async (): Promise<void> => {
+    if (educationSource === "replay") {
+      setSessionGeneration((current) => current + 1);
+      if (accountStateSource) {
+        await refreshAccountState({ clearBeforeRead: true });
+      }
+    }
+    setMode("ready");
+  }, [accountStateSource, educationSource, refreshAccountState]);
+
   return (
     <AccountSettingsBoundary fullName={profile.fullName} initials={profile.initials}>
       {({ proactiveSuggestions, renderSettings }) => (
@@ -52,18 +71,21 @@ export function ChatEntry({
           {({ onChange, value }) => (
             <ScreenFrame sceneKey={mode === "education" ? "education" : "chat"}>
               {mode === "education" ? (
-                <EducationDeck onComplete={() => setMode("ready")} />
+                <EducationDeck onComplete={restartConversation} />
               ) : (
                 <ConversationScene
                   composerValue={value}
                   firstName={profile.firstName}
                   initials={profile.initials}
                   mode={mode}
-                  onBeginEducation={() => setMode("education")}
+                  onBeginEducation={() => {
+                    setEducationSource("onboarding");
+                    setMode("education");
+                  }}
                   onComposerChange={onChange}
                   onLogout={logout}
                   onReplayEducation={() => {
-                    setSessionGeneration((current) => current + 1);
+                    setEducationSource("replay");
                     setMode("education");
                   }}
                   proactiveSuggestions={proactiveSuggestions && featureAccess.proactiveSuggestions}

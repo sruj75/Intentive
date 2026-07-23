@@ -8,15 +8,17 @@
  * Config source (resolved per the integration plan): the three public seams —
  * Control Plane base URL, Sentry DSN, and the public Google iOS client ID —
  * plus the Neon Auth base URL (read inside `auth/service/neon-client.ts`) come
- * from `EXPO_PUBLIC_*` env, inlined by
- * Expo at build time and populated from EAS env in CI/release. `.env.example`
- * documents each one. Leaving a value blank keeps that seam dormant: no Control
- * Plane base URL ⇒ the account/launch sources short-circuit; no Sentry DSN ⇒
- * telemetry stays the no-op.
+ * from `EXPO_PUBLIC_*` env, inlined by Expo at build time and populated from EAS
+ * env in CI/release. `.env.example` documents each one. Leaving a value blank
+ * keeps that seam dormant: no Control Plane base URL ⇒ the account/launch
+ * sources short-circuit; no Sentry DSN ⇒ telemetry stays the no-op.
+ *
+ * Production auth is Google-only (ADR 0030): `googleAuthConfigured` is the one
+ * capability, derived from both public client IDs. A production / internal-
+ * production build (anything but `__DEV__`) whose either Google client ID is
+ * missing fails to resolve config, preventing an unusable binary from shipping.
  */
 import Constants from "expo-constants";
-
-import type { SocialProvider } from "../domains/auth/service/ports";
 
 export interface RuntimeConfig {
   /** Control Plane base URL (public HTTPS), or "" when the seam is dormant. */
@@ -31,10 +33,10 @@ export interface RuntimeConfig {
   readonly environment: string;
   /** Client version reported to the Agent Runtime `connect` handshake. */
   readonly clientVersion: string;
-  /** Expo `__DEV__` — gates the launch-only dev auth provider. */
+  /** Expo `__DEV__` — labels the build environment. */
   readonly isDev: boolean;
-  /** Social providers that are a working sign-in capability today. */
-  readonly enabledAuthProviders: ReadonlySet<SocialProvider>;
+  /** Whether Google is a working sign-in capability (both public client IDs present). */
+  readonly googleAuthConfigured: boolean;
 }
 
 declare const __DEV__: boolean;
@@ -48,6 +50,23 @@ export function createRuntimeConfig(): RuntimeConfig {
   const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() ?? "";
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? "";
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "";
+
+  // Native Google needs both client IDs: iOS identifies the app and the web
+  // client is the ID-token audience Neon Auth verifies. The iOS value also
+  // installs the native config plugin.
+  const googleAuthConfigured = googleIosClientId.length > 0 && googleWebClientId.length > 0;
+
+  // A production / internal-production build without either Google client ID is
+  // unusable: the Identity Gate could only offer a disabled button. Fail config
+  // resolution so such a binary can never ship (ADR 0030). Dev builds keep the
+  // dormant-capability path so the local offline walk and tests stay green.
+  if (!isDev && !googleAuthConfigured) {
+    throw new Error(
+      "Production auth is misconfigured: both EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID and " +
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID must be present to ship a production build.",
+    );
+  }
+
   return {
     controlPlaneBaseUrl,
     sentryDsn,
@@ -56,11 +75,6 @@ export function createRuntimeConfig(): RuntimeConfig {
     environment: isDev ? "development" : "production",
     clientVersion: Constants.expoConfig?.version ?? "0.0.0",
     isDev,
-    // Native Google needs both client IDs: iOS identifies the app and the web
-    // client is the ID-token audience Neon Auth verifies. The iOS value also
-    // installs the native config plugin. Apple remains disabled.
-    enabledAuthProviders: new Set<SocialProvider>(
-      googleIosClientId && googleWebClientId ? ["google"] : [],
-    ),
+    googleAuthConfigured,
   };
 }

@@ -24,8 +24,6 @@
     "src/domains/onboarding/service/**/*.ts",
     "src/domains/auth/types/auth.ts",
     "src/domains/auth/service/ports.ts",
-    "src/domains/auth/service/dev-provider.ts",
-    "src/domains/auth/service/neon-provider.ts",
     "src/domains/auth/service/auth-adapter.ts",
     "src/domains/chat/types/**/*.ts",
     "src/domains/chat/service/**/*.ts",

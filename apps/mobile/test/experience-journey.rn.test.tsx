@@ -148,6 +148,11 @@ describe("Huracán local experience", () => {
     });
     expect(screen.toJSON()).toMatchSnapshot("A-auth");
 
+    // Google is the sole v1 production Auth Provider (ADR 0030): neither Apple
+    // nor a dev control is present.
+    expect(screen.queryByTestId("continue-with-apple")).toBeNull();
+    expect(screen.queryByTestId("continue-with-dev")).toBeNull();
+
     fireEvent.press(screen.getByTestId("continue-with-google"));
     const nameInput = screen.getByTestId("full-name-input");
     expect(screen.toJSON()).toMatchSnapshot("B1-name");
@@ -234,7 +239,7 @@ describe("Huracán local experience", () => {
 
   it("supports gesture and background dismissal, replay, skip, and cold reset", async () => {
     const screen = renderExperience();
-    fireEvent.press(screen.getByTestId("continue-with-apple"));
+    fireEvent.press(screen.getByTestId("continue-with-google"));
     fireEvent.changeText(screen.getByTestId("full-name-input"), "Srujan Gowda");
     fireEvent.press(screen.getByTestId("submit-name"));
     fireEvent.press(screen.getByTestId("add-friends-intro"));

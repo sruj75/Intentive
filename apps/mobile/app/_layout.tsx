@@ -3,6 +3,8 @@ import { Stack, router } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { getPlatform } from "../src/entrypoints/platform";
+import { LaunchCurtain } from "../src/entrypoints/launch-curtain";
+import { NotificationsRegistrar } from "../src/entrypoints/notifications-registrar";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
 import { routeForDestination } from "../src/domains/onboarding/service/route-for-destination";
 import { LaunchStateProvider, useLaunchState } from "../src/providers/launch-state";
@@ -13,6 +15,10 @@ import { wrapRoot } from "../src/providers/telemetry";
 // so `wrapRoot` below sees a ready Sentry when a DSN is configured (ADR 0029). A
 // blank DSN keeps telemetry the no-op and `wrapRoot` returns the component as-is.
 getPlatform();
+
+// Module-level so the registrar's effect dependency stays stable across renders;
+// a fresh arrow each render would re-arm the one-shot registration attempt.
+const registerForPush = () => getPlatform().registerForPush();
 
 /**
  * Runs the launch decision as an effect: resolve the in-memory Launch State to a
@@ -31,13 +37,28 @@ function RootNavigator(): null {
   return null;
 }
 
+function RootExperience(): React.JSX.Element {
+  // Push registration owns the persistent signed-in lifecycle (ADR 0028 / 0030):
+  // it lives at the root, under LaunchStateProvider and above both navigation
+  // zones, so remounting the (main) zone never re-arms it within one signed-in
+  // period — the false→true transition attempts registration exactly once.
+  const { state } = useLaunchState();
+  return (
+    <>
+      <RootNavigator />
+      <NotificationsRegistrar signedIn={state.signedIn === true} register={registerForPush} />
+      <Stack screenOptions={{ headerShown: false, animation: "none" }} />
+      <LaunchCurtain />
+    </>
+  );
+}
+
 function RootLayout(): React.JSX.Element {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ProfileProvider>
         <LaunchStateProvider source={getPlatform().launchStateSource}>
-          <RootNavigator />
-          <Stack screenOptions={{ headerShown: false, animation: "none" }} />
+          <RootExperience />
         </LaunchStateProvider>
       </ProfileProvider>
     </GestureHandlerRootView>

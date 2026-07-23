@@ -48,8 +48,6 @@ export const mobileTheme = {
         fontWeight: "300" as const,
         letterSpacing: -1.4,
       },
-      appleButtonMinHeight: 56,
-      appleMarkSize: 17,
     },
     name: {
       contentMinHeight: 520,

@@ -43,6 +43,10 @@ function useEvent() {
 
 function setGestureState() {}
 
+function useReducedMotion() {
+  return Boolean(global.__INTENTIVE_REDUCE_MOTION__);
+}
+
 module.exports = {
   __esModule: true,
   default: {
@@ -66,4 +70,5 @@ module.exports = {
   withDelay,
   useEvent,
   setGestureState,
+  useReducedMotion,
 };

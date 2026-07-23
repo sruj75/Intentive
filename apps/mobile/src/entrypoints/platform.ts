@@ -59,8 +59,8 @@ export interface Platform {
   readonly createRuntimeSession: () => ConversationSession;
   /**
    * Requests notification permission and registers this device for push with the
-   * Control Plane (`POST /devices/register`). Mounted from the `(main)` layout once
-   * the client is signed in; a denial or missing token resolves without a crash.
+   * Control Plane (`POST /devices/register`). Mounted from the persistent root
+   * once per signed-in period; a denial or missing token resolves without a crash.
    */
   readonly registerForPush: () => Promise<PushRegistrationResult>;
 }
@@ -84,8 +84,7 @@ function createPlatform(): Platform {
   });
   const auth = createAuthAdapter({
     client: neonClient,
-    enabled: config.enabledAuthProviders,
-    includeDev: config.isDev,
+    googleAuthConfigured: config.googleAuthConfigured,
     telemetry,
   });
   const getUserJwt = () => auth.getUserJwt();
