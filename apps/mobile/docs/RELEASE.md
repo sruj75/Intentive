@@ -202,34 +202,37 @@ workspace packages publish their runtime entry points into ignored `dist/`
 directories. A local test or harness may have built those directories already,
 while an EAS worker always starts from a clean checkout.
 
-From the repository root, first produce the workspace outputs that a release
-bundle imports:
+`package.json` makes the package-build step reusable:
+
+- `pnpm run eas:prepare` builds the monorepo workspace outputs required by the
+  Mobile Client at runtime.
+- `pnpm run eas:preflight` runs that same preparation plus the exact
+  `expo export:embed` JavaScript bundle command.
+- `eas-build-post-install` calls `eas:prepare` automatically in EAS after iOS
+  dependency installation, CNG prebuild, and CocoaPods, but before EAS bundles
+  JavaScript. It prevents a clean EAS worker from resolving workspace packages
+  against missing `dist/` entries.
+
+From `apps/mobile`, use the _same EAS environment_ and run the reusable
+preflight. Replace `preview` with `production` when preparing a store build:
 
 ```bash
-pnpm build
-```
-
-Then from `apps/mobile`, use the _same EAS environment_ and run the exact
-JavaScript bundle command that EAS runs. Replace `preview` with `production`
-when preparing a store build:
-
-```bash
-pnpm dlx eas-cli@latest env:exec --environment preview \
-  "pnpm exec expo export:embed --eager --platform ios --dev false"
+pnpm dlx eas-cli@latest env:exec preview \
+  "pnpm run eas:preflight"
 ```
 
 For a native-surface change, also run the iOS gates locally using the same
 environment:
 
 ```bash
-pnpm dlx eas-cli@latest env:exec --environment preview \
+pnpm dlx eas-cli@latest env:exec preview \
   "pnpm exec expo prebuild --clean"
 
 pnpm dlx expo-doctor@latest
 
 cd ios
 SENTRY_DISABLE_AUTO_UPLOAD=true \
-SENTRY_CLI_EXECUTABLE="$(cd ../.. && node -p \"require.resolve('@sentry/cli/bin/sentry-cli')\")" \
+SENTRY_CLI_EXECUTABLE="$(cd ../../.. && node -p 'require.resolve(\"@sentry/cli-darwin/bin/sentry-cli\", { paths: [\"node_modules/.pnpm/node_modules\"] })')" \
   xcodebuild -workspace Intentive.xcworkspace -scheme Intentive \
   -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
   CODE_SIGNING_ALLOWED=NO build
@@ -238,7 +241,7 @@ SENTRY_CLI_EXECUTABLE="$(cd ../.. && node -p \"require.resolve('@sentry/cli/bin/
 `expo prebuild --clean` runs CocoaPods. The unsigned Xcode command verifies
 the generated physical-device Release app without using Apple signing or EAS
 quota; local Sentry upload is deliberately disabled, while EAS keeps its
-authenticated upload. Treat all five commands as release blockers. Only submit
+authenticated upload. Treat all four commands as release blockers. Only submit
 to EAS after they pass and after `eas env:list <environment>` confirms the
 public endpoint, Google client-ID, Sentry DSN, and Sentry build-token values
 required by that profile.

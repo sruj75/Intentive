@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "dev": "expo start",
     "ios": "expo run:ios",
-    "android": "expo run:android"
+    "android": "expo run:android",
+    "eas:prepare": "pnpm --dir ../.. build",
+    "eas:preflight": "pnpm run eas:prepare && expo export:embed --eager --platform ios --dev false",
+    "eas-build-post-install": "pnpm run eas:prepare"
   },
   "dependencies": {
     "@better-auth/expo": "1.6.20",
