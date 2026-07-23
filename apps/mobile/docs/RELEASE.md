@@ -74,6 +74,9 @@ prebuild` writes it into `Expo.plist` as `EXUpdatesRuntimeVersion`. Bump
   requires a **new binary** (OTA cannot add this plugin to an older build). Set
   `EXPO_PUBLIC_SENTRY_DSN` in the EAS build environment for production error
   capture; leave blank in local dev to keep telemetry disabled.
+- `ios.infoPlist.ITSAppUsesNonExemptEncryption` is `false`, so EAS can provide
+  the App Store export-compliance answer for the app's ordinary HTTPS use. Change
+  this before release if the app later adds non-exempt encryption functionality.
 - `app.config.js` adds `@react-native-google-signin/google-signin` when
   `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` is present and derives its required reversed
   iOS URL scheme. The existing `intentive` scheme remains in `app.json`. This
