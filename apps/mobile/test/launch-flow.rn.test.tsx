@@ -198,6 +198,7 @@ test("the real Control Plane source hydrates a signed-in user through to chat", 
         json: () =>
           Promise.resolve({
             user_id: "u_1",
+            email: null,
             next_gate: null,
             has_agent_instance: false,
             has_desktop_client: false,
