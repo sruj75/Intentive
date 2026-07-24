@@ -1,159 +1,100 @@
-# Signed-in Capture Session smoke
+# Desktop Smoke
 
-A demoable, repeatable smoke that proves **one unbroken chain** on a signed-in
-Mac:
-
-> Routing from the Control Plane (real Neon-Auth-shaped JWT verification) →
-> capture auto-starts when Desktop Capture Readiness is true → **real ScreenPipe**
-> captures → the Context Heartbeat produces a sanitized Context Snapshot →
-> written to the Snapshot Store **before** delivery → emitted as a
-> `context_snapshot` Protocol event to a controlled gateway → Stop emits a
-> `session_end_marker` **before** ScreenPipe shutdown (ADR-0022) → menu bar
-> reflects Capturing → Stopped.
-
-Every component is proven in isolation elsewhere (ScreenPipe lifecycle #10,
-heartbeat→snapshot #13, permissions #32, the emit serializer locked to
-`@intentive/protocol` #34, gateway ingest #28). **This smoke's job is to prove
-the joints hold when the thing is assembled live and signed-in.** The real joints
-stay real (real ScreenPipe spawn, the real FSM/scheduler/emit path, real
-`GET /agent` over HTTP); only the _edges_ (Control Plane, gateway, summarizer
-cadence) are made deterministic.
-
-It is **not** the packaged-app smoke (#55), DMG/signing (#53/#54), the
-reliability+privacy harness (#43), or AR runtime snapshot semantics (#38/#40).
-
-## Prerequisites — read before running
-
-1. **A signed-in Mac with all three macOS grants** — Screen Recording,
-   Microphone, Accessibility (Desktop Capture Readiness true). Capture is gated
-   on sign-in **+** local readiness (ADR-0020), and that gate is device-local: it
-   **cannot** be automated. Without the grants, capture parks in `SetupRequired`
-   and the smoke times out waiting for snapshots.
-2. **Apple Silicon** (V1 only) with the bundled ScreenPipe resource present
-   inside the helper bundle
-   (`src-tauri/resources/Intentive Capture.app/Contents/MacOS/screenpipe`, ADR-0015).
-3. ScreenPipe local API auth must be initialized. The harness reads the bundled
-   binary's `auth token` output and passes it to heartbeat requests; it does not
-   print the token.
-4. Node + pnpm ≥ 11. The harness is the workspace package
-   `@intentive/desktop-smoke` under `apps/desktop/smoke/`.
-
-## Run it
+## Local Gates
 
 ```bash
-pnpm --filter ./apps/desktop smoke      # convenience alias
-# or directly:
-node apps/desktop/smoke/run-smoke.mjs
+pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop test
+pnpm harness --scope apps/desktop
+pnpm --dir apps/desktop desktop:accept
 ```
 
-What the orchestrator does:
+## Manual Local Run
 
-1. Builds `@intentive/protocol` and `@intentive/providers` (so the `.mjs`
-   imports resolve to `dist/`).
-2. Starts the **gateway** (`gateway.mjs`) on an ephemeral port — does the real
-   `connect → hello_ok` handshake, validates every inbound frame with the real
-   `@intentive/protocol` parser, and records receipts to
-   `apps/desktop/smoke/.out/receipts.jsonl`.
-3. Starts the **Control Plane stub** (`control-plane.mjs`) — mints an ephemeral
-   RSA keypair, serves its JWKS, and validates the `Authorization: Bearer` login
-   token with the **real** `createJwtVerifier` from `@intentive/providers/auth`.
-   A valid token → `200` routing pointing at the gateway; invalid → `401`.
-4. Mints a login JWT, exports the dev-only env (below), loads the local
-   ScreenPipe API token for heartbeat requests, and launches the **real** Desktop
-   app with `tauri dev` (real ScreenPipe boots).
-5. Waits AFK for ≥2 heartbeat cycles to arrive as gateway receipts.
-6. **You then toggle capture OFF in the menu bar** (Capturing → Stopped). This is
-   the one manual step — it is the same device-local action the grants gate
-   implies, and doubles as the demo. It emits the `session_end_marker`.
-7. Correlates evidence (`assert.mjs`) and prints a PASS/FAIL table.
+```bash
+cd apps/desktop/macos
+./run.sh
+```
 
-> Toggle **capture off** (the capture toggle), not **Quit** — only the capture
-> Stop runs the coordinator's `StopSession` effect that emits the marker.
+Confirm:
 
-## Two modes
+1. The app opens to the Intentive Desktop window.
+2. Without a configured token, the top-bar status reports sign-in is required instead of using a preview chat.
+3. Grant Screen Recording, enable Screen Memory, and start capture.
+4. `Screen Memory` search finds captured rows by words from the summary.
+5. A fixture Runtime Post-Message-Back presents the Floating Bar/edge glow, while an ordinary reply updates silently and no second chat surface appears.
 
-| Mode                          | How                                      | Proves                                                                                    |
-| ----------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **CP / provenance (default)** | as above                                 | the **front** of the chain (routing came from CP + a verified JWT) **and** the full chain |
-| **Fixture fast-loop**         | `INTENTIVE_SMOKE_FIXTURE=1 pnpm … smoke` | only the heartbeat→store→emit→marker half, fast, for inner-loop reruns                    |
+## Local Stack Smoke
 
-Fixture mode is opt-in via the harness knob `INTENTIVE_SMOKE_FIXTURE=1` — **not**
-by pre-exporting `INTENTIVE_DESKTOP_ROUTING_FIXTURE`, which cannot name the
-gateway's ephemeral port. The runner synthesizes the routing fixture from its own
-`gateway.url` and drops the Control Plane / login-token env.
+With Control Plane and Agent Runtime running:
 
-**Fixture mode does NOT satisfy the routing-provenance AC** — it bypasses
-`GET /agent` and the JWT verification. The harness prints a reminder when it
-runs in fixture mode.
+```bash
+export INTENTIVE_CONTROL_PLANE_URL=http://localhost:8080
+export INTENTIVE_DESKTOP_USER_JWT="$(scripts/local-dev-auth-token.mjs --user-id local-dev-user)"
+cd apps/desktop/macos
+./run.sh
+```
 
-## Dev-only environment variables
+Confirm:
 
-All are read **only** under `#[cfg(debug_assertions)]` and are absent from the
-notarized release build (`apps/desktop/src-tauri/src/providers/smoke.rs` +
-`lib.rs`). `run-smoke.mjs` sets them for you; they are listed here for manual
-runs and for the README.
+1. Desktop calls `GET /me` with `X-Client-Kind: desktop` and `X-Capture-Permission-Granted`.
+2. Desktop registers `POST /devices/register` with `device_fingerprint` and `client_kind: desktop`.
+3. Desktop fetches routing from `GET /agent`, opens the Runtime WebSocket, and sends the `connect` frame.
+4. Runtime returns `hello_ok`; the top-bar status changes to Runtime connected.
+5. Send one `perception_event`; verify Agent Runtime writes `runtime_events` and `perception_records`.
+6. Send one floating-bar `user_message`; verify it appears in Mobile after reconnect.
+7. Trigger one Post-Message-Back reply; verify the Desktop Effect Runner acknowledges it.
 
-| Var                                 | Effect                                                                                                                                                                                                                                                                    |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `INTENTIVE_HEARTBEAT_INTERVAL_SECS` | Override the 600s cadence so the smoke finishes in ~2 short cycles. Release compiles only the 600s path.                                                                                                                                                                  |
-| `INTENTIVE_SMOKE_STUB_SUMMARIZER`   | `=1` swaps the on-device LLM for a deterministic stub so ticks never skip on an unresolved provider. ScreenPipe is still real.                                                                                                                                            |
-| `INTENTIVE_SMOKE_LOGIN_TOKEN`       | A minted login JWT injected at startup via `set_login_token`, so the AFK run drives the real `GET /agent` path without scripting the webview. Empty/whitespace reads as unset. (CP mode only — absent in fixture mode.)                                                   |
-| `INTENTIVE_SMOKE_CAPTURE_SIGNED_IN` | `=1` drives the capture FSM to signed-in at startup (submits `SignInCompleted` after the heartbeat is wired), mirroring the menu-bar sign-in surface so the AFK run auto-starts a Capture Session. Independent of Routing — set in **both** modes (fixture has no token). |
-| `INTENTIVE_SMOKE_LOG`               | File to append the structured `SMOKE {json}` trace to (FSM state changes, `screenpipe_started`/`screenpipe_exited`, `snapshot_emit`, `marker_emit`). Without it, events go to stderr only.                                                                                |
+## Hosted Auth Smoke
 
-Harness-side knobs (read by `run-smoke.mjs`, not the app):
-`INTENTIVE_SMOKE_FIXTURE=1` (opt into fixture fast-loop),
-`INTENTIVE_SMOKE_MIN_SNAPSHOTS` (default 2),
-`INTENTIVE_SMOKE_SNAPSHOT_TIMEOUT_MS`, `INTENTIVE_SMOKE_MARKER_TIMEOUT_MS`,
-`INTENTIVE_SMOKE_DB` (override the resolved Snapshot Store path). The runner
-also sets `SCREENPIPE_API_KEY` from the bundled ScreenPipe binary when available
-so authenticated local API requests can reach `/activity-summary`.
+```bash
+export INTENTIVE_CONTROL_PLANE_URL=https://<control-plane-host>
+export INTENTIVE_HOSTED_AUTH_URL=https://<auth-host>/sign-in
+export INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop
+# Set only if the hosted callback returns `code=` instead of `token=`, `id_token=`, or `jwt=`.
+export INTENTIVE_AUTH_TOKEN_EXCHANGE_URL=https://<auth-host>/desktop/token
+cd apps/desktop/macos
+./run.sh
+```
 
-## AC → evidence checklist
+Confirm:
 
-The PASS/FAIL table maps each Acceptance Criterion to the source that proves it:
+1. `Connect Runtime` opens the system auth session.
+2. Cancelling the session does not store a token.
+3. Completing sign-in stores the User JWT in Keychain.
+4. Relaunch restores the token without reopening the auth session.
+5. Sign-in continues into the same `/me` → `/devices/register` → `/agent` → WebSocket path as the local-stack smoke.
 
-| Acceptance Criterion                                                | Evidence                                                                                                                             |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Routing issued only for a valid Neon-Auth JWT, over HTTP from CP    | CP stub: `200` for the minted token, `401` for a bad one (real `createJwtVerifier`). Default (non-fixture) mode only.                |
-| Capture auto-starts; the chain runs                                 | ≥1 `context_snapshot` receipt at the gateway (real parser accepted)                                                                  |
-| Snapshot written to the Store **before** delivery                   | a Snapshot Store row exists for each received `snapshot_id` with `pushed_at` non-null                                                |
-| Snapshot is sanitized (no raw ScreenPipe)                           | the stored row carries a non-empty `summary`; the `ContextSnapshot` struct is structurally field-limited (Snapshot Privacy Boundary) |
-| `session_end_marker` emitted exactly once on Stop                   | exactly one `session_end_marker` receipt                                                                                             |
-| Marker leaves **before** ScreenPipe shutdown (ADR-0022)             | gateway marker `received_at` ≤ `screenpipe_exited` timestamp in the smoke log                                                        |
-| Menu bar reflects Capturing → Stopped                               | eyeballed during the manual Stop (also the demo)                                                                                     |
-| Settings exposes no ScreenPipe diagnostics / manual endpoint fields | eyeballed in Settings (out of the automated table)                                                                                   |
+## Release Smoke
 
-## How the joints stay real
+```bash
+CONFIGURATION=release \
+  INTENTIVE_APP_VERSION=0.1.0 \
+  INTENTIVE_APP_BUILD=1 \
+  INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
+  apps/desktop/macos/scripts/build-app-bundle.sh
+```
 
-- **Real ScreenPipe** spawns under `tauri dev`; only the summarizer cadence and
-  text are stubbed (dev-gated), never the capture.
-- **Real `GET /agent`** over HTTP, with the **real** JWT verifier — the CP stub
-  is self-contained (its own keypair) so it tests the verifier, not a mock. A
-  live Neon tenant is the documented higher-fidelity optional variant.
-- **Real Protocol parser** validates every frame at the gateway; an ack-less
-  sender (ADR-0005) has no other contract check.
+Confirm the generated `Info.plist` contains:
 
-## Files
+1. `CFBundleIdentifier = com.heyintentive.desktop`.
+2. `CFBundleIconFile = AppIcon`, with `Contents/Resources/AppIcon.icns` present.
+3. `CFBundleURLTypes` with the `intentive-desktop` callback scheme.
+4. `CFBundleShortVersionString` and `CFBundleVersion` matching the release tag/build.
+5. `NSScreenCaptureUsageDescription`, `NSAppleEventsUsageDescription`, `NSMicrophoneUsageDescription`, and `NSAudioCaptureUsageDescription`.
+6. `SUFeedURL` and `SUPublicEDKey` when Sparkle update metadata is provided.
+7. `IntentiveSentryDSN`, `IntentivePostHogProjectKey`, and `IntentivePostHogHost` when release telemetry metadata is provided.
+8. `Contents/Frameworks/Sparkle.framework` and `Contents/Frameworks/Sentry.framework` for the production release boundaries.
+9. `Contents/Resources/IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle/silero_vad.onnx` for SwiftPM `Bundle.module` lookup (owned by the `IntentiveDesktopNativeAdapters` target).
 
-- `gateway.mjs` — recording gateway (real handshake + parser).
-- `control-plane.mjs` — `GET /agent` + JWKS, real verifier.
-- `run-smoke.mjs` — orchestrator (build, launch, wait, assert, teardown).
-- `assert.mjs` — evidence correlator + PASS/FAIL table (also runnable standalone
-  after a run: `node apps/desktop/smoke/assert.mjs`).
+For the mechanical local check:
 
-## Teardown / troubleshooting
+```bash
+pnpm --dir apps/desktop release:smoke
+```
 
-- The app is launched in its own process group and reaped on teardown
-  (SIGTERM → SIGKILL). If a run is interrupted, check for a stray `screenpipe`
-  process and kill it manually.
-- **Times out waiting for snapshots** → the Mac is not signed in, or a grant is
-  missing (capture parked in `SetupRequired`), or ScreenPipe failed its health
-  check on `127.0.0.1:44380`. Watch the inherited `tauri dev` console for the
-  `SMOKE` lines (`screenpipe_started`, `fsm_state`).
-- **`activity query failed: non-2xx response: 403 Forbidden`** → ScreenPipe local
-  API auth is enabled but the heartbeat request has no valid `SCREENPIPE_API_KEY`.
-  Let the harness load the token, or run the bundled `screenpipe auth token`
-  command and export the value for manual app launches.
-- **Times out waiting for the marker** → did you toggle capture **off** (not
-  Quit)?
+On a tagged candidate, the Omi-derived signed-artifact smoke additionally verifies Developer ID Team `24D6NXS6H7`, hardened runtime, arm64-only architecture, Gatekeeper, the DMG notarization ticket and `/Applications` link, embedded-app digest alignment, appcast version/length/URL, and the exact DMG's Sparkle signature. See [`RELEASE.md`](RELEASE.md).
+
+## Internal Clean-Slate Smoke
+
+For changes to capture readiness or native permission onboarding, have an agent start `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` in the background. In the fresh Tart VM, the person at the keyboard installs the shared `Intentive.app` into `/Applications` and confirms required Screen Recording plus optional microphone/system-audio decisions; macOS requires those consent prompts to be handled in the GUI. The agent then runs `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` to stop and delete the guest. Never install or test Intentive in `intentive-base`; that template must remain app-free and permission-free. See [DEVELOPMENT.md](DEVELOPMENT.md#internal-build-clean-macos-permission-slate) and [RELEASE.md](RELEASE.md#clean-permission-tart-gate).

@@ -31,6 +31,7 @@ test("valid /me response is parsed as AccountState", async () => {
     fetch: async () =>
       jsonResponse({
         user_id: "u_1",
+        email: null,
         next_gate: null,
         has_agent_instance: false,
         has_desktop_client: false,
@@ -39,6 +40,7 @@ test("valid /me response is parsed as AccountState", async () => {
 
   assert.deepEqual(await source.read(), {
     user_id: "u_1",
+    email: null,
     next_gate: null,
     has_agent_instance: false,
     has_desktop_client: false,
@@ -52,6 +54,7 @@ test("valid /me response preserves registered Desktop Client state", async () =>
     fetch: async () =>
       jsonResponse({
         user_id: "u_1",
+        email: null,
         next_gate: null,
         has_agent_instance: false,
         has_desktop_client: true,
@@ -70,6 +73,7 @@ test("the bearer token is presented to ${base}/me", async () => {
       seen = { url, authorization: init?.headers?.authorization };
       return jsonResponse({
         user_id: "u_1",
+        email: null,
         next_gate: null,
         has_agent_instance: false,
         has_desktop_client: false,

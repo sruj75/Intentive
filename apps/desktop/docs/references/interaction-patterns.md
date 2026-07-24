@@ -203,7 +203,7 @@ const handleSave = async (item) => {
   // Step 2: Optimistic update
   setItems(prev => [...prev, { ...item, status: 'saving' }]);
   showToast('Saved!');
-  
+
   try {
     // Step 4: Actual operation
     await saveToStorage(item);

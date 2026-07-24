@@ -1,6 +1,7 @@
 import type {
   ClientKind,
-  ContextSnapshot,
+  PerceptionEvent,
+  PerceptionTombstone,
   SessionEndMarker,
   SessionSnapshot,
   UserMessage,
@@ -8,10 +9,12 @@ import type {
 
 import type { PinnedProcedureFloor, TurnTrigger } from "../../bundles/types/floor.js";
 
-export type RuntimeEventKind = Extract<
-  TurnTrigger,
-  "user_message" | "context_snapshot" | "session_end_marker"
->;
+// The ledger `kind` set: the turn-triggering ingress events plus
+// `perception_tombstone`, a stateful deletion that commits like an ingress but
+// never triggers a turn.
+export type RuntimeEventKind =
+  | Extract<TurnTrigger, "user_message" | "perception_event" | "session_end_marker">
+  | "perception_tombstone";
 
 export interface BoundSession {
   readonly userId: string;
@@ -20,12 +23,18 @@ export interface BoundSession {
   readonly pinnedFloor: PinnedProcedureFloor;
 }
 
-export type RuntimeIngressEvent = UserMessage | ContextSnapshot | SessionEndMarker;
+export type RuntimeIngressEvent =
+  | UserMessage
+  | PerceptionEvent
+  | PerceptionTombstone
+  | SessionEndMarker;
 
 export type PerceptionArrivedSink = (
   session: BoundSession,
-  event: ContextSnapshot | SessionEndMarker,
+  event: PerceptionEvent | SessionEndMarker,
 ) => void;
+
+export type PerceptionProjectedSink = (session: BoundSession, event: PerceptionEvent) => void;
 
 export interface LedgerRecord {
   readonly userId: string;
@@ -63,7 +72,8 @@ export function isRuntimeIngressEvent(event: {
 }): event is RuntimeIngressEvent {
   return (
     event.type === "user_message" ||
-    event.type === "context_snapshot" ||
+    event.type === "perception_event" ||
+    event.type === "perception_tombstone" ||
     event.type === "session_end_marker"
   );
 }

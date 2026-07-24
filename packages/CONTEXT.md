@@ -8,12 +8,12 @@ The cross-deployable shared kernel: the wire/HTTP contracts and cross-cutting cl
 The shared WebSocket message contract every client speaks and the Agent Runtime understands. Defined once in `packages/protocol/` (Zod schemas). Imported by Mobile Client, Desktop Client, future Android Client, and Agent Runtime. **This is where client unification lives** — not in network topology. The `connect` event carries optional `client_tz` (IANA timezone) so the Runtime can resolve wall-clock Cron schedules for offline users.
 _Avoid_: client SDK, wire format, message format (those are implementation details under Protocol)
 
-**Context Snapshot**:
-A time-bounded, on-device-summarized record of what the user was doing during a 10-minute window. Produced by the Desktop Client. Delivered to the Agent Runtime as a `context_snapshot` event on the same WebSocket every client uses.
-_Avoid_: webhook payload, HTTP POST body, activity dump
+**Perception Event**:
+A compact, on-device-compiled record of what a Client perceived during a time window. Produced first by the Desktop Context Compiler and delivered to the Agent Runtime as `perception_event` on the shared WebSocket Protocol. It carries summaries, signals, optional local embedding data, sensitivity labels, retention class, confidence, and a local Screen Memory reference.
+_Avoid_: Context Snapshot, webhook payload, HTTP POST body, activity dump
 
 **Session End Marker**:
-A `session_end_marker` event the Desktop Client sends when a Capture Session ends (user toggle, quit, or crash). Distinct event type from `context_snapshot`.
+A `session_end_marker` event the Desktop Client sends when a Capture Session ends (user toggle, quit, or crash). Distinct event type from `perception_event`.
 _Avoid_: final snapshot, end flag
 
 **Client Kind**:

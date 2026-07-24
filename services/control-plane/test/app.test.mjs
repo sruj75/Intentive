@@ -40,6 +40,7 @@ test("GET /me returns the handler's status and body", async () => {
         status: 200,
         body: {
           user_id: "u_1",
+          email: null,
           next_gate: null,
           has_agent_instance: false,
           has_desktop_client: false,
@@ -52,6 +53,7 @@ test("GET /me returns the handler's status and body", async () => {
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), {
     user_id: "u_1",
+    email: null,
     next_gate: null,
     has_agent_instance: false,
     has_desktop_client: false,

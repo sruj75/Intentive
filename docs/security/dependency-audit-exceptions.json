@@ -1,0 +1,10 @@
+{
+  "exceptions": [
+    {
+      "ghsa": "GHSA-gv7w-rqvm-qjhr",
+      "reachability": "The vulnerable esbuild path requires Deno's npm-module integration; Intentive invokes this dev-only Vite transitive only under Node.",
+      "owner": "Platform",
+      "expires": "2026-10-31"
+    }
+  ]
+}

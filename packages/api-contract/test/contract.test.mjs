@@ -39,12 +39,14 @@ test("AccountState reports whether a Desktop Client is registered", () => {
   assert.deepEqual(
     contract.AccountState.parse({
       user_id: "u_1",
+      email: "person@example.com",
       next_gate: null,
       has_agent_instance: true,
       has_desktop_client: false,
     }),
     {
       user_id: "u_1",
+      email: "person@example.com",
       next_gate: null,
       has_agent_instance: true,
       has_desktop_client: false,

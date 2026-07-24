@@ -13,19 +13,9 @@
   "adrDirs": ["docs/adr", "apps/desktop/docs/adr"],
   "requiredCommands": [
     {
-      "label": "Desktop typecheck",
+      "label": "Desktop check",
       "command": "pnpm",
-      "args": ["--dir", "apps/desktop", "typecheck"]
-    },
-    {
-      "label": "Desktop frontend and Rust tests",
-      "command": "pnpm",
-      "args": ["--dir", "apps/desktop", "test"]
-    },
-    {
-      "label": "Rust architecture lint",
-      "command": "pnpm",
-      "args": ["lint:architecture:rust"]
+      "args": ["--dir", "apps/desktop", "desktop:check"]
     }
   ],
   "sensors": [
@@ -42,13 +32,13 @@
     "packages/providers"
   ],
   "commonFailureModes": [
-    "Desktop is capture only; chat behavior belongs in Mobile and Agent Runtime.",
-    "Rust layer and src-tauri structure violations are caught by lint:architecture:rust.",
-    "The desktop test script already runs Vitest and cargo +stable test from the repo root.",
-    "Desktop CI and audit jobs are path-sensitive; shared package changes can still affect Desktop assumptions."
+    "Desktop must not publish raw frames or audio; only compact perception_event records cross the Runtime Bridge.",
+    "The text-only Floating Bar must join the one Companion conversation instead of creating a second desktop chat store.",
+    "Swift Codable protocol fixtures must stay aligned with packages/protocol/test/fixtures.",
+    "Desktop CI and release jobs are path-sensitive; shared package changes can still affect Desktop assumptions."
   ],
   "reviewHints": [
     "Provider changes should inspect desktop auth and telemetry seams.",
-    "Protocol changes should inspect capture/session event assumptions even when Desktop has no chat UI."
+    "Protocol changes should inspect Runtime Bridge Codable fixtures, perception publishing, and delivery acknowledgements."
   ]
 }
