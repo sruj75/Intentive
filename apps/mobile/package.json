@@ -24,7 +24,7 @@
     "@intentive/domain-types": "workspace:*",
     "@intentive/protocol": "workspace:*",
     "@sentry/react-native": "~7.11.0",
-    "better-auth": "1.6.20",
+    "better-auth": "1.6.21",
     "expo": "^56.0.12",
     "expo-constants": "^56.0.18",
     "expo-dev-client": "~56.0.20",
