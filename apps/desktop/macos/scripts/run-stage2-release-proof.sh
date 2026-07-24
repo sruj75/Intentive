@@ -5,9 +5,10 @@ usage() {
   cat <<'EOF'
 Usage: run-stage2-release-proof.sh --dmg PATH --appcast PATH --tag TAG --sha SHA --output DIR
 
-Runs fresh Stage 2 proof on the dedicated release Mac. The three machine-local
-drivers named below must be executable and must write their requested JSON plus
-referenced evidence files into the fresh output directory:
+Runs fresh Stage 2 proof on the dedicated release Mac. The workflow resolves
+the three repository-owned drivers named below from GITHUB_WORKSPACE. They must
+write their requested JSON plus referenced evidence files into the fresh output
+directory:
 
   DESKTOP_STAGE2_SPARKLE_DRIVER
   DESKTOP_STAGE2_TART_DRIVER

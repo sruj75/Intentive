@@ -32,6 +32,18 @@ public struct IntentiveRunningApplication: Identifiable, Hashable, Sendable {
   public init(id: String, name: String) { self.id = id; self.name = name }
 }
 
+public struct IntentiveExcludedApplication: Identifiable, Hashable, Sendable {
+  public let id: String
+  public let bundleID: String?
+  public let name: String
+
+  public init(id: String, bundleID: String?, name: String) {
+    self.id = id
+    self.bundleID = bundleID
+    self.name = name
+  }
+}
+
 @MainActor
 public protocol IntentiveSettingsPresenting: ObservableObject {
   var selectedSettingsSection: IntentiveSettingsSection { get set }
@@ -39,9 +51,10 @@ public protocol IntentiveSettingsPresenting: ObservableObject {
   var audioRecordingEnabled: Bool { get set }
   var systemAudioMode: IntentiveSystemAudioMode { get set }
   var notificationsAuthorized: Bool { get }
+  var launchAtLogin: Bool { get set }
   var floatingBarShortcut: String { get set }
   var storageSummary: String { get }
-  var excludedApplications: [String] { get }
+  var excludedApplications: [IntentiveExcludedApplication] { get }
   var runningApplications: [IntentiveRunningApplication] { get }
   var retentionDays: Int { get set }
   var storeRecordings: Bool { get set }
@@ -52,8 +65,9 @@ public protocol IntentiveSettingsPresenting: ObservableObject {
   var reportIssueAvailable: Bool { get }
   func requestNotificationPermission()
   func recordCustomShortcut()
-  func addExcludedApplication(bundleID: String)
-  func removeExcludedApplication(bundleID: String)
+  func addExcludedApplication(_ application: IntentiveRunningApplication)
+  func addExcludedApplication(displayName: String)
+  func removeExcludedApplication(_ application: IntentiveExcludedApplication)
   func resetExcludedApplications()
   func checkForUpdates()
   func reportIssue()
@@ -136,6 +150,7 @@ struct SettingsSidebar<Model: IntentiveSettingsPresenting>: View {
         .foregroundColor(searchFocused ? OmiColors.accent : OmiColors.textTertiary)
       TextField("Search settings...", text: $searchQuery)
         .textFieldStyle(.plain).focused($searchFocused)
+        .accessibilityIdentifier("settings-search")
       if !searchQuery.isEmpty {
         Button { searchQuery = "" } label: { Image(systemName: "xmark.circle.fill") }
           .buttonStyle(.plain).foregroundColor(OmiColors.textTertiary)

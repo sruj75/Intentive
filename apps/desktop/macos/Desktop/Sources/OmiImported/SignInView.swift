@@ -53,6 +53,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     .frame(minWidth: 920, minHeight: 620)
     .background(OmiColors.backgroundPrimary)
     .preferredColorScheme(.dark)
+    .accessibilityIdentifier("setup-\(model.setupStep.rawValue)")
   }
 
   private var signIn: some View {
@@ -156,7 +157,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
         permissionRow(icon: "display", title: "Screen Recording", detail: "Build local context from what you're working on.")
         permissionRow(icon: "mic.fill", title: "Microphone", detail: "Capture voice notes and meeting context locally.")
         permissionRow(icon: "accessibility", title: "Accessibility", detail: "Know the active app and summon the Floating Bar.")
-        primary("Continue", action: model.completeCurrentSetupStep)
+        primary("Continue", id: "setup-continue", action: model.completeCurrentSetupStep)
       }
     case .screenRecording:
       permissionCard(icon: "display", title: "Screen Recording", detail: "Screen Recording lets Intentive see what you're working on.", granted: model.screenRecordingGranted, request: model.openScreenRecordingSettings)
@@ -170,14 +171,19 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
         Text(model.shortcutLabel).font(.system(size: 28, weight: .semibold, design: .rounded)).foregroundColor(.black)
           .padding(.horizontal, 24).padding(.vertical, 14).background(Color.white, in: RoundedRectangle(cornerRadius: 14))
         Text("Use this shortcut from anywhere to open the Floating Bar.").intentiveSetupDetail()
-        primary("Continue", action: model.completeCurrentSetupStep)
+        primary("Continue", id: "setup-continue", action: model.completeCurrentSetupStep)
       }.intentiveSetupCard()
     case .floatingBarDemo:
       VStack(spacing: OmiSpacing.xl) {
         Image(systemName: "text.bubble.fill").font(.system(size: 40)).foregroundColor(.white)
         Text("Try the real Floating Bar").font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
         Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message, or skip if you're offline.").intentiveSetupDetail()
-        HStack { primary("Open Floating Bar", action: model.openFloatingBar); Button("Finish", action: model.completeCurrentSetupStep).buttonStyle(OmiButtonStyle(.secondary)) }
+        HStack {
+          primary("Open Floating Bar", id: "setup-open-floating-bar", action: model.openFloatingBar)
+          Button("Finish", action: model.completeCurrentSetupStep)
+            .buttonStyle(OmiButtonStyle(.secondary))
+            .accessibilityIdentifier("setup-finish")
+        }
       }.intentiveSetupCard()
       .task {
         try? await Task.sleep(for: .seconds(12))
@@ -192,8 +198,15 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
       permissionRow(icon: icon, title: title, detail: detail)
       Label(granted ? "Granted" : "Not granted yet", systemImage: granted ? "checkmark.circle.fill" : "circle.dashed")
         .font(.system(size: 13, weight: .medium)).foregroundColor(granted ? .green : OmiColors.textTertiary)
-      if granted { primary("Continue", action: model.completeCurrentSetupStep) }
-      else { primary("Open \(title) settings", action: request) }
+      if granted {
+        primary("Continue", id: "setup-continue", action: model.completeCurrentSetupStep)
+      } else {
+        primary(
+          "Open \(title) settings",
+          id: "setup-open-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))",
+          action: request
+        )
+      }
     }.intentiveSetupCard()
   }
 
@@ -209,8 +222,15 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     }
   }
 
-  private func primary(_ title: String, action: @escaping () -> Void) -> some View {
-    Button(title, action: action).buttonStyle(OmiButtonStyle(.primary)).keyboardShortcut(.defaultAction)
+  private func primary(
+    _ title: String,
+    id: String? = nil,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(title, action: action)
+      .buttonStyle(OmiButtonStyle(.primary))
+      .keyboardShortcut(.defaultAction)
+      .accessibilityIdentifier(id ?? "setup-primary")
   }
 
   private var stepIndex: Int { IntentiveSetupStep.allCases.firstIndex(of: model.setupStep) ?? 0 }

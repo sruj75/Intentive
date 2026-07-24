@@ -97,6 +97,7 @@ struct AIResponseView: View {
         Text(question)
           .scaledFont(size: 13)
           .foregroundColor(IntentiveColors.textPrimary)
+          .accessibilityIdentifier("floating-question-text")
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.horizontal, 12)
           .padding(.vertical, 8)
@@ -117,6 +118,7 @@ struct AIResponseView: View {
           .scaledFont(size: 13)
           .foregroundColor(IntentiveColors.textPrimary)
           .textSelection(.enabled)
+          .accessibilityIdentifier("floating-response-text")
       }
     }
   }

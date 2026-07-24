@@ -17,19 +17,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: main
           fetch-depth: 0
-      - name: Verify exact candidate SHA
+          persist-credentials: false
+      - name: Verify and check out exact candidate SHA
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          git fetch origin main
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "candidate_sha must be a full lowercase commit SHA." >&2
+            exit 1
+          }
+          git cat-file -e "$CANDIDATE_SHA^{commit}" || {
+            echo "Candidate commit is not present in main's history." >&2
+            exit 1
+          }
           git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main || {
             echo "Desktop candidates must already be merged to main." >&2
             exit 1
           }
-      - uses: pnpm/action-setup@v6
+          git checkout --detach "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24

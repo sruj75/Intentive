@@ -78,6 +78,10 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
   }
 
   var notificationsAuthorized: Bool { notificationsAuthorizedState }
+  var launchAtLogin: Bool {
+    get { model.utilitySettings.launchAtLogin }
+    set { model.setLaunchAtLogin(newValue) }
+  }
   func requestNotificationPermission() {
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { [weak self] _, _ in
       Task { @MainActor in self?.refreshNotificationAuthorization() }
@@ -119,28 +123,48 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
     return "\(model.timelineState?.frames.count ?? 0) records · \(ByteCountFormatter.string(fromByteCount: storage.totalBytes, countStyle: .file))"
   }
 
-  var excludedApplications: [String] {
-    model.privacySnapshot.excludedApplications.map(\.displayName).sorted()
+  var excludedApplications: [IntentiveExcludedApplication] {
+    model.privacySnapshot.excludedApplications.map { application in
+      IntentiveExcludedApplication(
+        id: application.bundleID.map { "bundle:\($0.lowercased())" }
+          ?? "name:\(application.displayName.lowercased())",
+        bundleID: application.bundleID,
+        name: application.displayName
+      )
+    }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
   }
 
   var runningApplications: [IntentiveRunningApplication] {
     var seen = Set<String>()
     return NSWorkspace.shared.runningApplications.compactMap { app in
-      guard let name = app.localizedName, !name.isEmpty, seen.insert(name).inserted else { return nil }
-      return IntentiveRunningApplication(id: name, name: name)
+      guard
+        let bundleID = app.bundleIdentifier,
+        !bundleID.isEmpty,
+        seen.insert(bundleID.lowercased()).inserted
+      else { return nil }
+      let name = app.localizedName?.isEmpty == false ? app.localizedName! : bundleID
+      return IntentiveRunningApplication(id: bundleID, name: name)
     }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
   }
 
-  func addExcludedApplication(bundleID: String) {
-    model.updateExcludedAppsText((Set(excludedApplications).union([bundleID])).sorted().joined(separator: ", "))
+  func addExcludedApplication(_ application: IntentiveRunningApplication) {
+    model.excludeApplication(
+      PrivacyZoneApplication(bundleID: application.id, displayName: application.name)
+    )
   }
 
-  func removeExcludedApplication(bundleID: String) {
-    model.updateExcludedAppsText(excludedApplications.filter { $0 != bundleID }.joined(separator: ", "))
+  func addExcludedApplication(displayName: String) {
+    model.excludeApplication(PrivacyZoneApplication(displayName: displayName))
+  }
+
+  func removeExcludedApplication(_ application: IntentiveExcludedApplication) {
+    model.includeApplication(
+      PrivacyZoneApplication(bundleID: application.bundleID, displayName: application.name)
+    )
   }
 
   func resetExcludedApplications() {
-    model.updateExcludedAppsText(["1Password", "1Password 7", "Keychain Access", "Passwords"].joined(separator: ", "))
+    model.resetExcludedApplications()
   }
 
   var retentionDays: Int {

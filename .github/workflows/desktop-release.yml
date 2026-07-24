@@ -37,7 +37,7 @@ jobs:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
 
-      - name: Verify protected candidate evidence and create tag
+      - name: Verify protected candidate evidence
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,8 +75,11 @@ jobs:
               raise SystemExit("candidate AX evidence does not accept the requested SHA")
           PY
           RELEASE_TAG="desktop-v$VERSION"
-          git tag --annotate "$RELEASE_TAG" "$CANDIDATE_SHA" --message "Intentive Desktop $VERSION"
-          git push origin "$RELEASE_TAG"
+          if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1 \
+            || git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
@@ -294,6 +297,14 @@ jobs:
           rm -f "$PRIVATE_KEY_FILE"
           trap - EXIT
 
+      # The tag becomes remote only after configuration, build, signing,
+      # notarization, appcast generation, and signed-artifact smoke all pass.
+      - name: Create accepted release tag
+        run: |
+          git tag --annotate "$RELEASE_TAG" "$CANDIDATE_SHA" \
+            --message "Intentive Desktop $VERSION"
+          git push origin "$RELEASE_TAG"
+
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v3
         with:
@@ -315,15 +326,34 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      DESKTOP_STAGE2_SPARKLE_DRIVER: ${{ vars.DESKTOP_STAGE2_SPARKLE_DRIVER }}
-      DESKTOP_STAGE2_TART_DRIVER: ${{ vars.DESKTOP_STAGE2_TART_DRIVER }}
-      DESKTOP_STAGE2_FULL_STACK_DRIVER: ${{ vars.DESKTOP_STAGE2_FULL_STACK_DRIVER }}
+      INTENTIVE_NEON_AUTH_URL: ${{ vars.INTENTIVE_NEON_AUTH_URL }}
+      INTENTIVE_CONTROL_PLANE_URL: ${{ vars.INTENTIVE_CONTROL_PLANE_URL }}
+      DESKTOP_RELEASE_TEST_ACCOUNT_EMAIL: ${{ secrets.DESKTOP_RELEASE_TEST_ACCOUNT_EMAIL }}
+      DESKTOP_RELEASE_TEST_ACCOUNT_PASSWORD: ${{ secrets.DESKTOP_RELEASE_TEST_ACCOUNT_PASSWORD }}
+      DESKTOP_RELEASE_TEST_USER_ID: ${{ vars.DESKTOP_RELEASE_TEST_USER_ID }}
+      DESKTOP_STAGE2_OPERATOR: ${{ vars.DESKTOP_STAGE2_OPERATOR }}
+      DESKTOP_STAGE2_NOTARY_PROFILE: ${{ vars.DESKTOP_STAGE2_NOTARY_PROFILE }}
+      TART_BASE_IMAGE: ${{ vars.TART_BASE_IMAGE }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Resolve repository-owned Stage 2 drivers
+        run: |
+          {
+            echo "DESKTOP_STAGE2_SPARKLE_DRIVER=$GITHUB_WORKSPACE/apps/desktop/macos/scripts/stage2/sparkle-n1-update-driver.sh"
+            echo "DESKTOP_STAGE2_TART_DRIVER=$GITHUB_WORKSPACE/apps/desktop/macos/scripts/stage2/tart-clean-tcc-driver.sh"
+            echo "DESKTOP_STAGE2_FULL_STACK_DRIVER=$GITHUB_WORKSPACE/apps/desktop/macos/scripts/stage2/full-stack-signed-in-driver.sh"
+            echo "DESKTOP_RELEASE_TEST_CLEANUP_RECEIPT=$RUNNER_TEMP/desktop-stage2-neon-cleanup-receipt.json"
+          } >> "$GITHUB_ENV"
       - name: Download the exact draft candidate
         run: |
           mkdir -p dist

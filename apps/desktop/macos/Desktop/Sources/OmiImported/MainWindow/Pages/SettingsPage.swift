@@ -74,7 +74,9 @@ private struct GeneralSettings<Model: IntentiveSettingsPresenting>: View {
       IntentiveSettingsCard(title: "System Audio", subtitle: "Choose when Intentive records audio from other apps.", icon: "speaker.wave.2.fill") {
         Picker("", selection: binding(\.systemAudioMode)) {
           ForEach(IntentiveSystemAudioMode.allCases) { Text($0.rawValue).tag($0) }
-        }.labelsHidden().frame(width: 170)
+        }
+        .labelsHidden().frame(width: 170)
+        .accessibilityIdentifier("general-system-audio-mode")
       }
       IntentiveSettingsCard(
         title: "Notifications",
@@ -85,6 +87,15 @@ private struct GeneralSettings<Model: IntentiveSettingsPresenting>: View {
           get: { model.notificationsAuthorized },
           set: { enabled in if enabled { model.requestNotificationPermission() } }
         )).labelsHidden().toggleStyle(OmiToggleStyle())
+      }
+      IntentiveSettingsCard(
+        title: "Launch at Login",
+        subtitle: "Start Intentive quietly in the menu bar when you sign in.",
+        icon: "power"
+      ) {
+        Toggle("", isOn: binding(\.launchAtLogin))
+          .labelsHidden().toggleStyle(OmiToggleStyle())
+          .accessibilityIdentifier("general-launch-at-login-toggle")
       }
       shortcutCard
     }
@@ -153,7 +164,9 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
       IntentiveSettingsCard(title: "Data Retention", subtitle: "Choose how long to keep local screen recordings.", icon: "calendar.badge.clock") {
         Picker("", selection: Binding(get: { model.retentionDays }, set: { model.retentionDays = $0 })) {
           ForEach([3, 7, 14, 30], id: \.self) { Text("\($0) days").tag($0) }
-        }.labelsHidden().frame(width: 130)
+        }
+        .labelsHidden().frame(width: 130)
+        .accessibilityIdentifier("rewind-retention-picker")
       }
     }
   }
@@ -169,6 +182,7 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
         Spacer()
         Button("Reset to Defaults", action: model.resetExcludedApplications)
           .buttonStyle(OmiButtonStyle(.primary, size: .compact))
+          .accessibilityIdentifier("rewind-exclusions-reset")
       }
       Divider().overlay(Color.white.opacity(0.08))
       if model.excludedApplications.isEmpty {
@@ -181,13 +195,13 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
           .padding(.vertical, OmiSpacing.lg)
       } else {
         LazyVStack(spacing: OmiSpacing.sm) {
-          ForEach(model.excludedApplications, id: \.self) { bundleID in
+          ForEach(model.excludedApplications) { application in
             HStack(spacing: OmiSpacing.md) {
               RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.7)).frame(width: 22, height: 22)
-              Text(model.runningApplications.first(where: { $0.id == bundleID })?.name ?? bundleID)
+              Text(application.name)
                 .font(.system(size: 13, weight: .medium)).foregroundColor(OmiColors.textSecondary)
               Spacer()
-              Button { model.removeExcludedApplication(bundleID: bundleID) } label: { Image(systemName: "xmark.circle.fill") }
+              Button { model.removeExcludedApplication(application) } label: { Image(systemName: "xmark.circle.fill") }
                 .buttonStyle(.plain)
             }
           }
@@ -200,18 +214,24 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
           TextField("App name (e.g., Passwords)", text: $appToAdd).textFieldStyle(.plain)
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: 7))
+            .accessibilityIdentifier("rewind-exclusion-input")
           Button("Add") {
             let value = appToAdd.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !value.isEmpty else { return }
-            model.addExcludedApplication(bundleID: value)
+            model.addExcludedApplication(displayName: value)
             appToAdd = ""
-          }.buttonStyle(OmiButtonStyle(.secondary, size: .compact)).disabled(appToAdd.isEmpty)
+          }
+          .buttonStyle(OmiButtonStyle(.secondary, size: .compact)).disabled(appToAdd.isEmpty)
+          .accessibilityIdentifier("rewind-exclusion-add")
         }
         Text("Currently Running Apps").font(.system(size: 12, weight: .medium)).foregroundColor(OmiColors.textSecondary)
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: OmiSpacing.sm) {
-            ForEach(model.runningApplications.filter { !model.excludedApplications.contains($0.id) }) { app in
-              Button { model.addExcludedApplication(bundleID: app.id) } label: {
+            ForEach(model.runningApplications.filter {
+              runningApplication in
+              !model.excludedApplications.contains { $0.bundleID == runningApplication.id }
+            }) { app in
+              Button { model.addExcludedApplication(app) } label: {
                 HStack(spacing: 5) { Image(systemName: "app"); Text(app.name); Image(systemName: "plus.circle.fill") }
                   .font(.system(size: 11, weight: .medium)).foregroundColor(OmiColors.textSecondary)
                   .padding(.horizontal, 8).padding(.vertical, 6)
@@ -236,6 +256,7 @@ private struct PrivacySettings<Model: IntentiveSettingsPresenting>: View {
         IntentiveControlRow(title: "Store Recordings", subtitle: "Keep future audio recordings locally on this Mac.", icon: "waveform") {
           Toggle("", isOn: Binding(get: { model.storeRecordings }, set: { model.storeRecordings = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
+            .accessibilityIdentifier("privacy-store-recordings-toggle")
         }
         Divider().overlay(Color.white.opacity(0.08))
         IntentiveControlRow(title: "Private Cloud Sync", subtitle: "Securely sync your private data across devices.", icon: "icloud") {
@@ -314,16 +335,20 @@ private struct AboutSettings<Model: IntentiveSettingsPresenting>: View {
 
       VStack(alignment: .leading, spacing: OmiSpacing.lg) {
         IntentiveControlRow(title: "Software Updates", subtitle: model.updateStatus, icon: "arrow.triangle.2.circlepath") {
-          Button("Check Now", action: model.checkForUpdates).buttonStyle(OmiButtonStyle(.secondary))
+          Button("Check Now", action: model.checkForUpdates)
+            .buttonStyle(OmiButtonStyle(.secondary))
+            .accessibilityIdentifier("about-check-updates")
         }
         Divider().overlay(Color.white.opacity(0.08))
         IntentiveControlRow(title: "Automatic Updates", subtitle: "Check for updates automatically.", icon: "clock.arrow.circlepath") {
           Toggle("", isOn: Binding(get: { model.automaticallyChecksForUpdates }, set: { model.automaticallyChecksForUpdates = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
+            .accessibilityIdentifier("about-automatic-update-check-toggle")
         }
         IntentiveControlRow(title: "Auto-Install Updates", subtitle: "Download updates automatically when available.", icon: "arrow.down.circle") {
           Toggle("", isOn: Binding(get: { model.automaticallyDownloadsUpdates }, set: { model.automaticallyDownloadsUpdates = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
+            .accessibilityIdentifier("about-auto-install-updates-toggle")
         }
         IntentiveControlRow(title: "Update Channel", subtitle: "Choose which releases to receive.", icon: "point.3.connected.trianglepath.dotted") {
           Picker("", selection: .constant("Stable")) {

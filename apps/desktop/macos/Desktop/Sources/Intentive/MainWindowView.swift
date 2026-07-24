@@ -1671,10 +1671,44 @@ final class DesktopViewModel: ObservableObject {
     excludedAppsText = text
     do {
       try privacyPolicy.replaceExcludedDisplayNames(Self.parseExcludedApps(text))
-      privacySnapshot = privacyPolicy.snapshot
+      refreshPrivacySnapshot()
     } catch {
       status = "Privacy Zones save failed: \(error.localizedDescription)"
     }
+  }
+
+  func excludeApplication(_ application: PrivacyZoneApplication) {
+    do {
+      try privacyPolicy.exclude(application)
+      refreshPrivacySnapshot()
+    } catch {
+      status = "Privacy Zones save failed: \(error.localizedDescription)"
+    }
+  }
+
+  func includeApplication(_ application: PrivacyZoneApplication) {
+    do {
+      try privacyPolicy.include(application)
+      refreshPrivacySnapshot()
+    } catch {
+      status = "Privacy Zones save failed: \(error.localizedDescription)"
+    }
+  }
+
+  func resetExcludedApplications() {
+    do {
+      try privacyPolicy.resetPrivacyZonesToDefaults()
+      refreshPrivacySnapshot()
+    } catch {
+      status = "Privacy Zones save failed: \(error.localizedDescription)"
+    }
+  }
+
+  private func refreshPrivacySnapshot() {
+    privacySnapshot = privacyPolicy.snapshot
+    excludedAppsText = Self.renderExcludedApps(
+      Set(privacySnapshot.excludedApplications.map(\.displayName))
+    )
   }
 
   private func applyCompilerSettings(_ settings: CompilerSettings) {

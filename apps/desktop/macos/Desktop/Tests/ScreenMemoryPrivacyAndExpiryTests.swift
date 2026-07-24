@@ -71,6 +71,28 @@ final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
     XCTAssertFalse(policy.allows(appBundleID: "  ", appName: "Confidential Notes"))
   }
 
+  func testRunningApplicationExclusionPreservesBundleIdentifierAcrossRelaunch() throws {
+    let persistence = InMemoryScreenMemoryPrivacyPersistence()
+    let policy = ScreenMemoryPrivacyPolicy(persistence: persistence)
+    let textEdit = PrivacyZoneApplication(
+      bundleID: "com.apple.TextEdit",
+      displayName: "TextEdit"
+    )
+
+    try policy.exclude(textEdit)
+
+    XCTAssertFalse(
+      policy.allows(appBundleID: "com.apple.TextEdit", appName: "TextEdit"),
+      "a running-app exclusion must block capture using its real bundle identifier"
+    )
+    let relaunched = ScreenMemoryPrivacyPolicy(persistence: persistence)
+    XCTAssertTrue(relaunched.snapshot.excludedApplications.contains(textEdit))
+    XCTAssertFalse(relaunched.allows(appBundleID: "com.apple.TextEdit", appName: "TextEdit"))
+
+    try relaunched.include(textEdit)
+    XCTAssertTrue(relaunched.allows(appBundleID: "com.apple.TextEdit", appName: "TextEdit"))
+  }
+
   func testChangingRetentionUpdatesExistingRecordsAndPersistsForReopen() async throws {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("intentive-retention-\(UUID().uuidString)", isDirectory: true)

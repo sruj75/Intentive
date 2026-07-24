@@ -34,10 +34,21 @@ The old Tauri updater keys are not reused: Sparkle has its own Ed25519 format. A
 3. The protected workflow builds the release app, signs Sparkle/Sentry inside-out, signs the app with `Intentive-Release.entitlements`, creates an installable DMG with an `/Applications` link, signs/notarizes/staples it, and creates the Sparkle signature from that exact DMG.
 4. `smoke-signed-desktop-artifact.sh` verifies identity, Team ID, hardened runtime, Gatekeeper, arm64-only architecture, frameworks/assets/privacy metadata, DMG ticket and contents, appcast metadata, and the cryptographic Sparkle signature. It writes digest evidence.
 5. The workflow creates a **draft** GitHub Release. Draft status is load-bearing: artifacts are not exposed through Sparkle before dedicated-Mac acceptance.
-6. Configure the dedicated release Mac with executable drivers in `DESKTOP_STAGE2_SPARKLE_DRIVER`, `DESKTOP_STAGE2_TART_DRIVER`, and `DESKTOP_STAGE2_FULL_STACK_DRIVER`. They drive the real N-1 loopback update, clean-TCC Tart checklist, and signed-in full-stack journey respectively; each receives the exact tag, SHA, DMG digest, a fresh output path, and evidence root.
+6. The workflow resolves the three executable drivers directly from `apps/desktop/macos/scripts/stage2/`. They drive the real N-1 loopback update, clean-TCC Tart checklist, and signed-in full-stack journey respectively; each receives the exact tag, SHA, DMG digest, a fresh output path, and evidence root. No machine-local driver path or repository variable is involved.
 7. The protected `desktop-release-stage2-proof` job downloads the exact draft and runs `run-stage2-release-proof.sh`. That repository-owned entry point freshly installs and launches the notarized DMG from `/Applications`, runs the repository-owned launch-at-login proof (`verify-launch-at-login.sh`), executes all three dedicated-Mac drivers, validates five newly produced proof families (`installed-dmg.json`, `launch-at-login.json`, `sparkle-update.json`, `tart-tcc.json`, and `full-stack.json`) plus attachments and identity/digest binding, attaches them to the draft, and only then publishes it. Pre-existing evidence is deleted and cannot satisfy the gate. The launch-at-login proof validates the bundled LaunchAgent registration (bundle-relative `BundleProgram`, `--background`, `RunAtLoad`) and a menu-bar-only background launch; the physical login cycle (no Dock/window flash) and the “Open Intentive” Dock/window restore remain operator-observed and are recorded alongside its JSON.
 
 `desktop-release.yml` is the only workflow allowed to move a release from draft to published. The protected Stage 2 environment is the terminal publication gate; there is no parallel manual publish path.
+
+The protected `desktop-release-stage2-proof` environment supplies:
+
+- variables `INTENTIVE_NEON_AUTH_URL`, `INTENTIVE_CONTROL_PLANE_URL`, `DESKTOP_RELEASE_TEST_USER_ID`, `DESKTOP_STAGE2_OPERATOR`, `DESKTOP_STAGE2_NOTARY_PROFILE`, and `TART_BASE_IMAGE`;
+- secrets `DESKTOP_RELEASE_TEST_ACCOUNT_EMAIL` and `DESKTOP_RELEASE_TEST_ACCOUNT_PASSWORD`.
+
+`TART_BASE_IMAGE` must be an immutable OCI reference pinned with `@sha256:...`; floating tags such as `latest` are rejected. The driver signs its separate AX probe with the release identity, then asks the operator to grant Accessibility to that helper only; the candidate's own TCC state remains clean. During the live run the Tart driver presents eight operator checkpoints on the self-hosted Mac, captures evidence after each one, and writes an attestation bound to the current run ID, release tag, candidate SHA, and DMG digest. A prewritten secret cannot satisfy this gate. The signed-in driver mints a fresh JWT for each run; no JWT is stored in GitHub.
+
+`DESKTOP_STAGE2_NOTARY_PROFILE` names a `notarytool` keychain profile configured only on the trusted release Mac. The Sparkle driver uses the already-installed Developer ID identity plus this profile to build, sign, notarize, and staple a private native `0.1.0` baseline from the accepted SHA with build number `candidate - 1`. It never downloads an older public DMG.
+
+The Tart operator still owns the real TCC decisions and logout/login observation, but the driver verifies each resulting product state mechanically. Immediately after the defer and denial checkpoints it reads the candidate's persisted onboarding progress and guest TCC rows, requiring a real `deferred` and then `denied` decision before the founder can proceed to grants. After setup it reads the candidate's persisted settings and archive in the guest, requires final Screen Recording and Microphone grants, capture and audio records, a three-day retention choice, Launch at Login, and a `com.apple.TextEdit` exclusion, then keeps TextEdit frontmost across several capture ticks and proves no TextEdit record was added. A same-duration Finder positive control must add a screen record, preventing a stalled capture loop from passing the exclusion check. The driver relaunches the candidate itself, rechecks durable state, and retains launchd/Background Task Management registration evidence. The Sparkle proof creates a deterministic path/mode/content manifest from the app mounted out of the exact candidate DMG and requires the post-update installed app to have the identical manifest and digest.
 
 ## Deterministic gates
 
@@ -78,3 +89,39 @@ TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
 ## External evidence boundary
 
 A code change can implement and verify the release machinery, but it cannot honestly claim a public candidate passed Apple notarization, Sparkle update installation, dedicated-Mac launch, or TCC prompts until a real tagged draft and credentials exist. Those results belong to the draft release and its uploaded acceptance evidence, not to a source commit.
+
+## Release-test account teardown
+
+The full-stack signed-in proof (`DESKTOP_STAGE2_FULL_STACK_DRIVER`) signs in as a dedicated, persistent release-test account and drives it against real production, which leaves real rows behind in both `control_plane` and `agent_runtime`. There is no HTTP endpoint for this and no fixed script: `control_plane_app` and `agent_runtime_app` are separate, schema-scoped DB roles, so no single application endpoint can reach both schemas anyway, and a frozen SQL file would silently drift out of date as tables change. Instead, after every full-stack proof, the operating agent purges the account directly through Neon MCP, using this section as its brief rather than a script to run verbatim.
+
+**One-time setup.** After the release-test account's first real sign-in, capture its fixed `control_plane.users.id` (decode the `sub` claim from a minted JWT, then look up `SELECT id FROM control_plane.users WHERE sub = '<that sub>'` via Neon MCP). That UUID is stable for the account's lifetime; store it as the protected environment variable `DESKTOP_RELEASE_TEST_USER_ID` so every future purge starts from it rather than re-deriving it.
+
+**Every purge run, the agent should:**
+
+1. Re-derive the actual current schema first, rather than trusting this doc's table list — call Neon MCP's `get_database_tables` / `describe_table_schema` for the `control_plane` and `agent_runtime` schemas and diff that against the list below. If a table was added, renamed, or gained a new `user_id`-shaped foreign key since this was last updated, include it; don't skip it just because it isn't named here.
+2. Before deleting anything, confirm exactly one row exists in `control_plane.users` for the captured id. If it's zero or more than one, stop and report instead of proceeding — that means the id is stale or wrong, not that it's safe to guess.
+3. Delete children before parents where a real foreign key exists. As of this writing, known FKs run `control_plane.notification_tickets.device_id -> control_plane.devices.id -> control_plane.users.id`. `agent_runtime`'s tables (`cron_runs`, `cron_jobs`, `deliveries`, `perception_records`, `runtime_turns`, `conversation_messages`, `runtime_events`, `agent_instances`) carry a plain `user_id` column with no DB-enforced FK, but delete log/history tables before the instance row anyway, on the same logic.
+4. **Preserve `control_plane.users` and the Neon Auth identity.** The dedicated account is intentionally stable between releases. Delete its generated device, agent, conversation, perception, delivery, cron, and runtime-event rows, then verify the one captured user row still exists.
+5. Never touch a Neon branch for this — the point is cleaning the one real production account the proof just used, not a copy of it.
+6. If anything looks ambiguous (a table whose ownership by this account isn't obvious, a row count that doesn't match expectations), stop and ask rather than deleting speculatively. Getting a release-test cleanup wrong by leaving a stray row is cheap; getting it wrong by deleting a real user's data is not.
+
+Before deleting, verify the run's `release_marker` reached a production `perception_event`, that the persisted event is the compact privacy-filtered text/metadata shape with no raw frame or media payload, and that a later `retention_expiry` tombstone for that same account reached the Runtime ledger. The driver separately requires the real chat/search response to echo the marker. After the generated-row zero checks pass and the stable user row is confirmed present, write the cleanup receipt requested in the live Stage 2 log. It must bind to that run:
+
+```json
+{
+  "ok": true,
+  "user_id": "<DESKTOP_RELEASE_TEST_USER_ID>",
+  "run_id": "<run id printed by the driver>",
+  "release_marker": "<release marker printed by the driver>",
+  "schema_inspected": true,
+  "auth_identity_preserved": true,
+  "observed_perception_event": true,
+  "observed_privacy_filtered_perception": true,
+  "observed_retention_tombstone": true,
+  "verified_generated_rows_zero": true
+}
+```
+
+The full-stack driver waits for this receipt and fails closed if it is absent or mismatched. The cleanup wait runs from its EXIT trap even when capture, Runtime search, PMB, or another production-touching step fails, so a partial proof cannot skip teardown. The same trap restores the prior Keychain token and removes only the validated dedicated account's local profile directory.
+
+Operationally, this is a deliberate operator handoff on the same trusted Mac: while the self-hosted job is waiting, its log prints the run ID, marker, user ID, and absolute receipt path. The founder starts an agent with Neon MCP access on that Mac, gives it those four values plus this teardown section, reviews the resolved row scope, and lets it write the receipt only after the live queries and deletions succeed. The runner and operating agent therefore share the receipt path; no GitHub-hosted process is expected to invoke MCP.
