@@ -29,11 +29,21 @@ export function inspectCiContracts(repo = process.cwd()) {
 
   if (existsSync(codeqlPath)) {
     const expectedCodeqlLanguages = detectMaintainedLanguages(repo);
+    const initSteps = workflowSteps(readWorkflow(codeqlPath, errors)).filter((step) =>
+      String(step?.uses ?? "").startsWith("github/codeql-action/init@"),
+    );
+    // codeql-action/init reads `languages` (plural); a singular `language` key is
+    // silently ignored and the action autodetects, so guard against that typo.
+    for (const step of initSteps) {
+      if (step?.with && Object.prototype.hasOwnProperty.call(step.with, "language")) {
+        errors.push("CodeQL init uses the invalid input 'language'; use 'languages'");
+      }
+    }
     const configured = new Set(
-      workflowSteps(readWorkflow(codeqlPath, errors))
-        .filter((step) => String(step?.uses ?? "").startsWith("github/codeql-action/init@"))
-        .map((step) => step?.with?.language)
-        .filter((language) => typeof language === "string"),
+      initSteps
+        .flatMap((step) => String(step?.with?.languages ?? "").split(","))
+        .map((language) => language.trim())
+        .filter(Boolean),
     );
     for (const language of expectedCodeqlLanguages) {
       if (!configured.has(language))

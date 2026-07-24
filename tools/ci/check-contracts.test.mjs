@@ -18,17 +18,17 @@ try {
       "    steps:",
       "      - uses: github/codeql-action/init@v4",
       "        with:",
-      "          language: actions",
+      "          languages: actions",
       "  js:",
       "    steps:",
       "      - uses: github/codeql-action/init@v4",
       "        with:",
-      "          language: javascript-typescript",
+      "          languages: javascript-typescript",
       "  swift:",
       "    steps:",
       "      - uses: github/codeql-action/init@v4",
       "        with:",
-      "          language: swift",
+      "          languages: swift",
       "",
     ].join("\n"),
   );
@@ -77,7 +77,7 @@ try {
   );
   write(
     ".github/workflows/codeql.yml",
-    "jobs:\n  stale:\n    steps:\n      - uses: github/codeql-action/init@v4\n        with:\n          language: rust\n  js:\n    steps:\n      - uses: github/codeql-action/init@v4\n        with:\n          language: javascript-typescript\n",
+    "jobs:\n  stale:\n    steps:\n      - uses: github/codeql-action/init@v4\n        with:\n          languages: rust\n  js:\n    steps:\n      - uses: github/codeql-action/init@v4\n        with:\n          languages: javascript-typescript\n",
   );
   write("apps/desktop/macos/check.sh", "#!/bin/sh\nrg -q expected file\n");
   write(
@@ -92,6 +92,18 @@ try {
   assert.ok(errors.some((error) => error.includes("missing harness group: desktop-swift")));
   assert.ok(errors.some((error) => error.includes("depends on non-baseline command rg")));
   assert.ok(errors.some((error) => error.includes("exactly one workflow may publish")));
+
+  // The singular `language` input is silently ignored by codeql-action/init,
+  // which then autodetects and fails; the contract must reject it explicitly.
+  write(
+    ".github/workflows/codeql.yml",
+    "jobs:\n  swift:\n    steps:\n      - uses: github/codeql-action/init@v4\n        with:\n          language: swift\n",
+  );
+  assert.ok(
+    inspectCiContracts(repo).some((error) =>
+      error.includes("CodeQL init uses the invalid input 'language'"),
+    ),
+  );
 
   write("src/tool.py", "print('maintained')\n");
   const sourceDriftErrors = inspectCiContracts(repo);
