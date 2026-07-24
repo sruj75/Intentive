@@ -7,6 +7,21 @@ enum ChatSender: Equatable {
   case ai
 }
 
+public enum GlobalShortcutSafety {
+  public static func isSafe(keyCode: UInt32, carbonModifiers: UInt32) -> Bool {
+    let modifierMasks = [cmdKey, shiftKey, optionKey, controlKey].map(UInt32.init)
+    let modifierCount = modifierMasks.reduce(into: 0) { count, mask in
+      if carbonModifiers & mask != 0 {
+        count += 1
+      }
+    }
+    // A process-wide shortcut with zero or one modifier can steal normal text
+    // entry or ubiquitous application commands. Require a deliberately
+    // nonstandard chord regardless of which key the user records.
+    return modifierCount >= 2
+  }
+}
+
 /// Text-only projection of one Runtime-owned conversation message.
 struct ChatMessage: Equatable, Identifiable {
   var id: String
@@ -53,10 +68,20 @@ final class ShortcutSettings: ObservableObject {
   }
 
   static let defaultFloatingBarShortcut = KeyboardShortcut(
-    keyCode: UInt32(kVK_ANSI_O),
-    carbonModifiers: UInt32(cmdKey),
-    displayTokens: ["⌘", "O"]
+    keyCode: UInt32(kVK_Return),
+    carbonModifiers: UInt32(cmdKey | shiftKey),
+    displayTokens: ["⇧", "⌘", "↩"]
   )
+
+  static func isSafeGlobalShortcut(keyCode: UInt32, carbonModifiers: UInt32) -> Bool {
+    GlobalShortcutSafety.isSafe(keyCode: keyCode, carbonModifiers: carbonModifiers)
+  }
+
+  static func migratedShortcut(_ shortcut: KeyboardShortcut) -> KeyboardShortcut {
+    isSafeGlobalShortcut(
+      keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers)
+      ? shortcut : defaultFloatingBarShortcut
+  }
 
   @Published var draggableBarEnabled = false
   @Published var solidBackground = false
@@ -76,7 +101,7 @@ final class ShortcutSettings: ObservableObject {
     if let data = UserDefaults.standard.data(forKey: Self.storageKey),
       let saved = try? JSONDecoder().decode(KeyboardShortcut.self, from: data)
     {
-      floatingBarShortcut = saved
+      floatingBarShortcut = Self.migratedShortcut(saved)
     } else {
       floatingBarShortcut = Self.defaultFloatingBarShortcut
     }

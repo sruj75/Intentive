@@ -221,6 +221,62 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     XCTAssertTrue(ctrl.didEmitSessionEnd)
   }
 
+  func testStopPreservesRecoveryIntentWhenArchiveFinalizationFails() throws {
+    let base = try temporaryDirectory()
+    let lock = try CaptureSessionLockFile.inProfile(base)
+    let sink = RecordingSessionEndSink()
+    let archive = ControllableFinalizingArchive(finalizeBehavior: .fail)
+    let ctrl = makeController(
+      sessionEndSink: sink,
+      archiveReconciler: archive,
+      lockFile: lock
+    )
+    ctrl.setUserEnabled(true)
+
+    ctrl.stop(reason: .quit)
+
+    XCTAssertTrue(lock.exists())
+    XCTAssertTrue(sink.markers.isEmpty)
+    XCTAssertFalse(ctrl.didEmitSessionEnd)
+    XCTAssertFalse(ctrl.didMarkCleanShutdown)
+    XCTAssertNotNil(ctrl.currentSessionId)
+    guard case .failed(let message) = ctrl.state else {
+      return XCTFail("Expected failed lifecycle state, got \(ctrl.state)")
+    }
+    XCTAssertEqual(message, "archive finalization failed")
+  }
+
+  func testStopTimesOutWithoutEmittingCleanMarkerOrClearingRecoveryLock() async throws {
+    let base = try temporaryDirectory()
+    let lock = try CaptureSessionLockFile.inProfile(base)
+    let sink = RecordingSessionEndSink()
+    let archive = ControllableFinalizingArchive(finalizeBehavior: .wait)
+    let ctrl = makeController(
+      sessionEndSink: sink,
+      archiveReconciler: archive,
+      lockFile: lock,
+      finalizationTimeoutSeconds: 0.01
+    )
+    ctrl.setUserEnabled(true)
+
+    let startedAt = Date()
+    ctrl.stop(reason: .quit)
+    let elapsed = Date().timeIntervalSince(startedAt)
+
+    XCTAssertLessThan(elapsed, 0.5, "The synchronous termination seam must remain bounded")
+    XCTAssertTrue(lock.exists())
+    XCTAssertTrue(sink.markers.isEmpty)
+    XCTAssertFalse(ctrl.didEmitSessionEnd)
+    XCTAssertFalse(ctrl.didMarkCleanShutdown)
+    XCTAssertNotNil(ctrl.currentSessionId)
+    guard case .failed(let message) = ctrl.state else {
+      await archive.releaseFinalization()
+      return XCTFail("Expected failed lifecycle state, got \(ctrl.state)")
+    }
+    XCTAssertEqual(message, "archive finalization timed out")
+    await archive.releaseFinalization()
+  }
+
   // MARK: - 7. Launch reconciliation auto-starts from saved enabled state
 
   func testLaunchReconciliationAutoStartsWhenCaptureEnabled() async throws {
@@ -283,6 +339,49 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     XCTAssertEqual(sink.markers.first?.sessionId, prior.sessionId)
     // The leftover lock is consumed on launch.
     XCTAssertFalse(lock.exists())
+  }
+
+  func testLaunchReconciliationRetainsPriorLockAndRetriesCrashMarkerAfterEnqueueFailure() async throws {
+    let base = try temporaryDirectory()
+    let lock = try CaptureSessionLockFile.inProfile(base)
+    let prior = CaptureSessionIdentity(
+      sessionId: "33333333-3333-4333-8333-333333333333",
+      startedAt: "2026-07-05T10:00:00.000Z",
+      crashMarkerId: "44444444-4444-4444-8444-444444444444"
+    )
+    try lock.write(prior)
+    let sink = FailOnceSessionEndSink()
+    let archive = FinalizingArchiveSpy()
+    let loop = makeLoop()
+    let ctrl = makeController(
+      loop: loop,
+      sessionEndSink: sink,
+      archiveReconciler: archive,
+      lockFile: lock,
+      settingsProvider: { CompilerSettings(captureEnabled: true) }
+    )
+
+    await ctrl.performLaunchReconciliation()
+
+    XCTAssertTrue(lock.exists(), "Failed durable enqueue must retain recovery intent")
+    XCTAssertEqual(lock.read(), prior, "Auto-start must not overwrite the prior session identity")
+    XCTAssertFalse(loop.state.isRunning)
+    XCTAssertFalse(ctrl.didPerformLaunchReconciliation)
+    XCTAssertEqual(archive.reconcileCalls, 0)
+    XCTAssertEqual(sink.attemptedMarkers.map(\.markerId), [prior.crashMarkerId])
+
+    await ctrl.performLaunchReconciliation()
+
+    XCTAssertTrue(loop.state.isRunning)
+    XCTAssertTrue(ctrl.didPerformLaunchReconciliation)
+    XCTAssertEqual(archive.reconcileCalls, 1)
+    XCTAssertNotEqual(lock.read(), prior)
+    XCTAssertEqual(lock.read()?.sessionId, ctrl.currentSessionId)
+    XCTAssertEqual(
+      sink.attemptedMarkers.map(\.markerId),
+      [prior.crashMarkerId, prior.crashMarkerId],
+      "Retry must preserve the marker's idempotency identity"
+    )
   }
 
   func testStopMarksCleanShutdown() async throws {
@@ -468,6 +567,7 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings(captureEnabled: true) },
     permissionProvider: @escaping () -> Bool = { true },
     captureBoundaryEnabled: Bool = true,
+    finalizationTimeoutSeconds: TimeInterval = 5,
     now: @escaping () -> Date = { Date() }
   ) -> ScreenMemoryCaptureLifecycleController {
     ScreenMemoryCaptureLifecycleController(
@@ -483,6 +583,7 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       settingsProvider: settingsProvider,
       permissionProvider: permissionProvider,
       captureBoundaryEnabled: captureBoundaryEnabled,
+      finalizationTimeoutSeconds: finalizationTimeoutSeconds,
       now: now
     )
   }
@@ -582,6 +683,21 @@ private final class FailingSessionEndSink: CaptureSessionEndSink {
   }
 }
 
+private final class FailOnceSessionEndSink: CaptureSessionEndSink {
+  private(set) var attemptedMarkers: [SessionEndMarker] = []
+
+  func sendSessionEnd(_ marker: SessionEndMarker) throws {
+    attemptedMarkers.append(marker)
+    if attemptedMarkers.count == 1 {
+      throw NSError(
+        domain: "ScreenMemoryCaptureResilienceTests",
+        code: 3,
+        userInfo: [NSLocalizedDescriptionKey: "durable crash marker enqueue failed"]
+      )
+    }
+  }
+}
+
 private final class FinalizingArchiveSpy: ScreenMemoryLaunchReconciliation {
   private(set) var reconcileCalls = 0
   private(set) var finalizeCalls = 0
@@ -592,6 +708,55 @@ private final class FinalizingArchiveSpy: ScreenMemoryLaunchReconciliation {
 
   func finalizeActiveVideoChunk() async throws {
     finalizeCalls += 1
+  }
+}
+
+private final class ControllableFinalizingArchive: ScreenMemoryLaunchReconciliation {
+  enum FinalizeBehavior {
+    case fail
+    case wait
+  }
+
+  private let finalizeBehavior: FinalizeBehavior
+  private let finalizationGate = AsyncFinalizationGate()
+
+  init(finalizeBehavior: FinalizeBehavior) {
+    self.finalizeBehavior = finalizeBehavior
+  }
+
+  func reconcileOnLaunch() async throws {}
+
+  func finalizeActiveVideoChunk() async throws {
+    switch finalizeBehavior {
+    case .fail:
+      throw NSError(
+        domain: "ScreenMemoryCaptureResilienceTests",
+        code: 2,
+        userInfo: [NSLocalizedDescriptionKey: "archive finalization failed"]
+      )
+    case .wait:
+      await finalizationGate.wait()
+    }
+  }
+
+  func releaseFinalization() async {
+    await finalizationGate.release()
+  }
+}
+
+private actor AsyncFinalizationGate {
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var released = false
+
+  func wait() async {
+    guard !released else { return }
+    await withCheckedContinuation { continuation = $0 }
+  }
+
+  func release() {
+    released = true
+    continuation?.resume()
+    continuation = nil
   }
 }
 

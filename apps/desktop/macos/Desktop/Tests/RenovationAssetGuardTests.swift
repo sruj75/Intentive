@@ -2,6 +2,33 @@ import Foundation
 import XCTest
 
 final class RenovationAssetGuardTests: XCTestCase {
+  func testShippedSettingsExposeExplicitAnalyticsConsentControl() throws {
+    let root = try repoRoot()
+    let settingsPage = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/Pages/SettingsPage.swift"
+      ),
+      encoding: .utf8
+    )
+    let settingsContract = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/OmiImported/MainWindow/SettingsSidebar.swift"
+      ),
+      encoding: .utf8
+    )
+    let adapter = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveDesktopPresentationAdapter.swift"
+      ),
+      encoding: .utf8
+    )
+
+    XCTAssertTrue(settingsContract.contains("var analyticsEnabled: Bool { get set }"))
+    XCTAssertTrue(settingsPage.contains(#"accessibilityIdentifier("privacy-analytics-toggle")"#))
+    XCTAssertTrue(settingsPage.contains("Off until you choose to share anonymous product usage"))
+    XCTAssertTrue(adapter.contains("set { model.setAnalyticsEnabled(newValue) }"))
+  }
+
   func testPinnedOmiThemeRemainsByteIdentical() throws {
     let root = try repoRoot()
     let expectedBlobs = [
@@ -232,7 +259,7 @@ final class RenovationAssetGuardTests: XCTestCase {
     XCTAssertTrue(offenders.isEmpty, "Rejected capability or user-facing Omi strings remain compiled: \(offenders)")
   }
 
-  func testMainWindowRemainsUtilityOnlyWithFloatingBarAsSoleChatSurface() throws {
+  func testSettingsWindowShipsRewindWhileFloatingBarRemainsSoleChatSurface() throws {
     let root = try repoRoot()
     let mainWindow = try String(
       contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Sources/Intentive/MainWindowView.swift"),
@@ -258,10 +285,24 @@ final class RenovationAssetGuardTests: XCTestCase {
     )
     for legacyIdentifier in [
       "sidebar-screenMemory", "sidebar-sensing", "sidebar-account", "sidebar-diagnostics",
-      "sensing-screen-memory-toggle", "sensing-passive-audio-toggle", "screen_memory_search_field",
+      "sensing-screen-memory-toggle", "sensing-passive-audio-toggle",
     ] {
       XCTAssertFalse(acceptance.contains(legacyIdentifier), "Old Intentive UI acceptance path remains: \(legacyIdentifier)")
     }
+    for rewindIdentifier in [
+      "screen_memory_search_field", "screen_memory_previous_day", "screen_memory_next_day",
+      "screen_memory_app_filter_", "screen_memory_frame_", "screen_memory_scrub_forward",
+      "screen_memory_current_frame", "screen_memory_delete_frame", "screen_memory_clear_local_data",
+    ] {
+      XCTAssertTrue(
+        acceptance.contains(rewindIdentifier),
+        "Shipped Rewind acceptance does not drive \(rewindIdentifier)"
+      )
+    }
+    XCTAssertFalse(
+      acceptance.contains("/v1/fixtures/rewind-smoke"),
+      "Rewind acceptance must drive the shipped Settings UI, not a headless bridge substitute"
+    )
   }
 
   private func swiftFilesRecursively(at root: URL) throws -> [URL] {

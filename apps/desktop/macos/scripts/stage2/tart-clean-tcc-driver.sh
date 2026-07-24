@@ -129,6 +129,7 @@ done
 
 tart exec "$VM_NAME" sh -c '
   /usr/bin/env \
+    INTENTIVE_RELEASE_ACCEPTANCE_MODE=1 \
     INTENTIVE_CONTROL_PLANE_URL="$2" \
     INTENTIVE_DESKTOP_USER_JWT=stage2-tart-user-jwt \
     /Applications/Intentive.app/Contents/MacOS/Intentive \
@@ -270,6 +271,7 @@ tart exec "$VM_NAME" pkill -f '^/Applications/Intentive.app/Contents/MacOS/Inten
   >/dev/null 2>&1 || true
 tart exec "$VM_NAME" sh -c '
   /usr/bin/env \
+    INTENTIVE_RELEASE_ACCEPTANCE_MODE=1 \
     INTENTIVE_CONTROL_PLANE_URL="$2" \
     INTENTIVE_DESKTOP_USER_JWT=stage2-tart-user-jwt \
     /Applications/Intentive.app/Contents/MacOS/Intentive \

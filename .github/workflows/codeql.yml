@@ -51,6 +51,8 @@ jobs:
       INTENTIVE_SWIFTPM_SCRATCH_PATH: ${{ github.workspace }}/.build/swiftpm-codeql
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - uses: github/codeql-action/init@v4
         with:
           languages: swift

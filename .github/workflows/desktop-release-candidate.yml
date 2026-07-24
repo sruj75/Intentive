@@ -20,6 +20,7 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+          lfs: true
       - name: Verify and check out exact candidate SHA
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}

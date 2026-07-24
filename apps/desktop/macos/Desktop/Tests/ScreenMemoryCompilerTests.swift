@@ -62,7 +62,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
   func testSwitchableScreenMemoryStoreRoutesThroughReplacement() {
     let first = InMemoryScreenMemoryStore()
     let second = InMemoryScreenMemoryStore()
-    let store = SwitchableScreenMemoryStore(first)
+    let store = SwitchableScreenMemoryStore(first, profileID: "anonymous")
 
     store.add(
       ScreenMemoryRecord(
@@ -75,7 +75,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       )
     )
 
-    store.replace(with: second)
+    store.replace(with: second, profileID: "signed-in-user")
     store.add(
       ScreenMemoryRecord(
         id: "second",
@@ -92,7 +92,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(first.search("anonymous", limit: 10).first?.record.id, "first")
   }
 
-  func testSwitchableScreenMemoryStoreCarriesPendingPerceptionOutboxAcrossReplacement() throws {
+  func testSwitchableScreenMemoryStoreKeepsPendingIngressOwnedByPreviousProfile() throws {
     let first = InMemoryScreenMemoryStore()
     let second = InMemoryScreenMemoryStore()
     let event = PerceptionEvent(
@@ -109,11 +109,54 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       localRecordRef: "screen-memory://records/carry-pending"
     )
     try first.enqueuePerceptionEvent(event)
-    let store = SwitchableScreenMemoryStore(first)
+    let tombstone = PerceptionTombstone(
+      tombstoneId: "tombstone-previous-profile",
+      reason: .manualDelete,
+      eventRefs: [event.eventId],
+      emittedAt: "2026-07-05T10:01:00.000Z"
+    )
+    try first.enqueuePerceptionTombstone(tombstone)
+    let marker = SessionEndMarker(
+      markerId: "marker-previous-profile",
+      sessionId: "session-previous-profile",
+      endedAt: "2026-07-05T10:02:00.000Z",
+      reason: .userToggle
+    )
+    try first.enqueueSessionEndMarker(marker)
+    let store = SwitchableScreenMemoryStore(first, profileID: "user-a")
 
-    store.replace(with: second)
+    store.replace(with: second, profileID: "user-b")
 
-    XCTAssertTrue(try first.pendingPerceptionEvents(limit: 10).isEmpty)
+    XCTAssertEqual(
+      try first.pendingIngress(limit: 10),
+      [.perceptionEvent(event), .perceptionTombstone(tombstone), .sessionEndMarker(marker)]
+    )
+    XCTAssertTrue(try store.pendingIngress(limit: 10).isEmpty)
+    XCTAssertTrue(try second.pendingIngress(limit: 10).isEmpty)
+  }
+
+  func testSwitchableScreenMemoryStoreCarriesPendingIngressAcrossSameProfileReplacement() throws {
+    let first = InMemoryScreenMemoryStore()
+    let second = InMemoryScreenMemoryStore()
+    let event = PerceptionEvent(
+      eventId: "carry-pending",
+      capturedAt: "2026-07-05T10:00:00.000Z",
+      periodStart: "2026-07-05T10:00:00.000Z",
+      periodEnd: "2026-07-05T10:00:00.000Z",
+      artifactType: .searchableScreenRecord,
+      summary: "pending same-profile storage replacement",
+      sensitivityLabel: .normal,
+      retentionClass: "screen_memory_30d",
+      confidence: 0.9,
+      expiresAt: "2099-07-05T10:00:00.000Z",
+      localRecordRef: "screen-memory://records/carry-pending"
+    )
+    try first.enqueuePerceptionEvent(event)
+    let store = SwitchableScreenMemoryStore(first, profileID: "user-a")
+
+    store.replace(with: second, profileID: "user-a")
+
+    XCTAssertTrue(try first.pendingIngress(limit: 10).isEmpty)
     XCTAssertEqual(try store.pendingPerceptionEvents(limit: 10), [event])
     XCTAssertEqual(try second.pendingPerceptionEvents(limit: 10), [event])
   }

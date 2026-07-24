@@ -4,7 +4,7 @@ import Combine
 import IntentiveDesktopCore
 import SwiftUI
 
-/// Owns the salvaged Omi floating bar window and its ⌘O global hotkey, and is the
+/// Owns the salvaged Omi floating bar window and its configurable global hotkey, and is the
 /// single seam the app talks to (`configure`, `show`, `toggleAIInput`, `hide`,
 /// `refreshMessages`, `presentProactiveMessage`).
 ///
@@ -80,7 +80,7 @@ public final class FloatingControlBarManager {
     // Size to the target surface synchronously *before* ordering front. A cold
     // window — e.g. opened from the onboarding "Try Floating Bar" demo under the
     // modal onboarding sheet — otherwise displays mid-animation as it grows from
-    // the 160×34 pill, which renders "sliced / compressed". The ⌘O path opens a
+    // the 160×34 pill, which renders "sliced / compressed". The shortcut path opens a
     // warm window and never showed the artifact; sizing synchronously fixes both.
     window.showAIConversation(animated: false)
     window.makeKeyAndOrderFront(nil)
@@ -89,7 +89,7 @@ public final class FloatingControlBarManager {
     }
   }
 
-  /// ⌘O behavior: toggle the composer. Open + focused if hidden, else hide.
+  /// Global-shortcut behavior: toggle the composer. Open + focused if hidden, else hide.
   public func toggleAIInput() {
     let window = ensureWindow()
     if window.isVisible, window.state.showingAIConversation {
@@ -194,7 +194,7 @@ public final class FloatingControlBarManager {
 
   // MARK: - Global shortcut
 
-  /// Registers the process-wide ⌘O hotkey that toggles the bar from any app.
+  /// Registers the process-wide hotkey that toggles the bar from any app.
   public func registerGlobalShortcut() {
     Self.hotKeyTarget = self
     installEventHandlerIfNeeded()
@@ -218,6 +218,12 @@ public final class FloatingControlBarManager {
 
     let hotKeyID = EventHotKeyID(signature: FourCharCode(0x494E_5456), id: 1)  // "INTV"
     let shortcut = ShortcutSettings.shared.floatingBarShortcut
+    guard ShortcutSettings.isSafeGlobalShortcut(
+      keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers)
+    else {
+      NSLog("FloatingControlBarManager: refused unsafe global hotkey")
+      return
+    }
     var ref: EventHotKeyRef?
     let status = RegisterEventHotKey(
       shortcut.keyCode,
@@ -247,6 +253,9 @@ public final class FloatingControlBarManager {
     if preset.hasPrefix("custom:") {
       let parts = preset.split(separator: ":", maxSplits: 3).map(String.init)
       if parts.count == 4, let keyCode = UInt32(parts[1]), let modifiers = UInt32(parts[2]) {
+        guard ShortcutSettings.isSafeGlobalShortcut(
+          keyCode: keyCode, carbonModifiers: modifiers)
+        else { return }
         ShortcutSettings.shared.floatingBarShortcut = .init(
           keyCode: keyCode, carbonModifiers: modifiers,
           displayTokens: parts[3].split(separator: ",").map(String.init))
@@ -254,23 +263,15 @@ public final class FloatingControlBarManager {
       return
     }
     switch preset {
-    case "command+return":
-      ShortcutSettings.shared.floatingBarShortcut = .init(
-        keyCode: UInt32(kVK_Return), carbonModifiers: UInt32(cmdKey), displayTokens: ["⌘", "↩"])
+    case "command+o", "command+return", "command+j", "option+space":
+      ShortcutSettings.shared.floatingBarShortcut = ShortcutSettings.defaultFloatingBarShortcut
     case "command+shift+return":
       ShortcutSettings.shared.floatingBarShortcut = .init(
         keyCode: UInt32(kVK_Return), carbonModifiers: UInt32(cmdKey | shiftKey), displayTokens: ["⇧", "⌘", "↩"])
-    case "command+j":
-      ShortcutSettings.shared.floatingBarShortcut = .init(
-        keyCode: UInt32(kVK_ANSI_J), carbonModifiers: UInt32(cmdKey), displayTokens: ["⌘", "J"])
     case "command+shift+space":
       ShortcutSettings.shared.floatingBarShortcut = .init(
         keyCode: UInt32(kVK_Space), carbonModifiers: UInt32(cmdKey | shiftKey),
         displayTokens: ["⌘", "⇧", "Space"])
-    case "option+space":
-      ShortcutSettings.shared.floatingBarShortcut = .init(
-        keyCode: UInt32(kVK_Space), carbonModifiers: UInt32(optionKey),
-        displayTokens: ["⌥", "Space"])
     default:
       ShortcutSettings.shared.floatingBarShortcut = ShortcutSettings.defaultFloatingBarShortcut
     }

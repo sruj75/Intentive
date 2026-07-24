@@ -27,9 +27,41 @@ public enum IntentiveSystemAudioMode: String, CaseIterable, Identifiable, Sendab
 }
 
 public struct IntentiveRunningApplication: Identifiable, Hashable, Sendable {
-  public let id: String
+  public let bundleID: String?
   public let name: String
-  public init(id: String, name: String) { self.id = id; self.name = name }
+
+  public init(bundleID: String?, name: String) {
+    let normalizedBundleID = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines)
+    self.bundleID = normalizedBundleID?.isEmpty == false ? normalizedBundleID : nil
+    self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  public var id: String {
+    if let bundleID { return "bundle:\(bundleID.lowercased())" }
+    return "name:\(name.lowercased())"
+  }
+
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.id == rhs.id
+  }
+
+  public func hash(into hasher: inout Hasher) {
+    hasher.combine(id)
+  }
+}
+
+public struct IntentiveRewindFrame: Identifiable, Equatable, Sendable {
+  public let id: String
+  public let appName: String
+  public let windowTitle: String
+  public let capturedAt: String
+
+  public init(id: String, appName: String, windowTitle: String, capturedAt: String) {
+    self.id = id
+    self.appName = appName
+    self.windowTitle = windowTitle
+    self.capturedAt = capturedAt
+  }
 }
 
 public struct IntentiveExcludedApplication: Identifiable, Hashable, Sendable {
@@ -54,10 +86,21 @@ public protocol IntentiveSettingsPresenting: ObservableObject {
   var launchAtLogin: Bool { get set }
   var floatingBarShortcut: String { get set }
   var storageSummary: String { get }
-  var excludedApplications: [IntentiveExcludedApplication] { get }
+  var rewindQuery: String { get set }
+  var rewindSelectedDate: String { get }
+  var rewindFrames: [IntentiveRewindFrame] { get }
+  var rewindSelectedFrameID: String? { get }
+  var rewindSelectedFrameData: Data? { get }
+  var rewindSelectedOCRText: String { get }
+  var rewindSelectedOCRMatches: [String] { get }
+  var rewindAvailableApps: [String] { get }
+  var rewindSelectedApp: String? { get }
+  var rewindIsPlaying: Bool { get }
+  var excludedApplications: [IntentiveRunningApplication] { get }
   var runningApplications: [IntentiveRunningApplication] { get }
   var retentionDays: Int { get set }
   var storeRecordings: Bool { get set }
+  var analyticsEnabled: Bool { get set }
   var updateStatus: String { get }
   var automaticallyChecksForUpdates: Bool { get set }
   var automaticallyDownloadsUpdates: Bool { get set }
@@ -65,9 +108,17 @@ public protocol IntentiveSettingsPresenting: ObservableObject {
   var reportIssueAvailable: Bool { get }
   func requestNotificationPermission()
   func recordCustomShortcut()
+  func submitRewindSearch()
+  func moveRewindDay(_ offset: Int)
+  func filterRewind(app: String?)
+  func selectRewindFrame(id: String)
+  func stepRewind(_ direction: Int)
+  func toggleRewindPlayback()
+  func deleteSelectedRewindFrame()
+  func clearRewindLocalData()
   func addExcludedApplication(_ application: IntentiveRunningApplication)
   func addExcludedApplication(displayName: String)
-  func removeExcludedApplication(_ application: IntentiveExcludedApplication)
+  func removeExcludedApplication(_ application: IntentiveRunningApplication)
   func resetExcludedApplications()
   func checkForUpdates()
   func reportIssue()
@@ -91,6 +142,7 @@ struct SettingsSearchItem: Identifiable {
     .init(id: "rewind.battery", name: "Battery Optimization", subtitle: "Automatic power-aware capture", keywords: ["power", "energy"], section: .rewind),
     .init(id: "rewind.retention", name: "Data Retention", subtitle: "Choose how long records remain", keywords: ["delete", "days"], section: .rewind),
     .init(id: "privacy.recordings", name: "Store Recordings", subtitle: "Keep future audio locally", keywords: ["audio", "local"], section: .privacy),
+    .init(id: "privacy.analytics", name: "Anonymous Analytics", subtitle: "Choose whether to share anonymous product usage", keywords: ["telemetry", "consent", "posthog"], section: .privacy),
     .init(id: "privacy.cloud", name: "Private Cloud Sync", subtitle: "Coming Soon", keywords: ["sync", "cloud"], section: .privacy),
     .init(id: "privacy.encryption", name: "Encryption", subtitle: "Local data protection", keywords: ["secure"], section: .privacy),
     .init(id: "about.version", name: "Version", subtitle: "Intentive build information", keywords: ["build"], section: .about),

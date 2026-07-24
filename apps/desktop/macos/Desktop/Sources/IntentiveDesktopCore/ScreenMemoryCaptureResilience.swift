@@ -189,6 +189,23 @@ public protocol PerceptionOutboxLaunchDrain: AnyObject {
   func dropExpiredPendingPerceptionEvents() throws -> Int
 }
 
+private final class CaptureFinalizationOutcomeBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var storedResult: Result<Void, Error>?
+
+  func store(_ result: Result<Void, Error>) {
+    lock.lock()
+    storedResult = result
+    lock.unlock()
+  }
+
+  func result() -> Result<Void, Error>? {
+    lock.lock()
+    defer { lock.unlock() }
+    return storedResult
+  }
+}
+
 // MARK: - Session identity
 
 /// The active capture session's durable identity, persisted as JSON in
@@ -299,6 +316,7 @@ public final class ScreenMemoryCaptureLifecycleController {
   public let settingsProvider: () -> CompilerSettings
   public let permissionProvider: () -> Bool
   public let captureBoundaryEnabled: Bool
+  public let finalizationTimeoutSeconds: TimeInterval
   public let now: () -> Date
 
   public private(set) var pausedReason: ScreenMemoryCapturePauseReason?
@@ -337,6 +355,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     settingsProvider: @escaping () -> CompilerSettings = { CompilerSettings() },
     permissionProvider: @escaping () -> Bool = { true },
     captureBoundaryEnabled: Bool = true,
+    finalizationTimeoutSeconds: TimeInterval = 5,
     recorderGate: ProactiveScreenRecorderYieldGate = ProactiveScreenRecorderYieldGate(),
     now: @escaping () -> Date = { Date() },
     makeUUID: @escaping () -> String = { UUID().uuidString }
@@ -353,6 +372,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     self.settingsProvider = settingsProvider
     self.permissionProvider = permissionProvider
     self.captureBoundaryEnabled = captureBoundaryEnabled
+    self.finalizationTimeoutSeconds = finalizationTimeoutSeconds
     self.recorderGate = recorderGate
     self.now = now
     self.makeUUID = makeUUID
@@ -372,6 +392,7 @@ public final class ScreenMemoryCaptureLifecycleController {
     )
     currentSessionId = identity.sessionId
     didEmitSessionEnd = false
+    didMarkCleanShutdown = false
     try? lockFile?.write(identity)
     return identity
   }
@@ -557,10 +578,10 @@ public final class ScreenMemoryCaptureLifecycleController {
   /// The marker is inserted into `runtime_ingress_outbox` by the durable
   /// `PerceptionPublisher` before any send is attempted, so a disconnected stop
   /// still redelivers on reconnect. The lock is removed only after the chunk
-  /// finalize and the marker enqueue both succeed; if the enqueue throws the
-  /// lock survives so the next launch finalizes the run via a crash marker. The
-  /// chunk finalize is bounded by a 5s semaphore so `applicationWillTerminate`
-  /// does not stall the OS quit window.
+  /// finalize and the marker enqueue both succeed. A finalization error or
+  /// timeout emits no marker and leaves the session identity + lock intact for
+  /// next-launch recovery; an enqueue error also retains the lock. The chunk
+  /// finalize is bounded so `applicationWillTerminate` cannot deadlock.
   public func stop(reason: SessionEndReason) {
     startGeneration += 1
     state = .stopping
@@ -577,14 +598,32 @@ public final class ScreenMemoryCaptureLifecycleController {
 
     if let archiveReconciler {
       let sem = DispatchSemaphore(value: 0)
+      let outcome = CaptureFinalizationOutcomeBox()
       // The archive's finalize is actor-isolated and safe off-main. Run it
       // detached so a synchronous caller on the main actor (e.g.
       // applicationWillTerminate) does not deadlock against `sem.wait`.
-      Task.detached {
-        try? await archiveReconciler.finalizeActiveVideoChunk()
+      let finalizationTask = Task.detached {
+        do {
+          try await archiveReconciler.finalizeActiveVideoChunk()
+          outcome.store(.success(()))
+        } catch {
+          outcome.store(.failure(error))
+        }
         sem.signal()
       }
-      _ = sem.wait(timeout: .now() + 5)
+      guard sem.wait(timeout: .now() + max(0, finalizationTimeoutSeconds)) == .success else {
+        finalizationTask.cancel()
+        state = .failed("archive finalization timed out")
+        return
+      }
+      guard let finalizationResult = outcome.result() else {
+        state = .failed("archive finalization did not report an outcome")
+        return
+      }
+      if case .failure(let error) = finalizationResult {
+        state = .failed(error.localizedDescription)
+        return
+      }
     }
 
     let marker = SessionEndMarker(
@@ -623,20 +662,31 @@ public final class ScreenMemoryCaptureLifecycleController {
 
     // A leftover lock means the prior session exited uncleanly. Finalize it to
     // exactly one idempotent `.crash` marker (using the preallocated marker id
-    // so the Runtime dedupes it) before any new session is created, then clear
-    // the lock.
+    // so the Runtime dedupes it) before any new session is created. Clear the
+    // lock only after the marker is durably enqueued. If enqueue or lock removal
+    // fails, leave reconciliation retryable and return before auto-start can
+    // overwrite the prior session identity.
     if let lockFile, lockFile.exists() {
       didDetectUncleanShutdown = true
-      if let prior = lockFile.read() {
-        let crashMarker = SessionEndMarker(
-          markerId: prior.crashMarkerId,
-          sessionId: prior.sessionId,
-          endedAt: now().protocolTimestamp,
-          reason: .crash
-        )
-        try? sessionEndSink?.sendSessionEnd(crashMarker)
+      do {
+        if let prior = lockFile.read() {
+          guard let sessionEndSink else {
+            didPerformLaunchReconciliation = false
+            return
+          }
+          let crashMarker = SessionEndMarker(
+            markerId: prior.crashMarkerId,
+            sessionId: prior.sessionId,
+            endedAt: now().protocolTimestamp,
+            reason: .crash
+          )
+          try sessionEndSink.sendSessionEnd(crashMarker)
+        }
+        try lockFile.markClean()
+      } catch {
+        didPerformLaunchReconciliation = false
+        return
       }
-      try? lockFile.markClean()
     }
 
     if let archiveReconciler {

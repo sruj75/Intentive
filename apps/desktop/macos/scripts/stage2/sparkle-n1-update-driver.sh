@@ -126,6 +126,20 @@ SPARKLE_PUBLIC_ED_KEY="$(
   /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$INSTALLED_APP/Contents/Info.plist"
 )"
 [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]] || fail "candidate has no Sparkle public key"
+BASELINE_CONTROL_PLANE_URL="$(
+  /usr/libexec/PlistBuddy -c 'Print :IntentiveControlPlaneURL' \
+    "$INSTALLED_APP/Contents/Info.plist"
+)"
+BASELINE_HOSTED_AUTH_URL="$(
+  /usr/libexec/PlistBuddy -c 'Print :IntentiveHostedAuthURL' \
+    "$INSTALLED_APP/Contents/Info.plist"
+)"
+BASELINE_AUTH_TOKEN_EXCHANGE_URL="$(
+  /usr/libexec/PlistBuddy -c 'Print :IntentiveAuthTokenExchangeURL' \
+    "$INSTALLED_APP/Contents/Info.plist" 2>/dev/null || true
+)"
+[[ -n "$BASELINE_CONTROL_PLANE_URL" && -n "$BASELINE_HOSTED_AUTH_URL" ]] \
+  || fail "candidate has no audited service endpoints for the N-1 baseline"
 codesign -dv --verbose=4 "$INSTALLED_APP" 2>"$EVIDENCE_DIR/candidate-before.txt" || true
 
 # Build the reference manifest from the app inside the exact candidate DMG,
@@ -153,6 +167,9 @@ BASELINE_APP="$(
   INTENTIVE_APP_VERSION="$BASELINE_VERSION" \
   INTENTIVE_APP_BUILD="$BASELINE_BUILD" \
   INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
+  INTENTIVE_CONTROL_PLANE_URL="$BASELINE_CONTROL_PLANE_URL" \
+  INTENTIVE_HOSTED_AUTH_URL="$BASELINE_HOSTED_AUTH_URL" \
+  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="$BASELINE_AUTH_TOKEN_EXCHANGE_URL" \
   INTENTIVE_SPARKLE_FEED_URL="http://127.0.0.1:$FEED_PORT/appcast.xml" \
   INTENTIVE_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
     "$REPO_ROOT/apps/desktop/macos/scripts/build-app-bundle.sh" \

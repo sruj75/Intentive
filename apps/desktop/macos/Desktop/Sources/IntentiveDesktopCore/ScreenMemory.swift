@@ -311,18 +311,23 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStor
 
 public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore, PerceptionEventOutbox {
   private var store: ScreenMemoryStore
+  private var profileID: String
 
-  public init(_ store: ScreenMemoryStore) {
+  public init(_ store: ScreenMemoryStore, profileID: String) {
     self.store = store
+    self.profileID = profileID
   }
 
   public var activeArchive: ScreenMemoryArchive? {
     store as? ScreenMemoryArchive
   }
 
-  public func replace(with store: ScreenMemoryStore) {
-    carryPendingPerceptionEvents(to: store)
+  public func replace(with store: ScreenMemoryStore, profileID: String) {
+    if profileID == self.profileID {
+      carryPendingPerceptionEvents(to: store)
+    }
     self.store = store
+    self.profileID = profileID
   }
 
   public func add(_ record: ScreenMemoryRecord) {
@@ -382,9 +387,9 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
       return
     }
 
-    // Carry every pending durable-ingress item to the replacement store in
-    // enqueue order, so a profile switch never loses or reorders unacknowledged
-    // events, tombstones, or session-end markers.
+    // Carry every pending durable-ingress item to replacement storage for the
+    // same profile in enqueue order. Cross-profile switches never enter this
+    // path: their pending rows remain in the owning profile's durable store.
     for item in (try? currentOutbox.pendingIngress(limit: 10_000)) ?? [] {
       do {
         switch item {
@@ -904,14 +909,22 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     }
   }
 
-  func commitDeletionPlan(_ plan: ScreenMemoryDeletionPlan) throws {
+  func commitDeletionPlan(
+    _ plan: ScreenMemoryDeletionPlan,
+    tombstone: PerceptionTombstone?
+  ) throws {
     try withTransaction {
       if plan.clearsAll {
         try execute("DELETE FROM screen_memory_records_fts")
         try execute("DELETE FROM screen_memory_records")
         try execute("DELETE FROM screen_memory_video_chunks")
         try execute("DELETE FROM audio_memory_records")
-        try execute("DELETE FROM runtime_ingress_outbox")
+        // Clear Rewind content that has not shipped yet, but preserve unrelated
+        // durable ingress (session-end markers and earlier tombstones).
+        try execute(
+          "DELETE FROM runtime_ingress_outbox WHERE ingress_kind = ?",
+          bindings: [.text(RuntimeIngressKind.perceptionEvent.rawValue)]
+        )
       } else {
         for recordID in plan.recordIDs {
           try execute("DELETE FROM screen_memory_records_fts WHERE id = ?", bindings: [.text(recordID)])
@@ -939,6 +952,12 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
         "DELETE FROM screen_memory_deletion_journal WHERE journal_id = ?",
         bindings: [.text(plan.id)]
       )
+      if let tombstone {
+        // The deletion is not complete until its Runtime tombstone is durable.
+        // Keeping both writes in this transaction ensures a failed enqueue
+        // rolls the local rows and deletion journal back together.
+        try enqueuePerceptionTombstone(tombstone)
+      }
     }
   }
 

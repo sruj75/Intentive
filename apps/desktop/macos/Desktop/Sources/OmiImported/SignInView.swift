@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import OmiTheme
 import SwiftUI
 
@@ -31,11 +32,24 @@ public protocol IntentiveSetupPresenting: ObservableObject {
   func skipCurrentSetupStep()
   func requestScreenRecording()
   func openScreenRecordingSettings()
+  func refreshSetupPermissions()
   func requestMicrophone()
   func openMicrophoneSettings()
   func requestAccessibility()
   func openAccessibilitySettings()
   func openFloatingBar()
+}
+
+public extension IntentiveSetupPresenting {
+  func startScreenRecordingPermissionFlow() {
+    requestScreenRecording()
+    guard !screenRecordingGranted else { return }
+    openScreenRecordingSettings()
+  }
+
+  func refreshSetupPermissionsAfterApplicationActivation() {
+    refreshSetupPermissions()
+  }
 }
 
 public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
@@ -54,6 +68,11 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     .background(OmiColors.backgroundPrimary)
     .preferredColorScheme(.dark)
     .accessibilityIdentifier("setup-\(model.setupStep.rawValue)")
+    .onReceive(
+      NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+    ) { _ in
+      model.refreshSetupPermissionsAfterApplicationActivation()
+    }
   }
 
   private var signIn: some View {
@@ -160,7 +179,13 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
         primary("Continue", id: "setup-continue", action: model.completeCurrentSetupStep)
       }
     case .screenRecording:
-      permissionCard(icon: "display", title: "Screen Recording", detail: "Screen Recording lets Intentive see what you're working on.", granted: model.screenRecordingGranted, request: model.openScreenRecordingSettings)
+      permissionCard(
+        icon: "display",
+        title: "Screen Recording",
+        detail: "Screen Recording lets Intentive see what you're working on.",
+        granted: model.screenRecordingGranted,
+        request: model.startScreenRecordingPermissionFlow
+      )
     case .microphone:
       permissionCard(icon: "mic.fill", title: "Microphone", detail: "Microphone access lets Intentive capture optional local audio context.", granted: model.microphoneGranted, request: model.requestMicrophone)
     case .accessibility:

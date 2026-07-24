@@ -23,6 +23,7 @@ Confirm:
 3. Grant Screen Recording, enable Screen Memory, and start capture.
 4. `Screen Memory` search finds captured rows by words from the summary.
 5. A fixture Runtime Post-Message-Back presents the Floating Bar/edge glow, while an ordinary reply updates silently and no second chat surface appears.
+6. The default global Floating Bar shortcut is `⇧⌘↩`; `⌘O` is neither offered nor accepted as a custom shortcut, and attempting it reports that the chord is reserved.
 
 ## Local Stack Smoke
 

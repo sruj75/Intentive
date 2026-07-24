@@ -19,6 +19,7 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
   public var floatingBarShortcut: String
   public var launchAtLogin: Bool
   public var analyticsEnabled: Bool
+  private var analyticsConsentVersion: Int
   public var automaticallyChecksForUpdates: Bool
   public var automaticallyDownloadsUpdates: Bool
   public var selectedSection: DesktopUtilitySection
@@ -31,9 +32,9 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
     notificationsEnabled: Bool = false,
     storeRecordings: Bool = true,
     privateCloudSyncEnabled: Bool = false,
-    floatingBarShortcut: String = "command+o",
+    floatingBarShortcut: String = "command+shift+return",
     launchAtLogin: Bool = false,
-    analyticsEnabled: Bool = true,
+    analyticsEnabled: Bool = false,
     automaticallyChecksForUpdates: Bool = true,
     automaticallyDownloadsUpdates: Bool = false,
     selectedSection: DesktopUtilitySection = .general
@@ -45,20 +46,26 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
     self.notificationsEnabled = notificationsEnabled
     self.storeRecordings = storeRecordings
     self.privateCloudSyncEnabled = false // V1 is deliberately local-only.
-    self.floatingBarShortcut = floatingBarShortcut
+    self.floatingBarShortcut = [
+      "command+o", "command+return", "command+j", "option+space",
+    ].contains(floatingBarShortcut)
+      ? "command+shift+return"
+      : floatingBarShortcut
     self.launchAtLogin = launchAtLogin
     self.analyticsEnabled = analyticsEnabled
+    analyticsConsentVersion = Self.currentAnalyticsConsentVersion
     self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
     self.automaticallyDownloadsUpdates = automaticallyDownloadsUpdates
     self.selectedSection = selectedSection
   }
 
   public static let allowedRetentionDays = [3, 7, 14, 30]
+  private static let currentAnalyticsConsentVersion = 1
 
   private enum CodingKeys: String, CodingKey {
     case retentionDays, screenCaptureEnabled, passiveAudioEnabled, systemAudioMode
     case notificationsEnabled, storeRecordings, privateCloudSyncEnabled
-    case floatingBarShortcut, launchAtLogin, analyticsEnabled
+    case floatingBarShortcut, launchAtLogin, analyticsEnabled, analyticsConsentVersion
     case automaticallyChecksForUpdates, automaticallyDownloadsUpdates, selectedSection
   }
 
@@ -72,6 +79,9 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
     case "general", "sensing": .general
     default: .general
     }
+    let hasCurrentAnalyticsConsent =
+      try values.decodeIfPresent(Int.self, forKey: .analyticsConsentVersion)
+      == Self.currentAnalyticsConsentVersion
     self.init(
       retentionDays: try values.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7,
       screenCaptureEnabled: try values.decodeIfPresent(Bool.self, forKey: .screenCaptureEnabled) ?? true,
@@ -82,9 +92,11 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
       storeRecordings: try values.decodeIfPresent(Bool.self, forKey: .storeRecordings) ?? true,
       privateCloudSyncEnabled: false,
       floatingBarShortcut: try values.decodeIfPresent(String.self, forKey: .floatingBarShortcut)
-        ?? "command+o",
+        ?? "command+shift+return",
       launchAtLogin: try values.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false,
-      analyticsEnabled: try values.decodeIfPresent(Bool.self, forKey: .analyticsEnabled) ?? true,
+      analyticsEnabled: hasCurrentAnalyticsConsent
+        ? (try values.decodeIfPresent(Bool.self, forKey: .analyticsEnabled) ?? false)
+        : false,
       automaticallyChecksForUpdates: try values.decodeIfPresent(
         Bool.self, forKey: .automaticallyChecksForUpdates) ?? true,
       automaticallyDownloadsUpdates: try values.decodeIfPresent(

@@ -163,7 +163,7 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     )
     menu.addItem(audioItem)
 
-    // The floating bar is the sole conversation surface. Besides the ⌘O global
+    // The floating bar is the sole conversation surface. Besides the global
     // hotkey and a Post-Message-Back auto-presenting it, this is the click
     // affordance that opens the composer — restored after the menu redesign
     // dropped it and orphaned `openFloatingBar()`.

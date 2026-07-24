@@ -19,6 +19,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: desktop-release-${{ inputs.release_version }}
+  cancel-in-progress: false
+
 env:
   # Reuse the established pre-Omi Developer ID release identity.
   SIGNING_IDENTITY: "Developer ID Application: Srujan Gowda (24D6NXS6H7)"
@@ -36,8 +40,9 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
+          lfs: true
 
-      - name: Verify protected candidate evidence
+      - name: Verify protected candidate evidence and resolve tag
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,11 +80,6 @@ jobs:
               raise SystemExit("candidate AX evidence does not accept the requested SHA")
           PY
           RELEASE_TAG="desktop-v$VERSION"
-          if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1 \
-            || git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release tag already exists: $RELEASE_TAG" >&2
-            exit 1
-          fi
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
@@ -118,6 +118,9 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
           DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
+          DESKTOP_CONTROL_PLANE_URL: ${{ vars.DESKTOP_CONTROL_PLANE_URL }}
+          DESKTOP_HOSTED_AUTH_URL: ${{ vars.DESKTOP_HOSTED_AUTH_URL }}
+          DESKTOP_AUTH_TOKEN_EXCHANGE_URL: ${{ vars.DESKTOP_AUTH_TOKEN_EXCHANGE_URL }}
         run: |
           missing=()
           for secret_name in \
@@ -130,7 +133,9 @@ jobs:
             SPARKLE_PUBLIC_ED_KEY \
             SPARKLE_PRIVATE_KEY \
             DESKTOP_SENTRY_DSN \
-            DESKTOP_POSTHOG_PROJECT_KEY; do
+            DESKTOP_POSTHOG_PROJECT_KEY \
+            DESKTOP_CONTROL_PLANE_URL \
+            DESKTOP_HOSTED_AUTH_URL; do
             if [[ -z "${!secret_name:-}" ]]; then
               missing+=("$secret_name")
             fi
@@ -140,6 +145,17 @@ jobs:
             printf 'Missing required public release secret: %s\n' "${missing[@]}" >&2
             exit 1
           fi
+
+          for endpoint_name in \
+            DESKTOP_CONTROL_PLANE_URL \
+            DESKTOP_HOSTED_AUTH_URL \
+            DESKTOP_AUTH_TOKEN_EXCHANGE_URL; do
+            endpoint="${!endpoint_name:-}"
+            if [[ -n "$endpoint" && "$endpoint" != https://* ]]; then
+              echo "Public release endpoint must use HTTPS: $endpoint_name" >&2
+              exit 1
+            fi
+          done
 
       - name: Verify Desktop
         run: |
@@ -152,6 +168,9 @@ jobs:
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
           DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
           DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
+          DESKTOP_CONTROL_PLANE_URL: ${{ vars.DESKTOP_CONTROL_PLANE_URL }}
+          DESKTOP_HOSTED_AUTH_URL: ${{ vars.DESKTOP_HOSTED_AUTH_URL }}
+          DESKTOP_AUTH_TOKEN_EXCHANGE_URL: ${{ vars.DESKTOP_AUTH_TOKEN_EXCHANGE_URL }}
         run: |
           APP_BUNDLE="$(
             CONFIGURATION=release \
@@ -160,6 +179,9 @@ jobs:
               INTENTIVE_APP_VERSION="$VERSION" \
               INTENTIVE_APP_BUILD="$BUILD_NUMBER" \
               INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
+              INTENTIVE_CONTROL_PLANE_URL="${DESKTOP_CONTROL_PLANE_URL:-}" \
+              INTENTIVE_HOSTED_AUTH_URL="${DESKTOP_HOSTED_AUTH_URL:-}" \
+              INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="${DESKTOP_AUTH_TOKEN_EXCHANGE_URL:-}" \
               INTENTIVE_SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" \
               INTENTIVE_SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
               INTENTIVE_SENTRY_DSN="${DESKTOP_SENTRY_DSN:-}" \
@@ -300,10 +322,42 @@ jobs:
       # The tag becomes remote only after configuration, build, signing,
       # notarization, appcast generation, and signed-artifact smoke all pass.
       - name: Create accepted release tag
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git tag --annotate "$RELEASE_TAG" "$CANDIDATE_SHA" \
-            --message "Intentive Desktop $VERSION"
-          git push origin "$RELEASE_TAG"
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            if [[ "$(git cat-file -t "$RELEASE_TAG")" != "tag" ]]; then
+              echo "Release tag $RELEASE_TAG exists but is not annotated" >&2
+              exit 1
+            fi
+            TAGGED_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [[ "$TAGGED_SHA" != "$CANDIDATE_SHA" ]]; then
+              echo "Release tag $RELEASE_TAG already targets $TAGGED_SHA, not $CANDIDATE_SHA" >&2
+              exit 1
+            fi
+            RELEASE_LOOKUP_ERROR="$(mktemp)"
+            if RELEASE_IS_DRAFT="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+                --jq '.draft' 2>"$RELEASE_LOOKUP_ERROR"
+            )"; then
+              if [[ "$RELEASE_IS_DRAFT" != "true" ]]; then
+                echo "Release $RELEASE_TAG is already published; refusing to replace public assets" >&2
+                rm -f "$RELEASE_LOOKUP_ERROR"
+                exit 1
+              fi
+            elif ! grep -q "HTTP 404" "$RELEASE_LOOKUP_ERROR"; then
+              cat "$RELEASE_LOOKUP_ERROR" >&2
+              rm -f "$RELEASE_LOOKUP_ERROR"
+              exit 1
+            fi
+            rm -f "$RELEASE_LOOKUP_ERROR"
+            echo "Release tag $RELEASE_TAG already targets the accepted candidate; reusing it."
+          else
+            git tag --annotate "$RELEASE_TAG" "$CANDIDATE_SHA" --message "Intentive Desktop $VERSION"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v3
@@ -339,6 +393,7 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
+          lfs: true
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
       - uses: actions/setup-node@v6
         with:

@@ -782,62 +782,59 @@ private actor ScreenMemoryIngestCoordinator {
       try store.saveDeletionPlan(plan)
     }
 
-    if plan.clearsAll {
-      if let videoArchive {
-        try await videoArchive.deleteAllMedia()
-      }
-      try removeAllArchiveOwnedFiles()
-    } else {
-      for rawChunkID in plan.chunkIDs {
-        guard let uuid = UUID(uuidString: rawChunkID) else { continue }
-        let chunkID = ScreenMemoryVideoChunkID(uuid)
+    do {
+      if plan.clearsAll {
         if let videoArchive {
-          try await videoArchive.deleteChunk(chunkID)
-        } else {
-          try removeConventionalChunkFiles(chunkID)
+          try await videoArchive.deleteAllMedia()
         }
+        try removeAllArchiveOwnedFiles()
+      } else {
+        for rawChunkID in plan.chunkIDs {
+          guard let uuid = UUID(uuidString: rawChunkID) else { continue }
+          let chunkID = ScreenMemoryVideoChunkID(uuid)
+          if let videoArchive {
+            try await videoArchive.deleteChunk(chunkID)
+          } else {
+            try removeConventionalChunkFiles(chunkID)
+          }
+        }
+        try removeEmptyDirectories(in: profile.videoArchiveURL)
       }
-      try removeEmptyDirectories(in: profile.videoArchiveURL)
-    }
 
-    try store.commitDeletionPlan(plan)
-    try enqueueDeletionTombstone(for: plan)
-    return ScreenMemoryDeletionResult(
-      recordIDs: Array(Set(plan.recordIDs + plan.audioRecordIDs)).sorted(),
-      reason: plan.reason
-    )
+      let tombstone = deletionTombstone(for: plan)
+      try store.commitDeletionPlan(plan, tombstone: tombstone)
+      return ScreenMemoryDeletionResult(
+        recordIDs: Array(Set(plan.recordIDs + plan.audioRecordIDs)).sorted(),
+        reason: plan.reason
+      )
+    } catch {
+      // A saved journal is a durable recovery request. Re-arm preparation so
+      // callers can retry it immediately instead of waiting for relaunch.
+      if persistIntent {
+        didPrepareArchive = false
+      }
+      throw error
+    }
   }
 
-  /// Propagate a local deletion to the Runtime. Any outbound event still pending
-  /// for a deleted record is dropped first (never ship content for a record the
-  /// user just removed), then a tenant-scoped tombstone is durably queued.
-  private func enqueueDeletionTombstone(for plan: ScreenMemoryDeletionPlan) throws {
+  /// Build the Runtime deletion corresponding to this local plan. The store
+  /// commits it atomically with the local row deletion and journal removal.
+  private func deletionTombstone(for plan: ScreenMemoryDeletionPlan) -> PerceptionTombstone? {
     if plan.clearsAll {
-      for event in (try? store.pendingPerceptionEvents(limit: 100_000)) ?? [] {
-        try? store.removePerceptionEvent(eventId: event.eventId)
-      }
-      try store.enqueuePerceptionTombstone(
-        PerceptionTombstone(
-          tombstoneId: UUID().uuidString,
-          reason: .clearAll,
-          eventRefs: [],
-          emittedAt: now().protocolTimestamp
-        )
-      )
-      return
-    }
-    let refs = plan.recordIDs
-    guard !refs.isEmpty else { return }
-    for eventId in refs {
-      try? store.removePerceptionEvent(eventId: eventId)
-    }
-    try store.enqueuePerceptionTombstone(
-      PerceptionTombstone(
+      return PerceptionTombstone(
         tombstoneId: UUID().uuidString,
-        reason: plan.reason == .manual ? .manualDelete : .retentionExpiry,
-        eventRefs: refs,
+        reason: .clearAll,
+        eventRefs: [],
         emittedAt: now().protocolTimestamp
       )
+    }
+    let refs = plan.recordIDs
+    guard !refs.isEmpty else { return nil }
+    return PerceptionTombstone(
+      tombstoneId: UUID().uuidString,
+      reason: plan.reason == .manual ? .manualDelete : .retentionExpiry,
+      eventRefs: refs,
+      emittedAt: now().protocolTimestamp
     )
   }
 

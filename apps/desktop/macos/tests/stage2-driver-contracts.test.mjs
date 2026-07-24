@@ -50,6 +50,7 @@ async function smokePMBSimulator() {
 
   let stdout = "";
   let stderr = "";
+  const childExit = new Promise((resolveExit) => child.once("exit", resolveExit));
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
   });
@@ -99,7 +100,7 @@ async function smokePMBSimulator() {
     socket.addEventListener("error", reject);
   });
 
-  const exitCode = await new Promise((resolveExit) => child.once("exit", resolveExit));
+  const exitCode = await childExit;
   assert.equal(exitCode, 0, `PMB simulator failed:\n${stderr}`);
   const proof = JSON.parse(await readFile(output, "utf8"));
   assert.deepEqual(
@@ -220,12 +221,15 @@ try {
   assert.match(pmbSource, /safeParseClientToRuntimeEvent/);
   assert.match(pmbSource, /parseRuntimeToClientEvent/);
   assert.match(pmbSource, /parseBoundary as parseAPIContract/);
+  assert.match(pmbSource, /closeWebSocket/);
 
   const sparkleSource = await readFile(
     join(stage2Directory, "sparkle-n1-update-driver.sh"),
     "utf8",
   );
   assert.match(sparkleSource, /INTENTIVE_APP_VERSION="\$BASELINE_VERSION"/);
+  assert.match(sparkleSource, /INTENTIVE_CONTROL_PLANE_URL="\$BASELINE_CONTROL_PLANE_URL"/);
+  assert.match(sparkleSource, /INTENTIVE_HOSTED_AUTH_URL="\$BASELINE_HOSTED_AUTH_URL"/);
   assert.match(sparkleSource, /candidate-dmg-app\.manifest/);
   assert.match(sparkleSource, /installed-after-update\.manifest/);
   assert.match(sparkleSource, /cmp -s/);
@@ -246,6 +250,7 @@ try {
   assert.match(tartSource, /com\.apple\.TextEdit/);
   assert.match(tartSource, /launchagent-registration\.txt/);
   assert.match(tartSource, /background-items\.txt/);
+  assert.match(tartSource, /INTENTIVE_RELEASE_ACCEPTANCE_MODE=1/);
   assert.doesNotMatch(tartSource, /macos-tahoe-base:latest|TART_ATTESTATION_JSON/);
 
   const tartInspectorSource = await readFile(
@@ -264,6 +269,7 @@ try {
   assert.match(fullStackSource, /observed_privacy_filtered_perception/);
   assert.match(fullStackSource, /observed_retention_tombstone/);
   assert.match(fullStackSource, /runtime_search_confirmed/);
+  assert.match(fullStackSource, /INTENTIVE_RELEASE_ACCEPTANCE_MODE=1/);
 
   console.log(`Stage 2 driver contracts passed (${basename(stage2Directory)}).`);
 } finally {

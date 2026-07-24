@@ -4,11 +4,16 @@ export PATH="/bin:/usr/bin:/usr/sbin:/sbin"
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_SCRIPT="$ROOT_DIR/scripts/build-app-bundle.sh"
+VAD_MODEL_VERIFIER="$ROOT_DIR/scripts/verify-silero-vad-model.sh"
+PUBLIC_ENDPOINT_VERIFIER="$ROOT_DIR/scripts/verify-public-endpoint.sh"
 CONFIGURATION="${CONFIGURATION:-debug}"
 APP_NAME="${INTENTIVE_APP_NAME:-Intentive}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.3}"
 APP_BUILD="${INTENTIVE_APP_BUILD:-901}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
+CONTROL_PLANE_URL="${INTENTIVE_CONTROL_PLANE_URL:-https://control-plane.bundle-smoke.test}"
+HOSTED_AUTH_URL="${INTENTIVE_HOSTED_AUTH_URL:-https://auth.bundle-smoke.test/sign-in}"
+AUTH_TOKEN_EXCHANGE_URL="${INTENTIVE_AUTH_TOKEN_EXCHANGE_URL:-https://auth.bundle-smoke.test/desktop/token}"
 SPARKLE_FEED_URL="${INTENTIVE_SPARKLE_FEED_URL:-https://github.com/intentive-ai/intentive/releases/latest/download/appcast.xml}"
 SPARKLE_PUBLIC_ED_KEY="${INTENTIVE_SPARKLE_PUBLIC_ED_KEY:-desktop-bundle-smoke-public-ed-key}"
 SENTRY_DSN="${INTENTIVE_SENTRY_DSN:-https://public@example.invalid/1}"
@@ -49,6 +54,9 @@ APP_BUNDLE="$(
     INTENTIVE_APP_VERSION="$APP_VERSION" \
     INTENTIVE_APP_BUILD="$APP_BUILD" \
     INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
+    INTENTIVE_CONTROL_PLANE_URL="$CONTROL_PLANE_URL" \
+    INTENTIVE_HOSTED_AUTH_URL="$HOSTED_AUTH_URL" \
+    INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="$AUTH_TOKEN_EXCHANGE_URL" \
     INTENTIVE_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
     INTENTIVE_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
     INTENTIVE_SENTRY_DSN="$SENTRY_DSN" \
@@ -73,7 +81,8 @@ SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
 [[ -x "$EXECUTABLE" ]] || fail "executable missing or not executable: $EXECUTABLE"
 [[ -s "$APP_ICON" ]] || fail "AppIcon.icns missing or empty"
 [[ -d "$NATIVE_ADAPTERS_BUNDLE" ]] || fail "native adapters bundle missing: $NATIVE_ADAPTERS_BUNDLE"
-[[ -s "$VAD_MODEL" ]] || fail "silero_vad.onnx missing from native adapters bundle"
+"$VAD_MODEL_VERIFIER" "$VAD_MODEL" >/dev/null \
+  || fail "silero_vad.onnx failed release identity verification"
 [[ -s "$MENU_BAR_ICON" ]] || fail "Intentive menu-bar icon missing from UI resources bundle"
 [[ -d "$SPARKLE_FRAMEWORK" ]] || fail "Sparkle.framework missing"
 [[ -d "$SENTRY_FRAMEWORK" ]] || fail "Sentry.framework missing"
@@ -89,6 +98,9 @@ assert_eq "CFBundleShortVersionString" "$APP_VERSION"
 assert_eq "CFBundleVersion" "$APP_BUILD"
 assert_eq "LSMinimumSystemVersion" "14.0"
 assert_eq "CFBundleURLTypes:0:CFBundleURLSchemes:0" "$AUTH_CALLBACK_SCHEME"
+assert_eq "IntentiveControlPlaneURL" "$CONTROL_PLANE_URL"
+assert_eq "IntentiveHostedAuthURL" "$HOSTED_AUTH_URL"
+assert_eq "IntentiveAuthTokenExchangeURL" "$AUTH_TOKEN_EXCHANGE_URL"
 assert_eq "SUFeedURL" "$SPARKLE_FEED_URL"
 assert_eq "SUPublicEDKey" "$SPARKLE_PUBLIC_ED_KEY"
 assert_eq "SUEnableAutomaticChecks" "true"
@@ -97,6 +109,15 @@ assert_eq "SUScheduledCheckInterval" "3600"
 assert_eq "IntentiveSentryDSN" "$SENTRY_DSN"
 assert_eq "IntentivePostHogProjectKey" "$POSTHOG_PROJECT_KEY"
 assert_eq "IntentivePostHogHost" "$POSTHOG_HOST"
+
+for endpoint_key in \
+  IntentiveControlPlaneURL \
+  IntentiveHostedAuthURL \
+  IntentiveAuthTokenExchangeURL; do
+  endpoint="$(read_plist "$endpoint_key")"
+  "$PUBLIC_ENDPOINT_VERIFIER" "$endpoint_key" "$endpoint" \
+    || fail "$endpoint_key failed public endpoint verification"
+done
 
 assert_nonempty_plist "NSScreenCaptureUsageDescription"
 assert_nonempty_plist "NSAppleEventsUsageDescription"

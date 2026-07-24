@@ -3,6 +3,7 @@ import ApplicationServices
 import Combine
 import Carbon.HIToolbox.Events
 import IntentiveDesktopCore
+import IntentiveDesktopNativeAssets
 import IntentiveDesktopPresentation
 import UserNotifications
 
@@ -93,6 +94,11 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
     set { model.setFloatingBarShortcut(newValue) }
   }
 
+  var analyticsEnabled: Bool {
+    get { model.utilitySettings.analyticsEnabled }
+    set { model.setAnalyticsEnabled(newValue) }
+  }
+
   func recordCustomShortcut() {
     if let shortcutMonitor { NSEvent.removeMonitor(shortcutMonitor); self.shortcutMonitor = nil }
     model.status = "Press your custom shortcut"
@@ -111,6 +117,16 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
       }
       tokens.append(key)
       Task { @MainActor in
+        guard GlobalShortcutSafety.isSafe(
+          keyCode: UInt32(event.keyCode), carbonModifiers: carbon)
+        else {
+          self.model.status = "Global shortcuts need at least two modifiers. Try ⌘ ⇧ Return."
+          if let monitor = self.shortcutMonitor {
+            NSEvent.removeMonitor(monitor)
+            self.shortcutMonitor = nil
+          }
+          return
+        }
         self.model.setFloatingBarShortcut("custom:\(event.keyCode):\(carbon):\(tokens.joined(separator: ","))")
         if let monitor = self.shortcutMonitor { NSEvent.removeMonitor(monitor); self.shortcutMonitor = nil }
       }
@@ -123,44 +139,85 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
     return "\(model.timelineState?.frames.count ?? 0) records · \(ByteCountFormatter.string(fromByteCount: storage.totalBytes, countStyle: .file))"
   }
 
-  var excludedApplications: [IntentiveExcludedApplication] {
-    model.privacySnapshot.excludedApplications.map { application in
-      IntentiveExcludedApplication(
-        id: application.bundleID.map { "bundle:\($0.lowercased())" }
-          ?? "name:\(application.displayName.lowercased())",
-        bundleID: application.bundleID,
-        name: application.displayName
+  var rewindQuery: String {
+    get { model.query }
+    set { model.query = newValue }
+  }
+
+  var rewindSelectedDate: String {
+    guard let date = model.timelineState?.selectedDate else { return "Today" }
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .none
+    return formatter.string(from: date)
+  }
+
+  var rewindFrames: [IntentiveRewindFrame] {
+    (model.timelineState?.frames ?? []).map {
+      IntentiveRewindFrame(
+        id: $0.id,
+        appName: $0.appName,
+        windowTitle: $0.windowTitle,
+        capturedAt: $0.capturedAt
       )
-    }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+  }
+
+  var rewindSelectedFrameID: String? {
+    model.timelineState?.selectedRecordID?.value.uuidString
+  }
+
+  var rewindSelectedFrameData: Data? { model.currentFrameData }
+  var rewindSelectedOCRText: String { model.selectedTimelineRecord?.ocrText ?? "" }
+  var rewindSelectedOCRMatches: [String] { model.selectedOCRMatches.map(\.text) }
+  var rewindAvailableApps: [String] { model.timelineState?.availableApps ?? [] }
+  var rewindSelectedApp: String? { model.timelineState?.selectedApp }
+  var rewindIsPlaying: Bool { model.screenMemoryPlaying }
+
+  func submitRewindSearch() { model.refreshScreenMemorySearch() }
+  func moveRewindDay(_ offset: Int) { model.moveScreenMemoryDay(offset) }
+  func filterRewind(app: String?) { model.filterScreenMemory(app: app) }
+  func selectRewindFrame(id: String) {
+    guard let record = model.timelineState?.frames.first(where: { $0.id == id }) else { return }
+    model.selectScreenMemory(record)
+  }
+  func stepRewind(_ direction: Int) { model.stepScreenMemory(direction) }
+  func toggleRewindPlayback() { model.toggleScreenMemoryPlayback() }
+  func deleteSelectedRewindFrame() {
+    Task { @MainActor [weak self] in
+      _ = await self?.model.deleteSelectedScreenMemory(confirmChunkDeletion: true)
+    }
+  }
+  func clearRewindLocalData() { model.clearLocalData() }
+
+  var excludedApplications: [IntentiveRunningApplication] {
+    model.privacySnapshot.excludedApplications.map {
+      IntentiveRunningApplication(bundleID: $0.bundleID, name: $0.displayName)
+    }.sorted {
+      $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+    }
   }
 
   var runningApplications: [IntentiveRunningApplication] {
     var seen = Set<String>()
     return NSWorkspace.shared.runningApplications.compactMap { app in
-      guard
-        let bundleID = app.bundleIdentifier,
-        !bundleID.isEmpty,
-        seen.insert(bundleID.lowercased()).inserted
-      else { return nil }
-      let name = app.localizedName?.isEmpty == false ? app.localizedName! : bundleID
-      return IntentiveRunningApplication(id: bundleID, name: name)
+      guard let name = app.localizedName, !name.isEmpty else { return nil }
+      let application = IntentiveRunningApplication(bundleID: app.bundleIdentifier, name: name)
+      guard seen.insert(application.id).inserted else { return nil }
+      return application
     }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
   }
 
   func addExcludedApplication(_ application: IntentiveRunningApplication) {
-    model.excludeApplication(
-      PrivacyZoneApplication(bundleID: application.id, displayName: application.name)
-    )
+    model.excludeApplication(bundleID: application.bundleID, displayName: application.name)
   }
 
   func addExcludedApplication(displayName: String) {
-    model.excludeApplication(PrivacyZoneApplication(displayName: displayName))
+    model.excludeApplication(bundleID: nil, displayName: displayName)
   }
 
-  func removeExcludedApplication(_ application: IntentiveExcludedApplication) {
-    model.includeApplication(
-      PrivacyZoneApplication(bundleID: application.bundleID, displayName: application.name)
-    )
+  func removeExcludedApplication(_ application: IntentiveRunningApplication) {
+    model.includeApplication(bundleID: application.bundleID, displayName: application.name)
   }
 
   func resetExcludedApplications() {
@@ -224,10 +281,10 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
   var accessibilityGranted: Bool { accessibilityGrantedState }
   var shortcutLabel: String {
     switch model.utilitySettings.floatingBarShortcut {
+    case "command+shift+return": "⇧ ⌘ ↩"
     case "command+shift+space": "⌘ ⇧ Space"
-    case "option+space": "⌥ Space"
     case "disabled": "Disabled"
-    default: "⌘ O"
+    default: "⇧ ⌘ ↩"
     }
   }
 
@@ -264,6 +321,10 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
 
   func requestScreenRecording() { model.requestOnboardingScreenRecordingPermission() }
   func openScreenRecordingSettings() { model.openOnboardingScreenRecordingSettings() }
+  func refreshSetupPermissions() {
+    model.refreshOnboardingPermissions()
+    accessibilityGrantedState = AXIsProcessTrusted()
+  }
   func requestMicrophone() { Task { await model.requestMicrophonePermission() } }
   func openMicrophoneSettings() { model.openMicrophoneSettings() }
   func requestAccessibility() {

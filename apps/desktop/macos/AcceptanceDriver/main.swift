@@ -168,6 +168,10 @@ func findLast(_ root: AXUIElement, id: String) -> AXUIElement? {
   ([root] + descendants(root)).last { identifier($0) == id }
 }
 
+func findIdentifierPrefix(_ root: AXUIElement, prefix: String) -> AXUIElement? {
+  ([root] + descendants(root)).first { identifier($0).hasPrefix(prefix) }
+}
+
 func findTitle(_ root: AXUIElement, _ title: String) -> AXUIElement? {
   ([root] + descendants(root)).first {
     (value($0, kAXTitleAttribute as CFString) as? String) == title
@@ -360,29 +364,182 @@ while integer(bridgeState()["screen_memory_frames"]) < 2 && Date() < frameDeadli
   RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }
 
-// Rewind has no shipped viewer (the main window is intentionally utility-only), so
-// the journey is proven through the headless ScreenMemoryTimelineSmoke — the same
-// ScreenMemoryTimeline backend a viewer would drive — over the seeded archive. The
-// bridge runs the smoke and reports the per-step matrix; the driver requires each.
-let rewindResponse = try bridgeRequest("POST", "/v1/fixtures/rewind-smoke")
-let rewindMatrix = rewindResponse["rewind_smoke"] as? [String: Any] ?? [:]
-let rewindProofs: [(String, String)] = [
-  ("rewind-open", "the day view loads seeded frames"),
-  ("rewind-search", "searching indexed OCR/title content returns matching frames"),
-  ("rewind-filter-open", "an app filter opens a specific frame"),
-  ("rewind-scrub", "scrubbing changes the selected frame"),
-  ("rewind-render-frame", "the selected frame renders real bytes (play/pause + OCR overlay surface)"),
-  ("rewind-delete", "deleting the current frame removes it through the real deletion path"),
-]
-for (key, description) in rewindProofs {
-  record(
-    name: key,
-    element: initialRoot,
-    assertion: "headless Rewind timeline proves \(description)"
-  ) {
-    (rewindMatrix[key] as? Bool) == true
-  }
+// Drive the shipped Rewind destination through Accessibility. The loopback bridge
+// remains observation-only here: it verifies the real Settings controls changed
+// the mounted local archive and timeline state.
+if let rewindDestination = find(app, id: "sidebar-rewind") {
+  AXUIElementPerformAction(pressableAncestor(rewindDestination) ?? rewindDestination, kAXPressAction as CFString)
 }
+let rewindDeadline = Date().addingTimeInterval(5)
+while find(app, id: "screen_memory_search_field") == nil && Date() < rewindDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+let rewindRoot = find(app, id: "screen_memory") ?? initialRoot
+
+record(
+  name: "rewind-open",
+  element: rewindRoot,
+  assertion: "the shipped Rewind destination renders the seeded day timeline"
+) {
+  find(app, id: "screen_memory_current_frame") != nil
+    && findIdentifierPrefix(app, prefix: "screen_memory_frame_") != nil
+}
+
+let initialDate = bridgeState()["screen_memory_selected_date"] as? String
+if let previousDay = find(app, id: "screen_memory_previous_day") {
+  AXUIElementPerformAction(pressableAncestor(previousDay) ?? previousDay, kAXPressAction as CFString)
+}
+RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+let previousDate = bridgeState()["screen_memory_selected_date"] as? String
+if let nextDay = find(app, id: "screen_memory_next_day") {
+  AXUIElementPerformAction(pressableAncestor(nextDay) ?? nextDay, kAXPressAction as CFString)
+}
+let restoredDateDeadline = Date().addingTimeInterval(5)
+while (bridgeState()["screen_memory_selected_date"] as? String) != initialDate
+  && Date() < restoredDateDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+record(
+  name: "rewind-day-navigation",
+  element: find(app, id: "screen_memory_next_day") ?? rewindRoot,
+  assertion: "previous and next day controls navigate the real Rewind timeline"
+) {
+  let restoredDate = bridgeState()["screen_memory_selected_date"] as? String
+  return previousDate != nil && previousDate != initialDate && restoredDate == initialDate
+}
+
+if let search = find(app, id: "screen_memory_search_field") {
+  AXUIElementSetAttributeValue(search, kAXValueAttribute as CFString, "Invoice" as CFTypeRef)
+}
+if let submit = find(app, id: "screen_memory_search_submit") {
+  AXUIElementPerformAction(pressableAncestor(submit) ?? submit, kAXPressAction as CFString)
+}
+let searchDeadline = Date().addingTimeInterval(5)
+while (bridgeState()["screen_memory_query"] as? String) != "Invoice" && Date() < searchDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+let ocrDeadline = Date().addingTimeInterval(5)
+while findIdentifierPrefix(app, prefix: "screen_memory_ocr_highlight_") == nil
+  && Date() < ocrDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+record(
+  name: "rewind-search",
+  element: find(app, id: "screen_memory_search_field") ?? rewindRoot,
+  assertion: "typing into the shipped Rewind search returns captured rows"
+) {
+  (bridgeState()["screen_memory_query"] as? String) == "Invoice"
+    && integer(bridgeState()["screen_memory_frames"]) > 0
+}
+
+record(
+  name: "rewind-ocr-highlights",
+  element: findIdentifierPrefix(app, prefix: "screen_memory_ocr_highlight_") ?? rewindRoot,
+  assertion: "opening a search result exposes its captured text and OCR match"
+) {
+  findIdentifierPrefix(app, prefix: "screen_memory_ocr_highlight_") != nil
+}
+
+if let search = find(app, id: "screen_memory_search_field") {
+  AXUIElementSetAttributeValue(search, kAXValueAttribute as CFString, "" as CFTypeRef)
+}
+if let submit = find(app, id: "screen_memory_search_submit") {
+  AXUIElementPerformAction(pressableAncestor(submit) ?? submit, kAXPressAction as CFString)
+}
+RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+if let safariFilter = find(app, id: "screen_memory_app_filter_Safari") {
+  AXUIElementPerformAction(pressableAncestor(safariFilter) ?? safariFilter, kAXPressAction as CFString)
+}
+RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+let filteredFrame = findIdentifierPrefix(app, prefix: "screen_memory_frame_")
+if let filteredFrame {
+  AXUIElementPerformAction(pressableAncestor(filteredFrame) ?? filteredFrame, kAXPressAction as CFString)
+}
+record(
+  name: "rewind-filter-open",
+  element: filteredFrame ?? rewindRoot,
+  assertion: "an app filter narrows the timeline and a visible frame can be selected"
+) {
+  filteredFrame != nil && bridgeState()["screen_memory_selected_record"] as? String != nil
+}
+
+if let allApps = find(app, id: "screen_memory_app_filter_all") {
+  AXUIElementPerformAction(pressableAncestor(allApps) ?? allApps, kAXPressAction as CFString)
+}
+RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+let selectedBeforeScrub = bridgeState()["screen_memory_selected_record"] as? String
+if let scrubForward = find(app, id: "screen_memory_scrub_forward") {
+  AXUIElementPerformAction(pressableAncestor(scrubForward) ?? scrubForward, kAXPressAction as CFString)
+}
+record(
+  name: "rewind-scrub",
+  element: find(app, id: "screen_memory_scrub_forward") ?? rewindRoot,
+  assertion: "the shipped scrub control selects the next captured frame"
+) {
+  let selectedAfterScrub = bridgeState()["screen_memory_selected_record"] as? String
+  return selectedBeforeScrub != nil && selectedAfterScrub != nil && selectedAfterScrub != selectedBeforeScrub
+}
+
+if let playPause = find(app, id: "screen_memory_play_pause") {
+  AXUIElementPerformAction(pressableAncestor(playPause) ?? playPause, kAXPressAction as CFString)
+}
+record(
+  name: "rewind-render-frame",
+  element: find(app, id: "screen_memory_current_frame") ?? rewindRoot,
+  assertion: "the shipped viewer renders a selected frame and exposes play/pause"
+) {
+  find(app, id: "screen_memory_current_frame") != nil
+    && (bridgeState()["screen_memory_playing"] as? Bool) == true
+}
+if let playPause = find(app, id: "screen_memory_play_pause") {
+  AXUIElementPerformAction(pressableAncestor(playPause) ?? playPause, kAXPressAction as CFString)
+}
+
+let framesBeforeDelete = integer(bridgeState()["screen_memory_frames"])
+if let deleteFrame = find(app, id: "screen_memory_delete_frame") {
+  AXUIElementPerformAction(pressableAncestor(deleteFrame) ?? deleteFrame, kAXPressAction as CFString)
+}
+RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+if let confirmDelete = findTitle(app, "Delete").flatMap(pressableAncestor) {
+  AXUIElementPerformAction(confirmDelete, kAXPressAction as CFString)
+}
+let deleteDeadline = Date().addingTimeInterval(5)
+while integer(bridgeState()["screen_memory_frames"]) >= framesBeforeDelete && Date() < deleteDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+record(
+  name: "rewind-delete",
+  element: find(app, id: "screen_memory_delete_frame") ?? rewindRoot,
+  assertion: "deleting a frame requires confirmation and removes it through the local archive"
+) {
+  integer(bridgeState()["screen_memory_frames"]) < framesBeforeDelete
+}
+
+_ = try bridgeRequest("POST", "/v1/fixtures/seed")
+let reseedDeadline = Date().addingTimeInterval(5)
+while integer(bridgeState()["screen_memory_frames"]) == 0 && Date() < reseedDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+let framesBeforeClear = integer(bridgeState()["screen_memory_frames"])
+if let clearLocal = findAfterScrolling(app, id: "screen_memory_clear_local_data") {
+  AXUIElementPerformAction(pressableAncestor(clearLocal) ?? clearLocal, kAXPressAction as CFString)
+}
+RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+if let confirmClear = findTitle(app, "Clear Local Data").flatMap(pressableAncestor) {
+  AXUIElementPerformAction(confirmClear, kAXPressAction as CFString)
+}
+let clearDeadline = Date().addingTimeInterval(5)
+while integer(bridgeState()["screen_memory_frames"]) != 0 && Date() < clearDeadline {
+  RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+}
+record(
+  name: "rewind-clear-local-data",
+  element: find(app, id: "screen_memory_clear_local_data") ?? rewindRoot,
+  assertion: "clearing all local Rewind data requires confirmation and empties the archive"
+) {
+  framesBeforeClear > 0 && integer(bridgeState()["screen_memory_frames"]) == 0
+}
+_ = try bridgeRequest("POST", "/v1/fixtures/seed")
 
 // Onboarding records a granted/denied/deferred decision per permission through its
 // real path (the seed defers both). Verify the app persisted a valid decision
@@ -896,9 +1053,10 @@ if !steps.contains(where: { $0.name == "onboarding-reset-confirmation" && $0.pas
 
 let required = [
   "fixture-seed", "settings-general", "settings-rewind", "settings-privacy", "settings-about",
-  // Rewind journey (headless timeline smoke over the seeded archive).
-  "rewind-open", "rewind-search", "rewind-filter-open", "rewind-scrub",
-  "rewind-render-frame", "rewind-delete",
+  // Shipped Rewind journey driven through the real Settings controls.
+  "rewind-open", "rewind-day-navigation", "rewind-search", "rewind-ocr-highlights",
+  "rewind-filter-open", "rewind-scrub", "rewind-render-frame", "rewind-delete",
+  "rewind-clear-local-data",
   // Floating Bar is the sole conversation surface, driven through the real composer.
   "floating-bar-ordinary-reply-silent", "floating-bar-text-send",
   "floating-bar-close-reopen-continuity", "proactive-pmb-auto-present",

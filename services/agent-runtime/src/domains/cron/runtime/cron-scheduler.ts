@@ -49,9 +49,13 @@ export function createCronScheduler(params: {
 
   let resyncTimer: NodeJS.Timeout | null = null;
   let stopped = true;
+  let lifecycleVersion = 0;
 
-  async function reload(): Promise<void> {
+  async function reload(shouldApply: () => boolean = () => true): Promise<boolean> {
     const jobs = await params.cronJobsRepo.listActive();
+    if (!shouldApply()) {
+      return false;
+    }
     const activeIds = new Set<string>();
     for (const job of jobs) {
       if (job.nextFireAt) {
@@ -64,13 +68,20 @@ export function createCronScheduler(params: {
         heap.cancel(key);
       }
     }
+    return true;
   }
 
-  async function runResync(): Promise<void> {
+  async function runResync(shouldApply: () => boolean = () => true): Promise<void> {
     try {
-      await reload();
+      const applied = await reload(shouldApply);
+      if (!applied) {
+        return;
+      }
       logger.info("cron.resync", { status: "ok" });
     } catch (error) {
+      if (!shouldApply()) {
+        return;
+      }
       if (isTransient(error)) {
         logger.warn("cron.resync", { status: "failed" });
       } else {
@@ -95,24 +106,42 @@ export function createCronScheduler(params: {
         return;
       }
       stopped = false;
-      void reload()
-        .then(() => {
-          heap.start();
-          logger.info("cron.scheduler_started", { status: "ok" });
-          if (resyncIntervalMs > 0 && Number.isFinite(resyncIntervalMs)) {
-            resyncTimer = setInterval(() => void runResync(), resyncIntervalMs);
+      const version = ++lifecycleVersion;
+      const isCurrent = () => !stopped && lifecycleVersion === version;
+      const activate = () => {
+        if (!isCurrent()) {
+          return;
+        }
+        heap.start();
+        logger.info("cron.scheduler_started", { status: "ok" });
+        if (resyncIntervalMs > 0 && Number.isFinite(resyncIntervalMs)) {
+          resyncTimer = setInterval(() => void runResync(isCurrent), resyncIntervalMs);
+        }
+      };
+      void reload(isCurrent)
+        .then((applied) => {
+          if (!applied) {
+            return;
           }
+          activate();
         })
         .catch((error) => {
+          if (!isCurrent()) {
+            return;
+          }
           if (isTransient(error)) {
             logger.warn("cron.boot", { status: "failed" });
           } else {
             logger.error("cron.boot", error, { status: "failed" });
           }
+          // Keep the event-driven clock and coarse reconciliation alive so a
+          // transient boot outage can recover without a process restart.
+          activate();
         });
     },
     stop() {
       stopped = true;
+      lifecycleVersion += 1;
       heap.stop();
       if (resyncTimer !== null) {
         clearInterval(resyncTimer);

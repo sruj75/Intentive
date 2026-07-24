@@ -82,5 +82,7 @@ spinner; the status item uses `waveform.circle`).
   (`FloatingControlBarStateTests`, `FloatingBarGeometryTests`) are restored to the build.
 - The menu bar uses `NSStatusBar`, matching Omi's own rejection of `MenuBarExtra` on
   Sequoia.
-- The `⌘O` global hotkey is a fixed Carbon registration owned by the Manager; Omi's
-  configurable `ShortcutSettings` is not carried.
+- The Carbon global-hotkey registration remains owned by the Manager. The renovated
+  settings seam now defaults to `⇧⌘↩`, migrates the legacy `⌘O` default, and refuses
+  global chords with fewer than two modifiers so normal typing and ubiquitous
+  application shortcuts cannot be intercepted.

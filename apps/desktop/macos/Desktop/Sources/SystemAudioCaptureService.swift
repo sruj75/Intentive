@@ -3,6 +3,71 @@ import AVFoundation
 import CoreAudio
 import IntentiveDesktopCore
 
+/// One logical Float32 buffer supplied by CoreAudio.
+///
+/// CoreAudio may supply all channels interleaved in one buffer or split channels
+/// across multiple non-interleaved buffers. `channelCount` describes the layout
+/// of this buffer's `samples`.
+public struct SystemAudioFloat32Buffer: Sendable {
+    public let samples: [Float32]
+    public let channelCount: Int
+
+    public init(samples: [Float32], channelCount: Int) {
+        self.samples = samples
+        self.channelCount = channelCount
+    }
+}
+
+/// Normalizes CoreAudio's interleaved or non-interleaved Float32 buffers to mono.
+public enum SystemAudioPCMDownmixer {
+    public static func downmix(
+        buffers: [SystemAudioFloat32Buffer],
+        expectedChannelCount: Int
+    ) -> [Float32]? {
+        guard expectedChannelCount > 0, !buffers.isEmpty else { return nil }
+
+        var frameCount: Int?
+        var actualChannelCount = 0
+        for buffer in buffers {
+            guard buffer.channelCount > 0,
+                  !buffer.samples.isEmpty,
+                  buffer.samples.count.isMultiple(of: buffer.channelCount) else {
+                return nil
+            }
+
+            let bufferFrameCount = buffer.samples.count / buffer.channelCount
+            if let frameCount {
+                guard bufferFrameCount == frameCount else { return nil }
+            } else {
+                frameCount = bufferFrameCount
+            }
+            actualChannelCount += buffer.channelCount
+        }
+
+        guard actualChannelCount == expectedChannelCount,
+              let frameCount,
+              frameCount > 0 else {
+            return nil
+        }
+
+        var mono = [Float32](repeating: 0, count: frameCount)
+        for buffer in buffers {
+            for frame in 0..<frameCount {
+                let frameStart = frame * buffer.channelCount
+                for channel in 0..<buffer.channelCount {
+                    mono[frame] += buffer.samples[frameStart + channel]
+                }
+            }
+        }
+
+        let divisor = Float32(actualChannelCount)
+        for frame in mono.indices {
+            mono[frame] /= divisor
+        }
+        return mono
+    }
+}
+
 /// Service for capturing system audio using Core Audio Taps (macOS 14.4+)
 /// Captures all system audio output and converts to 16-bit PCM at 16kHz for transcription
 @available(macOS 14.4, *)
@@ -64,6 +129,7 @@ public class SystemAudioCaptureService: @unchecked Sendable {
     private var inputFormat: AVAudioFormat?
     private var targetFormat: AVAudioFormat?
     private var sourceSampleRate: Double = 0.0
+    private var sourceChannelCount = 0
 
     // Tap UUID for identification
     private let tapUUID = UUID()
@@ -180,13 +246,14 @@ public class SystemAudioCaptureService: @unchecked Sendable {
         }
 
         sourceSampleRate = format.mSampleRate
+        sourceChannelCount = Int(format.mChannelsPerFrame)
         log("SystemAudioCapture: Source format - \(format.mSampleRate)Hz, \(format.mChannelsPerFrame) channels, \(format.mBitsPerChannel) bits")
 
-        // 5. Create AVAudioFormat for conversion
+        // 5. Normalize every CoreAudio layout to mono before sample-rate conversion.
         guard let inputFmt = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: format.mSampleRate,
-            channels: AVAudioChannelCount(format.mChannelsPerFrame),
+            channels: 1,
             interleaved: false
         ) else {
             cleanup()
@@ -252,6 +319,7 @@ public class SystemAudioCaptureService: @unchecked Sendable {
         self.inputFormat = nil
         self.targetFormat = nil
         self.sourceSampleRate = 0.0
+        self.sourceChannelCount = 0
 
         // AudioDeviceStop can block — run off main thread
         audioQueue.async {
@@ -303,20 +371,44 @@ public class SystemAudioCaptureService: @unchecked Sendable {
     /// Handle incoming audio data from the tap
     private func handleAudioInput(_ inputData: UnsafePointer<AudioBufferList>?, timestamp: UnsafePointer<AudioTimeStamp>?) {
         guard isCapturing,
-              let bufferList = inputData?.pointee,
+              let inputData,
               let converter = audioConverter,
               let targetFmt = targetFormat else { return }
 
-        // Get the first buffer (interleaved or first channel)
-        let buffer = bufferList.mBuffers
+        let audioBuffers = UnsafeMutableAudioBufferListPointer(
+            UnsafeMutablePointer(mutating: inputData)
+        )
+        var logicalBuffers: [SystemAudioFloat32Buffer] = []
+        logicalBuffers.reserveCapacity(audioBuffers.count)
+        for buffer in audioBuffers {
+            let channelCount = Int(buffer.mNumberChannels)
+            let byteCount = Int(buffer.mDataByteSize)
+            guard channelCount > 0,
+                  byteCount > 0,
+                  byteCount.isMultiple(of: MemoryLayout<Float32>.size),
+                  let data = buffer.mData else {
+                return
+            }
 
-        guard let data = buffer.mData, buffer.mDataByteSize > 0 else { return }
+            let sampleCount = byteCount / MemoryLayout<Float32>.size
+            let samples = Array(
+                UnsafeBufferPointer(
+                    start: data.assumingMemoryBound(to: Float32.self),
+                    count: sampleCount
+                )
+            )
+            logicalBuffers.append(
+                SystemAudioFloat32Buffer(samples: samples, channelCount: channelCount)
+            )
+        }
 
-        // Calculate frame count
-        let bytesPerFrame = UInt32(MemoryLayout<Float32>.size) * buffer.mNumberChannels
-        let frameCount = buffer.mDataByteSize / bytesPerFrame
-
-        guard frameCount > 0 else { return }
+        guard let monoSamples = SystemAudioPCMDownmixer.downmix(
+            buffers: logicalBuffers,
+            expectedChannelCount: sourceChannelCount
+        ) else {
+            return
+        }
+        let frameCount = AVAudioFrameCount(monoSamples.count)
 
         // Create input AVAudioPCMBuffer
         guard let inputFmt = inputFormat,
@@ -324,25 +416,11 @@ public class SystemAudioCaptureService: @unchecked Sendable {
 
         inputBuffer.frameLength = frameCount
 
-        // Copy data to input buffer
-        // System audio is typically interleaved stereo Float32
-        let srcPtr = data.assumingMemoryBound(to: Float32.self)
-        let channelCount = Int(buffer.mNumberChannels)
-
-        if channelCount >= 2 {
-            // Mix stereo to mono by averaging channels
-            guard let floatData = inputBuffer.floatChannelData else { return }
-            let monoPtr = floatData[0]
-
-            for i in 0..<Int(frameCount) {
-                let left = srcPtr[i * channelCount]
-                let right = srcPtr[i * channelCount + 1]
-                monoPtr[i] = (left + right) / 2.0
+        guard let destination = inputBuffer.floatChannelData?[0] else { return }
+        monoSamples.withUnsafeBufferPointer { samples in
+            if let source = samples.baseAddress {
+                destination.update(from: source, count: samples.count)
             }
-        } else {
-            // Already mono, just copy
-            guard let floatData = inputBuffer.floatChannelData else { return }
-            memcpy(floatData[0], srcPtr, Int(buffer.mDataByteSize))
         }
 
         // Calculate output frame count based on sample rate conversion
@@ -434,6 +512,7 @@ public class SystemAudioCaptureService: @unchecked Sendable {
         inputFormat = nil
         targetFormat = nil
         sourceSampleRate = 0.0
+        sourceChannelCount = 0
     }
 
     deinit {

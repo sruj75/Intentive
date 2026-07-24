@@ -282,6 +282,7 @@ for _ in {1..100}; do
 done
 
 /usr/bin/env \
+  INTENTIVE_RELEASE_ACCEPTANCE_MODE=1 \
   INTENTIVE_DESKTOP_USER_JWT=stage2-local-pmb-jwt \
   INTENTIVE_CONTROL_PLANE_URL="http://127.0.0.1:$PMB_PORT" \
   "$INSTALLED_APP/Contents/MacOS/Intentive" \

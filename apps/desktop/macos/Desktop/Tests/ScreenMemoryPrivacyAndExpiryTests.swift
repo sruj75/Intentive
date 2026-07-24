@@ -52,6 +52,38 @@ final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
     XCTAssertFalse(relaunched.allows(appBundleID: "com.bitwarden.desktop", appName: "Bitwarden"))
   }
 
+  func testResetPrivacyZonesRestoresEveryCanonicalDefaultAndClearsRemovedDefaults() throws {
+    let persistence = InMemoryScreenMemoryPrivacyPersistence()
+    let policy = ScreenMemoryPrivacyPolicy(persistence: persistence)
+    let removedDefault = try XCTUnwrap(
+      ScreenMemoryPrivacyPolicy.defaultExcludedApplications.first {
+        $0.bundleID == "com.bitwarden.desktop"
+      }
+    )
+
+    try policy.include(removedDefault)
+    try policy.exclude(
+      PrivacyZoneApplication(
+        bundleID: "com.tinyspeck.slackmacgap",
+        displayName: "Slack"
+      )
+    )
+
+    try policy.resetPrivacyZonesToDefaults()
+
+    XCTAssertEqual(
+      policy.snapshot.excludedApplications,
+      ScreenMemoryPrivacyPolicy.defaultExcludedApplications
+    )
+
+    let relaunched = ScreenMemoryPrivacyPolicy(persistence: persistence)
+    XCTAssertEqual(
+      relaunched.snapshot.excludedApplications,
+      ScreenMemoryPrivacyPolicy.defaultExcludedApplications,
+      "reset must clear removed-default identities so every protected app survives relaunch"
+    )
+  }
+
   func testCapturedBundleIdentifierIsAuthoritativeOverDisplayNameOnlyExclusion() throws {
     let persistence = InMemoryScreenMemoryPrivacyPersistence()
     let policy = ScreenMemoryPrivacyPolicy(persistence: persistence)
@@ -91,6 +123,33 @@ final class ScreenMemoryPrivacyAndExpiryTests: XCTestCase {
 
     try relaunched.include(textEdit)
     XCTAssertTrue(relaunched.allows(appBundleID: "com.apple.TextEdit", appName: "TextEdit"))
+  }
+
+  func testSelectedRunningApplicationPersistsBundleIdentifierAndDisplayName() throws {
+    let persistence = InMemoryScreenMemoryPrivacyPersistence()
+    let policy = ScreenMemoryPrivacyPolicy(persistence: persistence)
+    let slack = PrivacyZoneApplication(
+      bundleID: "com.tinyspeck.slackmacgap",
+      displayName: "Slack"
+    )
+
+    try policy.exclude(slack)
+
+    let relaunched = ScreenMemoryPrivacyPolicy(persistence: persistence)
+    XCTAssertTrue(relaunched.snapshot.excludedApplications.contains(slack))
+    XCTAssertFalse(
+      relaunched.allows(
+        appBundleID: "com.tinyspeck.slackmacgap",
+        appName: "Slack"
+      )
+    )
+    XCTAssertTrue(
+      relaunched.allows(
+        appBundleID: "com.example.slack-lookalike",
+        appName: "Slack"
+      ),
+      "a selected app exclusion must remain scoped to its persisted bundle identifier"
+    )
   }
 
   func testChangingRetentionUpdatesExistingRecordsAndPersistsForReopen() async throws {

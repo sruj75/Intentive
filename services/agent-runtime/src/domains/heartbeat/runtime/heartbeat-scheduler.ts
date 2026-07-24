@@ -50,6 +50,7 @@ export function createHeartbeatScheduler(params: {
 
   let resyncTimer: NodeJS.Timeout | null = null;
   let stopped = true;
+  let lifecycleVersion = 0;
   let consecutiveFailures = 0;
   const escalateAfter = 3;
 
@@ -65,8 +66,11 @@ export function createHeartbeatScheduler(params: {
     }
   }
 
-  async function reload(): Promise<void> {
+  async function reload(shouldApply: () => boolean = () => true): Promise<boolean> {
     const users = await params.scheduleRepo.listAll();
+    if (!shouldApply()) {
+      return false;
+    }
     const activeIds = new Set<string>();
     for (const user of users) {
       activeIds.add(user.userId);
@@ -77,14 +81,21 @@ export function createHeartbeatScheduler(params: {
         heap.cancel(key);
       }
     }
+    return true;
   }
 
-  async function runResync(): Promise<void> {
+  async function runResync(shouldApply: () => boolean = () => true): Promise<void> {
     try {
-      await reload();
+      const applied = await reload(shouldApply);
+      if (!applied) {
+        return;
+      }
       consecutiveFailures = 0;
       logger.info("heartbeat.resync", { status: "ok" });
     } catch (error) {
+      if (!shouldApply()) {
+        return;
+      }
       logFailure(error);
     }
   }
@@ -108,20 +119,38 @@ export function createHeartbeatScheduler(params: {
         return;
       }
       stopped = false;
-      void reload()
-        .then(() => {
-          heap.start();
-          logger.info("heartbeat.scheduler_started", { status: "ok" });
-          if (resyncIntervalMs > 0 && Number.isFinite(resyncIntervalMs)) {
-            resyncTimer = setInterval(() => void runResync(), resyncIntervalMs);
+      const version = ++lifecycleVersion;
+      const isCurrent = () => !stopped && lifecycleVersion === version;
+      const activate = () => {
+        if (!isCurrent()) {
+          return;
+        }
+        heap.start();
+        logger.info("heartbeat.scheduler_started", { status: "ok" });
+        if (resyncIntervalMs > 0 && Number.isFinite(resyncIntervalMs)) {
+          resyncTimer = setInterval(() => void runResync(isCurrent), resyncIntervalMs);
+        }
+      };
+      void reload(isCurrent)
+        .then((applied) => {
+          if (!applied) {
+            return;
           }
+          activate();
         })
         .catch((error) => {
+          if (!isCurrent()) {
+            return;
+          }
           logFailure(error);
+          // Keep the event-driven clock and coarse reconciliation alive so a
+          // transient boot outage can recover without a process restart.
+          activate();
         });
     },
     stop() {
       stopped = true;
+      lifecycleVersion += 1;
       heap.stop();
       if (resyncTimer !== null) {
         clearInterval(resyncTimer);

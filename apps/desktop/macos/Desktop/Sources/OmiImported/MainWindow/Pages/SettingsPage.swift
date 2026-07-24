@@ -112,10 +112,8 @@ private struct GeneralSettings<Model: IntentiveSettingsPresenting>: View {
         Spacer()
       }
       HStack(spacing: OmiSpacing.sm) {
-        shortcutButton("command+o", tokens: ["⌘", "O"])
-        shortcutButton("command+return", tokens: ["⌘", "↩"])
         shortcutButton("command+shift+return", tokens: ["⇧", "⌘", "↩"])
-        shortcutButton("command+j", tokens: ["⌘", "J"])
+        shortcutButton("command+shift+space", tokens: ["⌘", "⇧", "Space"])
         Button("Custom", action: model.recordCustomShortcut)
           .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
           .padding(.horizontal, 11).padding(.vertical, 7)
@@ -151,11 +149,14 @@ private struct GeneralSettings<Model: IntentiveSettingsPresenting>: View {
 private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
   @State private var appToAdd = ""
+  @State private var pendingDestructiveAction: RewindDestructiveAction?
 
   var body: some View {
     VStack(spacing: OmiSpacing.xxl) {
+      timelineBrowser
       IntentiveSettingsCard(title: "Storage", subtitle: "Screen recordings are stored locally on this Mac.", icon: "internaldrive.fill") {
         Text(model.storageSummary).foregroundColor(OmiColors.textSecondary).font(.system(size: 13, weight: .medium))
+          .accessibilityIdentifier("screen_memory_storage_label")
       }
       excludedAppsCard
       IntentiveSettingsCard(title: "Battery Optimization", subtitle: "Capture frequency adapts automatically to power state.", icon: "battery.75percent") {
@@ -168,7 +169,177 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
         .labelsHidden().frame(width: 130)
         .accessibilityIdentifier("rewind-retention-picker")
       }
+      Button("Clear Local Data", role: .destructive) {
+        pendingDestructiveAction = .clearLocalData
+      }
+      .buttonStyle(OmiButtonStyle(.secondary))
+      .accessibilityIdentifier("screen_memory_clear_local_data")
     }
+    .accessibilityIdentifier("screen_memory")
+    .alert(item: $pendingDestructiveAction) { action in
+      switch action {
+      case .deleteFrame:
+        Alert(
+          title: Text("Delete this frame?"),
+          message: Text("The selected local frame and its associated recording chunk will be removed."),
+          primaryButton: .destructive(Text("Delete")) { model.deleteSelectedRewindFrame() },
+          secondaryButton: .cancel()
+        )
+      case .clearLocalData:
+        Alert(
+          title: Text("Clear all local Rewind data?"),
+          message: Text("All locally stored screen records and recording media will be permanently removed."),
+          primaryButton: .destructive(Text("Clear Local Data")) { model.clearRewindLocalData() },
+          secondaryButton: .cancel()
+        )
+      }
+    }
+  }
+
+  private var timelineBrowser: some View {
+    VStack(alignment: .leading, spacing: OmiSpacing.lg) {
+      HStack(spacing: OmiSpacing.sm) {
+        Image(systemName: "magnifyingglass").foregroundColor(OmiColors.textTertiary)
+        TextField(
+          "Search captured text, apps, and windows",
+          text: Binding(get: { model.rewindQuery }, set: { model.rewindQuery = $0 })
+        )
+        .textFieldStyle(.plain)
+        .onSubmit(model.submitRewindSearch)
+        .accessibilityIdentifier("screen_memory_search_field")
+        Button("Search", action: model.submitRewindSearch)
+          .buttonStyle(OmiButtonStyle(.secondary, size: .compact))
+          .accessibilityIdentifier("screen_memory_search_submit")
+      }
+      .padding(.horizontal, OmiSpacing.md).padding(.vertical, OmiSpacing.sm)
+      .background(OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: OmiChrome.elementRadius))
+
+      HStack {
+        Button(action: { model.moveRewindDay(-1) }) { Image(systemName: "chevron.left") }
+          .buttonStyle(.plain).accessibilityIdentifier("screen_memory_previous_day")
+        Spacer()
+        Text(model.rewindSelectedDate)
+          .font(.system(size: 13, weight: .semibold)).foregroundColor(OmiColors.textPrimary)
+        Spacer()
+        Button(action: { model.moveRewindDay(1) }) { Image(systemName: "chevron.right") }
+          .buttonStyle(.plain).accessibilityIdentifier("screen_memory_next_day")
+      }
+
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: OmiSpacing.sm) {
+          appFilterButton("All Apps", app: nil)
+          ForEach(model.rewindAvailableApps, id: \.self) { app in appFilterButton(app, app: app) }
+        }
+      }
+
+      if model.rewindFrames.isEmpty {
+        VStack(spacing: OmiSpacing.sm) {
+          Image(systemName: "clock.badge.questionmark").font(.system(size: 28))
+          Text("No captured frames for this view").font(.system(size: 13, weight: .medium))
+        }
+        .foregroundColor(OmiColors.textTertiary)
+        .frame(maxWidth: .infinity, minHeight: 180)
+        .accessibilityIdentifier("screen_memory_empty_state")
+      } else {
+        currentFrame
+        playbackControls
+        filmstrip
+        ocrCard
+      }
+    }
+    .intentiveCard()
+  }
+
+  @ViewBuilder private var currentFrame: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: OmiChrome.elementRadius).fill(Color.black.opacity(0.7))
+      if let data = model.rewindSelectedFrameData, let image = NSImage(data: data) {
+        Image(nsImage: image).resizable().scaledToFit()
+      } else {
+        ProgressView().controlSize(.small)
+      }
+    }
+    .frame(maxWidth: .infinity).aspectRatio(16 / 9, contentMode: .fit)
+    .clipShape(RoundedRectangle(cornerRadius: OmiChrome.elementRadius))
+    .accessibilityIdentifier("screen_memory_current_frame")
+  }
+
+  private var playbackControls: some View {
+    HStack {
+      Button(action: { model.stepRewind(-1) }) { Image(systemName: "backward.frame.fill") }
+        .buttonStyle(.plain).accessibilityIdentifier("screen_memory_scrub_backward")
+      Button(action: model.toggleRewindPlayback) {
+        Image(systemName: model.rewindIsPlaying ? "pause.fill" : "play.fill")
+      }
+      .buttonStyle(.plain).accessibilityIdentifier("screen_memory_play_pause")
+      Button(action: { model.stepRewind(1) }) { Image(systemName: "forward.frame.fill") }
+        .buttonStyle(.plain).accessibilityIdentifier("screen_memory_scrub_forward")
+      Spacer()
+      Button(role: .destructive) { pendingDestructiveAction = .deleteFrame } label: {
+        Label("Delete Frame", systemImage: "trash")
+      }
+      .buttonStyle(.plain).foregroundColor(.red)
+      .accessibilityIdentifier("screen_memory_delete_frame")
+    }
+  }
+
+  private var filmstrip: some View {
+    ScrollView(.horizontal, showsIndicators: true) {
+      HStack(spacing: OmiSpacing.sm) {
+        ForEach(model.rewindFrames) { frame in
+          Button { model.selectRewindFrame(id: frame.id) } label: {
+            VStack(alignment: .leading, spacing: 3) {
+              Text(frame.appName).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+              Text(frame.windowTitle.isEmpty ? frame.capturedAt : frame.windowTitle)
+                .font(.system(size: 10)).lineLimit(1)
+            }
+            .foregroundColor(OmiColors.textPrimary)
+            .frame(width: 132, alignment: .leading)
+            .padding(OmiSpacing.sm)
+            .background(
+              RoundedRectangle(cornerRadius: 7)
+                .fill(model.rewindSelectedFrameID == frame.id ? OmiColors.accent.opacity(0.28) : OmiColors.backgroundSecondary)
+            )
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("screen_memory_frame_\(frame.id)")
+        }
+      }
+    }
+    .accessibilityIdentifier("screen_memory_filmstrip")
+  }
+
+  @ViewBuilder private var ocrCard: some View {
+    if !model.rewindSelectedOCRText.isEmpty {
+      VStack(alignment: .leading, spacing: OmiSpacing.sm) {
+        Text("Captured Text").font(.system(size: 13, weight: .semibold)).foregroundColor(OmiColors.textPrimary)
+        Text(model.rewindSelectedOCRText)
+          .font(.system(size: 12)).foregroundColor(OmiColors.textSecondary)
+          .textSelection(.enabled)
+        ForEach(Array(model.rewindSelectedOCRMatches.enumerated()), id: \.offset) { index, match in
+          Text(match)
+            .font(.system(size: 12, weight: .medium)).foregroundColor(OmiColors.textPrimary)
+            .padding(OmiSpacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OmiColors.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityIdentifier("screen_memory_ocr_highlight_\(index)")
+        }
+      }
+      .padding(OmiSpacing.md)
+      .background(OmiColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: OmiChrome.elementRadius))
+    }
+  }
+
+  private func appFilterButton(_ title: String, app: String?) -> some View {
+    let selected = model.rewindSelectedApp == app
+    return Button { model.filterRewind(app: app) } label: {
+      Text(title).font(.system(size: 11, weight: .medium))
+        .padding(.horizontal, 9).padding(.vertical, 6)
+        .foregroundColor(selected ? OmiColors.textPrimary : OmiColors.textSecondary)
+        .background(selected ? OmiColors.accent.opacity(0.22) : OmiColors.backgroundSecondary, in: Capsule())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier(app.map { "screen_memory_app_filter_\($0)" } ?? "screen_memory_app_filter_all")
   }
 
   private var excludedAppsCard: some View {
@@ -227,10 +398,7 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
         Text("Currently Running Apps").font(.system(size: 12, weight: .medium)).foregroundColor(OmiColors.textSecondary)
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: OmiSpacing.sm) {
-            ForEach(model.runningApplications.filter {
-              runningApplication in
-              !model.excludedApplications.contains { $0.bundleID == runningApplication.id }
-            }) { app in
+            ForEach(model.runningApplications.filter { !model.excludedApplications.contains($0) }) { app in
               Button { model.addExcludedApplication(app) } label: {
                 HStack(spacing: 5) { Image(systemName: "app"); Text(app.name); Image(systemName: "plus.circle.fill") }
                   .font(.system(size: 11, weight: .medium)).foregroundColor(OmiColors.textSecondary)
@@ -245,6 +413,12 @@ private struct RewindSettings<Model: IntentiveSettingsPresenting>: View {
   }
 }
 
+private enum RewindDestructiveAction: String, Identifiable {
+  case deleteFrame
+  case clearLocalData
+  var id: String { rawValue }
+}
+
 private struct PrivacySettings<Model: IntentiveSettingsPresenting>: View {
   @ObservedObject var model: Model
   @State private var trackingExpanded = false
@@ -257,6 +431,17 @@ private struct PrivacySettings<Model: IntentiveSettingsPresenting>: View {
           Toggle("", isOn: Binding(get: { model.storeRecordings }, set: { model.storeRecordings = $0 }))
             .labelsHidden().toggleStyle(OmiToggleStyle())
             .accessibilityIdentifier("privacy-store-recordings-toggle")
+        }
+        Divider().overlay(Color.white.opacity(0.08))
+        IntentiveControlRow(
+          title: "Anonymous Analytics",
+          subtitle: "Off until you choose to share anonymous product usage. Screenshots, captured text, audio, and conversations are never included.",
+          icon: "chart.bar.xaxis"
+        ) {
+          Toggle("", isOn: Binding(get: { model.analyticsEnabled }, set: { model.analyticsEnabled = $0 }))
+            .labelsHidden().toggleStyle(OmiToggleStyle())
+            .accessibilityLabel("Share anonymous product analytics")
+            .accessibilityIdentifier("privacy-analytics-toggle")
         }
         Divider().overlay(Color.white.opacity(0.08))
         IntentiveControlRow(title: "Private Cloud Sync", subtitle: "Securely sync your private data across devices.", icon: "icloud") {

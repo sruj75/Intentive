@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "services/*"
   - "packages/*"
+  - "marketing"
   - "tools/linters/*"
 
 allowBuilds:
@@ -30,6 +31,7 @@ overrides:
   shell-quote: "1.9.0"
   uuid: "11.1.1"
   vite: "7.3.5"
+  ws: "^8.20.1"
 
 auditConfig:
   # Every ignore must have reachability, owner, and expiry metadata in

@@ -26,6 +26,9 @@ try {
       "          languages: javascript-typescript",
       "  swift:",
       "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
       "      - uses: github/codeql-action/init@v4",
       "        with:",
       "          languages: swift",
@@ -44,24 +47,100 @@ try {
       "  node:",
       "    steps:",
       "      - run: pnpm harness --group node-workspaces",
-      "  desktop:",
+      "  desktop-swift:",
       "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
       "      - run: pnpm harness --group desktop-swift",
       "",
     ].join("\n"),
   );
   write(
     ".github/workflows/desktop-release-candidate.yml",
-    "jobs:\n  candidate:\n    steps:\n      - run: pnpm --dir apps/desktop desktop:accept\n",
+    [
+      "jobs:",
+      "  candidate-acceptance:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
+      "      - run: pnpm --dir apps/desktop desktop:accept",
+      "",
+    ].join("\n"),
   );
   write(
     ".github/workflows/desktop-release.yml",
-    'jobs:\n  publish:\n    steps:\n      - run: gh release edit "$TAG" --draft=false\n',
+    [
+      "concurrency:",
+      "  group: desktop-release-${{ inputs.release_version }}",
+      "  cancel-in-progress: false",
+      "jobs:",
+      "  release:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
+      "      - run: apps/desktop/macos/scripts/smoke-signed-desktop-artifact.sh",
+      '      - run: git cat-file -t "$RELEASE_TAG"; gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"; echo already published; git tag --annotate "$RELEASE_TAG" "$SHA" --message release && git push origin "refs/tags/$RELEASE_TAG"',
+      "      - uses: softprops/action-gh-release@v3",
+      "        with:",
+      "          draft: true",
+      "  stage2-proof-and-publish:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
+      '      - run: gh release edit "$TAG" --draft=false',
+      "",
+    ].join("\n"),
   );
   write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n');
+  write("marketing/package.json", '{"scripts":{"typecheck":"tsc --noEmit"}}\n');
+  write(
+    ".github/workflows/security-audit.yml",
+    'on:\n  pull_request:\n    paths:\n      - "marketing/package.json"\n',
+  );
+  write(
+    ".github/dependabot.yml",
+    "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n",
+  );
+  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n  - "marketing"\n');
   write("apps/desktop/macos/check.sh", "#!/bin/sh\ngrep -q expected file\n");
 
   assert.deepEqual(inspectCiContracts(repo), []);
+
+  write(
+    ".github/workflows/desktop-release.yml",
+    [
+      "concurrency:",
+      "  group: desktop-release-${{ inputs.release_version }}",
+      "  cancel-in-progress: false",
+      "jobs:",
+      "  release:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
+      '      - run: git tag --annotate "$RELEASE_TAG" "$SHA" --message release && git push origin "refs/tags/$RELEASE_TAG"',
+      "      - run: apps/desktop/macos/scripts/smoke-signed-desktop-artifact.sh",
+      "      - uses: softprops/action-gh-release@v3",
+      "        with:",
+      "          draft: true",
+      "  stage2-proof-and-publish:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
+      '      - run: gh release edit "$TAG" --draft=false',
+      "",
+    ].join("\n"),
+  );
+  assert.ok(
+    inspectCiContracts(repo).some((error) =>
+      error.includes("directly after signed-artifact audit"),
+    ),
+  );
 
   write(
     ".github/workflows/monorepo-foundation.yml",
@@ -92,6 +171,33 @@ try {
   assert.ok(errors.some((error) => error.includes("missing harness group: desktop-swift")));
   assert.ok(errors.some((error) => error.includes("depends on non-baseline command rg")));
   assert.ok(errors.some((error) => error.includes("exactly one workflow may publish")));
+
+  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n');
+  assert.ok(
+    inspectCiContracts(repo).some((error) =>
+      error.includes("pnpm workspace must include the marketing package"),
+    ),
+  );
+  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n  - "marketing"\n');
+
+  write(
+    ".github/workflows/desktop-release-candidate.yml",
+    [
+      "jobs:",
+      "  candidate-acceptance:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "      - run: pnpm --dir apps/desktop desktop:accept",
+      "",
+    ].join("\n"),
+  );
+  assert.ok(
+    inspectCiContracts(repo).some((error) =>
+      error.includes(
+        "Desktop job must checkout Git LFS objects: desktop-release-candidate.yml#candidate-acceptance",
+      ),
+    ),
+  );
 
   // The singular `language` input is silently ignored by codeql-action/init,
   // which then autodetects and fails; the contract must reject it explicitly.

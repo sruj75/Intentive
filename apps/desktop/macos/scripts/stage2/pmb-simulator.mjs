@@ -86,6 +86,12 @@ function encodeTextFrame(text) {
   return Buffer.concat([header, payload]);
 }
 
+function closeWebSocket(socket) {
+  if (!socket.destroyed) {
+    socket.end(Buffer.from([0x88, 0x00]));
+  }
+}
+
 // Incremental decoder for masked client->server text frames. Assumes each
 // message arrives unfragmented (FIN=1), which is true for the small JSON
 // messages this protocol exchanges.
@@ -224,7 +230,7 @@ async function run() {
             socket.write(encodeTextFrame(JSON.stringify(companionMessage)));
             ackTimer = setTimeout(() => {
               result.elapsed_ms = Date.now() - startedAt;
-              socket.destroy();
+              closeWebSocket(socket);
               server.close();
               settle();
             }, args.ackTimeoutMs);
@@ -234,7 +240,7 @@ async function run() {
           result.ok = true;
           result.elapsed_ms = Date.now() - startedAt;
           clearTimeout(ackTimer);
-          socket.destroy();
+          closeWebSocket(socket);
           server.close();
           settle();
         }

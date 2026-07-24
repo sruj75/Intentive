@@ -18,6 +18,9 @@ DMG_MOUNTPOINT=""
 SMOKE_PID=""
 SMOKE_CHECKS=()
 SMOKE_ARTIFACTS=()
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VAD_MODEL_VERIFIER="$SCRIPT_DIR/verify-silero-vad-model.sh"
+PUBLIC_ENDPOINT_VERIFIER="$SCRIPT_DIR/verify-public-endpoint.sh"
 
 usage() {
   cat <<'USAGE'
@@ -155,6 +158,7 @@ validate_release_expectations() {
 
 assert_bundle_identity() {
   local bundle_id version build executable minimum_system url_scheme feed_url public_key
+  local control_plane_url hosted_auth_url token_exchange_url
   bundle_id="$(plist_read CFBundleIdentifier)"
   version="$(plist_read CFBundleShortVersionString)"
   build="$(plist_read CFBundleVersion)"
@@ -163,6 +167,9 @@ assert_bundle_identity() {
   url_scheme="$(plist_read CFBundleURLTypes:0:CFBundleURLSchemes:0)"
   feed_url="$(plist_read SUFeedURL)"
   public_key="$(plist_read SUPublicEDKey)"
+  control_plane_url="$(plist_read IntentiveControlPlaneURL)"
+  hosted_auth_url="$(plist_read IntentiveHostedAuthURL)"
+  token_exchange_url="$(plist_read IntentiveAuthTokenExchangeURL)"
 
   [[ "$bundle_id" == "com.heyintentive.desktop" ]] || fail "bundle id must be com.heyintentive.desktop, got ${bundle_id:-missing}"
   [[ "$minimum_system" == "14.0" ]] || fail "minimum macOS version must be 14.0, got ${minimum_system:-missing}"
@@ -170,6 +177,14 @@ assert_bundle_identity() {
   [[ "$feed_url" == https://* ]] || fail "SUFeedURL must be HTTPS, got ${feed_url:-missing}"
   [[ "$feed_url" != *localhost* && "$feed_url" != *127.0.0.1* ]] || fail "SUFeedURL contains a local endpoint"
   [[ -n "$public_key" ]] || fail "SUPublicEDKey is missing"
+  "$PUBLIC_ENDPOINT_VERIFIER" "IntentiveControlPlaneURL" "$control_plane_url" \
+    || fail "IntentiveControlPlaneURL failed public endpoint verification"
+  "$PUBLIC_ENDPOINT_VERIFIER" "IntentiveHostedAuthURL" "$hosted_auth_url" \
+    || fail "IntentiveHostedAuthURL failed public endpoint verification"
+  if [[ -n "$token_exchange_url" ]]; then
+    "$PUBLIC_ENDPOINT_VERIFIER" "IntentiveAuthTokenExchangeURL" "$token_exchange_url" \
+      || fail "IntentiveAuthTokenExchangeURL failed public endpoint verification"
+  fi
   [[ -n "$executable" && -x "$APP_BUNDLE/Contents/MacOS/$executable" ]] || fail "main executable missing or not executable"
 
   if [[ -n "$RELEASE_TAG" ]]; then
@@ -232,12 +247,13 @@ assert_signing_and_architecture() {
 
 assert_native_boundaries() {
   local resources="$APP_BUNDLE/Contents/Resources"
+  local vad_model="$resources/IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle/silero_vad.onnx"
   [[ -d "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" ]] || fail "Sparkle.framework missing"
   [[ -d "$APP_BUNDLE/Contents/Frameworks/Sentry.framework" ]] || fail "Sentry.framework missing"
   [[ -s "$resources/AppIcon.icns" ]] || fail "AppIcon.icns missing"
   [[ -s "$resources/IntentiveDesktop_Intentive.bundle/IntentiveMenuBarIcon.png" ]] || fail "Intentive menu-bar icon missing"
-  [[ -s "$resources/IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle/silero_vad.onnx" ]] \
-    || fail "local passive-audio VAD asset missing"
+  "$VAD_MODEL_VERIFIER" "$vad_model" >/dev/null \
+    || fail "local passive-audio VAD asset failed release identity verification"
   pass "Native framework integrity passed"
   pass "Local Screen Memory assets and privacy metadata passed"
 }

@@ -578,8 +578,12 @@ final class DesktopViewModel: ObservableObject {
       userID: launchUserID,
       baseApplicationSupportURL: launchConfiguration.profileRoot
     )
-    screenMemory = SwitchableScreenMemoryStore(initialScreenMemory.store)
-    screenMemoryProfileUserID = DesktopLocalProfile.sanitizedUserID(launchUserID)
+    let initialScreenMemoryProfileID = DesktopLocalProfile.sanitizedUserID(launchUserID)
+    screenMemory = SwitchableScreenMemoryStore(
+      initialScreenMemory.store,
+      profileID: initialScreenMemoryProfileID
+    )
+    screenMemoryProfileUserID = initialScreenMemoryProfileID
     status = initialScreenMemory.status
     selected = DesktopSection(loadedUtilitySettings.selectedSection)
     configureRuntimeSocketCallbacks()
@@ -1677,18 +1681,22 @@ final class DesktopViewModel: ObservableObject {
     }
   }
 
-  func excludeApplication(_ application: PrivacyZoneApplication) {
+  func excludeApplication(bundleID: String?, displayName: String) {
     do {
-      try privacyPolicy.exclude(application)
+      try privacyPolicy.exclude(
+        PrivacyZoneApplication(bundleID: bundleID, displayName: displayName)
+      )
       refreshPrivacySnapshot()
     } catch {
       status = "Privacy Zones save failed: \(error.localizedDescription)"
     }
   }
 
-  func includeApplication(_ application: PrivacyZoneApplication) {
+  func includeApplication(bundleID: String?, displayName: String) {
     do {
-      try privacyPolicy.include(application)
+      try privacyPolicy.include(
+        PrivacyZoneApplication(bundleID: bundleID, displayName: displayName)
+      )
       refreshPrivacySnapshot()
     } catch {
       status = "Privacy Zones save failed: \(error.localizedDescription)"
@@ -1878,7 +1886,7 @@ final class DesktopViewModel: ObservableObject {
       userID: userID,
       baseApplicationSupportURL: launchConfiguration.profileRoot
     )
-    screenMemory.replace(with: newScreenMemory.store)
+    screenMemory.replace(with: newScreenMemory.store, profileID: sanitizedUserID)
     screenMemoryProfileUserID = sanitizedUserID
     rebuildScreenMemoryTimeline()
     return newScreenMemory.status
@@ -1959,6 +1967,19 @@ final class DesktopViewModel: ObservableObject {
 }
 
 private enum DesktopRuntimeConfiguration {
+  private static let services: DesktopServiceConfiguration = {
+    let bundle = Bundle.main
+    do {
+      return try DesktopServiceConfiguration.resolve(
+        environment: ProcessInfo.processInfo.environment,
+        bundleInfo: bundle.infoDictionary ?? [:],
+        isPublicRelease: bundle.bundleIdentifier == "com.heyintentive.desktop"
+      )
+    } catch {
+      fatalError("Invalid Desktop service configuration: \(error)")
+    }
+  }()
+
   static var clientVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
       ?? "desktop-dev"
@@ -1980,6 +2001,11 @@ private enum DesktopRuntimeConfiguration {
 
   @MainActor
   static func authProvider() -> AuthAdapter {
+    if let token = DesktopServiceConfiguration.releaseAcceptanceToken(
+      in: ProcessInfo.processInfo.environment
+    ) {
+      return DevAuthProvider(token: token)
+    }
     if let token = environment("INTENTIVE_DESKTOP_USER_JWT") {
       return DevAuthProvider(token: token)
     }
@@ -1993,26 +2019,15 @@ private enum DesktopRuntimeConfiguration {
   }
 
   private static var controlPlaneBaseURL: URL {
-    if let value = environment("INTENTIVE_CONTROL_PLANE_URL"), let url = URL(string: value) {
-      return url
-    }
-    return URL(string: "http://localhost:8080")!
+    services.controlPlaneURL
   }
 
   private static var hostedAuthURL: URL? {
-    guard
-      let value = environment("INTENTIVE_HOSTED_AUTH_URL") ?? environment("INTENTIVE_NEON_AUTH_URL")
-    else {
-      return nil
-    }
-    return URL(string: value)
+    services.hostedAuthURL
   }
 
   private static var hostedAuthTokenExchangeURL: URL? {
-    guard let value = environment("INTENTIVE_AUTH_TOKEN_EXCHANGE_URL") else {
-      return nil
-    }
-    return URL(string: value)
+    services.authTokenExchangeURL
   }
 
   private static var callbackScheme: String {

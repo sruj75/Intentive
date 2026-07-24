@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 @testable import IntentiveDesktopCore
 import XCTest
 
@@ -313,6 +314,65 @@ final class PerceptionSyncTests: XCTestCase {
     XCTAssertEqual(tombstones.first?.eventRefs, [recordID.uuidString])
   }
 
+  func testManualDeleteKeepsDurableIntentWhenTombstonePersistenceFails() async throws {
+    let profile = try ScreenMemoryProfile(userID: "delete-recovery-user", rootURL: temporaryDirectory())
+    let recordID = UUID(uuidString: "23232323-4545-6767-8989-010101010101")!
+    let archive = try ScreenMemoryArchive(
+      profile: profile,
+      imageAnalyzer: FixedAnalyzer(hash: 0x5, ocr: "recoverable searchable text"),
+      idFactory: { recordID }
+    )
+    _ = try await archive.ingest(
+      ScreenMemoryCaptureInput(
+        userID: profile.userID,
+        imageData: Data([4, 5, 6]),
+        capturedAt: Date().protocolTimestamp,
+        appBundleID: "com.intentive.fixture",
+        appName: "Notes",
+        windowTitle: "recoverable"
+      )
+    )
+    try archive.enqueuePerceptionEvent(
+      event(id: recordID.uuidString, expiresAt: "2099-01-01T00:00:00.000Z")
+    )
+    try executeSQL(
+      at: profile.databaseURL,
+      """
+      CREATE TRIGGER reject_deletion_tombstone
+      BEFORE INSERT ON runtime_ingress_outbox
+      WHEN NEW.ingress_kind = 'perception_tombstone'
+      BEGIN
+        SELECT RAISE(ABORT, 'injected tombstone persistence failure');
+      END
+      """
+    )
+
+    do {
+      _ = try await archive.delete(
+        recordID: ScreenMemoryRecordID(recordID),
+        confirmChunkDeletion: true
+      )
+      XCTFail("Expected the injected tombstone persistence failure")
+    } catch {
+      // Expected: the SQLite trigger rejects the tombstone insert.
+    }
+
+    // The record, its pending event, and deletion journal must remain one
+    // recoverable unit when the tombstone cannot be made durable.
+    XCTAssertNotNil(archive.record(ScreenMemoryRecordID(recordID)))
+    XCTAssertEqual(try archive.pendingPerceptionEvents(limit: 10).map(\.eventId), [recordID.uuidString])
+
+    try executeSQL(at: profile.databaseURL, "DROP TRIGGER reject_deletion_tombstone")
+    let recovered = try await archive.prepare()
+
+    XCTAssertEqual(recovered.recordIDs, [recordID.uuidString])
+    XCTAssertNil(archive.record(ScreenMemoryRecordID(recordID)))
+    XCTAssertTrue(try archive.pendingPerceptionEvents(limit: 10).isEmpty)
+    let tombstone = try XCTUnwrap(archive.pendingPerceptionTombstones(limit: 10).first)
+    XCTAssertEqual(tombstone.reason, .manualDelete)
+    XCTAssertEqual(tombstone.eventRefs, [recordID.uuidString])
+  }
+
   func testClearAllEnqueuesClearAllTombstone() async throws {
     let profile = try ScreenMemoryProfile(userID: "clear-user", rootURL: temporaryDirectory())
     let archive = try ScreenMemoryArchive(
@@ -330,6 +390,13 @@ final class PerceptionSyncTests: XCTestCase {
       )
     )
     try archive.enqueuePerceptionEvent(event(id: "any", expiresAt: "2099-01-01T00:00:00.000Z"))
+    let marker = SessionEndMarker(
+      markerId: "clear-all-session-marker",
+      sessionId: "clear-all-session",
+      endedAt: "2026-07-25T00:00:00.000Z",
+      reason: .userToggle
+    )
+    try archive.enqueueSessionEndMarker(marker)
 
     _ = try await archive.clearAll()
 
@@ -338,6 +405,9 @@ final class PerceptionSyncTests: XCTestCase {
     XCTAssertEqual(tombstones.count, 1)
     XCTAssertEqual(tombstones.first?.reason, .clearAll)
     XCTAssertTrue(tombstones.first?.eventRefs.isEmpty ?? false)
+    XCTAssertTrue(
+      try archive.pendingIngress(limit: 10).contains(.sessionEndMarker(marker))
+    )
   }
 
   // MARK: - Helpers
@@ -376,6 +446,25 @@ final class PerceptionSyncTests: XCTestCase {
       expiresAt: expiresAt,
       localRecordRef: "screen-memory://records/\(id)"
     )
+  }
+
+  private func executeSQL(at databaseURL: URL, _ sql: String) throws {
+    var database: OpaquePointer?
+    guard sqlite3_open(databaseURL.path, &database) == SQLITE_OK, let database else {
+      defer { sqlite3_close(database) }
+      throw NSError(domain: "PerceptionSyncTests.SQLite", code: 1)
+    }
+    defer { sqlite3_close(database) }
+    var errorMessage: UnsafeMutablePointer<CChar>?
+    guard sqlite3_exec(database, sql, nil, nil, &errorMessage) == SQLITE_OK else {
+      let message = errorMessage.map { String(cString: $0) } ?? "unknown SQLite error"
+      sqlite3_free(errorMessage)
+      throw NSError(
+        domain: "PerceptionSyncTests.SQLite",
+        code: 2,
+        userInfo: [NSLocalizedDescriptionKey: message]
+      )
+    }
   }
 
   private func temporaryDirectory() throws -> URL {

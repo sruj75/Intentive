@@ -3,8 +3,76 @@ import XCTest
 @testable import IntentiveDesktopCore
 
 final class DesktopUtilitySettingsTests: XCTestCase {
+  func testFloatingBarShortcutDefaultsToCommandShiftReturn() {
+    XCTAssertEqual(DesktopUtilitySettings().floatingBarShortcut, "command+shift+return")
+  }
+
+  func testLegacyCommandODefaultMigratesWithoutOverridingCustomShortcut() throws {
+    let legacy = Data(#"{"floatingBarShortcut":"command+o"}"#.utf8)
+    let custom = Data(#"{"floatingBarShortcut":"custom:49:768:⌘,⇧,Space"}"#.utf8)
+
+    XCTAssertEqual(
+      try JSONDecoder().decode(DesktopUtilitySettings.self, from: legacy).floatingBarShortcut,
+      "command+shift+return"
+    )
+    XCTAssertEqual(
+      try JSONDecoder().decode(DesktopUtilitySettings.self, from: custom).floatingBarShortcut,
+      "custom:49:768:⌘,⇧,Space"
+    )
+  }
+
+  func testLegacySingleModifierPresetsMigrateToSafeDefault() throws {
+    for preset in ["command+return", "command+j", "option+space"] {
+      let encoded = try JSONSerialization.data(
+        withJSONObject: ["floatingBarShortcut": preset]
+      )
+      XCTAssertEqual(
+        try JSONDecoder().decode(DesktopUtilitySettings.self, from: encoded)
+          .floatingBarShortcut,
+        "command+shift+return"
+      )
+    }
+  }
+
   func testPassiveAudioEnabledDefaultsToTrue() {
     XCTAssertTrue(DesktopUtilitySettings().passiveAudioEnabled)
+  }
+
+  func testProductAnalyticsRequiresExplicitOptInForNewProfiles() {
+    XCTAssertFalse(DesktopUtilitySettings().analyticsEnabled)
+  }
+
+  func testLegacySettingsWithoutAnalyticsConsentRemainOptedOut() throws {
+    let legacy = Data(#"{"retentionDays":14,"screenCaptureEnabled":true}"#.utf8)
+
+    let settings = try JSONDecoder().decode(DesktopUtilitySettings.self, from: legacy)
+
+    XCTAssertFalse(settings.analyticsEnabled)
+  }
+
+  func testLegacyImplicitAnalyticsDefaultMigratesToOptedOut() throws {
+    let legacy = Data(#"{"analyticsEnabled":true}"#.utf8)
+
+    let settings = try JSONDecoder().decode(DesktopUtilitySettings.self, from: legacy)
+
+    XCTAssertFalse(settings.analyticsEnabled)
+  }
+
+  func testExplicitAnalyticsConsentSurvivesPersistence() throws {
+    var settings = DesktopUtilitySettings()
+    settings.analyticsEnabled = true
+
+    let encoded = try JSONEncoder().encode(settings)
+    let decoded = try JSONDecoder().decode(
+      DesktopUtilitySettings.self,
+      from: encoded
+    )
+
+    XCTAssertTrue(decoded.analyticsEnabled)
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    XCTAssertEqual(object["analyticsConsentVersion"] as? Int, 1)
   }
 
   func testUtilityNavigationContainsOnlyApprovedDestinations() {

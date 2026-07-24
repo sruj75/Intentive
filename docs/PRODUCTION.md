@@ -127,7 +127,11 @@ pnpm harness --scope apps/desktop
   - `SPARKLE_PUBLIC_ED_KEY`
   - `SPARKLE_PRIVATE_KEY`
   - `DESKTOP_POSTHOG_PROJECT_KEY`
-- Required release variable: `DESKTOP_SENTRY_DSN`
+- Required release variables:
+  - `DESKTOP_SENTRY_DSN`
+  - `DESKTOP_CONTROL_PLANE_URL=https://control-plane-pqenui44sa-uw.a.run.app`
+  - `DESKTOP_HOSTED_AUTH_URL` set to the exact production hosted-auth HTTPS entry point
+- Optional release variable: `DESKTOP_AUTH_TOKEN_EXCHANGE_URL`, only when the hosted callback returns a code that must be exchanged
 
 The workflow reuses the established pre-Omi Developer ID `Developer ID Application: Srujan Gowda (24D6NXS6H7)` and Team ID `24D6NXS6H7`; Apple credentials remain secret-backed. Unsigned workflow-dispatch artifacts are allowed only for internal smoke. Public releases fail before building when any required Apple/Sparkle/telemetry setting is missing, then create a draft release. Only the protected Stage 2 job in the same workflow may publish that immutable draft after digest, signed launch, assembled journey, Sparkle N-1, Tart TCC, and signed-in full-stack evidence are complete. Full procedure: [`../apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
 

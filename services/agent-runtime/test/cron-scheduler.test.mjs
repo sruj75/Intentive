@@ -137,6 +137,103 @@ test("cron scheduler start contains boot-populate failures and never rejects", a
   }
 });
 
+test("cron scheduler retries through coarse resync after boot population fails", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const fired = [];
+  let reloads = 0;
+  const scheduler = createCronScheduler({
+    cronJobsRepo: {
+      listActive: async () => {
+        reloads += 1;
+        if (reloads === 1) {
+          throw new Error("database unavailable");
+        }
+        return [job("recovered", new Date(T0 - 1))];
+      },
+      selectDue: async () => [],
+    },
+    enqueueCron: async (cronJob) => fired.push(cronJob.id),
+    clock: () => new Date(T0),
+    resyncIntervalMs: 1_000,
+  });
+  t.after(() => scheduler.stop());
+
+  scheduler.start();
+  await settleAsyncWork();
+  t.mock.timers.tick(1_000);
+  await settleAsyncWork();
+  await scheduler.tick();
+
+  assert.equal(reloads, 2);
+  assert.deepEqual(fired, ["recovered"]);
+});
+
+test("cron scheduler does not activate or apply a boot reload after stop", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const fired = [];
+  const bootReload = deferred();
+  let reloads = 0;
+  const scheduler = createCronScheduler({
+    cronJobsRepo: {
+      listActive: async () => {
+        reloads += 1;
+        return bootReload.promise;
+      },
+      selectDue: async () => [],
+    },
+    enqueueCron: async (cronJob) => fired.push(cronJob.id),
+    clock: () => new Date(T0),
+    resyncIntervalMs: 1_000,
+  });
+  t.after(() => scheduler.stop());
+
+  scheduler.start();
+  scheduler.stop();
+  bootReload.resolve([job("stale", new Date(T0 - 1))]);
+  await settleAsyncWork();
+  t.mock.timers.tick(10_000);
+  await settleAsyncWork();
+
+  assert.equal(reloads, 1);
+  assert.deepEqual(fired, []);
+});
+
+test("cron scheduler discards a periodic reload from an older lifecycle", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const fired = [];
+  const staleReload = deferred();
+  let reloads = 0;
+  const scheduler = createCronScheduler({
+    cronJobsRepo: {
+      listActive: async () => {
+        reloads += 1;
+        if (reloads === 1) return [];
+        if (reloads === 2) return staleReload.promise;
+        return [job("fresh", new Date(T0 - 1))];
+      },
+      selectDue: async () => [],
+    },
+    enqueueCron: async (cronJob) => fired.push(cronJob.id),
+    clock: () => new Date(T0),
+    resyncIntervalMs: 1_000,
+  });
+  t.after(() => scheduler.stop());
+
+  scheduler.start();
+  await settleAsyncWork();
+  t.mock.timers.tick(1_000);
+  await settleAsyncWork();
+  scheduler.stop();
+  scheduler.start();
+  await settleAsyncWork();
+  staleReload.resolve([job("stale", new Date(T0 - 1))]);
+  await settleAsyncWork();
+  await scheduler.tick();
+
+  assert.equal(reloads, 3);
+  assert.deepEqual(fired, ["fresh"]);
+});
+
 function job(id, nextFireAt) {
   return {
     id,
@@ -151,6 +248,20 @@ function job(id, nextFireAt) {
     prompt: "wake",
     attemptCount: 0,
   };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+async function settleAsyncWork() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function recordingLogger({ errors, warns } = {}) {

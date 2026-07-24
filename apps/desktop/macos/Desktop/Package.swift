@@ -142,6 +142,7 @@ let package = Package(
         "IntentiveDesktopNativeAdapters",
         "IntentiveDesktopNativeAssets",
         "IntentiveDesktopOmiArchive",
+        "IntentiveDesktopPresentation",
       ],
       path: "Tests"
     ),

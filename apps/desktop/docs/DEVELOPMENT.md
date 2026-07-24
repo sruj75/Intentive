@@ -8,7 +8,7 @@ pnpm --dir apps/desktop test
 apps/desktop/macos/run.sh
 ```
 
-Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_BUNDLE_ID` (default `com.heyintentive.desktop` — use `com.heyintentive.desktop.dev` for internal/dev builds), `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_SPARKLE_FEED_URL`, `INTENTIVE_SPARKLE_PUBLIC_ED_KEY`, `INTENTIVE_SENTRY_DSN`, `INTENTIVE_POSTHOG_PROJECT_KEY`, and optionally `INTENTIVE_POSTHOG_HOST` when assembling a release candidate outside GitHub Actions. Sparkle's feed and Ed25519 key are required for signed updates; missing telemetry values disable their respective transport without changing local diagnostics.
+Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_BUNDLE_ID` (default `com.heyintentive.desktop` — use `com.heyintentive.desktop.dev` for internal/dev builds), `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_CONTROL_PLANE_URL`, `INTENTIVE_HOSTED_AUTH_URL`, `INTENTIVE_SPARKLE_FEED_URL`, `INTENTIVE_SPARKLE_PUBLIC_ED_KEY`, `INTENTIVE_SENTRY_DSN`, `INTENTIVE_POSTHOG_PROJECT_KEY`, and optionally `INTENTIVE_AUTH_TOKEN_EXCHANGE_URL` and `INTENTIVE_POSTHOG_HOST` when assembling a release candidate outside GitHub Actions. Production-identity release bundles require HTTPS Control Plane and hosted-auth URLs and embed them in audited bundle metadata; raw and `.dev` launches may override endpoints through the same environment variables. Sparkle's feed and Ed25519 key are required for signed updates; missing telemetry values disable their respective transport without changing local diagnostics.
 
 ### Three channels, isolated by bundle ID
 
@@ -26,7 +26,7 @@ split — agents can trash the `.dev` world without touching the dogfood install
 
 Product analytics is consent-controlled and deny-by-default: only the typed operational property allow-list can reach PostHog. Sentry errors use category/code metadata rather than raw error descriptions. Screenshots, OCR, app/window titles, audio transcripts, conversation text, tokens, and local paths must never be added to either payload. Local JSONL diagnostics rotate at 14 days or 100 MB and can be exported or cleared from Diagnostics.
 
-Tagged GitHub releases reuse the pre-Omi Apple secrets and public Developer ID identity documented in [`RELEASE.md`](RELEASE.md). They additionally require the Sparkle key pair, `DESKTOP_POSTHOG_PROJECT_KEY`, and the public `DESKTOP_SENTRY_DSN` repository variable. Workflow-dispatch smoke builds may omit them; the transports then stay disabled.
+Tagged GitHub releases reuse the pre-Omi Apple secrets and public Developer ID identity documented in [`RELEASE.md`](RELEASE.md). They additionally require the Sparkle key pair, `DESKTOP_POSTHOG_PROJECT_KEY`, and the public `DESKTOP_SENTRY_DSN`, `DESKTOP_CONTROL_PLANE_URL`, and `DESKTOP_HOSTED_AUTH_URL` repository variables. `DESKTOP_AUTH_TOKEN_EXCHANGE_URL` is optional and is embedded only when the hosted callback uses a code exchange. Workflow-dispatch smoke builds may omit telemetry values; the transports then stay disabled.
 
 All active SwiftPM commands go through `macos/scripts/swiftpm.sh`. On this Mac it
 fails closed unless T9 is mounted, and gives every Conductor workspace an isolated
