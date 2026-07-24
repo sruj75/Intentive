@@ -19,7 +19,7 @@
     "@assistant-ui/react-native": "^0.1.20",
     "@better-auth/expo": "1.6.20",
     "@expo-google-fonts/manrope": "^0.4.2",
-    "@expo/metro-runtime": "~56.0.15",
+    "@expo/metro-runtime": "~57.0.7",
     "@expo/vector-icons": "^15.0.2",
     "@intentive/api-contract": "workspace:*",
     "@intentive/domain-types": "workspace:*",
