@@ -1,7 +1,7 @@
 import type { ProcedureFloorResolver } from "../../bundles/types/floor.js";
 import type { Turn } from "../types/turn.js";
 
-export type MonitoringTurnTrigger = "heartbeat" | "perception_event";
+export type MonitoringTurnTrigger = "heartbeat" | "context_snapshot";
 
 export function createMonitoringTurn(params: {
   readonly floorResolver: ProcedureFloorResolver;

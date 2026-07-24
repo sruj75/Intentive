@@ -18,7 +18,6 @@ import {
 
 test("gates sample matches the AccountState shape", () => {
   assert.deepEqual(Object.keys(accountStateSample).sort(), [
-    "email",
     "has_agent_instance",
     "has_desktop_client",
     "next_gate",

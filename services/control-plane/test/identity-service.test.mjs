@@ -12,7 +12,7 @@ import { JwtVerificationError } from "@intentive/providers/auth";
 
 import { createIdentityService } from "../dist/domains/identity/service/resolve-account.js";
 
-const fakeVerifier = (sub, email = null) => ({ verify: async () => ({ user_id: sub, email }) });
+const fakeVerifier = (sub) => ({ verify: async () => ({ user_id: sub }) });
 const fakeUsers = (userId) => ({ resolveUser: async () => ({ userId }) });
 const fakeGates = (gate) => ({ nextGate: async () => gate });
 const fakeDevices = (list = []) => ({ listDevicesForUser: async () => list });
@@ -29,7 +29,7 @@ test("authenticate maps a verified subject to the internal user id", async () =>
   const verifier = {
     verify: async (token) => {
       seen.push(token);
-      return { user_id: "sub-1", email: null };
+      return { user_id: "sub-1" };
     },
   };
   const users = {
@@ -77,22 +77,10 @@ test("resolveAccount composes the gate the gates domain reports", async () => {
 
   assert.deepEqual(account, {
     user_id: "u_1",
-    email: null,
     next_gate: "consent_primer",
     has_agent_instance: false,
     has_desktop_client: false,
   });
-});
-
-test("resolveAccount projects the verified email claim", async () => {
-  const account = await createIdentityService({
-    verifier: fakeVerifier("sub-1", "person@example.com"),
-    users: fakeUsers("u_1"),
-    gates: fakeGates(null),
-    devices: fakeDevices(),
-    agents: fakeAgents(),
-  }).resolveAccount("tok");
-  assert.equal(account.email, "person@example.com");
 });
 
 test("resolveAccount reflects has_agent_instance from the injected agents reader", async () => {
@@ -144,7 +132,7 @@ test("resolveRoutingContext returns userId, authSubject, and nextGate from one v
     verifier: {
       verify: async () => {
         verifyCount += 1;
-        return { user_id: "sub-1", email: null };
+        return { user_id: "sub-1" };
       },
     },
     users: fakeUsers("u_1"),

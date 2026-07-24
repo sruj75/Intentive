@@ -7,7 +7,6 @@ import type { GetMeResponse } from "@intentive/api-contract";
 
 export const controlPlaneContractSample: GetMeResponse = {
   user_id: "user_stub",
-  email: null,
   next_gate: null,
   has_agent_instance: false,
   has_desktop_client: false,

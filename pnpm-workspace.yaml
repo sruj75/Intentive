@@ -1,5 +1,9 @@
 packages:
   - "apps/*"
+  # Signed-in Capture Session smoke harness (#35). Nested under apps/desktop but
+  # its own workspace member so it can declare `ws`/`jose` without bloating the
+  # Desktop app's runtime deps. Not a deployable.
+  - "apps/desktop/smoke"
   - "services/*"
   - "packages/*"
   - "tools/linters/*"
@@ -11,8 +15,22 @@ allowBuilds:
   msgpackr-extract: true
 
 overrides:
-  "brace-expansion@<1.1.16": "1.1.16"
-  "brace-expansion@>=3.0.0 <5.0.7": "5.0.7"
+  # Pin the whole desktop Neon-Auth chain to better-auth 1.4.18. This is the only
+  # line that builds: Neon's `@neondatabase/auth-ui` (all published betas) imports
+  # `apiKeyClient` from `better-auth/client/plugins`, which exists only in <1.5 —
+  # better-auth extracted the apiKey plugin out of core at 1.5. The security patch
+  # for GHSA-wxw3-q3m9-c3jr only lands at >=1.6.2, so the "has apiKeyClient" range
+  # and the "patched" range are disjoint; no single version satisfies both the
+  # Frontend build and the audit. We hold the build-compatible version here and
+  # neutralize the advisory below in `auditConfig` (it targets server-side code we
+  # do not ship). Full rationale + exit criteria: desktop ADR-0026.
+  "@better-auth/passkey": "1.4.18"
+  "@better-auth/passkey>better-auth": "1.4.18"
+  "@daveyplate/better-auth-tanstack>better-auth": "1.4.18"
+  "@daveyplate/better-auth-ui>better-auth": "1.4.18"
+  "@neondatabase/auth>better-auth": "1.4.18"
+  "@neondatabase/auth-ui>@better-auth/passkey": "1.4.18"
+  "@neondatabase/auth-ui>better-auth": "1.4.18"
   # Mobile's `@better-auth/expo` declares `@better-auth/core: ^1.6.20`, which
   # otherwise floats onto whatever core patch is newest (e.g. a just-published
   # 1.6.22). Pin it to 1.6.20 — the exact version mobile's own `better-auth@1.6.20`
@@ -21,13 +39,31 @@ overrides:
   "@better-auth/expo>@better-auth/core": "1.6.20"
   esbuild: "0.28.1"
   form-data: "4.0.6"
-  js-yaml: "4.3.0"
-  shell-quote: "1.9.0"
+  js-yaml: "4.2.0"
   uuid: "11.1.1"
   vite: "7.3.5"
 
 auditConfig:
-  # Every ignore must have reachability, owner, and expiry metadata in
-  # docs/security/dependency-audit-exceptions.json. CI checks exact parity.
+  # GHSA-gv7w-rqvm-qjhr (esbuild <0.28.1): RCE via NPM_CONFIG_REGISTRY only when
+  # esbuild's install script runs under the *Deno* npm-module integration. This
+  # repo runs esbuild solely as a dev-only transitive dep of vite/vitest under
+  # Node, so the Deno-specific vector is unreachable. We cannot bump past the fix
+  # boundary without breaking vite 7.3.3, which pins `esbuild: ^0.27.0`
+  # (<0.28.0). Remove this ignore once vite ships an esbuild ^0.28 range.
+  #
+  # GHSA-wxw3-q3m9-c3jr (better-auth <1.6.2): an OAuth callback accepts a
+  # mismatched `state` when cookie-backed state storage is used without PKCE.
+  # That validation is better-auth's *server-side* callback handler. The Desktop
+  # app bundles only the better-auth *client* (sign-in trigger + `getSession`)
+  # and delegates the OAuth callback to Neon's hosted auth server
+  # (`VITE_NEON_AUTH_URL`) — Neon operates and patches that server; its
+  # better-auth version is not what our lockfile pins. The vulnerable path is not
+  # in the artifact we ship, so the advisory is unreachable in our usage. We are
+  # held on 1.4.18 (see `overrides`) only because Neon's auth-ui requires the
+  # pre-1.5 client API. Remove this ignore once Neon ships an `@neondatabase/
+  # auth-ui` built against better-auth >=1.6.2, or once Desktop drops the auth-ui
+  # kit for a direct better-auth client integration. Full rationale: desktop
+  # ADR-0026.
   ignoreGhsas:
     - GHSA-gv7w-rqvm-qjhr
+    - GHSA-wxw3-q3m9-c3jr

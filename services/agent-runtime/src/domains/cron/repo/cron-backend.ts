@@ -13,7 +13,6 @@ import type {
 import { computeNextFireAt, resolveTz } from "../config/schedule.js";
 import { parseCard, renderCard } from "../config/cron-card.js";
 import type { CronJob } from "../types/cron.js";
-import { toCronJob } from "./cron-jobs.js";
 import type { CronJobsRepo } from "./cron-jobs.js";
 
 export interface CronBackendDeps {
@@ -22,13 +21,6 @@ export interface CronBackendDeps {
   readonly loadUserTz?: (userId: string) => Promise<string | null>;
   readonly getUserId?: () => string;
   readonly clock?: () => Date;
-  /**
-   * Post-upsert heap hooks (ADR-0035). Invoked after the cron card upsert
-   * commits so the in-memory clock reflects the freshly written `next_fire_at`.
-   * Composition-root wired; this backend stays clock-agnostic.
-   */
-  readonly onScheduleCron?: (job: CronJob) => void;
-  readonly onCancelCron?: (id: string) => void;
 }
 
 export function createCronBackend(deps: CronBackendDeps): BackendProtocolV2 {
@@ -105,15 +97,8 @@ class CronBackend implements BackendProtocolV2 {
           prompt: card.prompt,
         }),
       );
-      const row = rows[0];
-      if (!row) {
+      if (rows.length === 0) {
         return { error: `Failed to persist cron card '${path}'.` };
-      }
-      // ADR-0035: push the committed next_fire_at onto the in-memory clock.
-      if (card.status === "active" && nextFireAt) {
-        this.deps.onScheduleCron?.(toCronJob(row));
-      } else {
-        this.deps.onCancelCron?.(row.id);
       }
       return { path, filesUpdate: null };
     } catch (error) {

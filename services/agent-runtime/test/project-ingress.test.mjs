@@ -23,22 +23,15 @@ test("a user_message projects to a user-authored conversation entry", () => {
 });
 
 test("non-chat inbound events do not project to a transcript entry", () => {
-  const perception = toConversationEntry(userId, {
-    type: "perception_event",
-    event_id: "p1",
-    source_client: "desktop",
+  const contextSnapshot = toConversationEntry(userId, {
+    type: "context_snapshot",
+    snapshot_id: "s1",
     captured_at: "2026-06-10T00:00:00.000Z",
     period_start: "2026-06-10T00:00:00.000Z",
     period_end: "2026-06-10T01:00:00.000Z",
-    artifact_type: "searchable_screen_record",
     summary: "did things",
-    signals: {},
-    sensitivity_label: "normal",
-    retention_class: "screen_memory_30d",
-    confidence: 0.8,
-    local_record_ref: "screen-memory://p1",
   });
-  assert.equal(perception, null);
+  assert.equal(contextSnapshot, null);
 
   const sessionEnd = toConversationEntry(userId, {
     type: "session_end_marker",

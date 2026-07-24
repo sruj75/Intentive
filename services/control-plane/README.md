@@ -40,7 +40,7 @@ pnpm typecheck
 pnpm test         # build + node --test; repo integration tests need NEON_* (see ADR-0003)
 ```
 
-Pull requests run the Control Plane typecheck and hermetic tests in the `node-workspaces` module of `.github/workflows/monorepo-foundation.yml`; `.github/workflows/neon-preview-branches.yml` separately validates migrations on a PR-scoped Neon branch.
+Pull requests that touch this deployable run `.github/workflows/control-plane-ci.yml`.
 `GET /me` resolves a verified JWT to `AccountState` via `control_plane.users` (#23),
 device-aware `next_gate` from cross-client state, the caller's device/client signal, and
 observed devices (#27, ADR-0005), `has_agent_instance` from the Agent Instance

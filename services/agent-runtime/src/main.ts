@@ -38,13 +38,6 @@ import { createHeartbeatScheduleRepo } from "./domains/heartbeat/repo/heartbeat-
 import { createHeartbeatScheduler } from "./domains/heartbeat/runtime/heartbeat-scheduler.js";
 import { createInternalApp } from "./domains/internal/ui/app.js";
 import { createAgentBackend, readUserProfile } from "./domains/memory/repo/memory-backend.js";
-import {
-  createPerceptionRecordsRepo,
-  toPerceptionRecord,
-} from "./domains/perception/repo/perception-records.js";
-import { createOpenRouterPerceptionEmbedder } from "./domains/perception/service/perception-embedder.js";
-import { createPerceptionIngressHooks } from "./domains/perception/service/perception-ingress-hooks.js";
-import { createSearchScreenContextTool } from "./domains/perception/service/search-screen-context.js";
 import { createDeepAgentsAdapter } from "./domains/runtime/repo/deep-agents-adapter.js";
 import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js";
 import { createMonitoringTurn } from "./domains/runtime/service/monitoring-turn.js";
@@ -88,29 +81,6 @@ const sql = neon(config.neon.url) as unknown as TransactionalSql;
 // fails per-trigger.
 const resilientSql = withTransactionRetry(sql);
 
-// ADR-0035: event-driven schedulers. The two clocks are constructed early so the
-// write-path hooks below can push committed due-times onto them; their `enqueue`
-// callbacks close over `channel` / `fireCron` / `monitoringTurn`, which are only
-// invoked at fire-time (after `start()`), so the forward references are safe.
-const heartbeatFloorMs = 60 * 60_000;
-const heartbeatScheduleRepo = createHeartbeatScheduleRepo(sql);
-const cronJobs = createCronJobsRepo(sql);
-
-let channel: PerUserChannel;
-
-const heartbeatScheduler = createHeartbeatScheduler({
-  scheduleRepo: heartbeatScheduleRepo,
-  enqueueHeartbeat: (userId) =>
-    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
-  floorMs: heartbeatFloorMs,
-  logger: log,
-});
-const cronScheduler = createCronScheduler({
-  cronJobsRepo: cronJobs,
-  enqueueCron: (job, context) => channel.enqueueCommitted(job.userId, () => fireCron(job, context)),
-  logger: log,
-});
-
 const verifier =
   config.auth.mode === "local-dev"
     ? createLocalDevJwtVerifier({
@@ -124,15 +94,7 @@ const verifier =
         audience: config.neonAuth.audience,
       });
 
-const registry = createAgentInstanceRepo(sql, {
-  onNewUser: (userId) => {
-    // ADR-0035: bootstrap a brand-new user's first heartbeat. The `has` guard
-    // keeps existing users (already in the heap from boot) untouched on reconnect.
-    if (!heartbeatScheduler.has(userId)) {
-      heartbeatScheduler.schedule(userId, new Date(Date.now() + heartbeatFloorMs));
-    }
-  },
-});
+const registry = createAgentInstanceRepo(sql);
 const resilientRegistry = {
   loadOrCreate: (input: Parameters<typeof registry.loadOrCreate>[0]) =>
     retryTransientDb(() => registry.loadOrCreate(input)),
@@ -146,12 +108,8 @@ const resilientRegistry = {
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
 const sensoryBuffer = createSensoryBufferReader(sql);
-const perceptionEmbedder = createOpenRouterPerceptionEmbedder({
-  apiKey: config.model.apiKey,
-  baseUrl: config.model.baseUrl,
-});
-const perceptionRecords = createPerceptionRecordsRepo(sql, perceptionEmbedder);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
+const cronJobs = createCronJobsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
 const connectionRegistry = createConnectionRegistry({ logger: log });
 const deliveries = createDeliveriesRepo(sql);
@@ -175,12 +133,6 @@ await retryTransientDb(() => memoryStore.setup());
 const cronBackend = createCronBackend({
   repo: cronJobs,
   loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
-  onScheduleCron: (job) => {
-    if (job.nextFireAt) {
-      cronScheduler.schedule(job.id, job.nextFireAt, job);
-    }
-  },
-  onCancelCron: (id) => cronScheduler.cancel(id),
 });
 const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
 const fallbackFloorSource = createBundledFallbackSource();
@@ -197,13 +149,7 @@ const runtimeAdapter = createDeepAgentsAdapter({
   // A fresh handler per turn (not one shared instance) keeps each turn's trace
   // isolated; langfuse's handler holds the active trace on mutable state.
   createCallbackHandler: langfuseConfig ? observability.createCallbackHandler : null,
-  createTools: (input) => [
-    createPostMessageBackTool({ postMessageBack, userId: input.userId }),
-    createSearchScreenContextTool({
-      search: (searchInput) => retryTransientDb(() => perceptionRecords.search(searchInput)),
-      userId: input.userId,
-    }),
-  ],
+  createTools: (input) => [createPostMessageBackTool({ postMessageBack, userId: input.userId })],
   openRouter: {
     apiKey: config.model.apiKey,
     baseUrl: config.model.baseUrl,
@@ -221,8 +167,6 @@ const turn = createTurn({
   workingContext,
   runtimeTurns,
   fallbackModel: config.model.model,
-  onTurnCommitted: (userId) =>
-    heartbeatScheduler.schedule(userId, new Date(Date.now() + heartbeatFloorMs)),
   logger: log,
 });
 const runTurn = createTurnRunner({
@@ -238,8 +182,6 @@ const fireCron = createCronTurnHandler({
   cronRuns,
   floorResolver,
   loadUserTz: (userId) => resilientRegistry.loadUserTz(userId),
-  onRescheduleCron: (job, nextFireAt) => cronScheduler.schedule(job.id, nextFireAt, job),
-  onCancelCron: (id) => cronScheduler.cancel(id),
   turn,
   logger: log,
 });
@@ -247,42 +189,37 @@ const monitoringTurn = createMonitoringTurn({
   floorResolver,
   turn,
 });
-const perceptionIngressHooks = createPerceptionIngressHooks({
-  embedder: perceptionEmbedder,
-  storeEmbedding: (input) => retryTransientDb(() => perceptionRecords.storeEmbedding(input)),
-  enqueueMonitoring: (userId) =>
-    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "perception_event")),
-  onEmbeddingError: (error, context) => {
-    log.error("perception.embedding_failed", error, {
-      user_id: context.userId,
-      event_id: context.eventId,
-      status: "failed",
-    });
-  },
-});
+let channel: PerUserChannel;
 channel = createPerUserChannel({
   sql: resilientSql,
   ledger,
   conversation,
-  // `user_message` projects into Conversation History; `perception_event`
-  // projects into the searchable perception store. Both happen in the same
-  // transaction as the event-ledger row.
+  // A `user_message` is transactionally projected into Conversation History
+  // (its user-authored half) with the Agent Runtime event ledger row. The companion
+  // half is filled by its producer (#36), which calls `conversation.append`
+  // directly. This mapping is the `sessions` → `conversation` seam and must
+  // stay one line (ADR-0008 / ADR-0009).
   project: (session, event) => {
-    const queries: Promise<unknown[]>[] = [];
     const entry = toConversationEntry(session.userId, event);
-    if (entry) {
-      queries.push(conversation.appendQuery(entry));
-    }
-    if (event.type === "perception_event") {
-      queries.push(perceptionRecords.appendQuery(toPerceptionRecord(session.userId, event)));
-    }
-    if (event.type === "perception_tombstone") {
-      queries.push(perceptionRecords.tombstoneQuery(session.userId, event));
-    }
-    return queries;
+    return entry ? [conversation.appendQuery(entry)] : [];
   },
   runTurn,
-  ...perceptionIngressHooks,
+  onPerceptionArrived: (session) => {
+    channel.enqueueBestEffort(session.userId, () =>
+      monitoringTurn(session.userId, "context_snapshot"),
+    );
+  },
+  logger: log,
+});
+const cronScheduler = createCronScheduler({
+  cronJobsRepo: cronJobs,
+  enqueueCron: (job, context) => channel.enqueueCommitted(job.userId, () => fireCron(job, context)),
+  logger: log,
+});
+const heartbeatScheduler = createHeartbeatScheduler({
+  scheduleRepo: createHeartbeatScheduleRepo(sql),
+  enqueueHeartbeat: (userId) =>
+    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
   logger: log,
 });
 const startSession = createStartSession({
@@ -315,7 +252,7 @@ const connectHandler = createConnectHandler({
 const internalServer = serve({ fetch: internalApp.fetch, port: config.internalInbound.port });
 
 // The Per-User Channel is the single serialization point: state-mutating ingress
-// (`user_message`, `perception_event`, `session_end_marker`) and History Backfill
+// (`user_message`, `context_snapshot`, `session_end_marker`) and History Backfill
 // reads both pass through it, so reads observe earlier accepted writes in order.
 const routePostConnectEvent = createPostConnectRouter({ channel });
 

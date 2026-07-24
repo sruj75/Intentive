@@ -10,9 +10,8 @@ coverage/
 .cache/
 .expo/
 target/
-.build/
-**/.build/
-.context/
 pnpm-lock.yaml
 
 apps/mobile/ios/Pods/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/

@@ -62,7 +62,7 @@ Mobile (iOS sim) ──HTTP──> Control Plane :8080 ──HTTP /internal/sess
    │  GET /me, /agent, /consent, /devices/register                                        ▲
    └──────────────────── WS ws://localhost:8787/ws ─────────────────────────────> Agent Runtime :8787 (public WS)
                                                                                           │
-Desktop (Mac, optional) ──HTTP /agent──> CP ; ──WS──> Agent Runtime (perception_event/user_message) │
+Desktop (Mac, optional) ──HTTP /agent──> CP ; ──WS──> Agent Runtime (context_snapshot)    │
 Agent Runtime ──HTTP /internal/notifications/push──> Control Plane ──> Expo Push ──> Mobile
 ```
 
@@ -71,7 +71,6 @@ Agent Runtime ──HTTP /internal/notifications/push──> Control Plane ─�
 | 8080 | Control Plane (HTTP)             |
 | 8787 | Agent Runtime — public WebSocket |
 | 8081 | Agent Runtime — internal HTTP    |
-| 8082 | Mobile Metro                     |
 
 The paired internal secrets and the Neon dev branch are already wired across the two
 services' git-ignored `.env` files. The **database** is one isolated Neon branch,
@@ -105,7 +104,7 @@ so nothing you do locally can affect production.
 3. **A booted iOS simulator + a Mobile dev build.** Follow
    [`apps/mobile/docs/DEVELOPMENT.md`](../apps/mobile/docs/DEVELOPMENT.md) once to
    install the dev client.
-4. _(Optional)_ **Desktop**, if you want to exercise capture, Screen Memory, or floating-bar chat →
+4. _(Optional)_ **Desktop**, if you want to exercise capture →
    [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md).
 
 The two services' `.env` files are pre-generated; if either is missing, copy from
@@ -129,7 +128,7 @@ scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
 ```
 
 > The script owns the **two server deployables** — the always-on backend half. The
-> clients are launched from their own runbooks (simulator / SwiftPM macOS app) and pointed at
+> clients are launched from their own runbooks (simulator / Tauri) and pointed at
 > `:8080`, because each needs its own device/sim toolchain.
 
 ### Then point the clients at the local Control Plane
@@ -141,47 +140,6 @@ scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
   resolves; a **physical** device needs your Mac's LAN IP instead.)
 - **Desktop (optional):** set `INTENTIVE_CONTROL_PLANE_URL=http://localhost:8080`
   before launching, then run it per its runbook.
-
----
-
-## Desktop — dev vs. internal vs. dogfood
-
-The Desktop Client is the only deployable that shares the host Mac's Keychain,
-TCC permission buckets, and `~/Library` state with the rest of your machine. To
-keep development, internal testing, and dogfooding from contaminating each other,
-they live under **three separate bundle IDs**. This is the macOS equivalent of
-iOS's simulator sandbox + TestFlight: each channel owns an isolated permission
-and storage world, and agents can run wild in the dev one without touching the
-dogfood install.
-
-| Channel                          | Bundle ID                      | App name        | How you run it                                            | Sparkle updates | Who               |
-| -------------------------------- | ------------------------------ | --------------- | --------------------------------------------------------- | --------------- | ----------------- |
-| **Daily dev** (raw SwiftPM bin)  | _(none — TCC keyed by path)_   | Intentive Dev   | `apps/desktop/macos/run.sh`                              | no              | you, eyeballing    |
-| **Internal assembled** (Tart VM) | `com.heyintentive.desktop.dev` | Intentive Dev   | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` | no              | agents + you      |
-| **Dogfood / release** (signed)  | `com.heyintentive.desktop`     | Intentive       | Install the signed DMG from a GitHub Release into `/Applications` | yes (hourly)     | you, like a user  |
-
-**Why split:**
-- `KeychainTokenStore` derives its `service` from `Bundle.main.bundleIdentifier`
-  (with a `com.heyintentive.desktop.dev` fallback for the raw-binary `run.sh` case),
-  so dev auth and dogfood auth never share a Keychain item.
-- TCC permissions are per-bundle-ID, so Screen Recording / Microphone grants for
-  the dev build don't affect the dogfood install, and vice versa.
-- `/Applications/Intentive.app` (dogfood) and a Tart-internal `Intentive Dev.app`
-  can coexist; Sparkle only updates the production bundle ID.
-
-**One-time host cleanup, repeatable any time:**
-
-```bash
-pnpm desktop:clean-host:status          # show what would be reset
-pnpm desktop:clean-host                 # reset DerivedData/Intentive-*, caches,
-                                        # prefs plists, and TCC grants for
-                                        # legacy com.intentive.desktop / dev com.heyintentive.desktop.dev
-```
-
-It keeps the SwiftPM `.build/` incremental cache and the Tart base. Run it before
-installing a fresh dogfood DMG, or whenever an agent session has left
-DerivedData growing. See [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md)
-for the mechanics and the Tart VM guardrails.
 
 ---
 
@@ -206,7 +164,7 @@ each step. This is the end-to-end product loop the local stack exists to evaluat
 5. **`user_message` → companion reply.** Send a message; a reply streams back. This
    is the money shot — it proves WS gateway + Neon + OpenRouter + the turn spine end
    to end.
-6. _(Optional, Desktop)_ **Screen Memory → `perception_event`.** With capture readiness
+6. _(Optional, Desktop)_ **Capture → `context_snapshot`.** With capture readiness
    granted, the desktop heartbeat emits snapshots over its own WS session.
 7. _(Optional, proactive)_ **Cron / Heartbeat → Post-Message-Back.** The Runtime's
    poll loops can drive a proactive message; delivery to a real device additionally
@@ -232,34 +190,6 @@ processes** left by earlier stacks (see the note below), and deletes the
 Then stop the clients via their own runbooks ("kill it" in the Mobile / Desktop
 docs). Nothing local persists except the Neon dev branch, which is meant to stick
 around; delete it from the Neon console / MCP if you want a clean slate.
-
-For the complete machine-local sweep, use `pnpm development:clean`. It stops the
-backend ports, Metro on its reserved `:8082`, booted simulators, and the disposable
-Tart clone, then removes only one-run temp files and portable build archives. It
-keeps active-workspace caches: pnpm packages, Mobile Pods, Xcode DerivedData, the
-per-workspace SwiftPM cache on T9, and the immutable Tart base. `pnpm
-development:status` reports the storage root and reserved-port ownership without
-changing anything.
-
-### Storage hygiene: cache versus deadweight
-
-- **Keep while the workspace is active:** `node_modules`, Mobile `ios/` + Pods,
-  Xcode DerivedData, the current simulator, the workspace's external SwiftPM
-  scratch, and the Tart base. These shorten the next build.
-- **Delete after each clean sweep:** owned servers, orphan launchers/tailers,
-  Metro/EAS temp directories, screenshots, portable `build-*.tar.gz` artifacts,
-  and the disposable Tart clone. No later build reuses them.
-- **Delete when Conductor archives the workspace:** that workspace's T9 build root
-  and generated build trees accidentally placed in `.context`. The archive hook
-  preserves `.context/attachments`, plans, notes, and Conductor's session database,
-  and refuses to archive when unknown context data remains unexpectedly large.
-
-`pnpm development:clean` covers backend ports, Metro, the simulator, and the
-disposable Tart clone — **not** the Desktop Client's host-side state. macOS
-Keychain, TCC grants, DerivedData, and `~/Library` dirs accumulate against the
-shared `com.heyintentive.desktop*` / legacy `com.intentive.desktop*` bundle-id prefix. Reset them with
-`pnpm desktop:clean-host` (see [Desktop — dev vs. internal vs. dogfood](#desktop-dev-vs-internal-vs-dogfood)
-above).
 
 **Verify the sweep** (every line should report free/none):
 
@@ -292,10 +222,8 @@ pgrep -fl "local-stack\.sh|intentive-local-stack" || echo "no stray launchers �
    have the configured issuer and audience.
 3. **`localhost` works on the simulator, not on a physical phone.** Use the Mac's LAN
    IP (and the same for `PUBLIC_WS_URL` if you test on-device).
-4. **Port discipline:** CP `8080`, Runtime WS `8787`, Runtime internal `8081`, Metro
-   `8082`. Metro must never use `8081`: its old teardown command could kill the
-   Agent Runtime. If a start fails on "address in use," run
-   `scripts/local-stack.sh --down` first.
+4. **Port discipline:** CP `8080`, Runtime WS `8787`, Runtime internal `8081`. If a
+   start fails on "address in use," run `scripts/local-stack.sh --down` first.
 5. **First request is slow (cold start).** The dev branch scales to zero
    immediately, so the first DB-backed call after idle takes ~2–3s while it wakes;
    `local-stack.sh` waits on the Control Plane's `/ready` (which warms it) before

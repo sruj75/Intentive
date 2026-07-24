@@ -56,10 +56,10 @@ async function startJwksServer(initialKeys) {
 
 async function signToken(
   key,
-  { sub = "user-123", email, iss = ISSUER, aud = AUDIENCE, expSeconds = 3600 } = {},
+  { sub = "user-123", iss = ISSUER, aud = AUDIENCE, expSeconds = 3600 } = {},
 ) {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT(email === undefined ? {} : { email })
+  return new SignJWT({})
     .setProtectedHeader({ alg: ALG, kid: key.jwk.kid })
     .setSubject(sub)
     .setIssuer(iss)
@@ -71,10 +71,10 @@ async function signToken(
 
 async function signLocalDevToken(
   secret,
-  { sub = "user-123", email, iss = ISSUER, aud = AUDIENCE, expSeconds = 3600 } = {},
+  { sub = "user-123", iss = ISSUER, aud = AUDIENCE, expSeconds = 3600 } = {},
 ) {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT(email === undefined ? {} : { email })
+  return new SignJWT({})
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(sub)
     .setIssuer(iss)
@@ -92,7 +92,7 @@ test("verify resolves the user_id from a valid token's sub claim", async () => {
   try {
     const verifier = createJwtVerifier({ jwks_url: jwks.url, issuer: ISSUER, audience: AUDIENCE });
     const principal = await verifier.verify(await signToken(key, { sub: "user-abc" }));
-    assert.deepEqual(principal, { user_id: "user-abc", email: null });
+    assert.deepEqual(principal, { user_id: "user-abc" });
   } finally {
     await jwks.close();
   }
@@ -104,28 +104,8 @@ test("local dev verifier resolves the user_id from a signed local token", async 
 
   const principal = await verifier.verify(await signLocalDevToken(secret, { sub: "dev-user" }));
 
-  assert.deepEqual(principal, { user_id: "dev-user", email: null });
+  assert.deepEqual(principal, { user_id: "dev-user" });
   await verifier.probe();
-});
-
-test("verify projects only a syntactically valid email claim", async () => {
-  const secret = "local-dev-secret-at-least-thirty-two-bytes";
-  const verifier = createLocalDevJwtVerifier({ secret, issuer: ISSUER, audience: AUDIENCE });
-  const valid = await verifier.verify(
-    await signLocalDevToken(secret, { email: "person@example.com" }),
-  );
-  const invalid = await verifier.verify(await signLocalDevToken(secret, { email: "opaque-id" }));
-  const invalidClaims = await Promise.all(
-    ["a@b.c", "a..b@example.com", "foo@-bar.com"].map(async (email) =>
-      verifier.verify(await signLocalDevToken(secret, { email })),
-    ),
-  );
-  assert.equal(valid.email, "person@example.com");
-  assert.equal(invalid.email, null);
-  assert.deepEqual(
-    invalidClaims.map((principal) => principal.email),
-    [null, null, null],
-  );
 });
 
 test("local dev verifier rejects tokens signed with the wrong secret", async () => {
@@ -277,7 +257,7 @@ test("unknown kid triggers a JWKS refetch that picks up a rotated key", async ()
     jwks.rotateTo([newKey]);
     const principal = await verifier.verify(await signToken(newKey, { sub: "rotated-user" }));
 
-    assert.deepEqual(principal, { user_id: "rotated-user", email: null });
+    assert.deepEqual(principal, { user_id: "rotated-user" });
     assert.ok(jwks.requests > requestsAfterWarmup, "expected a refetch on the unknown kid");
   } finally {
     await jwks.close();

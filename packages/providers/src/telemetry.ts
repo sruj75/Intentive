@@ -20,9 +20,6 @@ export const allowedLogAttrKeys = [
   "device_count",
   "cron_job_id",
   "snapshot_id",
-  "event_id",
-  "artifact_type",
-  "sensitivity_label",
   "reason",
 ] as const;
 

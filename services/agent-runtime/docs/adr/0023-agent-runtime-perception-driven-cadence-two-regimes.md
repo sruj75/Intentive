@@ -10,7 +10,7 @@ Accepted
 
 ## Context
 
-Issue #38 makes inbound **Perception Events** and **Session End Markers** usable by
+Issue #38 makes inbound **Context Snapshots** and **Session End Markers** usable by
 the Companion. The naive reading of the issue ("snapshots become durable events";
 "markers update liveness state") was already partly satisfied by #28 (both land in
 the `runtime_events` ledger, idempotent) and risked a face-value design: a separate
@@ -44,14 +44,12 @@ not two competing triggers but two _regimes_ over one shared Sensory Buffer, whi
 collapse into a single Monitoring Turn. The cadence is a knob that scales the same
 design from v1's 10-minute responsiveness toward continuous real-time processing.**
 
-1. **One substrate for recent prompt injection: the Sensory Buffer.** All inbound
-   perception (Perception Events, and the Session End Marker as a timestamped fact)
-   accumulates in the **Sensory Buffer** — a read projection over the
-   `perception_event` rows already in `runtime_events` (see `CONTEXT.md`). There is
-   **no** separate stored liveness state; capture liveness is emergent from buffer
-   freshness and is judged by the agent, not the shell (ADR-0014). Older Screen
-   Memory lookup is a separate `perception_records` projection (ADR-0034), not the
-   Monitoring Turn's latest-perception substrate.
+1. **One substrate: the Sensory Buffer.** All inbound perception (Context Snapshots,
+   and the Session End Marker as a timestamped fact) accumulates in the **Sensory
+   Buffer** — in v1 a read projection over the `context_snapshot` rows already in
+   `runtime_events`, not a new store (see `CONTEXT.md`). There is **no** separate
+   stored liveness state; capture liveness is emergent from buffer freshness and is
+   judged by the agent, not the shell (ADR-0014).
 
 2. **Active regime — perception is the clock.** While snapshots are flowing (user at
    the laptop), each snapshot is what warrants a Monitoring Turn. The agent processes

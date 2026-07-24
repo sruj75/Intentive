@@ -61,13 +61,7 @@ Run:
 pnpm harness
 ```
 
-The Gate owns typecheck, lint/docs checks, format check, CI and architecture rules, contract drift, workspace tests, the Mobile React Native harness, and Desktop Swift bundle/coverage evidence. CI runs the same interface as three parallel modules:
-
-- `repo-contracts` on Ubuntu
-- `node-workspaces` on Ubuntu
-- `desktop-swift` on macOS
-
-The stable `Gate` status joins those modules. Workflows do not restate the commands behind the harness interface.
+The Gate owns typecheck, lint/docs checks, format check, architecture rules, contract drift, workspace tests, and the Mobile React Native harness. CI uses the same path through `pnpm harness:ci`.
 
 Gate rules:
 
@@ -86,7 +80,9 @@ Run:
 pnpm sensor:factory-report --base origin/main
 ```
 
-Radar should be PR-delta-first. By default it shows changed-file findings, repeated unclassified findings, returned findings, behavior coverage for changed workspaces, and compact counts for repo-wide drift. Generic findings inferred only from membership in a changed workspace stay in the full audit view.
+Radar should be PR-delta-first. By default it shows changed-file findings, changed-workspace findings, repeated unclassified findings, returned findings, behavior coverage for changed workspaces, and compact counts for repo-wide drift.
+
+The GitHub PR comment also includes a BTAR agent-readiness delta when CI can build and run [`jaredmcfarland/btar`](https://github.com/jaredmcfarland/btar) against the PR base and head. Treat that subsection as another advisory verification signal: it asks whether this PR improved or weakened type-check, lint, and coverage readiness for future agents. It does not block the Gate.
 
 Use the full audit view only when you are intentionally doing maintenance:
 

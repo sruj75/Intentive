@@ -27,9 +27,9 @@ test("parses an Agent Runtime domain path", () => {
   );
 });
 
-test("parses a Desktop domain path", () => {
+test("parses a Desktop Tauri (Rust) domain path", () => {
   assert.deepEqual(
-    parseDomainPath("/x/apps/desktop/macos/Desktop/Sources/domains/capture/repo/store.swift"),
+    parseDomainPath("/x/apps/desktop/src-tauri/src/domains/capture/repo/sqlite.rs"),
     { kind: "apps", deployable: "desktop", domain: "capture", layer: "repo" },
   );
 });
@@ -258,13 +258,8 @@ test("plugin exports and recommends provider-only-cross-cutting", () => {
 
 test("root ESLint config enables provider-only-cross-cutting", () => {
   const rootConfig = require("../../../eslint.config.cjs");
-  const architectureRuleConfigs = rootConfig.filter(
-    (config) => config.rules?.["intentive-architecture/provider-only-cross-cutting"],
-  );
-  assert.equal(architectureRuleConfigs.length, 2);
-  for (const config of architectureRuleConfigs) {
-    assert.equal(config.rules["intentive-architecture/provider-only-cross-cutting"], "error");
-  }
+  assert.equal(rootConfig[0].rules["intentive-architecture/provider-only-cross-cutting"], "error");
+  assert.equal(rootConfig[1].rules["intentive-architecture/provider-only-cross-cutting"], "error");
 });
 
 ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
@@ -285,9 +280,9 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
       code: "// Expo Router owns replace() behavior here.\nexport const owner = true;",
     },
     {
-      name: "Desktop implementation reference is allowed",
+      name: "Tauri framework reference is allowed",
       filename: DESKTOP_ONBOARDING_SOURCE,
-      code: "// SwiftPM target membership lives in Package.swift.\nexport const owner = true;",
+      code: "// Tauri invoke() calls a Rust command by name.\nexport const owner = true;",
     },
   ],
   invalid: [
@@ -325,13 +320,13 @@ ruleTester.run("context-vocabulary", plugin.rules["context-vocabulary"], {
       ],
     },
     {
-      name: "Desktop stale product alias is forbidden",
+      name: "Desktop framework-as-product alias is forbidden",
       filename: DESKTOP_ONBOARDING_SOURCE,
-      code: "// The capture-only app has no chat UI.\nexport const owner = true;",
+      code: "// The Tauri app has no chat UI.\nexport const owner = true;",
       errors: [
         {
           message:
-            'Vocabulary drift: "capture-only app" belongs to Desktop Client vocabulary. Use "Desktop Capture Layer". Owner: apps/desktop/CONTEXT.md.',
+            'Vocabulary drift: "Tauri app" belongs to Desktop Client vocabulary. Use "Desktop Client". Owner: apps/desktop/CONTEXT.md.',
         },
       ],
     },

@@ -15,8 +15,8 @@ try {
     "packages/protocol/src/index.ts",
     `
 import { z } from "zod";
-export const perception_event = z.object({ type: z.literal("perception_event"), summary: z.string() }).strict();
-export type PerceptionEvent = z.infer<typeof perception_event>;
+export const context_snapshot = z.object({ type: z.literal("context_snapshot"), summary: z.string() }).strict();
+export type ContextSnapshot = z.infer<typeof context_snapshot>;
 export const user_message = z.object({ type: z.literal("user_message"), body: z.string() }).strict();
 export type UserMessage = z.infer<typeof user_message>;
 `,
@@ -34,8 +34,8 @@ export type GetAgentResponse = z.infer<typeof GetAgentResponse>;
   write(
     "apps/mobile/src/good-protocol.ts",
     `
-import type { PerceptionEvent } from "@intentive/protocol";
-export const perception: PerceptionEvent = { type: "perception_event", summary: "ok" };
+import type { ContextSnapshot } from "@intentive/protocol";
+export const snapshot: ContextSnapshot = { type: "context_snapshot", summary: "ok" };
 `,
   );
   write(
@@ -59,7 +59,7 @@ export const EnvSchema = z.object({ PORT: z.string() }).strict();
     "apps/mobile/src/bad-protocol-schema.ts",
     `
 import { z } from "zod";
-export const LocalPerceptionEvent = z.object({ type: z.literal("perception_event"), summary: z.string() }).strict();
+export const LocalContextSnapshot = z.object({ type: z.literal("context_snapshot"), summary: z.string() }).strict();
 `,
   );
   let result = runSensor();
@@ -68,18 +68,18 @@ export const LocalPerceptionEvent = z.object({ type: z.literal("perception_event
     result.stderr,
     /Import from @intentive\/protocol; do not redefine this wire shape locally\./,
   );
-  assert.match(result.stderr, /perception_event/);
+  assert.match(result.stderr, /context_snapshot/);
   rm("apps/mobile/src/bad-protocol-schema.ts");
 
   write(
     "apps/mobile/src/bad-protocol-object.ts",
     `
-export const perception = { type: "perception_event", summary: "oops" };
+export const snapshot = { type: "context_snapshot", summary: "oops" };
 `,
   );
   result = runSensor();
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /perception_event/);
+  assert.match(result.stderr, /context_snapshot/);
   rm("apps/mobile/src/bad-protocol-object.ts");
 
   write(

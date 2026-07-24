@@ -16,7 +16,7 @@ export function assembleSystemPrompt(input: {
     sections.push(section("BOOTSTRAP", input.floor.documents.BOOTSTRAP));
   }
 
-  if (input.trigger === "heartbeat" || input.trigger === "perception_event") {
+  if (input.trigger === "heartbeat" || input.trigger === "context_snapshot") {
     sections.push(section("HEARTBEAT", input.floor.documents.HEARTBEAT));
   }
 

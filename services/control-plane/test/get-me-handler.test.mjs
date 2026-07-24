@@ -58,7 +58,6 @@ test("error responses never leak the token or claims", async () => {
 test("a valid token → 200 with a body that round-trips as AccountState", async () => {
   const skeleton = {
     user_id: "u_1",
-    email: null,
     next_gate: null,
     has_agent_instance: false,
     has_desktop_client: false,
@@ -79,7 +78,6 @@ test("the device-signal headers are parsed and forwarded to resolveAccount", asy
         seen.push(signal);
         return {
           user_id: "u_1",
-          email: null,
           next_gate: "capture_permission_setup",
           has_agent_instance: false,
           has_desktop_client: false,
@@ -104,7 +102,6 @@ test("a malformed device header degrades to no signal, not a 400", async () => {
         seen.push(signal);
         return {
           user_id: "u_1",
-          email: null,
           next_gate: null,
           has_agent_instance: false,
           has_desktop_client: false,

@@ -20,7 +20,7 @@ export interface ProcedureFloorResolver {
 
 export type TurnTrigger =
   | "user_message"
-  | "perception_event"
+  | "context_snapshot"
   | "session_end_marker"
   | "conversation_start"
   | "cron"

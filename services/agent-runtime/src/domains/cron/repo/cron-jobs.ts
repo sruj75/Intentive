@@ -7,8 +7,6 @@ export interface CronJobsRepo {
   loadById(id: string): Promise<CronJob | null>;
   listByUser(userId: string): Promise<CronJob[]>;
   selectDue(input: { now: Date; limit: number }): Promise<CronJob[]>;
-  /** Unbounded boot/resync load of every active job, ordered by `next_fire_at` (ADR-0035). */
-  listActive(): Promise<CronJob[]>;
   deleteQuery(id: string): SqlQuery<{ id: string }>;
   rescheduleQuery(id: string, nextFireAt: Date, attemptCount?: number): SqlQuery<{ id: string }>;
 }
@@ -112,16 +110,6 @@ export function createCronJobsRepo(sql: Sql): CronJobsRepo {
       return rows.map(toCronJob);
     },
 
-    async listActive() {
-      const rows = await sql<CronJobRow>`
-        SELECT *
-        FROM agent_runtime.cron_jobs
-        WHERE status = 'active' AND next_fire_at IS NOT NULL
-        ORDER BY next_fire_at ASC, updated_at ASC
-      `;
-      return rows.map(toCronJob);
-    },
-
     deleteQuery(id) {
       return sql<{ id: string }>`
         DELETE FROM agent_runtime.cron_jobs
@@ -141,7 +129,7 @@ export function createCronJobsRepo(sql: Sql): CronJobsRepo {
   };
 }
 
-export function toCronJob(row: CronJobRow): CronJob {
+function toCronJob(row: CronJobRow): CronJob {
   return Object.freeze({
     id: row.id,
     userId: row.user_id,

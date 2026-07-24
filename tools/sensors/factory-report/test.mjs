@@ -197,8 +197,7 @@ try {
   assert.match(output, /#### Repo-Wide Drift Summary/);
   assert.match(output, /\| Repo-wide findings hidden by default \|/);
   assert.match(output, /Run `pnpm sensor:factory-report --audit`/);
-  assert.doesNotMatch(output, /apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts/);
-  assert.match(auditOutput, /apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts/);
+  assert.match(output, /apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts/);
   assert.match(output, /Untested export untestedEvent/);
   assert.doesNotMatch(output, /### Harness Health/);
   assert.doesNotMatch(output, /### Impact Radius/);
@@ -215,11 +214,8 @@ try {
   assert.match(auditOutput, /### Improvement Handoff/);
   assert.match(auditOutput, /dependencies in apps\/mobile|Dependency Maintenance/);
   assert.match(output, /Factory improved/);
-  assert.match(auditOutput, /Backlogged/);
-  assert.match(
-    auditOutput,
-    /`stale-scaffold:apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts`/,
-  );
+  assert.match(output, /Backlogged/);
+  assert.match(output, /`stale-scaffold:apps\/mobile\/src\/domains\/chat\/types\/scaffold\.ts`/);
   assert.match(output, /`untested-export:packages\/protocol\/src\/events\.ts:untestedevent`/);
   assert.match(auditOutput, /### Finding Memory/);
   assert.match(btarOutput, /#### BTAR Agent Readiness/);

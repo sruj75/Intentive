@@ -1,4 +1,4 @@
-import type { PerceptionEvent, SessionEndMarker } from "@intentive/protocol";
+import type { ContextSnapshot, SessionEndMarker } from "@intentive/protocol";
 
 import type { Sql } from "./sql.js";
 
@@ -10,10 +10,10 @@ export interface SensoryBufferReader {
   readLatest(userId: string): Promise<string | null>;
 }
 
-type SensoryBufferEvent = PerceptionEvent | SessionEndMarker;
+type PerceptionEvent = ContextSnapshot | SessionEndMarker;
 
 interface RuntimeEventRow {
-  readonly payload: SensoryBufferEvent | string;
+  readonly payload: PerceptionEvent | string;
 }
 
 export function createSensoryBufferReader(sql: Sql): SensoryBufferReader {
@@ -23,7 +23,7 @@ export function createSensoryBufferReader(sql: Sql): SensoryBufferReader {
         SELECT payload
         FROM agent_runtime.runtime_events
         WHERE user_id = ${userId}
-          AND kind IN ('perception_event', 'session_end_marker')
+          AND kind IN ('context_snapshot', 'session_end_marker')
         ORDER BY created_at DESC
         LIMIT 1
       `;
@@ -33,21 +33,17 @@ export function createSensoryBufferReader(sql: Sql): SensoryBufferReader {
   };
 }
 
-function parsePayload(payload: RuntimeEventRow["payload"]): SensoryBufferEvent {
-  return typeof payload === "string" ? (JSON.parse(payload) as SensoryBufferEvent) : payload;
+function parsePayload(payload: RuntimeEventRow["payload"]): PerceptionEvent {
+  return typeof payload === "string" ? (JSON.parse(payload) as PerceptionEvent) : payload;
 }
 
-function renderPerception(event: SensoryBufferEvent): string {
+function renderPerception(event: PerceptionEvent): string {
   switch (event.type) {
-    case "perception_event":
+    case "context_snapshot":
       return [
-        "Most recent perception: Perception Event.",
-        `Artifact: ${event.artifact_type}.`,
-        `Source: ${event.source_client}.`,
+        "Most recent perception: Context Snapshot.",
         `Captured at: ${event.captured_at}.`,
         `Period: ${event.period_start} to ${event.period_end}.`,
-        `Sensitivity: ${event.sensitivity_label}.`,
-        `Confidence: ${event.confidence}.`,
         `Summary: ${event.summary}`,
       ].join("\n");
     case "session_end_marker":

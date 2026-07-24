@@ -10,7 +10,10 @@ out/
 .next/
 .expo/
 target/
-.build/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
 
 # Logs
 *.log
@@ -37,8 +40,6 @@ pnpm-debug.log*
 .turbo/
 .cache/
 coverage/
-!tools/coverage/
-!tools/coverage/*.mjs
 
 # Local Claude config
 .claude/settings.local.json

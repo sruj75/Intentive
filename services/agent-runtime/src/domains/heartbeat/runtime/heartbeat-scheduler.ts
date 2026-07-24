@@ -2,24 +2,8 @@ import type { Logger } from "@intentive/providers/telemetry";
 import { createNoopLogger } from "@intentive/providers/telemetry";
 
 import type { HeartbeatScheduleRepo } from "../repo/heartbeat-schedule.js";
-import type { SchedulerClock } from "../../../runtime/scheduler-clock.js";
-import { createSchedulerClock } from "../../../runtime/scheduler-clock.js";
 
-/**
- * Event-driven Heartbeat scheduler (ADR-0035). One in-memory `SchedulerClock`
- * per user, armed at the user's floor-due instant (`last_activity + floorMs`).
- * Mirrors the old `selectDue` computation but pushed onto the write side: the
- * heap is rebuilt from Neon on boot and kept current via the Turn Execution
- * spine's `onTurnCommitted` hook (and new-user bootstrap), with a coarse
- * periodic resync as a safety net. Zero stored heartbeat state (ADR-0027) is
- * preserved — the heap is a rebuildable cache, not new durable state.
- */
 export interface HeartbeatScheduler {
-  schedule(userId: string, dueAt: Date): void;
-  cancel(userId: string): void;
-  has(userId: string): boolean;
-  resync(): Promise<void>;
-  /** Pop everything due `<= now` and enqueue it. Deterministic test entry; also the boot catch-up path. */
   tick(): Promise<void>;
   start(): void;
   stop(): void;
@@ -29,104 +13,79 @@ export function createHeartbeatScheduler(params: {
   readonly scheduleRepo: HeartbeatScheduleRepo;
   readonly enqueueHeartbeat: (userId: string) => boolean;
   readonly clock?: () => Date;
+  readonly pollIntervalMs?: number;
   readonly floorMs?: number;
-  readonly resyncIntervalMs?: number;
+  readonly batchLimit?: number;
+  readonly escalateAfterConsecutiveFailures?: number;
   readonly logger?: Logger;
 }): HeartbeatScheduler {
   const clock = params.clock ?? (() => new Date());
+  const pollIntervalMs = params.pollIntervalMs ?? 60_000;
   const floorMs = params.floorMs ?? 60 * 60_000;
-  const resyncIntervalMs = params.resyncIntervalMs ?? 30 * 60_000;
+  const batchLimit = params.batchLimit ?? 50;
+  const escalateAfter = params.escalateAfterConsecutiveFailures ?? 3;
   const logger = params.logger ?? createNoopLogger();
-
-  const heap: SchedulerClock<string> = createSchedulerClock<string>({
-    onDue: async (entries) => {
-      for (const entry of entries) {
-        params.enqueueHeartbeat(entry.value);
-      }
-    },
-    clock,
-    logger,
-  });
-
-  let resyncTimer: NodeJS.Timeout | null = null;
+  let timer: NodeJS.Timeout | null = null;
   let stopped = true;
   let consecutiveFailures = 0;
-  const escalateAfter = 3;
+  // The wall-clock time the next poll was scheduled to fire, used to measure
+  // scheduler lag (event-loop drift). null before the first, immediate poll.
+  let expectedTickAt: number | null = null;
 
-  function logFailure(error: unknown): void {
-    consecutiveFailures += 1;
-    if (consecutiveFailures >= escalateAfter) {
-      logger.error("heartbeat.tick", error, { status: "failed" });
-    } else {
-      logger.warn("heartbeat.tick", {
-        status: "failed",
-        error_type: error instanceof Error ? error.name : typeof error,
-      });
+  async function tick(): Promise<void> {
+    const now = clock();
+    const startedAt = Date.now();
+    const schedulerLagMs =
+      expectedTickAt === null ? 0 : Math.max(0, now.getTime() - expectedTickAt);
+    const due = await params.scheduleRepo.selectDue({ now, floorMs, limit: batchLimit });
+    for (const user of due) {
+      params.enqueueHeartbeat(user.userId);
     }
+    logger.info("heartbeat.tick", {
+      status: "ok",
+      scheduler_lag_ms: schedulerLagMs,
+      duration_ms: Date.now() - startedAt,
+    });
   }
 
-  async function reload(): Promise<void> {
-    const users = await params.scheduleRepo.listAll();
-    const activeIds = new Set<string>();
-    for (const user of users) {
-      activeIds.add(user.userId);
-      heap.schedule(user.userId, new Date(user.lastActivityAt.getTime() + floorMs), user.userId);
-    }
-    for (const key of heap.keys()) {
-      if (!activeIds.has(key)) {
-        heap.cancel(key);
-      }
-    }
-  }
-
-  async function runResync(): Promise<void> {
+  async function loop(): Promise<void> {
     try {
-      await reload();
+      await tick();
       consecutiveFailures = 0;
-      logger.info("heartbeat.resync", { status: "ok" });
     } catch (error) {
-      logFailure(error);
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= escalateAfter) {
+        logger.error("heartbeat.tick", error, { status: "failed" });
+      } else {
+        logger.warn("heartbeat.tick", {
+          status: "failed",
+          error_type: error instanceof Error ? error.name : typeof error,
+        });
+      }
+    } finally {
+      if (!stopped) {
+        expectedTickAt = clock().getTime() + pollIntervalMs;
+        timer = setTimeout(() => void loop(), pollIntervalMs);
+      }
     }
   }
 
   return {
-    schedule(userId, dueAt) {
-      heap.schedule(userId, dueAt, userId);
-    },
-    cancel(userId) {
-      heap.cancel(userId);
-    },
-    has(userId) {
-      return heap.has(userId);
-    },
-    resync: runResync,
-    tick() {
-      return heap.flushDue();
-    },
+    tick,
     start() {
       if (!stopped) {
         return;
       }
       stopped = false;
-      void reload()
-        .then(() => {
-          heap.start();
-          logger.info("heartbeat.scheduler_started", { status: "ok" });
-          if (resyncIntervalMs > 0 && Number.isFinite(resyncIntervalMs)) {
-            resyncTimer = setInterval(() => void runResync(), resyncIntervalMs);
-          }
-        })
-        .catch((error) => {
-          logFailure(error);
-        });
+      expectedTickAt = null;
+      timer = setTimeout(() => void loop(), 0);
     },
     stop() {
       stopped = true;
-      heap.stop();
-      if (resyncTimer !== null) {
-        clearInterval(resyncTimer);
-        resyncTimer = null;
+      if (timer) {
+        clearTimeout(timer);
       }
+      timer = null;
     },
   };
 }

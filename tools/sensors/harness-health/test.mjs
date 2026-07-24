@@ -50,13 +50,6 @@ try {
     "apps/mobile/src/consumer.ts",
     'import { publicEvent } from "@intentive/protocol";\nexport const consumed = publicEvent;\n',
   );
-  write("apps/mobile/src/shared.ts", "export const shared = true;\n");
-  for (let index = 0; index < 5; index += 1) {
-    write(
-      `apps/mobile/src/shared-consumer-${index}.ts`,
-      `import { shared } from "./shared.js";\nexport const consumed${index} = shared;\n`,
-    );
-  }
   write(
     "apps/mobile/src/domains/chat/types/scaffold.ts",
     "export type ChatScaffold = { ready: boolean };\n",
@@ -109,8 +102,7 @@ try {
   assert.match(output, /`apps\/mobile\/src\/changed\.ts`/);
   assert.match(output, /apps\/mobile\/test\/scaffold\.test\.mjs/);
   assert.match(output, /apps\/mobile\/src\/large\.ts`: 261 lines \(threshold 250\)/);
-  assert.match(output, /apps\/mobile\/src\/shared\.ts`: fan-in 5/);
-  assert.doesNotMatch(output, /packages\/protocol\/src\/events\.ts`: fan-in/);
+  assert.match(output, /packages\/protocol\/src\/events\.ts`: fan-in 1/);
   assert.doesNotMatch(output, /packages\/protocol\/src\/index\.ts`: fan-in/);
   assert.match(output, /apps\/mobile\/src\/ignored\.ts:1`: eslint-disable/);
   assert.match(output, /packages\/protocol\/src\/events\.ts:3`: "bot" -> "Companion"/);

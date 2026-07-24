@@ -27,14 +27,6 @@ export function createTurn(deps: {
   readonly fallbackModel: string;
   readonly logger?: Logger;
   readonly clock?: () => number;
-  /**
-   * Invoked after the `runtime_turns` anchor transaction commits, on both the ok
-   * and failed paths (both record an anchor that updates last-activity). Pushes
-   * the heartbeat scheduler's per-user due-time onto the write side instead of
-   * recomputing it on every poll (ADR-0035). Composition-root wired; the spine
-   * stays heartbeat-agnostic.
-   */
-  readonly onTurnCommitted?: (userId: string) => void;
 }): Turn {
   const logger = deps.logger ?? createNoopLogger();
   const clock = deps.clock ?? Date.now;
@@ -55,7 +47,6 @@ export function createTurn(deps: {
         ...execution.onSuccess(output),
         deps.runtimeTurns.recordQuery(okRecord(execution, output)),
       ]);
-      deps.onTurnCommitted?.(execution.userId);
       logger.info("turn.completed", {
         user_id: execution.userId,
         thread_id: execution.threadId,
@@ -72,7 +63,6 @@ export function createTurn(deps: {
         ...failure.queries,
         deps.runtimeTurns.recordQuery(failedTurnRecord(execution, deps.fallbackModel, error)),
       ]);
-      deps.onTurnCommitted?.(execution.userId);
       logger.error("turn.failed", error, {
         user_id: execution.userId,
         thread_id: execution.threadId,

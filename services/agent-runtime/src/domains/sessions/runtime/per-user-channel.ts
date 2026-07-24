@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { LogAttrs, Logger } from "@intentive/providers/telemetry";
 import { createNoopLogger } from "@intentive/providers/telemetry";
 
@@ -10,7 +11,6 @@ import type {
   LedgerRecord,
   PerUserChannel,
   PerceptionArrivedSink,
-  PerceptionProjectedSink,
   RuntimeIngressEvent,
 } from "../types/event.js";
 import { createUserQueue } from "./user-queue.js";
@@ -36,26 +36,24 @@ export function createPerUserChannel(deps: {
   project: (session: BoundSession, event: RuntimeIngressEvent) => SqlQuery[];
   runTurn?: TurnRunner;
   onPerceptionArrived?: PerceptionArrivedSink;
-  onPerceptionProjected?: PerceptionProjectedSink;
   onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
+  newDedupKey?: () => string;
   logger?: Logger;
 }): PerUserChannel {
+  const newDedupKey = deps.newDedupKey ?? randomUUID;
   const logger = deps.logger ?? createNoopLogger();
   const queue = createUserQueue({ logger });
 
   return {
     accept(session, event) {
       return queue.submit(session.userId, async () => {
-        const record = toLedgerRecord(session, event);
+        const record = toLedgerRecord(session, event, newDedupKey);
         const results = await deps.sql.transaction([
           deps.ledger.recordQuery(record),
           ...deps.project(session, event),
         ]);
         const inserted = insertedLedgerRow(results);
         logger.info("session.ingress_committed", ingressAttrs(session, event, inserted));
-        if (event.type === "perception_event") {
-          deps.onPerceptionProjected?.(session, event);
-        }
         if (inserted && isPerceptionEvent(event)) {
           deps.onPerceptionArrived?.(session, event);
         }
@@ -108,13 +106,8 @@ function ingressAttrs(
   if (event.type === "user_message") {
     attrs.message_id = event.message_id;
   }
-  if (event.type === "perception_event") {
-    attrs.event_id = event.event_id;
-    attrs.artifact_type = event.artifact_type;
-    attrs.sensitivity_label = event.sensitivity_label;
-  }
-  if (event.type === "perception_tombstone") {
-    attrs.reason = event.reason;
+  if (event.type === "context_snapshot") {
+    attrs.snapshot_id = event.snapshot_id;
   }
   if (event.type === "session_end_marker") {
     attrs.reason = event.reason;
@@ -124,8 +117,8 @@ function ingressAttrs(
 
 function isPerceptionEvent(
   event: RuntimeIngressEvent,
-): event is Extract<RuntimeIngressEvent, { type: "perception_event" | "session_end_marker" }> {
-  return event.type === "perception_event" || event.type === "session_end_marker";
+): event is Extract<RuntimeIngressEvent, { type: "context_snapshot" | "session_end_marker" }> {
+  return event.type === "context_snapshot" || event.type === "session_end_marker";
 }
 
 function insertedLedgerRow(results: unknown[]): boolean {
@@ -133,26 +126,26 @@ function insertedLedgerRow(results: unknown[]): boolean {
   return Array.isArray(ledgerRows) && ledgerRows.length > 0;
 }
 
-function toLedgerRecord(session: BoundSession, event: RuntimeIngressEvent): LedgerRecord {
+function toLedgerRecord(
+  session: BoundSession,
+  event: RuntimeIngressEvent,
+  newDedupKey: () => string,
+): LedgerRecord {
   return {
     userId: session.userId,
     kind: event.type,
-    dedupKey: dedupKeyFor(event),
+    dedupKey: dedupKeyFor(event, newDedupKey),
     payload: event,
   };
 }
 
-function dedupKeyFor(event: RuntimeIngressEvent): string {
+function dedupKeyFor(event: RuntimeIngressEvent, newDedupKey: () => string): string {
   switch (event.type) {
     case "user_message":
       return event.message_id;
-    case "perception_event":
-      return event.event_id;
-    case "perception_tombstone":
-      return event.tombstone_id;
+    case "context_snapshot":
+      return event.snapshot_id;
     case "session_end_marker":
-      // The marker's stable UUID is its dedup key, so a redelivered marker
-      // commits idempotently and is acknowledged the same way.
-      return event.marker_id;
+      return newDedupKey();
   }
 }

@@ -14,8 +14,8 @@ test("reply delivery streams to connected chat-capable clients and records strea
       send: (_userId, predicate, event) => {
         sent.push(event);
         assert.equal(predicate({ clientKind: "mobile", foreground: false }), true);
-        assert.equal(predicate({ clientKind: "desktop", foreground: true }), true);
-        return ["mobile", "desktop"];
+        assert.equal(predicate({ clientKind: "desktop", foreground: true }), false);
+        return ["mobile"];
       },
     },
     deliveries: { recordQuery: async (record) => records.push(record) },
@@ -31,15 +31,6 @@ test("reply delivery streams to connected chat-capable clients and records strea
       messageId: "m1",
       path: "stream",
       clientKind: "mobile",
-      status: "ok",
-      error: null,
-      attemptedAt: at,
-    },
-    {
-      userId: "00000000-0000-4000-8000-000000000001",
-      messageId: "m1",
-      path: "stream",
-      clientKind: "desktop",
       status: "ok",
       error: null,
       attemptedAt: at,

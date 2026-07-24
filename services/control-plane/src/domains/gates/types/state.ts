@@ -51,7 +51,6 @@ export const nextGateSample: PreChatGateKind = "consent_primer";
 
 export const accountStateSample: GetMeResponse = {
   user_id: "user_stub",
-  email: null,
   next_gate: nextGateSample,
   has_agent_instance: false,
   has_desktop_client: false,

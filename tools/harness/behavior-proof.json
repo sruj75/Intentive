@@ -40,7 +40,7 @@
       "commands": [
         {
           "command": "pnpm",
-          "args": ["--dir", "apps/desktop", "desktop:check"]
+          "args": ["--dir", "apps/desktop", "test"]
         }
       ]
     }

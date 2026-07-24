@@ -32,7 +32,6 @@ export type GetMeDeviceSignal = z.infer<typeof GetMeDeviceSignal>;
 export const AccountState = z
   .object({
     user_id: z.string(),
-    email: z.string().email().nullable(),
     next_gate: PreChatGateKind.nullable(),
     has_agent_instance: z.boolean(),
     // Registered/present in the Control Plane Device Registry, not live session

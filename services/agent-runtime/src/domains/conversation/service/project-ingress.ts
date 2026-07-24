@@ -6,7 +6,7 @@ type PostConnectEvent = Exclude<ClientToRuntimeEvent, { type: "connect" }>;
 
 /**
  * Map an inbound post-connect event to the Conversation History entry it
- * produces, or `null` when the event is not a chat message (`perception_event`,
+ * produces, or `null` when the event is not a chat message (`context_snapshot`,
  * `session_end_marker`, `history_backfill_request`, etc. are not transcript
  * entries). Takes the bare `userId` rather than a `sessions` shape so the
  * `conversation` domain stays free of any `sessions` import.

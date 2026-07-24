@@ -1,84 +1,48 @@
 name: desktop-release
 
+# Desktop Client → deep-signed + notarized .dmg plus silent-updater artifacts,
+# attached to a GitHub Release. Triggered by pushing a tag like `desktop-v0.1.0`.
+#
+# Required GitHub secrets:
+#   APPLE_DEVELOPER_ID_CERT             — base64 of the .p12 export of the Developer ID Application cert
+#   APPLE_DEVELOPER_ID_CERT_PASSWORD    — password for that .p12
+#   KEYCHAIN_PASSWORD                   — any random string; used to unlock the runner keychain
+#   APPLE_ID                            — your Apple ID email
+#   APPLE_APP_SPECIFIC_PASSWORD         — app-specific password from appleid.apple.com
+#   APPLE_TEAM_ID                       — 10-char Team ID from developer.apple.com/account
+#   TAURI_SIGNING_PRIVATE_KEY           — Tauri updater signing key (run `tauri signer generate`)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — passphrase for that key
+#   SENTRY_AUTH_TOKEN                   — token with project:releases for source-map upload
+#
+# Required GitHub variables:
+#   DESKTOP_SENTRY_DSN                  — public DSN for heyintentive/desktop
+#
+# After release: flip the landing-page link to the .dmg; in-app updates use
+# Tauri's built-in updater pointing at this Release's `latest.json` (ADR-0024).
+# Full runbook + clean-Mac smoke: apps/desktop/docs/RELEASE.md.
+
 on:
+  push:
+    tags:
+      - "desktop-v*"
   workflow_dispatch:
-    inputs:
-      candidate_sha:
-        description: SHA accepted by desktop-release-candidate
-        required: true
-        type: string
-      candidate_run_id:
-        description: Successful desktop-release-candidate workflow run ID
-        required: true
-        type: string
-      release_version:
-        description: Semver without desktop-v prefix
-        required: true
-        type: string
 
 permissions:
   contents: write
 
 env:
-  # Reuse the established pre-Omi Developer ID release identity.
+  # Public Developer ID identity (also visible in the signed app). Used both by
+  # the explicit deep-sign step and handed to Tauri as APPLE_SIGNING_IDENTITY.
   SIGNING_IDENTITY: "Developer ID Application: Srujan Gowda (24D6NXS6H7)"
 
 jobs:
   release:
     runs-on: macos-latest
-    environment: desktop-release-approval
-    outputs:
-      release_tag: ${{ steps.candidate.outputs.release_tag }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
-
-      - name: Verify protected candidate evidence and create tag
-        id: candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          VERSION: ${{ inputs.release_version }}
-        run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+][0-9]+)?$ ]] || {
-            echo "Invalid Desktop release version: $VERSION" >&2
-            exit 1
-          }
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          mkdir -p .context/candidate-evidence
-          gh run view "$CANDIDATE_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json workflowName,conclusion,event \
-            > .context/candidate-evidence/run.json
-          python3 - .context/candidate-evidence/run.json <<'PY'
-          import json, pathlib, sys
-          run = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          if run.get("workflowName") != "desktop-release-candidate":
-              raise SystemExit("candidate evidence came from the wrong workflow")
-          if run.get("conclusion") != "success" or run.get("event") != "workflow_dispatch":
-              raise SystemExit("candidate evidence workflow was not a successful manual run")
-          PY
-          gh run download "$CANDIDATE_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "desktop-candidate-$CANDIDATE_SHA" \
-            --dir .context/candidate-evidence
-          python3 - "$CANDIDATE_SHA" .context/candidate-evidence/desktop-assembled-acceptance.json <<'PY'
-          import json, pathlib, sys
-          expected, path = sys.argv[1], pathlib.Path(sys.argv[2])
-          evidence = json.loads(path.read_text())
-          if not evidence.get("ok") or evidence.get("gitSHA") != expected:
-              raise SystemExit("candidate AX evidence does not accept the requested SHA")
-          PY
-          RELEASE_TAG="desktop-v$VERSION"
-          git tag --annotate "$RELEASE_TAG" "$CANDIDATE_SHA" --message "Intentive Desktop $VERSION"
-          git push origin "$RELEASE_TAG"
-          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
-          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          lfs: true
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -89,83 +53,31 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install workspace dependencies
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Resolve release version
         run: |
-          VERSION="${RELEASE_TAG#desktop-v}"
-          BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
-          if [[ "$VERSION" == *"+"* ]]; then
-            BUILD_NUMBER="${VERSION##*+}"
-            VERSION="${VERSION%%+*}"
+          if [[ "${GITHUB_REF_NAME}" == desktop-v* ]]; then
+            VERSION="${GITHUB_REF_NAME#desktop-v}"
+          else
+            VERSION="$(node -p "require('./apps/desktop/package.json').version")"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "DESKTOP_SENTRY_RELEASE=desktop@$VERSION" >> "$GITHUB_ENV"
 
-      - name: Validate public release signing configuration
-        env:
-          APPLE_DEVELOPER_ID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
-          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
-          DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
-        run: |
-          missing=()
-          for secret_name in \
-            APPLE_DEVELOPER_ID_CERT \
-            APPLE_DEVELOPER_ID_CERT_PASSWORD \
-            KEYCHAIN_PASSWORD \
-            APPLE_ID \
-            APPLE_APP_SPECIFIC_PASSWORD \
-            APPLE_TEAM_ID \
-            SPARKLE_PUBLIC_ED_KEY \
-            SPARKLE_PRIVATE_KEY \
-            DESKTOP_SENTRY_DSN \
-            DESKTOP_POSTHOG_PROJECT_KEY; do
-            if [[ -z "${!secret_name:-}" ]]; then
-              missing+=("$secret_name")
-            fi
-          done
-
-          if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required public release secret: %s\n' "${missing[@]}" >&2
-            exit 1
-          fi
-
-      - name: Verify Desktop
-        run: |
-          pnpm --dir apps/desktop typecheck
-          pnpm --dir apps/desktop test
-          pnpm --dir apps/desktop release:smoke
-
-      - name: Build app bundle
-        env:
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-          DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
-          DESKTOP_POSTHOG_PROJECT_KEY: ${{ secrets.DESKTOP_POSTHOG_PROJECT_KEY }}
-        run: |
-          APP_BUNDLE="$(
-            CONFIGURATION=release \
-              INTENTIVE_APP_NAME=Intentive \
-              INTENTIVE_BUNDLE_ID=com.heyintentive.desktop \
-              INTENTIVE_APP_VERSION="$VERSION" \
-              INTENTIVE_APP_BUILD="$BUILD_NUMBER" \
-              INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop \
-              INTENTIVE_SPARKLE_FEED_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" \
-              INTENTIVE_SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
-              INTENTIVE_SENTRY_DSN="${DESKTOP_SENTRY_DSN:-}" \
-              INTENTIVE_POSTHOG_PROJECT_KEY="${DESKTOP_POSTHOG_PROJECT_KEY:-}" \
-              INTENTIVE_POSTHOG_HOST="https://us.i.posthog.com" \
-              apps/desktop/macos/scripts/build-app-bundle.sh | tail -n 1
-          )"
-          [[ -d "$APP_BUNDLE" ]] || { echo "Missing app bundle: $APP_BUNDLE" >&2; exit 1; }
-          echo "APP_BUNDLE=$APP_BUNDLE" >> "$GITHUB_ENV"
+      - name: Install Sentry CLI
+        run: npm install --global @sentry/cli
 
       - name: Import Developer ID certificate
         env:
@@ -173,10 +85,6 @@ jobs:
           APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          if [[ -z "${APPLE_DEVELOPER_ID_CERT:-}" ]]; then
-            echo "No Developer ID certificate configured; producing unsigned release artifact."
-            exit 0
-          fi
           echo "$APPLE_DEVELOPER_ID_CERT" | base64 --decode > /tmp/cert.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
@@ -185,166 +93,129 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm /tmp/cert.p12
 
-      - name: Codesign app
+      - name: Verify native release resources
+        run: apps/desktop/scripts/verify-release-artifacts.sh source
+
+      # Deep-sign the nested resource Mach-Os inside-out BEFORE Tauri seals and
+      # signs the outer Intentive.app. Notarization rejects any unsigned nested
+      # executable, and Tauri does NOT auto-sign files under `bundle.resources`
+      # (only the outer app + externalBin sidecars). Order is deepest-first:
+      # the helper's inner binary, then the helper .app, then ollama. The outer
+      # app is signed by Tauri in the next step, completing the inside-out seal.
+      # (ADR-0015 — deep-sign every nested Mach-O.)
+      - name: Deep-sign nested helper + ollama (inside-out)
+        working-directory: apps/desktop/src-tauri
         run: |
-          for framework in \
-            "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" \
-            "$APP_BUNDLE/Contents/Frameworks/Sentry.framework"; do
-            codesign --force --options runtime --timestamp --deep --sign "$SIGNING_IDENTITY" "$framework"
-          done
-          codesign --force --options runtime --timestamp --deep \
-            --entitlements apps/desktop/macos/Desktop/Intentive-Release.entitlements \
+          HELPER="resources/Intentive Capture.app"
+          codesign --force --options runtime --timestamp \
             --sign "$SIGNING_IDENTITY" \
-            "$APP_BUNDLE"
-          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+            "$HELPER/Contents/MacOS/screenpipe"
+          codesign --force --options runtime --timestamp \
+            --entitlements entitlements/IntentiveCapture.entitlements \
+            --sign "$SIGNING_IDENTITY" \
+            "$HELPER"
+          codesign --force --options runtime --timestamp \
+            --sign "$SIGNING_IDENTITY" \
+            resources/ollama
 
-      - name: Create DMG
-        run: |
-          mkdir -p dist
-          DMG_ROOT="$RUNNER_TEMP/intentive-dmg-root"
-          rm -rf "$DMG_ROOT"
-          mkdir -p "$DMG_ROOT"
-          ditto "$APP_BUNDLE" "$DMG_ROOT/Intentive.app"
-          ln -s /Applications "$DMG_ROOT/Applications"
-          hdiutil create \
-            -volname "Intentive" \
-            -srcfolder "$DMG_ROOT" \
-            -ov \
-            -format UDZO \
-            "dist/Intentive-$VERSION.dmg"
+      - name: Build webview with Sentry release metadata
+        working-directory: apps/desktop
+        env:
+          VITE_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+          VITE_SENTRY_ENVIRONMENT: production
+          VITE_SENTRY_RELEASE: ${{ env.DESKTOP_SENTRY_RELEASE }}
+        run: pnpm build
 
-      - name: Codesign DMG
+      - name: Inject Sentry source-map debug IDs
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: heyintentive
+          SENTRY_PROJECT: desktop
+        run: sentry-cli sourcemaps inject apps/desktop/dist
+
+      - name: Stage Sentry source maps outside bundled dist
         run: |
-          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "dist/Intentive-$VERSION.dmg"
-          codesign --verify --verbose=2 "dist/Intentive-$VERSION.dmg"
+          MAP_DIR="$RUNNER_TEMP/desktop-sentry-sourcemaps"
+          rm -rf "$MAP_DIR"
+          mkdir -p "$MAP_DIR"
+          while IFS= read -r -d '' map; do
+            rel="${map#apps/desktop/dist/}"
+            mkdir -p "$MAP_DIR/$(dirname "$rel")"
+            cp "$map" "$MAP_DIR/$rel"
+            rm "$map"
+          done < <(find apps/desktop/dist -name '*.map' -print0)
+          echo "DESKTOP_SENTRY_SOURCEMAPS=$MAP_DIR" >> "$GITHUB_ENV"
+
+      - name: Build, sign, and notarize
+        working-directory: apps/desktop
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ env.SIGNING_IDENTITY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+          SENTRY_ENVIRONMENT: production
+          SENTRY_RELEASE: ${{ env.DESKTOP_SENTRY_RELEASE }}
+        run: pnpm tauri build --target aarch64-apple-darwin --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Notarize and staple DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [[ -z "${APPLE_ID:-}" ]]; then
-            echo "No Apple notarization credentials configured; skipping notarization."
-            exit 0
-          fi
-          DMG="dist/Intentive-$VERSION.dmg"
+          DMG="$(ls apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg)"
           xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --password "$APPLE_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
 
-      - name: Generate Sparkle appcast
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      # Build the updater manifest. `createUpdaterArtifacts` produces the signed
+      # `.app.tar.gz` + detached `.sig`; the silent updater (ADR-0024) needs a
+      # `latest.json` pointing at this Release's tarball with that signature.
+      - name: Generate updater latest.json
+        working-directory: apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
         run: |
-          DMG="Intentive-$VERSION.dmg"
-          DMG_PATH="dist/$DMG"
-          DMG_BYTES="$(stat -f%z "$DMG_PATH")"
-          SPARKLE_SIGN_UPDATE="$(find "$(scripts/development-storage.sh path swiftpm-desktop)" -path '*/Sparkle/bin/sign_update' -type f -perm -111 | head -n 1)"
-          [[ -x "$SPARKLE_SIGN_UPDATE" ]] || { echo "Sparkle sign_update tool not found" >&2; exit 1; }
-          SIGNATURE="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGN_UPDATE" --ed-key-file - -p "$DMG_PATH")"
-          cat > dist/appcast.xml <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-            <channel>
-              <title>Intentive Desktop Updates</title>
-              <item>
-                <title>Intentive $VERSION</title>
-                <sparkle:version>$BUILD_NUMBER</sparkle:version>
-                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
-                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-                <pubDate>$(date -u +"%a, %d %b %Y %H:%M:%S %z")</pubDate>
-                <enclosure
-                  url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/$DMG"
-                  sparkle:edSignature="$SIGNATURE"
-                  length="$DMG_BYTES"
-                  type="application/octet-stream" />
-              </item>
-            </channel>
-          </rss>
+          TARBALL="$(basename "$(ls *.app.tar.gz)")"
+          SIGNATURE="$(cat "$TARBALL.sig")"
+          cat > latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$SIGNATURE",
+                "url": "https://github.com/sruj75/Intentive/releases/download/${GITHUB_REF_NAME}/${TARBALL}"
+              }
+            }
+          }
           EOF
 
-      - name: Audit signed release artifacts
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          SPARKLE_SIGN_UPDATE="$(find "$(scripts/development-storage.sh path swiftpm-desktop)" -path '*/Sparkle/bin/sign_update' -type f -perm -111 | head -n 1)"
-          PRIVATE_KEY_FILE="$RUNNER_TEMP/sparkle-private-key"
-          cleanup_private_key() {
-            rm -f "$PRIVATE_KEY_FILE"
-          }
-          trap cleanup_private_key EXIT
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$PRIVATE_KEY_FILE"
-          chmod 600 "$PRIVATE_KEY_FILE"
-          apps/desktop/macos/scripts/smoke-signed-desktop-artifact.sh \
-            --app "$APP_BUNDLE" \
-            --dmg "dist/Intentive-$VERSION.dmg" \
-            --appcast dist/appcast.xml \
-            --tag "$RELEASE_TAG" \
-            --build "$BUILD_NUMBER" \
-            --expected-team-id "$APPLE_TEAM_ID" \
-            --sparkle-sign-tool "$SPARKLE_SIGN_UPDATE" \
-            --sparkle-private-key "$PRIVATE_KEY_FILE" \
-            --result-json dist/desktop-release-acceptance.json
-          rm -f "$PRIVATE_KEY_FILE"
-          trap - EXIT
+      - name: Verify release artifacts
+        run: apps/desktop/scripts/verify-release-artifacts.sh bundle
 
-      - name: Upload release artifacts
+      - name: Create Sentry release and upload webview source maps
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: heyintentive
+          SENTRY_PROJECT: desktop
+        run: |
+          sentry-cli releases new "$DESKTOP_SENTRY_RELEASE" || true
+          sentry-cli sourcemaps upload --release "$DESKTOP_SENTRY_RELEASE" "$DESKTOP_SENTRY_SOURCEMAPS"
+          sentry-cli releases set-commits "$DESKTOP_SENTRY_RELEASE" --auto
+          sentry-cli releases finalize "$DESKTOP_SENTRY_RELEASE"
+
+      - name: Upload DMG + updater artifacts to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
           files: |
-            dist/*.dmg
-            dist/appcast.xml
-            dist/desktop-release-acceptance.json
-          draft: true
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/latest.json
           generate_release_notes: true
-
-  stage2-proof-and-publish:
-    needs: release
-    runs-on: [self-hosted, macOS, ARM64, intentive-desktop]
-    environment: desktop-release-stage2-proof
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      DESKTOP_STAGE2_SPARKLE_DRIVER: ${{ vars.DESKTOP_STAGE2_SPARKLE_DRIVER }}
-      DESKTOP_STAGE2_TART_DRIVER: ${{ vars.DESKTOP_STAGE2_TART_DRIVER }}
-      DESKTOP_STAGE2_FULL_STACK_DRIVER: ${{ vars.DESKTOP_STAGE2_FULL_STACK_DRIVER }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.candidate_sha }}
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v6
-      - name: Download the exact draft candidate
-        run: |
-          mkdir -p dist
-          gh release download "$RELEASE_TAG" --dir dist --pattern '*.dmg' --pattern appcast.xml
-          test "$(find dist -name '*.dmg' -type f | wc -l | tr -d ' ')" = 1
-      - name: Execute installed-DMG, Sparkle N-1, Tart TCC, and signed-in proof
-        run: |
-          DMG="$(find dist -name '*.dmg' -type f -print -quit)"
-          EVIDENCE_DIR="$RUNNER_TEMP/intentive-stage2-proof-$GITHUB_RUN_ID"
-          pnpm --dir apps/desktop desktop:release-proof \
-            --dmg "$DMG" \
-            --appcast dist/appcast.xml \
-            --tag "$RELEASE_TAG" \
-            --sha "$CANDIDATE_SHA" \
-            --output "$EVIDENCE_DIR"
-          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
-      - name: Attach Stage 2 proof and publish
-        run: |
-          EVIDENCE_ARCHIVE="$RUNNER_TEMP/intentive-stage2-proof-$GITHUB_RUN_ID.tar.gz"
-          tar -C "$EVIDENCE_DIR" -czf "$EVIDENCE_ARCHIVE" .
-          shasum -a 256 "$EVIDENCE_ARCHIVE" > "$EVIDENCE_ARCHIVE.sha256"
-          gh release upload "$RELEASE_TAG" \
-            "$EVIDENCE_ARCHIVE" "$EVIDENCE_ARCHIVE.sha256" --clobber
-          gh release edit "$RELEASE_TAG" --draft=false

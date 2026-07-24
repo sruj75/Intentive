@@ -4,7 +4,7 @@ Read this when working under `packages/`.
 
 The cross-deployable shared kernel. Before changing anything here, read
 [`CONTEXT.md`](CONTEXT.md) for the vocabulary these packages own (Protocol,
-Perception Event, Internal API, …), [`CHANGELOG.md`](CHANGELOG.md) for shipped
+Context Snapshot, Internal API, …), [`CHANGELOG.md`](CHANGELOG.md) for shipped
 package deltas, root [`../AGENTS.md`](../AGENTS.md), and
 [`../CONTEXT-MAP.md`](../CONTEXT-MAP.md).
 

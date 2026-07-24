@@ -95,7 +95,7 @@ The content area is the star. Everything else exists to support it.
 **Grid layout guidelines:**
 ```
 Small window:   2 columns
-Medium window:  3 columns
+Medium window:  3 columns  
 Large window:   4-5 columns
 Gap:            12-16px
 Padding:        16-24px from edges

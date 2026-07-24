@@ -16,7 +16,7 @@ export interface AgentInstanceRegistry {
 }
 
 export function createInMemoryAgentInstanceRegistry(
-  options: { readonly newId?: () => string; readonly onNewUser?: (userId: string) => void } = {},
+  options: { newId?: () => string } = {},
 ): AgentInstanceRegistry {
   const newId = options.newId ?? randomUUID;
   const byUserId = new Map<string, AgentInstance>();
@@ -45,7 +45,6 @@ export function createInMemoryAgentInstanceRegistry(
       byUserId.set(userId, instance);
       userIdByAuthSubject.set(authSubject, userId);
       authSubjectByUserId.set(userId, authSubject);
-      options.onNewUser?.(userId);
       return instance;
     },
 
@@ -78,37 +77,22 @@ export function createInMemoryAgentInstanceRegistry(
   };
 }
 
-export function createAgentInstanceRepo(
-  sql: Sql,
-  options: { readonly onNewUser?: (userId: string) => void } = {},
-): AgentInstanceRegistry {
+export function createAgentInstanceRepo(sql: Sql): AgentInstanceRegistry {
   return {
     async loadOrCreate({ userId, authSubject, clientTz }): Promise<AgentInstance> {
-      // `xmax = 0` is the Postgres idiom for "this statement INSERTed the row"
-      // (vs resolved an `ON CONFLICT` UPDATE, which sets xmax to the updating
-      // xid). Used only to bootstrap the first heartbeat for a brand-new user
-      // (ADR-0035); the composition root still guards with the heap's `has()`.
-      const rows = await sql<{
-        id: string;
-        user_id: string;
-        client_tz: string | null;
-        is_new: boolean;
-      }>`
+      const rows = await sql<{ id: string; user_id: string; client_tz: string | null }>`
         INSERT INTO agent_runtime.agent_instances (user_id, auth_subject, client_tz)
-          VALUES (${userId}, ${authSubject}, ${clientTz ?? null})
-          ON CONFLICT (user_id) DO UPDATE SET
-            auth_subject = EXCLUDED.auth_subject,
-            client_tz = COALESCE(${clientTz ?? null}, agent_runtime.agent_instances.client_tz)
-          RETURNING id, user_id, client_tz, (xmax = 0) AS is_new
+        VALUES (${userId}, ${authSubject}, ${clientTz ?? null})
+        ON CONFLICT (user_id) DO UPDATE SET
+          auth_subject = EXCLUDED.auth_subject,
+          client_tz = COALESCE(${clientTz ?? null}, agent_runtime.agent_instances.client_tz)
+        RETURNING id, user_id, client_tz
       `;
       const row = rows[0];
       if (!row) {
         throw new Error("loadOrCreate: upsert returned no row");
       }
 
-      if (row.is_new) {
-        options.onNewUser?.(userId);
-      }
       return Object.freeze({ id: row.id, userId: row.user_id, clientTz: row.client_tz });
     },
 

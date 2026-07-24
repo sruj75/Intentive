@@ -15,21 +15,6 @@ const tsParser = require("@typescript-eslint/parser");
 
 module.exports = [
   {
-    // Generated workspaces and dependency checkouts are outside repo lint scope.
-    ignores: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/.build/**",
-      "**/.context/**",
-      "**/coverage/**",
-      "**/.next/**",
-      "**/.expo/**",
-      "**/target/**",
-      "tools/linters/**/test.js",
-    ],
-  },
-  {
     files: [
       "apps/*/src/**/*.{ts,tsx,mts,cts}",
       "services/*/src/**/*.{ts,tsx,mts,cts}",
@@ -71,5 +56,19 @@ module.exports = [
       "intentive-architecture/filename-case": "error",
       "intentive-architecture/provider-only-cross-cutting": "error",
     },
+  },
+  {
+    // The plugin's own test fixtures and unit test live outside the layer rule.
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.next/**",
+      "**/.expo/**",
+      "**/target/**",
+      "apps/desktop/src-tauri/target/**",
+      "tools/linters/**/test.js",
+    ],
   },
 ];

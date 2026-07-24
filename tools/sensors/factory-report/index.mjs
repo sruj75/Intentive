@@ -138,7 +138,12 @@ export function formatMarkdownReport(
 function radarSection(lines, context, behaviorProof, impactRadius, btarReport) {
   const actionable = context.items.filter((item) => {
     if (item.finding.category === "dependency") return false;
-    return item.isChangedFile || item.isRepeatedUnclassified || item.isReturned;
+    return (
+      item.isChangedFile ||
+      item.isChangedWorkspace ||
+      item.isRepeatedUnclassified ||
+      item.isReturned
+    );
   });
   const dependencyGroups = context.dependencyGroups.filter((group) => {
     return group.isPrTied || group.isRepeatedUnclassified || group.isReturned;
@@ -147,7 +152,7 @@ function radarSection(lines, context, behaviorProof, impactRadius, btarReport) {
   lines.push("### Radar");
   lines.push("");
   lines.push(
-    "Start here. These findings are attached to changed files, repeated without classification, or returned after being marked fixed.",
+    "Start here. These findings are tied to the change, repeated without classification, or returned after being marked fixed.",
   );
   lines.push("");
 

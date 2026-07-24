@@ -12,13 +12,6 @@ const rootDryRunOutput = run(["--dry-run"]);
 assert.match(rootDryRunOutput, /pnpm docs:agents:test/);
 assert.match(rootDryRunOutput, /Root harness dry run completed/);
 
-const groupsOutput = run(["--list-groups"]);
-for (const group of ["repo-contracts", "node-workspaces", "desktop-swift"]) {
-  assert.match(groupsOutput, new RegExp(escapeRegExp(group)));
-  const groupOutput = run(["--group", group, "--dry-run"]);
-  assert.match(groupOutput, /harness dry run completed/);
-}
-
 const scopesOutput = run(["--list-scopes"]);
 for (const scope of [
   "apps/mobile",
@@ -37,13 +30,7 @@ const dryRuns = [
     /# Mobile Client Harness/,
     /pnpm --dir apps\/mobile test:rn/,
   ],
-  [
-    "--scope",
-    "desktop",
-    "--dry-run",
-    /# Desktop Client Harness/,
-    /pnpm --dir apps\/desktop desktop:check/,
-  ],
+  ["--scope", "desktop", "--dry-run", /# Desktop Client Harness/, /pnpm --dir apps\/desktop test/],
   [
     "--scope",
     "services/control-plane",
@@ -68,9 +55,6 @@ for (const [scopeFlag, scope, dryRunFlag, titlePattern, commandPattern] of dryRu
   assert.match(output, commandPattern);
   assert.match(output, /dry run completed/);
 }
-
-const desktopOutput = run(["--scope", "desktop", "--dry-run"]);
-assert.doesNotMatch(desktopOutput, /acceptance:assembled/);
 
 const manifest = readJson("behavior-proof.json");
 assert.ok(Array.isArray(manifest.slices));

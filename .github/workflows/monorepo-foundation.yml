@@ -9,82 +9,66 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: gate-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  repo-contracts:
-    name: Repository contracts
+  verify:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Run repository contract Gate
-        run: pnpm harness --group repo-contracts
 
-  node-workspaces:
-    name: Node workspaces
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Run Node workspace Gate
-        run: pnpm harness --group node-workspaces
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
-  desktop-swift:
-    name: Desktop Swift
-    runs-on: macos-latest
-    env:
-      INTENTIVE_SWIFTPM_SCRATCH_PATH: ${{ github.workspace }}/.build/swiftpm-gate
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Run Desktop Swift Gate
-        run: pnpm harness --group desktop-swift
-      - name: Add coverage summary
-        if: always() && hashFiles('.context/coverage/desktop-swift-summary.md') != ''
-        run: cat .context/coverage/desktop-swift-summary.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload reviewable Swift coverage
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-swift-coverage
-          path: |
-            .context/coverage/desktop-swift.json
-            .context/coverage/desktop-swift-summary.md
-          if-no-files-found: error
-
-  gate:
-    name: Gate
-    if: always()
-    needs:
-      - repo-contracts
-      - node-workspaces
-      - desktop-swift
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require every Gate module
-        env:
-          REPO_CONTRACTS: ${{ needs.repo-contracts.result }}
-          NODE_WORKSPACES: ${{ needs.node-workspaces.result }}
-          DESKTOP_SWIFT: ${{ needs.desktop-swift.result }}
+      - name: Install Linux dependencies for Desktop Rust tests
         run: |
-          test "$REPO_CONTRACTS" = success
-          test "$NODE_WORKSPACES" = success
-          test "$DESKTOP_SWIFT" = success
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Impact radius advisory
+        run: pnpm sensor:impact-radius
+        continue-on-error: true
+
+      - name: Deployable harness template contract
+        run: pnpm harness:test
+
+      - name: Harness health report contract
+        run: pnpm sensor:harness-health:test
+
+      - name: Factory report contract
+        run: pnpm sensor:factory-report:test
+
+      - name: Factory self-improvement contract
+        run: pnpm factory:test
+
+      - name: Factory docs integrity contract
+        run: pnpm docs:factory:test
+
+      - name: CONTEXT vocabulary docs contract
+        run: pnpm docs:context:test
+
+      - name: Agent docs integrity contract
+        run: pnpm docs:agents:test
+
+      - name: Architecture lint message contract
+        run: pnpm lint:architecture:test
+
+      - name: Harness
+        run: pnpm harness:ci
