@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.4",
+    "@hono/node-server": "^2.0.10",
     "@intentive/api-contract": "workspace:*",
     "@intentive/protocol": "workspace:*",
     "@intentive/providers": "workspace:*",
