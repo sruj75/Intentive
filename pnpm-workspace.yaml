@@ -13,15 +13,20 @@ allowBuilds:
 overrides:
   "brace-expansion@<1.1.16": "1.1.16"
   "brace-expansion@>=3.0.0 <5.0.7": "5.0.7"
-  # Mobile's `@better-auth/expo` declares `@better-auth/core: ^1.6.20`, which
+  # Mobile's `@better-auth/expo` declares `@better-auth/core: ^1.6.23`, which
   # otherwise floats onto whatever core patch is newest (e.g. a just-published
-  # 1.6.22). Pin it to 1.6.20 — the exact version mobile's own `better-auth@1.6.20`
+  # 1.6.25). Pin it to 1.6.23 — the exact version mobile's own `better-auth@1.6.23`
   # already pins — so the lockfile stays on a settled release instead of chasing
   # brand-new patches that trip the minimum-release-age supply-chain gate.
-  "@better-auth/expo>@better-auth/core": "1.6.20"
+  "@better-auth/expo>@better-auth/core": "1.6.23"
   esbuild: "0.28.1"
   form-data: "4.0.6"
   js-yaml: "4.3.0"
+  # GHSA-r28c-9q8g-f849: postcss <=8.5.17 auto-loads a previous source map from
+  # an attacker-controlled `sourceMappingURL`, disclosing arbitrary `.map` files.
+  # Reached only as a transitive of Expo's Metro config and Vite, but it is a
+  # production path for `apps/mobile`, so pin the whole tree past the fix.
+  postcss: "8.5.22"
   shell-quote: "1.9.0"
   uuid: "11.1.1"
   vite: "7.3.5"
