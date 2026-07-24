@@ -8,7 +8,13 @@ Run these from the repository root:
 
 ```bash
 pnpm harness
+pnpm harness --group repo-contracts
+pnpm harness --group node-workspaces
+pnpm harness --group desktop-swift
 pnpm harness --scope apps/mobile
+pnpm ci:contracts
+pnpm ci:dependency-exceptions
+pnpm ci:shell-portability
 pnpm sensor:impact-radius
 pnpm sensor:contract-drift
 pnpm sensor:harness-health
@@ -25,12 +31,14 @@ pnpm test
 pnpm coverage
 ```
 
-- `pnpm harness` is the preferred agent pre-handoff command and the blocking CI verification command. It runs the root PR gate, the impact-radius fixture tests, and the Mobile React Native/Jest harness.
+- `pnpm harness` is the preferred agent pre-handoff command. It composes the same three Gate modules that CI runs independently: `repo-contracts`, `node-workspaces`, and `desktop-swift`.
+- `pnpm harness --group <group>` runs one independently executable Gate module. CI runs the three groups in parallel and joins them behind the stable `Gate` status.
+- Desktop’s three explicit verification tiers are `pnpm --dir apps/desktop desktop:check` (deterministic Swift tests, coverage, and bundle contract), `desktop:accept` (assembled Accessibility journeys on the dedicated Mac), and `desktop:release-proof` (signed installed-DMG, Sparkle N-1, Tart TCC, and signed-in proof).
 - `pnpm harness --scope <deployable>` runs the deployable harness template from `tools/harness/`, printing the owning context docs, relevant ADR dirs, high-risk shared packages, common failure modes, sensors, and focused commands. Supported scopes are `apps/mobile`, `apps/desktop`, `services/control-plane`, and `services/agent-runtime`.
 - `pnpm sensor:impact-radius` is the preferred pre-review triage sensor. It reports coupling and affected workspace hints for the current change set, and remains advisory in CI.
 - `pnpm sensor:contract-drift` is a hard-gated architecture sensor. It fails when deployables redefine `@intentive/protocol` wire events or `@intentive/api-contract` HTTP contracts locally.
 - `pnpm sensor:harness-health` emits the advisory Ready-for-review drift report used by the PR sticky comment workflow. Treat the sticky comment as a factory feedback loop: fix current drift when it belongs in the change, improve the harness when the finding repeats, or backlog/accept the finding with rationale.
-- `pnpm sensor:factory-report` is Radar: it aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and shows change-tied or learning findings by default. CI can pass `--btar-base-report` and `--btar-head-report` to fold a BTAR agent-readiness delta into the same sticky comment. Use `--audit` for full repo-wide sensor details.
+- `pnpm sensor:factory-report` is Radar: it aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and shows changed-file or learning findings by default. Use `--audit` for full repo-wide sensor details.
 - `pnpm factory:ledger` refreshes finding counts in `docs/factory/LEDGER.md` from the current change set or a saved report. It preserves human statuses such as accepted, backlogged, and factory-improved.
 - `pnpm factory:recommend --report <file>` reads a saved sticky comment or factory report, compares it against the ledger, and writes grouped recommendations to `.context/factory-recommendations.md` for the recommendation-only Conductor agent pass described in `docs/factory/SELF-IMPROVEMENT.md`.
 - `pnpm factory:test` runs fixture tests for finding IDs, ledger updates, and recommendation generation.
@@ -39,7 +47,7 @@ pnpm coverage
 - `pnpm typecheck` runs every workspace typecheck through Turbo.
 - `pnpm lint` checks documentation links and architecture lint rules (TS).
 - `pnpm test` runs every workspace with a `test` script, including Desktop SwiftPM tests, shared contract tests, architecture lint tests, and deployable tests.
-- `pnpm coverage` runs the configured coverage workflow locally when a workspace exposes one; Desktop CI uses SwiftPM coverage artifacts.
+- `pnpm coverage` runs Desktop Swift tests with coverage, writes the complete LLVM JSON export to `.context/coverage/desktop-swift.json`, and writes a reviewable maintained-source summary beside it.
 
 ## Sensor Timing
 
@@ -72,7 +80,7 @@ The target monorepo gate is `pnpm harness --scope apps/desktop`.
 The final assembled acceptance tracer is:
 
 ```bash
-pnpm --dir apps/desktop acceptance:assembled
+pnpm --dir apps/desktop desktop:accept
 ```
 
 It launches an actual isolated-profile app bundle and drives its real controls through an external macOS Accessibility process. The debug-only loopback bridge is limited to fixtures, Runtime-link/ack faults, and snapshots; it cannot invoke user actions. Evidence is assertion-derived and step-level. The runner must already have Accessibility permission. Signed/notarized artifact launch, N-1 Sparkle update proof, live signed-in full-stack proof, and Tart TCC prompts remain dedicated-Mac release gates; see [`apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
@@ -137,7 +145,7 @@ pnpm --dir apps/mobile typecheck
 
 The root `pnpm test` runs the Node `test` script above. The React Native harness
 is included in the blocking root harness through `pnpm --dir apps/mobile test:rn`
-(`pnpm harness` locally, `pnpm harness:ci` in CI), so run it directly for focused
+(`pnpm harness` locally, the `node-workspaces` Gate group in CI), so run it directly for focused
 mobile UI/gate debugging.
 
 ### iOS simulator verification (visual / on-device)
@@ -233,11 +241,10 @@ vertical slices land.
 
 ## CI Expectations
 
-- `.github/workflows/monorepo-foundation.yml` is the root PR gate. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness` and includes typecheck, lint, format check, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests.
-- `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. It builds optional BTAR base/head JSON reports, then runs `pnpm sensor:factory-report` with those reports so the sticky comment can include a BTAR agent-readiness delta alongside impact-radius and harness-health. BTAR setup or analysis failures are advisory only and do not fail the job. Use `--audit` locally for full repo-wide maintenance output.
-- `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite on pull requests that touch `services/control-plane/` or its shared-package dependencies. It intentionally omits `NEON_*` so branch-spawning repo integration tests skip in PR CI.
-- `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, runs the Control Plane checks without creating extra Neon branches, and deletes the branch when the PR closes.
-- `.github/workflows/desktop-ci.yml` runs Desktop SwiftPM build/tests and docs checks when desktop-relevant paths change.
-- `.github/workflows/security-audit.yml` runs `pnpm audit --prod --audit-level high` on pull requests only when pnpm dependency inputs change; its weekly/manual path runs the full `pnpm audit --audit-level high`.
-- `.github/workflows/desktop-audit.yml` audits Desktop SwiftPM dependencies and blocks provider SDKs in the app package.
-- `.github/workflows/coverage.yml` uploads Desktop Swift coverage artifacts.
+- `.github/workflows/monorepo-foundation.yml` is the root PR Gate. It runs repository contracts on Ubuntu, Node workspaces on Ubuntu, and Desktop Swift tests plus bundle and coverage evidence on macOS. The stable `Gate` job succeeds only when all three modules pass.
+- `.github/workflows/codeql.yml` is the versioned security-analysis contract. It analyzes Actions, JavaScript/TypeScript, and Swift, then joins them behind the stable `Security` status. GitHub default setup must remain disabled so its stale auto-detected language list cannot compete with this workflow.
+- `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. Radar is changed-file-first and keeps the full repository audit behind `--audit`; it does not execute unpinned third-party analyzers.
+- `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, and deletes the branch when the PR closes. Typecheck/tests belong to the Node Gate and are not replayed here.
+- `.github/workflows/security-audit.yml` runs `pnpm audit --prod --audit-level moderate` on pull requests when pnpm dependency inputs change; its weekly/manual path runs the full `pnpm audit --audit-level moderate`.
+- `.github/workflows/desktop-dependency-policy.yml` enforces the Desktop provider-SDK boundary. It is a dependency-policy check, not a vulnerability database scan.
+- Desktop coverage is produced by the same `desktop-swift` Gate execution that runs tests; there is no separate recompilation-only coverage workflow.

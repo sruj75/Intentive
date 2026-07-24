@@ -323,6 +323,7 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
+      - uses: pnpm/action-setup@v6
       - name: Download the exact draft candidate
         run: |
           mkdir -p dist
@@ -332,7 +333,7 @@ jobs:
         run: |
           DMG="$(find dist -name '*.dmg' -type f -print -quit)"
           EVIDENCE_DIR="$RUNNER_TEMP/intentive-stage2-proof-$GITHUB_RUN_ID"
-          apps/desktop/macos/scripts/run-stage2-release-proof.sh \
+          pnpm --dir apps/desktop desktop:release-proof \
             --dmg "$DMG" \
             --appcast dist/appcast.xml \
             --tag "$RELEASE_TAG" \

@@ -10,6 +10,12 @@
     "harness": "node tools/harness/run-harness.mjs",
     "harness:ci": "node tools/harness/run-harness.mjs",
     "harness:test": "node tools/harness/test.mjs",
+    "ci:contracts": "node tools/ci/check-contracts.mjs",
+    "ci:contracts:test": "node tools/ci/check-contracts.test.mjs",
+    "ci:dependency-exceptions": "node tools/ci/check-dependency-exceptions.mjs",
+    "ci:dependency-exceptions:test": "node tools/ci/check-dependency-exceptions.test.mjs",
+    "ci:shell-portability": "bash tools/ci/check-shell-portability.sh",
+    "coverage:swift:test": "node tools/coverage/summarize-swift.test.mjs",
     "sensor:impact-radius": "node tools/sensors/impact-radius/index.mjs",
     "sensor:impact-radius:test": "node tools/sensors/impact-radius/test.mjs",
     "sensor:contract-drift": "node tools/sensors/contract-drift/index.mjs",
@@ -31,7 +37,7 @@
     "lint:fix": "eslint . --fix",
     "lint:architecture:test": "node tools/linters/eslint-plugin-intentive-architecture/test.js",
     "test": "turbo run test",
-    "coverage": "pnpm --dir apps/desktop test",
+    "coverage": "pnpm --dir apps/desktop test:coverage",
     "prepare": "husky",
     "hooks:pre-commit": "sh tools/hooks/run-pre-commit.sh",
     "hooks:staged-check": "node tools/hooks/check-staged.mjs",
@@ -50,7 +56,8 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
     "prettier": "^3.8.3",
-    "turbo": "^2.0.0"
+    "turbo": "^2.0.0",
+    "yaml": "2.9.0"
   },
   "engines": {
     "node": ">=24.0.0",

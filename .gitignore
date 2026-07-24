@@ -37,6 +37,8 @@ pnpm-debug.log*
 .turbo/
 .cache/
 coverage/
+!tools/coverage/
+!tools/coverage/*.mjs
 
 # Local Claude config
 .claude/settings.local.json

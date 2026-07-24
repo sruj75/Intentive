@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH="/bin:/usr/bin:/usr/sbin:/sbin"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MACOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -32,7 +33,7 @@ for required in \
   "DMG install artifact" \
   "Native framework integrity" \
   "Local Screen Memory assets"; do
-  rg -Fq "$required" "$help_output" || fail "help is missing smoke path: $required"
+  grep -Fq -- "$required" "$help_output" || fail "help is missing smoke path: $required"
 done
 
 for required_source_check in \
@@ -41,7 +42,7 @@ for required_source_check in \
   'xcrun stapler validate' \
   'com.apple.security.get-task-allow' \
   'sparkle-sign-tool is required'; do
-  rg -Fq "$required_source_check" "$SMOKE" \
+  grep -Fq -- "$required_source_check" "$SMOKE" \
     || fail "signed artifact smoke is missing release check: $required_source_check"
 done
 
@@ -50,14 +51,14 @@ TMP_ROOTS+=("$invalid_err")
 if "$SMOKE" --tag "bad-tag" >/dev/null 2>"$invalid_err"; then
   fail "missing app should fail"
 fi
-rg -q -- "--app is required" "$invalid_err" || fail "missing app failure should be explicit"
+grep -q -- "--app is required" "$invalid_err" || fail "missing app failure should be explicit"
 
 missing_value_err="$(mktemp "${TMPDIR:-/tmp}/intentive-smoke-value.XXXXXX")"
 TMP_ROOTS+=("$missing_value_err")
 if "$SMOKE" --app --dmg release.dmg >/dev/null 2>"$missing_value_err"; then
   fail "missing option value should fail"
 fi
-rg -q -- "--app requires a value" "$missing_value_err" || fail "missing value failure should be explicit"
+grep -q -- "--app requires a value" "$missing_value_err" || fail "missing value failure should be explicit"
 
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/intentive-smoke-test.XXXXXX")"
 TMP_ROOTS+=("$tmp_root")
@@ -87,6 +88,6 @@ TMP_ROOTS+=("$bad_tag_err")
 if "$SMOKE" --app "$tmp_app" --tag "bad-tag" >/dev/null 2>"$bad_tag_err"; then
   fail "bad release tag should fail before signing checks"
 fi
-rg -q "invalid release tag" "$bad_tag_err" || fail "bad tag failure should be explicit"
+grep -q -- "invalid release tag" "$bad_tag_err" || fail "bad tag failure should be explicit"
 
 echo "signed artifact smoke contract tests passed"

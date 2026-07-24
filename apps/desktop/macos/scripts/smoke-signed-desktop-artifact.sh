@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH="/bin:/usr/bin:/usr/sbin:/sbin"
 
 APP_BUNDLE=""
 DMG_PATH=""
@@ -187,7 +188,7 @@ assert_bundle_identity() {
   [[ -n "$(plist_read IntentiveSentryDSN)" ]] || fail "IntentiveSentryDSN is missing"
   [[ -n "$(plist_read IntentivePostHogProjectKey)" ]] || fail "IntentivePostHogProjectKey is missing"
 
-  if plutil -p "$APP_BUNDLE/Contents/Info.plist" | rg -q "com[.]omi|Omi|omi-computer"; then
+  if plutil -p "$APP_BUNDLE/Contents/Info.plist" | grep -Eq "com[.]omi|Omi|omi-computer"; then
     fail "Info.plist contains stale Omi identity"
   fi
 

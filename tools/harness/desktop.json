@@ -13,24 +13,9 @@
   "adrDirs": ["docs/adr", "apps/desktop/docs/adr"],
   "requiredCommands": [
     {
-      "label": "Desktop typecheck",
+      "label": "Desktop check",
       "command": "pnpm",
-      "args": ["--dir", "apps/desktop", "typecheck"]
-    },
-    {
-      "label": "Desktop Swift tests",
-      "command": "pnpm",
-      "args": ["--dir", "apps/desktop", "test"]
-    },
-    {
-      "label": "Desktop assembled acceptance",
-      "command": "pnpm",
-      "args": ["--dir", "apps/desktop", "acceptance:assembled"]
-    },
-    {
-      "label": "Desktop release bundle smoke",
-      "command": "pnpm",
-      "args": ["--dir", "apps/desktop", "release:smoke"]
+      "args": ["--dir", "apps/desktop", "desktop:check"]
     }
   ],
   "sensors": [

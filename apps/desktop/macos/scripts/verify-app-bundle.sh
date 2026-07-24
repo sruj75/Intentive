@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH="/bin:/usr/bin:/usr/sbin:/sbin"
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_SCRIPT="$ROOT_DIR/scripts/build-app-bundle.sh"
@@ -102,7 +103,7 @@ assert_nonempty_plist "NSAppleEventsUsageDescription"
 assert_nonempty_plist "NSMicrophoneUsageDescription"
 assert_nonempty_plist "NSAudioCaptureUsageDescription"
 
-if plutil -p "$PLIST" | rg -q "com\\.omi|Omi|omi-computer"; then
+if plutil -p "$PLIST" | grep -Eq "com[.]omi|Omi|omi-computer"; then
   fail "Info.plist contains stale Omi identity"
 fi
 

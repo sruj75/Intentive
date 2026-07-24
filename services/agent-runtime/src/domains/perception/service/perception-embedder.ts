@@ -16,7 +16,16 @@ export function createOpenRouterPerceptionEmbedder(params: {
   const model = params.model ?? "openai/text-embedding-3-small";
   const dim = params.dim ?? 1536;
   const doFetch = params.fetchImpl ?? fetch;
-  const url = `${params.baseUrl.replace(/\/+$/, "")}/embeddings`;
+  const baseUrl = params.baseUrl.trim();
+  const parsedBaseUrl = new URL(baseUrl);
+  if (parsedBaseUrl.protocol !== "https:" && parsedBaseUrl.protocol !== "http:") {
+    throw new TypeError("Perception embedder base URL must use HTTP or HTTPS");
+  }
+  let baseUrlEnd = baseUrl.length;
+  while (baseUrlEnd > 0 && baseUrl[baseUrlEnd - 1] === "/") {
+    baseUrlEnd -= 1;
+  }
+  const url = `${baseUrl.slice(0, baseUrlEnd)}/embeddings`;
 
   return {
     modelId: model,

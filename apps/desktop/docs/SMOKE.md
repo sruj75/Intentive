@@ -6,7 +6,7 @@
 pnpm --dir apps/desktop typecheck
 pnpm --dir apps/desktop test
 pnpm harness --scope apps/desktop
-pnpm --dir apps/desktop acceptance:assembled
+pnpm --dir apps/desktop desktop:accept
 ```
 
 ## Manual Local Run

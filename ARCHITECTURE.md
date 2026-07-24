@@ -176,4 +176,4 @@ Lint error messages include remediation instructions for agents.
 
 **Documentation network:** [`AGENTS.md`](AGENTS.md) (agent map), [`CONTEXT-MAP.md`](CONTEXT-MAP.md) (vocabulary), deployable `CONTEXT.md` / `ARCHITECTURE.md` / `docs/adr/`, system-wide [`docs/adr/`](docs/adr/).
 
-**Factory / CI:** per-deployable workflows under `.github/workflows/` with path filters; custom lints in `tools/linters/eslint-plugin-intentive-architecture/README.md` document the enforcement story.
+**Factory / CI:** `.github/workflows/monorepo-foundation.yml` runs the versioned `repo-contracts`, `node-workspaces`, and `desktop-swift` harness groups in parallel and joins them behind the stable `Gate` status. Environment-specific workflows retain path filters for migration validation, deployment, release, dependency policy, and advisory Factory Radar. Custom lints in `tools/linters/eslint-plugin-intentive-architecture/README.md` document the enforcement story.
