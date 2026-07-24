@@ -287,9 +287,16 @@ final class ScreenMemoryArchiveTests: XCTestCase {
       )
     )
 
-    try await Task.sleep(nanoseconds: 50_000_000)
-
-    let available = try await archive.videoFrame(for: ScreenMemoryRecordID(recordID))
+    let recordIDValue = ScreenMemoryRecordID(recordID)
+    var available: ScreenMemoryVideoFrame?
+    let pollDeadline = Date().addingTimeInterval(10)
+    while Date() < pollDeadline {
+      if let frame = try await archive.videoFrame(for: recordIDValue) {
+        available = frame
+        break
+      }
+      try await Task.sleep(nanoseconds: 5_000_000)
+    }
     XCTAssertEqual(available?.imageData, frameBytes)
   }
 
