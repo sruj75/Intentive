@@ -21,7 +21,7 @@ The single explicit interface for cross-cutting concerns. Auth, telemetry, featu
 - Interfaces are stable; the backing implementation is swappable. Callers depend on the interface, not the SDK.
 - The auth verifier is shared verbatim by the Control Plane (`identity` domain) and the Agent Runtime (`gateway` domain) — there is no second, deployable-local JWT verifier.
 - Connector clients that are owned by a single deployable (e.g. the Control Plane's Expo Push Service client, a Neon pool) may be exposed through that deployable's own `providers/` re-export rather than shipped here. Only genuinely cross-deployable clients live in this package.
-- Telemetry must never emit auth tokens, conversation bodies, user memory, or Context Snapshot content; redaction is part of the contract.
+- Telemetry must never emit auth tokens, conversation bodies, user memory, or Perception Event content; redaction is part of the contract.
 
 ## Boundaries
 

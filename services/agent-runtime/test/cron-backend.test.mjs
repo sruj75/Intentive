@@ -49,6 +49,43 @@ test("cron backend validates and persists /crons cards through file writes", asy
   assert.match(invalid.error, /5 minutes/);
 });
 
+test("cron backend pushes an active write onto the schedule hook and a cancelled write onto the cancel hook", async () => {
+  const scheduled = [];
+  const cancelled = [];
+  const jobs = new Map();
+  const repo = {
+    upsertQuery(input) {
+      const row = toRow({
+        id: input.path === "/pill.md" ? "job_pill" : "job_other",
+        attemptCount: 0,
+        ...input,
+      });
+      jobs.set(input.path, toJob(row));
+      return Promise.resolve([row]);
+    },
+    loadByPath: async (_userId, path) => jobs.get(path) ?? null,
+    listByUser: async () => [...jobs.values()],
+  };
+  const backend = createCronBackend({
+    repo,
+    getUserId: () => userId,
+    loadUserTz: async () => "UTC",
+    clock: () => new Date("2026-06-16T00:00:00.000Z"),
+    onScheduleCron: (job) => scheduled.push([job.id, job.nextFireAt.toISOString()]),
+    onCancelCron: (id) => cancelled.push(id),
+  });
+
+  await backend.write(
+    "/pill.md",
+    "---\nname: pill\nschedule: every 5m\nstatus: active\n---\nCheck in.",
+  );
+  await backend.edit("/pill.md", "status: active", "status: cancelled");
+
+  assert.deepEqual(scheduled, [["job_pill", "2026-06-16T00:05:00.000Z"]]);
+  // The cancel-edit fires the cancel hook with the row id.
+  assert.deepEqual(cancelled, ["job_pill"]);
+});
+
 test("agent backend mounts /crons beside /memories", () => {
   const cronBackend = createCronBackend({
     repo: {

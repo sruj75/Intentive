@@ -231,6 +231,80 @@ test("a floor-resolution failure flows through the failure path with no adapter 
   assert.equal(turnRecords[0].error, "floor unavailable");
 });
 
+test("turn execution invokes onTurnCommitted with the user id after a successful anchor commit", async () => {
+  const committed = [];
+  const anchorQuery = Promise.resolve([{ id: "turn_1" }]);
+  const turn = createTurn({
+    sql: { transaction: async (queries) => queries },
+    runtimeTurns: { recordQuery: () => anchorQuery },
+    fallbackModel: "fallback-model",
+    workingContext: async (input) => ({
+      userId: input.userId,
+      threadId: input.threadId,
+      body: input.body,
+      trigger: input.trigger,
+      pinnedFloor: input.floor,
+      userProfile: "",
+    }),
+    adapter: {
+      invoke: async () => ({ reply: "", traceId: "t", model: "m", bundleVersion: "v" }),
+    },
+    onTurnCommitted: (userId) => committed.push(userId),
+  });
+
+  await turn({
+    userId: "user_ok",
+    threadId: "thread_1",
+    body: "hello",
+    trigger: "user_message",
+    floor: () => Promise.resolve(floor("floor_v1")),
+    onSuccess: () => [Promise.resolve([{ ok: true }])],
+    onFailure: () => {
+      throw new Error("no failure expected");
+    },
+  });
+
+  assert.deepEqual(committed, ["user_ok"]);
+});
+
+test("turn execution invokes onTurnCommitted even on the failed-anchor path", async () => {
+  const committed = [];
+  const anchorQuery = Promise.resolve([{ id: "turn_1" }]);
+  const turn = createTurn({
+    sql: { transaction: async (queries) => queries },
+    runtimeTurns: { recordQuery: () => anchorQuery },
+    fallbackModel: "fallback-model",
+    workingContext: async (input) => ({
+      userId: input.userId,
+      threadId: input.threadId,
+      body: input.body,
+      trigger: input.trigger,
+      pinnedFloor: input.floor,
+      userProfile: "",
+    }),
+    adapter: {
+      invoke: async () => {
+        throw new Error("model unavailable");
+      },
+    },
+    onTurnCommitted: (userId) => committed.push(userId),
+  });
+
+  await turn({
+    userId: "user_fail",
+    threadId: "thread_1",
+    body: "hello",
+    trigger: "cron",
+    floor: () => Promise.resolve(floor("floor_v1")),
+    onSuccess: () => {
+      throw new Error("no success expected");
+    },
+    onFailure: () => ({ queries: [Promise.resolve([{ failed: true }])], rethrow: false }),
+  });
+
+  assert.deepEqual(committed, ["user_fail"]);
+});
+
 function floor(version) {
   return {
     version,

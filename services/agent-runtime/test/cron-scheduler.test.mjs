@@ -3,115 +3,141 @@ import test from "node:test";
 
 import { createCronScheduler } from "../dist/index.js";
 
-test("cron scheduler tick fires due rows once and respects batch limit", async () => {
+const T0 = new Date("2026-06-16T00:00:00.000Z").getTime();
+
+test("cron scheduler resync boot-populates the heap and tick fires only due jobs", async () => {
   const fired = [];
-  const due = [job("job_1"), job("job_2")];
+  const due = job("job_due", new Date(T0 - 60_000)); // already due
+  const future = job("job_future", new Date(T0 + 60_000)); // not yet
   const scheduler = createCronScheduler({
     cronJobsRepo: {
-      selectDue: async ({ limit }) => due.slice(0, limit),
+      listActive: async () => [due, future],
+      selectDue: async () => [],
     },
     enqueueCron: async (cronJob, context) => {
       fired.push([cronJob.id, context.firedAt.toISOString()]);
     },
-    clock: () => new Date("2026-06-16T00:00:00.000Z"),
-    batchLimit: 1,
+    clock: () => new Date(T0),
   });
 
+  await scheduler.resync();
   await scheduler.tick();
 
-  assert.deepEqual(fired, [["job_1", "2026-06-16T00:00:00.000Z"]]);
+  assert.deepEqual(fired, [["job_due", "2026-06-16T00:00:00.000Z"]]);
 });
 
-test("cron scheduler start contains tick failures inside the poll loop", async () => {
-  const unhandled = [];
-  const errors = [];
-  const onUnhandled = (error) => {
-    unhandled.push(error);
-  };
-  process.on("unhandledRejection", onUnhandled);
-
+test("cron scheduler schedule/cancel push directly onto the heap", async () => {
+  const fired = [];
   const scheduler = createCronScheduler({
-    cronJobsRepo: {
-      selectDue: async () => {
-        throw new Error("database unavailable");
-      },
-    },
-    enqueueCron: async () => {},
-    pollIntervalMs: 1_000,
-    logger: recordingLogger({ errors }),
+    cronJobsRepo: { listActive: async () => [], selectDue: async () => [] },
+    enqueueCron: async (cronJob) => fired.push(cronJob.id),
+    clock: () => new Date(T0),
   });
 
-  try {
-    scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    scheduler.stop();
-  } finally {
-    process.off("unhandledRejection", onUnhandled);
-  }
+  scheduler.schedule("manual", new Date(T0 - 1), job("manual", new Date(T0 - 1)));
+  scheduler.schedule("later", new Date(T0 + 60_000), job("later", new Date(T0 + 60_000)));
+  await scheduler.tick();
+  assert.deepEqual(fired, ["manual"]);
 
-  assert.deepEqual(unhandled, []);
-  assert.equal(errors.length, 1);
-  assert.equal(errors[0].event, "cron.tick");
+  scheduler.cancel("later");
+  scheduler.schedule("now2", new Date(T0 - 1), job("now2", new Date(T0 - 1)));
+  await scheduler.tick();
+  assert.deepEqual(fired, ["manual", "now2"]);
 });
 
-test("cron scheduler warns instead of erroring on transient database connectivity", async () => {
-  const errors = [];
-  const warns = [];
+test("cron scheduler resync cancels heap entries that left the active set", async () => {
+  const fired = [];
+  let active = [job("kept", new Date(T0 - 1)), job("gone", new Date(T0 - 1))];
   const scheduler = createCronScheduler({
     cronJobsRepo: {
-      selectDue: async () => {
+      listActive: async () => active,
+      selectDue: async () => [],
+    },
+    enqueueCron: async (cronJob) => fired.push(cronJob.id),
+    clock: () => new Date(T0),
+  });
+
+  await scheduler.resync(); // both loaded
+  active = [job("kept", new Date(T0 - 1))]; // "gone" was deleted in Neon
+  await scheduler.resync(); // reconcile: "gone" removed, "kept" refreshed
+  await scheduler.tick();
+
+  assert.deepEqual(fired, ["kept"]);
+});
+
+test("cron scheduler resync contains transient repository failures with a warning", async () => {
+  const warns = [];
+  const errors = [];
+  const scheduler = createCronScheduler({
+    cronJobsRepo: {
+      listActive: async () => {
         throw new Error("Error connecting to database: TypeError: fetch failed");
       },
+      selectDue: async () => [],
     },
     enqueueCron: async () => {},
-    pollIntervalMs: 1_000,
+    clock: () => new Date(T0),
     logger: recordingLogger({ errors, warns }),
   });
 
-  try {
-    scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    scheduler.stop();
-  } finally {
-    scheduler.stop();
-  }
+  await scheduler.resync(); // must not reject
 
   assert.equal(errors.length, 0);
   assert.equal(warns.length, 1);
-  assert.equal(warns[0].event, "cron.tick");
+  assert.equal(warns[0].event, "cron.resync");
 });
 
-test("cron scheduler measures scheduler_lag_ms against the expected poll cadence", async () => {
-  const infos = [];
-  // clock() is read once at tick entry and once when the next poll is scheduled.
-  // First immediate poll -> no prior cadence -> lag 0. Second poll fires at
-  // t=1020 against an expected time of 1000+pollInterval(5)=1005 -> lag 15.
-  const times = [1000, 1000, 1020];
-  const clock = () => new Date(times.length > 1 ? times.shift() : times[0]);
+test("cron scheduler resync escalates non-transient repository failures to an error", async () => {
+  const errors = [];
   const scheduler = createCronScheduler({
-    cronJobsRepo: { selectDue: async () => [] },
+    cronJobsRepo: {
+      listActive: async () => {
+        throw new Error("syntax error in query");
+      },
+      selectDue: async () => [],
+    },
     enqueueCron: async () => {},
-    pollIntervalMs: 5,
-    clock,
-    logger: recordingLogger({ infos }),
+    clock: () => new Date(T0),
+    logger: recordingLogger({ errors }),
   });
 
-  try {
-    scheduler.start();
-    const deadline = Date.now() + 1_000;
-    while (infos.length < 2 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 2));
-    }
-  } finally {
-    scheduler.stop();
-  }
+  await scheduler.resync();
 
-  assert.ok(infos.length >= 2, `expected at least two ticks, got ${infos.length}`);
-  assert.equal(infos[0].attrs.scheduler_lag_ms, 0);
-  assert.equal(infos[1].attrs.scheduler_lag_ms, 15);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].event, "cron.resync");
 });
 
-function job(id) {
+test("cron scheduler start contains boot-populate failures and never rejects", async () => {
+  const unhandled = [];
+  const errors = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const scheduler = createCronScheduler({
+      cronJobsRepo: {
+        listActive: async () => {
+          throw new Error("database unavailable");
+        },
+        selectDue: async () => [],
+      },
+      enqueueCron: async () => {},
+      clock: () => new Date(T0),
+      logger: recordingLogger({ errors }),
+    });
+
+    scheduler.start(); // fire-and-forget; boot fails async
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    scheduler.stop();
+
+    assert.deepEqual(unhandled, []);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].event, "cron.boot");
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
+
+function job(id, nextFireAt) {
   return {
     id,
     userId: "user_1",
@@ -121,17 +147,17 @@ function job(id) {
     scheduleExpr: "2026-06-16T00:00:00.000Z",
     tz: null,
     status: "active",
-    nextFireAt: new Date("2026-06-16T00:00:00.000Z"),
+    nextFireAt,
     prompt: "wake",
     attemptCount: 0,
   };
 }
 
-function recordingLogger({ errors, infos, warns } = {}) {
+function recordingLogger({ errors, warns } = {}) {
   return {
-    info: (event, attrs) => infos?.push({ event, attrs }),
-    warn: (event, attrs) => warns?.push({ event, attrs }),
-    error: (event, error, attrs) => errors?.push({ event, error, attrs }),
-    child: () => recordingLogger({ errors, infos, warns }),
+    info: () => {},
+    warn: (event) => warns?.push({ event }),
+    error: (event, error) => errors?.push({ event, error }),
+    child: () => recordingLogger({ errors, warns }),
   };
 }

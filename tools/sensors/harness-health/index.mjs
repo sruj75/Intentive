@@ -23,6 +23,7 @@ const ignoredDirectories = new Set([
 ]);
 const ignoredPathFragments = ["/reference/", "/ios/Pods/"];
 const lineThresholds = { default: 250, rust: 400 };
+const highFanInThreshold = 5;
 const maxListItems = 20;
 
 const contextFiles = [
@@ -277,7 +278,7 @@ function buildReverseImports(modules) {
 function collectHighFanIn(reverseImports) {
   return [...reverseImports.entries()]
     .map(([file, importers]) => ({ file, fanIn: importers.size }))
-    .filter((entry) => entry.fanIn > 0 && !isSharedPackageEntrypoint(entry.file))
+    .filter((entry) => entry.fanIn >= highFanInThreshold && !isSharedPackageEntrypoint(entry.file))
     .sort((left, right) => right.fanIn - left.fanIn || left.file.localeCompare(right.file));
 }
 
@@ -796,10 +797,6 @@ function isVocabularyPathAllowlisted(file, forbidden, canonical) {
   if (term === "assistant") {
     if (/^apps\/mobile\/test\//.test(file)) return true;
     if (file.includes("/prompt.rs")) return true;
-  }
-
-  if (term === "the agent" && file.startsWith("apps/desktop/src-tauri/")) {
-    return true;
   }
 
   if (term === "the runtime" && (isTestFile(file) || file.includes("/test/"))) {

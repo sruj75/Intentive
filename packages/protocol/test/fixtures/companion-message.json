@@ -1,0 +1,7 @@
+{
+  "type": "companion_message",
+  "message_id": "companion_1",
+  "body": "Start with the protocol contract, then wire the runtime projection.",
+  "emitted_at": "2026-07-05T10:01:03.000Z",
+  "via_post_message_back": false
+}

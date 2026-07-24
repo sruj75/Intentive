@@ -1,0 +1,70 @@
+name: desktop-release-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Untagged candidate commit to accept
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-acceptance:
+    runs-on: [self-hosted, macOS, ARM64, intentive-desktop]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Verify exact candidate SHA
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          git fetch origin main
+          git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main || {
+            echo "Desktop candidates must already be merged to main." >&2
+            exit 1
+          }
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run deterministic Desktop check
+        run: pnpm --dir apps/desktop desktop:check
+      - name: Run external AX candidate acceptance
+        run: pnpm --dir apps/desktop desktop:accept
+      - name: Digest step-level evidence
+        id: evidence
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          result=".context/desktop-assembled-acceptance.json"
+          test -s "$result" || { echo "acceptance result missing" >&2; exit 1; }
+          # Bind the digest to the evidence tree and the exact SHA it was produced
+          # against, so a reviewer can prove the uploaded artifact is the one CI ran.
+          digest="$(
+            {
+              shasum -a 256 "$result"
+              find .context/desktop-assembled-evidence -type f -exec shasum -a 256 {} + \
+                | sort
+            } | shasum -a 256 | awk '{print $1}'
+          )"
+          printf '%s  %s\n' "$digest" "$CANDIDATE_SHA" \
+            > .context/desktop-candidate-evidence.sha256
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Candidate evidence digest $digest for $CANDIDATE_SHA"
+      - name: Upload exact-SHA evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-candidate-${{ inputs.candidate_sha }}
+          path: |
+            .context/desktop-assembled-acceptance.json
+            .context/desktop-assembled-evidence/
+            .context/desktop-candidate-evidence.sha256
+          if-no-files-found: error
