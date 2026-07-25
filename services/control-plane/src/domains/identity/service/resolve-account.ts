@@ -80,6 +80,7 @@ export interface RoutingContext {
 
 interface PrincipalAndGate extends RoutingContext {
   hasDesktopClient: boolean;
+  email: string | null;
 }
 
 export interface IdentityService {
@@ -120,11 +121,11 @@ export function createIdentityService(deps: {
 }): IdentityService {
   const logger = deps.logger ?? createNoopLogger();
 
-  async function verifySubject(token: string): Promise<string> {
+  async function verifyPrincipal(token: string): Promise<{ userId: string; email: string | null }> {
     try {
-      const { user_id: sub } = await deps.verifier.verify(token);
+      const { user_id: userId, email } = await deps.verifier.verify(token);
       logger.info("auth.jwt_verify", { status: "ok" });
-      return sub;
+      return { userId, email };
     } catch (err) {
       const failure = asJwtVerificationFailure(err);
       logger.warn("auth.jwt_verify", { status: "failed", reason: failure.reason });
@@ -135,7 +136,7 @@ export function createIdentityService(deps: {
   async function authenticate(token: string): Promise<{ userId: string }> {
     // The verifier's `user_id` is the IdP *subject* (jose `payload.sub`); the
     // repo maps that to the stable internal user_id we expose to clients.
-    const sub = await verifySubject(token);
+    const { userId: sub } = await verifyPrincipal(token);
     const { userId } = await deps.users.resolveUser({ sub });
     return { userId };
   }
@@ -151,7 +152,7 @@ export function createIdentityService(deps: {
     token: string,
     signal: GetMeDeviceSignal,
   ): Promise<PrincipalAndGate> {
-    const authSubject = await verifySubject(token);
+    const { userId: authSubject, email } = await verifyPrincipal(token);
     const { userId } = await deps.users.resolveUser({ sub: authSubject });
 
     // The Sibling Invitation is satisfied by an *observed* sibling device — a
@@ -171,20 +172,24 @@ export function createIdentityService(deps: {
       hasSiblingDevice,
     });
 
-    return { userId, authSubject, nextGate, hasDesktopClient };
+    return { userId, authSubject, nextGate, hasDesktopClient, email };
   }
 
   return {
     authenticate,
 
     async resolveAccount(token, signal = {}) {
-      const { userId, nextGate, hasDesktopClient } = await resolvePrincipalAndGate(token, signal);
+      const { userId, nextGate, hasDesktopClient, email } = await resolvePrincipalAndGate(
+        token,
+        signal,
+      );
       // `has_agent_instance` now comes from the injected agents read port: it is
       // "has ever provisioned," not "live session." `authSubject` is deliberately
       // dropped — Account State never carries the IdP subject.
       const has_agent_instance = await deps.agents.hasAgentInstance(userId);
       return {
         user_id: userId,
+        email,
         next_gate: nextGate,
         has_agent_instance,
         has_desktop_client: hasDesktopClient,

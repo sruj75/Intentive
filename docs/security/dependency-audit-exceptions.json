@@ -1,0 +1,16 @@
+{
+  "exceptions": [
+    {
+      "ghsa": "GHSA-gv7w-rqvm-qjhr",
+      "reachability": "The vulnerable esbuild path requires Deno's npm-module integration; Intentive invokes this dev-only Vite transitive only under Node.",
+      "owner": "Platform",
+      "expires": "2026-10-31"
+    },
+    {
+      "ghsa": "GHSA-mh99-v99m-4gvg",
+      "reachability": "The compatible 5.x dependency path is pinned to patched brace-expansion 5.0.8. Remaining 1.x and 2.x paths are reachable only through React Native's Jest, Babel coverage, and test-exclude tooling and are not loaded by the shipped Mobile Client; forcing those CommonJS consumers to 5.x would break their callable export contract.",
+      "owner": "Mobile",
+      "expires": "2026-08-31"
+    }
+  ]
+}

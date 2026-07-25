@@ -7,7 +7,7 @@ See [`AGENTS.md`](AGENTS.md) to get oriented, [`CONTEXT-MAP.md`](CONTEXT-MAP.md)
 ## The four deployables
 
 - **`apps/mobile/`** — iOS Expo app (chat surface)
-- **`apps/desktop/`** — macOS Tauri app (capture only)
+- **`apps/desktop/`** — macOS SwiftPM app (capture, Screen Memory, floating-bar chat, voice, effects)
 - **`services/control-plane/`** — identity, devices, routing
 - **`services/agent-runtime/`** — the always-alive Companion runtime
 
@@ -25,10 +25,8 @@ Each deployable owns its local setup notes and guardrails:
 **Prerequisites**
 
 - **Node ≥ 22** and **pnpm ≥ 11** (`corepack enable` to get pnpm).
-- **Desktop only:** a Rust toolchain plus Tauri system deps. macOS needs the
-  Xcode Command Line Tools; Linux needs `libwebkit2gtk-4.1-dev`,
-  `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`, `libssl-dev`
-  (see `.github/workflows/monorepo-foundation.yml`).
+- **Desktop only:** macOS with Xcode Command Line Tools. The active desktop app
+  is a SwiftPM macOS target under `apps/desktop/macos`.
 
 **Environment variables**
 
@@ -42,7 +40,7 @@ Each deployable owns its local setup notes and guardrails:
 
 ```bash
 pnpm --filter ./apps/mobile dev          # Mobile Client (Expo)
-pnpm --filter ./apps/desktop dev         # Desktop Client (Tauri)
+cd apps/desktop/macos && ./run.sh        # Desktop Client (SwiftPM macOS)
 pnpm --filter ./services/control-plane dev
 pnpm --filter ./services/agent-runtime dev
 ```
@@ -58,4 +56,4 @@ pnpm build
 pnpm dev
 ```
 
-See [`docs/TESTING.md`](docs/TESTING.md) for the full verification map, including desktop Rust tests, contract tests, coverage, and CI expectations.
+See [`docs/TESTING.md`](docs/TESTING.md) for the full verification map, including Desktop SwiftPM tests, contract tests, coverage, and CI expectations.

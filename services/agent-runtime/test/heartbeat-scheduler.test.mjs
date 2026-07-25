@@ -3,156 +3,251 @@ import test from "node:test";
 
 import { createHeartbeatScheduler } from "../dist/index.js";
 
-test("heartbeat scheduler tick enqueues due users with floor and batch limit", async () => {
-  const selectArgs = [];
+const T0 = new Date("2026-06-16T00:00:00.000Z").getTime();
+const FLOOR_MS = 60 * 60_000;
+
+test("heartbeat scheduler resync boot-populates the heap at last_activity + floor and tick fires due users", async () => {
+  const enqueued = [];
+  let active = [
+    // last activity 120m ago → due 60m ago (eligible at T0)
+    { userId: "due_user", lastActivityAt: new Date(T0 - 120 * 60_000) },
+    // last activity 30m ago → due 30m in the future (not yet)
+    { userId: "fresh_user", lastActivityAt: new Date(T0 - 30 * 60_000) },
+  ];
+  const scheduler = createHeartbeatScheduler({
+    scheduleRepo: {
+      selectDue: async () => [],
+      listAll: async () => active,
+    },
+    enqueueHeartbeat: (userId) => {
+      enqueued.push(userId);
+      return true;
+    },
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+  });
+
+  await scheduler.resync();
+  await scheduler.tick();
+
+  assert.deepEqual(enqueued, ["due_user"]);
+});
+
+test("heartbeat scheduler schedule/cancel/has push directly onto the heap", async () => {
   const enqueued = [];
   const scheduler = createHeartbeatScheduler({
-    clock: () => new Date("2026-06-16T00:00:00.000Z"),
-    floorMs: 3_600_000,
-    batchLimit: 2,
+    scheduleRepo: { selectDue: async () => [], listAll: async () => [] },
+    enqueueHeartbeat: (userId) => {
+      enqueued.push(userId);
+      return true;
+    },
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+  });
+
+  assert.equal(scheduler.has("new_user"), false);
+  scheduler.schedule("new_user", new Date(T0 - 1));
+  assert.equal(scheduler.has("new_user"), true);
+
+  await scheduler.tick();
+  assert.deepEqual(enqueued, ["new_user"]);
+
+  scheduler.cancel("new_user");
+  await scheduler.tick();
+  assert.deepEqual(enqueued, ["new_user"]);
+});
+
+test("heartbeat scheduler resync cancels users that left the instance set", async () => {
+  const enqueued = [];
+  let active = [
+    { userId: "kept", lastActivityAt: new Date(T0 - 120 * 60_000) },
+    { userId: "gone", lastActivityAt: new Date(T0 - 120 * 60_000) },
+  ];
+  const scheduler = createHeartbeatScheduler({
     scheduleRepo: {
-      selectDue: async (input) => {
-        selectArgs.push(input);
-        return [{ userId: "user_1" }, { userId: "user_2" }];
+      selectDue: async () => [],
+      listAll: async () => active,
+    },
+    enqueueHeartbeat: (userId) => {
+      enqueued.push(userId);
+      return true;
+    },
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+  });
+
+  await scheduler.resync();
+  active = [{ userId: "kept", lastActivityAt: new Date(T0 - 120 * 60_000) }];
+  await scheduler.resync();
+  await scheduler.tick();
+
+  assert.deepEqual(enqueued, ["kept"]);
+});
+
+test("heartbeat scheduler escalates consecutive resync failures warn→error and resets on success", async () => {
+  const warnings = [];
+  const errors = [];
+  const failures = ["fail", "fail", "fail", "ok", "fail"];
+  let i = 0;
+  const scheduler = createHeartbeatScheduler({
+    scheduleRepo: {
+      selectDue: async () => [],
+      listAll: async () => {
+        if (failures[i] === "fail") {
+          i += 1;
+          throw new TypeError("fetch failed");
+        }
+        i += 1;
+        return [];
+      },
+    },
+    enqueueHeartbeat: () => true,
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+    logger: recordingLogger({ errors, warnings }),
+  });
+
+  await scheduler.resync(); // warn #1
+  await scheduler.resync(); // warn #2
+  await scheduler.resync(); // error #3 (escalate)
+  await scheduler.resync(); // success — counter reset
+  await scheduler.resync(); // warn again (counter back to 1)
+
+  assert.equal(errors.length, 1);
+  assert.equal(warnings.length, 3);
+  assert.equal(warnings[0].event, "heartbeat.tick");
+  assert.equal(warnings[0].attrs.error_type, "TypeError");
+  assert.equal(errors[0].event, "heartbeat.tick");
+});
+
+test("heartbeat scheduler retries through coarse resync after boot population fails", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const enqueued = [];
+  let reloads = 0;
+  const scheduler = createHeartbeatScheduler({
+    scheduleRepo: {
+      selectDue: async () => [],
+      listAll: async () => {
+        reloads += 1;
+        if (reloads === 1) {
+          throw new TypeError("fetch failed");
+        }
+        return [{ userId: "recovered", lastActivityAt: new Date(T0 - 2 * FLOOR_MS) }];
       },
     },
     enqueueHeartbeat: (userId) => {
       enqueued.push(userId);
       return true;
     },
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+    resyncIntervalMs: 1_000,
   });
+  t.after(() => scheduler.stop());
 
+  scheduler.start();
+  await settleAsyncWork();
+  t.mock.timers.tick(1_000);
+  await settleAsyncWork();
   await scheduler.tick();
 
-  assert.equal(selectArgs[0].now.toISOString(), "2026-06-16T00:00:00.000Z");
-  assert.equal(selectArgs[0].floorMs, 3_600_000);
-  assert.equal(selectArgs[0].limit, 2);
-  assert.deepEqual(enqueued, ["user_1", "user_2"]);
+  assert.equal(reloads, 2);
+  assert.deepEqual(enqueued, ["recovered"]);
 });
 
-test("heartbeat scheduler start contains tick failures inside the poll loop", async () => {
-  const warnings = [];
+test("heartbeat scheduler does not activate or apply a boot reload after stop", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const enqueued = [];
+  const bootReload = deferred();
+  let reloads = 0;
   const scheduler = createHeartbeatScheduler({
-    pollIntervalMs: 1_000,
     scheduleRepo: {
-      selectDue: async () => {
-        throw new Error("database unavailable");
+      selectDue: async () => [],
+      listAll: async () => {
+        reloads += 1;
+        return bootReload.promise;
       },
     },
-    enqueueHeartbeat: () => true,
-    logger: recordingLogger({ warnings }),
-  });
-
-  try {
-    scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    scheduler.stop();
-  } finally {
-    scheduler.stop();
-  }
-
-  assert.equal(warnings.length, 1);
-  assert.equal(warnings[0].event, "heartbeat.tick");
-  assert.equal(warnings[0].attrs.status, "failed");
-});
-
-test("heartbeat scheduler escalates only after consecutive tick failures", async () => {
-  const warnings = [];
-  const errors = [];
-  const scheduler = createHeartbeatScheduler({
-    pollIntervalMs: 1,
-    escalateAfterConsecutiveFailures: 3,
-    scheduleRepo: {
-      selectDue: async () => {
-        throw new TypeError("fetch failed");
-      },
+    enqueueHeartbeat: (userId) => {
+      enqueued.push(userId);
+      return true;
     },
-    enqueueHeartbeat: () => true,
-    logger: recordingLogger({ errors, warnings }),
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+    resyncIntervalMs: 1_000,
   });
+  t.after(() => scheduler.stop());
 
   scheduler.start();
-  await waitFor(() => errors.length === 1);
   scheduler.stop();
+  bootReload.resolve([{ userId: "stale", lastActivityAt: new Date(T0 - 2 * FLOOR_MS) }]);
+  await settleAsyncWork();
+  t.mock.timers.tick(10_000);
+  await settleAsyncWork();
 
-  assert.equal(warnings.length, 2);
-  assert.equal(errors.length, 1);
-  assert.equal(warnings[0].event, "heartbeat.tick");
-  assert.equal(warnings[0].attrs.error_type, "TypeError");
-  assert.equal(errors[0].event, "heartbeat.tick");
+  assert.equal(reloads, 1);
+  assert.deepEqual(enqueued, []);
 });
 
-test("heartbeat scheduler success resets consecutive failure escalation", async () => {
-  const warnings = [];
-  const errors = [];
-  const results = [{ type: "reject" }, { type: "reject" }, { type: "resolve" }, { type: "reject" }];
+test("heartbeat scheduler discards a periodic reload from an older lifecycle", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const enqueued = [];
+  const staleReload = deferred();
+  let reloads = 0;
   const scheduler = createHeartbeatScheduler({
-    pollIntervalMs: 1,
-    escalateAfterConsecutiveFailures: 3,
     scheduleRepo: {
-      selectDue: async () => {
-        const result = results.shift();
-        if (result?.type === "reject") {
-          throw new TypeError("fetch failed");
-        }
-        return [];
+      selectDue: async () => [],
+      listAll: async () => {
+        reloads += 1;
+        if (reloads === 1) return [];
+        if (reloads === 2) return staleReload.promise;
+        return [{ userId: "fresh", lastActivityAt: new Date(T0 - 2 * FLOOR_MS) }];
       },
     },
-    enqueueHeartbeat: () => true,
-    logger: recordingLogger({ errors, warnings }),
+    enqueueHeartbeat: (userId) => {
+      enqueued.push(userId);
+      return true;
+    },
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+    resyncIntervalMs: 1_000,
   });
+  t.after(() => scheduler.stop());
 
   scheduler.start();
-  await waitFor(() => warnings.length === 3);
+  await settleAsyncWork();
+  t.mock.timers.tick(1_000);
+  await settleAsyncWork();
   scheduler.stop();
+  scheduler.start();
+  await settleAsyncWork();
+  staleReload.resolve([{ userId: "stale", lastActivityAt: new Date(T0 - 2 * FLOOR_MS) }]);
+  await settleAsyncWork();
+  await scheduler.tick();
 
-  assert.equal(errors.length, 0);
-  assert.equal(warnings.length, 3);
+  assert.equal(reloads, 3);
+  assert.deepEqual(enqueued, ["fresh"]);
 });
 
-test("heartbeat scheduler measures scheduler_lag_ms against the expected poll cadence", async () => {
-  const infos = [];
-  // clock() is read once at tick entry and once when the next poll is scheduled.
-  // First immediate poll -> no prior cadence -> lag 0. Second poll fires at
-  // t=1020 against an expected time of 1000+pollInterval(5)=1005 -> lag 15.
-  const times = [1000, 1000, 1020];
-  const clock = () => new Date(times.length > 1 ? times.shift() : times[0]);
-  const scheduler = createHeartbeatScheduler({
-    scheduleRepo: { selectDue: async () => [] },
-    enqueueHeartbeat: () => true,
-    pollIntervalMs: 5,
-    clock,
-    logger: recordingLogger({ infos }),
+function deferred() {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
   });
-
-  try {
-    scheduler.start();
-    const deadline = Date.now() + 1_000;
-    while (infos.length < 2 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 2));
-    }
-  } finally {
-    scheduler.stop();
-  }
-
-  assert.ok(infos.length >= 2, `expected at least two ticks, got ${infos.length}`);
-  assert.equal(infos[0].attrs.scheduler_lag_ms, 0);
-  assert.equal(infos[1].attrs.scheduler_lag_ms, 15);
-});
-
-async function waitFor(predicate) {
-  const deadline = Date.now() + 1_000;
-  while (!predicate() && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2));
-  }
-  assert.ok(predicate(), "condition was not met before timeout");
+  return { promise, resolve };
 }
 
-function recordingLogger({ errors, infos, warnings } = {}) {
+async function settleAsyncWork() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+function recordingLogger({ errors, warnings } = {}) {
   return {
-    info: (event, attrs) => infos?.push({ event, attrs }),
+    info: () => {},
     warn: (event, attrs) => warnings?.push({ event, attrs }),
-    error: (event, error, attrs) => errors?.push({ event, error, attrs }),
-    child: () => recordingLogger({ errors, infos, warnings }),
+    error: (event, error) => errors?.push({ event, error }),
+    child: () => recordingLogger({ errors, warnings }),
   };
 }

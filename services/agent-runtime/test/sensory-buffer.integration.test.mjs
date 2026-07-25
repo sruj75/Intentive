@@ -53,7 +53,7 @@ test(
 );
 
 test(
-  "Sensory Buffer renders the latest Context Snapshot summary and timestamp",
+  "Sensory Buffer renders the latest Perception Event summary and timestamp",
   { skip },
   async () => {
     const session = boundSession(randomUUID());
@@ -61,7 +61,7 @@ test(
 
     await channel.accept(
       session,
-      contextSnapshot("snapshot_1", "2026-06-09T00:00:00.000Z", "reviewing a design doc"),
+      perceptionEvent("perception_1", "2026-06-09T00:00:00.000Z", "reviewing a design doc"),
     );
 
     const latest = await sensoryBuffer.readLatest(session.userId);
@@ -69,6 +69,25 @@ test(
     assert.match(latest, /2026-06-09T00:00:00.000Z/);
   },
 );
+
+test("Sensory Buffer renders ambient audio Perception Events", { skip }, async () => {
+  const session = boundSession(randomUUID());
+  const channel = channelFor();
+
+  await channel.accept(
+    session,
+    perceptionEvent(
+      "ambient_audio_1",
+      "2026-06-09T00:03:00.000Z",
+      "nearby speech discussed the launch checklist",
+      "ambient_audio_summary",
+    ),
+  );
+
+  const latest = await sensoryBuffer.readLatest(session.userId);
+  assert.match(latest, /Artifact: ambient_audio_summary/);
+  assert.match(latest, /nearby speech discussed the launch checklist/);
+});
 
 test(
   "Sensory Buffer picks whichever perception event arrived most recently",
@@ -78,7 +97,7 @@ test(
     const markerWinsChannel = channelFor();
     await markerWinsChannel.accept(
       markerWinsSession,
-      contextSnapshot("snapshot_2", "2026-06-09T00:00:00.000Z", "editing slides"),
+      perceptionEvent("perception_2", "2026-06-09T00:00:00.000Z", "editing slides"),
     );
     await markerWinsChannel.accept(markerWinsSession, sessionEndMarker("quit"));
 
@@ -92,11 +111,11 @@ test(
     await snapshotWinsChannel.accept(snapshotWinsSession, sessionEndMarker("user_toggle"));
     await snapshotWinsChannel.accept(
       snapshotWinsSession,
-      contextSnapshot("snapshot_3", "2026-06-09T00:10:00.000Z", "writing test notes"),
+      perceptionEvent("perception_3", "2026-06-09T00:10:00.000Z", "writing test notes"),
     );
 
     const snapshotLatest = await sensoryBuffer.readLatest(snapshotWinsSession.userId);
-    assert.match(snapshotLatest, /Context Snapshot/);
+    assert.match(snapshotLatest, /Perception Event/);
     assert.match(snapshotLatest, /writing test notes/);
     assert.match(snapshotLatest, /2026-06-09T00:10:00.000Z/);
   },
@@ -113,7 +132,7 @@ test(
     for (let i = 0; i < 200; i += 1) {
       await channel.accept(
         session,
-        contextSnapshot(
+        perceptionEvent(
           `bulk_${i}`,
           `2026-06-09T00:00:${String(i % 60).padStart(2, "0")}.000Z`,
           `bulk ${i}`,
@@ -126,7 +145,7 @@ test(
        SELECT payload
        FROM agent_runtime.runtime_events
        WHERE user_id = $1
-         AND kind IN ('context_snapshot', 'session_end_marker')
+         AND kind IN ('perception_event', 'session_end_marker')
        ORDER BY created_at DESC
        LIMIT 1`,
       [session.userId],
@@ -183,14 +202,21 @@ function boundSession(userId) {
   };
 }
 
-function contextSnapshot(snapshotId, capturedAt, summary) {
+function perceptionEvent(eventId, capturedAt, summary, artifactType = "searchable_screen_record") {
   return {
-    type: "context_snapshot",
-    snapshot_id: snapshotId,
+    type: "perception_event",
+    event_id: eventId,
+    source_client: "desktop",
     captured_at: capturedAt,
     period_start: "2026-06-08T23:55:00.000Z",
     period_end: capturedAt,
+    artifact_type: artifactType,
     summary,
+    signals: { app: "Code" },
+    sensitivity_label: "normal",
+    retention_class: "screen_memory_30d",
+    confidence: 0.9,
+    local_record_ref: `screen-memory://${eventId}`,
   };
 }
 
