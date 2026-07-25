@@ -1,9 +1,10 @@
 # Deployables Production Handoff
 
-This is the one-stop production context for agents operating the two server deployables:
+This is the one-stop production context for agents operating deployable production state:
 
 - **Control Plane**: `services/control-plane/`, Cloud Run.
 - **Agent Runtime**: `services/agent-runtime/`, one always-alive GCE VM behind a global HTTPS load balancer.
+- **Desktop Client**: `apps/desktop/`, SwiftPM macOS app distributed as a signed DMG.
 
 Use this with the owning deployable docs:
 
@@ -11,6 +12,8 @@ Use this with the owning deployable docs:
 - [services/control-plane/ARCHITECTURE.md](../services/control-plane/ARCHITECTURE.md)
 - [services/agent-runtime/README.md](../services/agent-runtime/README.md)
 - [services/agent-runtime/ARCHITECTURE.md](../services/agent-runtime/ARCHITECTURE.md)
+- [apps/desktop/README.md](../apps/desktop/README.md)
+- [apps/desktop/ARCHITECTURE.md](../apps/desktop/ARCHITECTURE.md)
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 ## Current Production State
@@ -93,6 +96,44 @@ Runtime Secret Manager values:
 - Directional shared secrets are reused with Control Plane:
   - `INTERNAL_SECRET_TO_RUNTIME`
   - `INTERNAL_SECRET_FROM_RUNTIME`
+
+### Desktop Client
+
+- Package: `apps/desktop/macos/Desktop`
+- Product name: `Intentive`
+- Bundle identifier: `com.heyintentive.desktop`
+- Local gates:
+
+```bash
+pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop test
+pnpm --dir apps/desktop release:smoke
+pnpm harness --scope apps/desktop
+```
+
+- Release workflow: `.github/workflows/desktop-release.yml`
+- Protected Stage 2 acceptance runs inside `.github/workflows/desktop-release.yml` on a dedicated self-hosted Apple Silicon Mac
+- Release trigger: tag `desktop-v*`
+- Release artifact: `Intentive-<version>.dmg`
+- Bundle metadata: `CFBundleShortVersionString` comes from the tag/package version; `CFBundleVersion` comes from the GitHub run number unless the version contains `+<build>`.
+- Update metadata: Sparkle's `sign_update` signs the exact notarized DMG and the generated `appcast.xml` is uploaded with digest evidence. The app bundle points Sparkle at the latest published release's appcast.
+- Required release secrets for signed/notarized artifacts:
+  - `APPLE_DEVELOPER_ID_CERT`
+  - `APPLE_DEVELOPER_ID_CERT_PASSWORD`
+  - `KEYCHAIN_PASSWORD`
+  - `APPLE_ID`
+  - `APPLE_APP_SPECIFIC_PASSWORD`
+  - `APPLE_TEAM_ID`
+  - `SPARKLE_PUBLIC_ED_KEY`
+  - `SPARKLE_PRIVATE_KEY`
+  - `DESKTOP_POSTHOG_PROJECT_KEY`
+- Required release variables:
+  - `DESKTOP_SENTRY_DSN`
+  - `DESKTOP_CONTROL_PLANE_URL=https://control-plane-pqenui44sa-uw.a.run.app`
+  - `DESKTOP_HOSTED_AUTH_URL` set to the exact production hosted-auth HTTPS entry point
+- Optional release variable: `DESKTOP_AUTH_TOKEN_EXCHANGE_URL`, only when the hosted callback returns a code that must be exchanged
+
+The workflow reuses the established pre-Omi Developer ID `Developer ID Application: Srujan Gowda (24D6NXS6H7)` and Team ID `24D6NXS6H7`; Apple credentials remain secret-backed. Unsigned workflow-dispatch artifacts are allowed only for internal smoke. Public releases fail before building when any required Apple/Sparkle/telemetry setting is missing, then create a draft release. Only the protected Stage 2 job in the same workflow may publish that immutable draft after digest, signed launch, assembled journey, Sparkle N-1, Tart TCC, and signed-in full-stack evidence are complete. Full procedure: [`../apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
 
 Load balancer inventory:
 

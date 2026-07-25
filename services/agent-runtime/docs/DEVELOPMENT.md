@@ -40,6 +40,10 @@ the `dev-local-smoke` branch; **you must set a real `OPENROUTER_API_KEY`** — s
 > **Use Node 24's `--env-file`** — `pnpm start` does not auto-load `.env` (the
 > service never imports dotenv).
 
+For a full four-deployable teardown, use `pnpm development:clean` from the repo
+root. The modular `kill it` command above owns only `:8787` and `:8081`; Metro is
+reserved on `:8082`, so Mobile cleanup cannot kill the Runtime.
+
 ---
 
 ## Configuration

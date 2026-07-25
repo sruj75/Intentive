@@ -1,0 +1,15 @@
+{
+  "type": "hello_ok",
+  "session_snapshot": {
+    "messages": [
+      {
+        "message_id": "user_1",
+        "author": "user",
+        "body": "What should I focus on next?",
+        "at": "2026-07-05T10:01:00.000Z",
+        "via_post_message_back": false
+      }
+    ],
+    "before_cursor": null
+  }
+}

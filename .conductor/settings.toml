@@ -3,5 +3,5 @@
 [scripts]
 setup = "pnpm install"
 run = "pnpm dev"
-archive = "true"
+archive = "bash scripts/conductor-archive.sh"
 run_mode = "nonconcurrent"

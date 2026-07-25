@@ -6,6 +6,15 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Added
 
+- **Perception Event ingestion, searchable projection, and Desktop reachability** ([ADR-0034](docs/adr/0034-agent-runtime-perception-store-and-search-tool.md)) —
+  Runtime ingress now accepts `perception_event` instead of `context_snapshot`,
+  dedupes by `event_id`, projects accepted events into
+  `perception_records` (`migrations/0010_perception_records.sql`), and registers
+  a `search_screen_context` DeepAgents tool for FTS over Screen Memory summaries.
+  Desktop is now a chat-capable client kind for stream delivery. Tests:
+  `test/per-user-channel.test.mjs`, `test/project-ingress.test.mjs`,
+  `test/sensory-buffer.integration.test.mjs`, and
+  `test/runtime-ingress-projection.integration.test.mjs`.
 - **v1 production deploy drain + Secret Manager boot fetch** ([Issue #50], [ADR-0032](docs/adr/0032-agent-runtime-gce-deploy-single-vm-tls-load-balancer-in-place-swap.md), [ADR-0033](docs/adr/0033-agent-runtime-internal-session-start-public-ingress-shared-secret.md)) —
   `main.ts` registers `SIGTERM`/`SIGINT` shutdown through `runtime/shutdown.ts`:
   Cron and Heartbeat schedulers stop, connected WebSockets close with `1001`,
@@ -61,8 +70,7 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   `test/per-user-channel.test.mjs`, and `test/session-start.test.mjs`.
 - **Sensory Buffer and perception injection** ([Issue #38]) — `sessions/` adds a
   `SensoryBufferReader` read projection over `runtime_events` for the most
-  recent `context_snapshot` or `session_end_marker`, with no new table or
-  migration. **Interactive Turn** prompt assembly now receives the single most
+  recent `perception_event` or `session_end_marker`. **Interactive Turn** prompt assembly now receives the single most
   recent perception fact via `RECENT_PERCEPTION`, and the **Per-User Channel**
   raises a no-op `PerceptionArrivedSink` only for newly inserted perception
   events. Tests: `test/sensory-buffer.integration.test.mjs`, plus extended
@@ -135,6 +143,18 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Perception-trigger and embedding isolation** — perception-driven Monitoring
+  Turns now exclusively use the Per-User Channel's collapsible best-effort slot;
+  Runtime-owned embedding enrichment runs independently after every committed
+  perception projection, including re-emits. A content-reconciling upsert clears
+  the old vector atomically only when embedding-relevant content changed (exact
+  duplicates preserve it), and completed embedding writes compare against the
+  exact artifact type, summary, and signals that produced them, preventing an
+  older secret-derived vector from landing after redaction. Tests:
+  `test/perception-ingress-hooks.test.mjs`,
+  `test/perception-records-query.test.mjs`, extended
+  `test/per-user-channel.test.mjs`, and
+  `test/perception-expiry-tombstone.integration.test.mjs`.
 - **Turn Execution spine owns floor resolution and the Runtime Turn anchor** ([ADR-0031](docs/adr/0031-agent-runtime-turn-execution-spine-owns-runtime-turn-anchor-and-floor-resolution.md)) —
   `createTurn` now resolves `TurnExecution.floor()` inside its `try`, appends exactly
   one `runtime_turns` row (ok or failed) after each caller's trigger-specific rows in
@@ -196,7 +216,7 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   through the same reader; history-unavailable paths return `service_unavailable`.
 - **`src/main.ts` composition root** ([Issue #28]) — replaces the #25 in-memory Agent
   Instance registry with Neon-backed repos, wires the event ledger, per-user queue, and
-  ingest pipeline for `user_message`, `context_snapshot`, and `session_end_marker`
+  ingest pipeline for `user_message`, `perception_event`, and `session_end_marker`
   ingress events.
 - **`gateway/service/connect.ts` and `gateway/ui/ws-handler.ts`** ([Issue #28]) —
   connect resolves `auth_subject → user_id` via Session Start rows; unstarted sessions

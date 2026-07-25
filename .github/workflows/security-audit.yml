@@ -4,7 +4,7 @@ name: security-audit
 # inputs change, so code-only PRs do not spend time on the slow `pnpm audit`
 # registry call. The weekly/manual path still runs the full workspace audit to
 # catch newly-disclosed advisories in unchanged dependencies.
-# Rust/cargo auditing for the desktop app lives in desktop-audit.yml.
+# Desktop provider-SDK dependency policy lives in desktop-dependency-policy.yml.
 
 on:
   pull_request:
@@ -16,6 +16,7 @@ on:
       - "services/**/package.json"
       - "packages/**/package.json"
       - "tools/**/package.json"
+      - "marketing/package.json"
       - ".github/workflows/security-audit.yml"
   schedule:
     # Mondays 07:00 UTC.

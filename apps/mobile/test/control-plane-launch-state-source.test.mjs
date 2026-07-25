@@ -44,6 +44,7 @@ test("a valid /me response is parsed and mapped to LaunchState", async () => {
     fetch: async () =>
       jsonResponse({
         user_id: "u_1",
+        email: null,
         next_gate: "consent_primer",
         has_agent_instance: false,
         has_desktop_client: false,
@@ -69,6 +70,7 @@ test("the bearer token is presented to ${base}/me", async () => {
       seen = { url, authorization: init?.headers?.authorization };
       return jsonResponse({
         user_id: "u_1",
+        email: null,
         next_gate: null,
         has_agent_instance: false,
         has_desktop_client: false,

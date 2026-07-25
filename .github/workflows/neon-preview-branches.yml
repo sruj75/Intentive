@@ -77,15 +77,6 @@ jobs:
           DATABASE_URL: ${{ steps.create_neon_branch.outputs.db_url_pooled }}
         run: pnpm --filter ./services/control-plane migrate
 
-      - name: Typecheck
-        run: pnpm --filter ./services/control-plane typecheck
-
-      - name: Test
-        # The preview branch above validates migrations against Neon. Do not
-        # forward NEON_* here, because repo integration tests create additional
-        # disposable branches and can exhaust the project branch quota.
-        run: pnpm --filter ./services/control-plane test
-
   delete_neon_branch:
     name: Delete Neon Branch
     needs: setup

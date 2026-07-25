@@ -1,6 +1,6 @@
 # Testing
 
-Tests are the verification oracle for agent-authored changes. A green pull request should mean typecheck, lint, contract tests, desktop frontend tests, and desktop Rust tests all ran.
+Tests are the verification oracle for agent-authored changes. A green pull request should mean typecheck, lint, contract tests, deployable tests, and the relevant scoped harnesses all ran.
 
 ## Root Commands
 
@@ -8,7 +8,13 @@ Run these from the repository root:
 
 ```bash
 pnpm harness
+pnpm harness --group repo-contracts
+pnpm harness --group node-workspaces
+pnpm harness --group desktop-swift
 pnpm harness --scope apps/mobile
+pnpm ci:contracts
+pnpm ci:dependency-exceptions
+pnpm ci:shell-portability
 pnpm sensor:impact-radius
 pnpm sensor:contract-drift
 pnpm sensor:harness-health
@@ -21,17 +27,18 @@ pnpm docs:factory:test
 pnpm docs:agents:test
 pnpm typecheck
 pnpm lint
-pnpm lint:architecture:rust
 pnpm test
 pnpm coverage
 ```
 
-- `pnpm harness` is the preferred agent pre-handoff command and the blocking CI verification command. It runs the root PR gate, the impact-radius fixture tests, and the Mobile React Native/Jest harness.
+- `pnpm harness` is the preferred agent pre-handoff command. It composes the same three Gate modules that CI runs independently: `repo-contracts`, `node-workspaces`, and `desktop-swift`.
+- `pnpm harness --group <group>` runs one independently executable Gate module. CI runs the three groups in parallel and joins them behind the stable `Gate` status.
+- Desktop’s three explicit verification tiers are `pnpm --dir apps/desktop desktop:check` (deterministic Swift tests, coverage, and bundle contract), `desktop:accept` (assembled Accessibility journeys on the dedicated Mac), and `desktop:release-proof` (signed installed-DMG, Sparkle N-1, Tart TCC, and signed-in proof).
 - `pnpm harness --scope <deployable>` runs the deployable harness template from `tools/harness/`, printing the owning context docs, relevant ADR dirs, high-risk shared packages, common failure modes, sensors, and focused commands. Supported scopes are `apps/mobile`, `apps/desktop`, `services/control-plane`, and `services/agent-runtime`.
 - `pnpm sensor:impact-radius` is the preferred pre-review triage sensor. It reports coupling and affected workspace hints for the current change set, and remains advisory in CI.
 - `pnpm sensor:contract-drift` is a hard-gated architecture sensor. It fails when deployables redefine `@intentive/protocol` wire events or `@intentive/api-contract` HTTP contracts locally.
 - `pnpm sensor:harness-health` emits the advisory Ready-for-review drift report used by the PR sticky comment workflow. Treat the sticky comment as a factory feedback loop: fix current drift when it belongs in the change, improve the harness when the finding repeats, or backlog/accept the finding with rationale.
-- `pnpm sensor:factory-report` is Radar: it aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and shows change-tied or learning findings by default. CI can pass `--btar-base-report` and `--btar-head-report` to fold a BTAR agent-readiness delta into the same sticky comment. Use `--audit` for full repo-wide sensor details.
+- `pnpm sensor:factory-report` is Radar: it aggregates impact-radius and harness-health into the sticky PR handoff report, adds stable finding IDs, compares against `docs/factory/LEDGER.md`, and shows changed-file or learning findings by default. Use `--audit` for full repo-wide sensor details.
 - `pnpm factory:ledger` refreshes finding counts in `docs/factory/LEDGER.md` from the current change set or a saved report. It preserves human statuses such as accepted, backlogged, and factory-improved.
 - `pnpm factory:recommend --report <file>` reads a saved sticky comment or factory report, compares it against the ledger, and writes grouped recommendations to `.context/factory-recommendations.md` for the recommendation-only Conductor agent pass described in `docs/factory/SELF-IMPROVEMENT.md`.
 - `pnpm factory:test` runs fixture tests for finding IDs, ledger updates, and recommendation generation.
@@ -39,9 +46,8 @@ pnpm coverage
 - `pnpm docs:agents:test` fixture-tests the structural `AGENTS.md` / `CLAUDE.md` integrity checker that runs inside `pnpm docs:check`.
 - `pnpm typecheck` runs every workspace typecheck through Turbo.
 - `pnpm lint` checks documentation links and architecture lint rules (TS).
-- `pnpm lint:architecture:rust` runs the custom Rust layer + structure checker (`tools/linters/rust-architecture/`) over every `apps/*/src-tauri/src/` tree as a hard gate. ESLint never parses `.rs`, so this is how the layered-domain rule reaches the Rust side. The fixture tests for both checkers run via `pnpm lint:architecture:test`.
-- `pnpm test` runs every workspace with a `test` script, including desktop Vitest, desktop Rust tests, shared contract tests, architecture lint tests, and scaffold tests for deployables that are not implemented yet.
-- `pnpm coverage` runs desktop Vitest coverage and writes LCOV output under `coverage/apps/desktop/`.
+- `pnpm test` runs every workspace with a `test` script, including Desktop SwiftPM tests, shared contract tests, architecture lint tests, and deployable tests.
+- `pnpm coverage` runs Desktop Swift tests with coverage, writes the complete LLVM JSON export to `.context/coverage/desktop-swift.json`, and writes a reviewable maintained-source summary beside it.
 
 ## Sensor Timing
 
@@ -62,68 +68,57 @@ Factory model: [`docs/FACTORY.md`](FACTORY.md). Self-improvement loop: [`docs/fa
 
 ## Desktop
 
-Desktop has two test surfaces:
+Desktop is a SwiftPM macOS app:
 
 ```bash
-pnpm --dir apps/desktop exec vitest run
-cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
 ```
 
-The root `apps/desktop` `test` script runs both surfaces. Do not replace it with a filtered Cargo command unless the filter is only for local debugging.
+The target monorepo gate is `pnpm harness --scope apps/desktop`.
+
+The final assembled acceptance tracer is:
+
+```bash
+pnpm --dir apps/desktop desktop:accept
+```
+
+It launches an actual isolated-profile app bundle and drives its real controls through an external macOS Accessibility process. The debug-only loopback bridge is limited to fixtures, Runtime-link/ack faults, and snapshots; it cannot invoke user actions. Evidence is assertion-derived and step-level. The runner must already have Accessibility permission. Signed/notarized artifact launch, N-1 Sparkle update proof, live signed-in full-stack proof, and Tart TCC prompts remain dedicated-Mac release gates; see [`apps/desktop/docs/RELEASE.md`](../apps/desktop/docs/RELEASE.md).
 
 ### Routing session smoke (local)
 
-Exercise the Rust-owned Protocol WebSocket session without a live Control Plane:
+Exercise the Runtime Bridge without a live Control Plane:
 
 1. Stand up a reachable Agent Runtime gateway, or a local WebSocket stub that accepts the Protocol `connect` handshake (`client_kind: "desktop"` + JWT).
 2. Export fixture Routing before launch (fixture wins over `INTENTIVE_CONTROL_PLANE_URL` when both are set):
 
 ```bash
-export VITE_NEON_AUTH_URL=<Neon Auth URL>
 export INTENTIVE_DESKTOP_ROUTING_FIXTURE='{"ws_url":"wss://localhost:8787/ws","runtime_jwt":"<jwt>","agent_instance_id":"agent_dev"}'
-cd apps/desktop && npm run tauri dev
+cd apps/desktop/macos && ./run.sh
 ```
 
-3. Open Settings and sign in. The webview calls `set_login_token`; Rust reads Routing from the fixture (the login token is not used for the lookup), opens the socket, and emits `routing:status` moods — never the JWT or `ws_url`.
-4. Expect Settings to move through **Connecting** → **Connected**, or **Reconnecting** / **Needs attention** when the socket fails. Reopening Settings should still show the current mood (`get_connection_status`).
+3. Open the app and confirm the Runtime Bridge surface can enqueue chat before `hello_ok`.
+4. Expect `RuntimeAdapter` tests to prove **Connecting** -> **Connected**, generation invalidation, FIFO flush, and delivery acknowledgements.
 
-For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the fixture. A malformed fixture logs and falls back to Control Plane when that URL is set. Rust unit tests for Routing/Session transitions and reconnect decisions live under `apps/desktop/src-tauri/src/domains/routing/` (`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml routing` for a focused run).
+For live Control Plane routing, set `INTENTIVE_CONTROL_PLANE_URL` instead of the fixture. A malformed fixture should fall back to Control Plane when that URL is set.
 
-See also [`apps/desktop/README.md`](../apps/desktop/README.md) (environment variables) and [`apps/desktop/CONTEXT.md`](../apps/desktop/CONTEXT.md) (**Routing State** vs **Session State**).
+See also [`apps/desktop/README.md`](../apps/desktop/README.md) and [`apps/desktop/CONTEXT.md`](../apps/desktop/CONTEXT.md).
 
 ### Signed-in Capture Session smoke
 
-The routing smoke above stubs out capture. The **signed-in Capture Session smoke** proves the full assembled chain on a real, signed-in Mac: Routing from the Control Plane stub (real JWT verification) → capture auto-starts → real ScreenPipe captures → Context Heartbeat produces a sanitized Context Snapshot → written to the Snapshot Store before delivery → emitted as a `context_snapshot` Protocol event → Stop emits a `session_end_marker` **before** ScreenPipe shutdown (ADR-0022).
+The **signed-in Capture Session smoke** proves the full assembled chain on a real, signed-in Mac: Routing from Control Plane -> capture permission setup -> Screen Memory local record -> Desktop Context Compiler emits a sanitized `perception_event` -> Runtime records it in `runtime_events` and `perception_records` -> floating-bar chat joins the shared Conversation History -> Post-Message-Back reaches the Effect Runner.
 
 ```bash
-pnpm --filter ./apps/desktop smoke   # or: node apps/desktop/smoke/run-smoke.mjs
+pnpm harness --scope apps/desktop
 ```
 
-It requires a Mac that is already signed in with all three macOS grants (Screen Recording, Microphone, Accessibility) — capture is readiness-gated and that gate cannot be automated. After ≥2 heartbeat cycles land as gateway receipts, toggle capture **off** in the menu bar (Capturing → Stopped) to emit the marker; the harness then prints a PASS/FAIL table mapping each AC to its evidence. Full runbook, two modes, and the dev-only env vars: [`apps/desktop/docs/SMOKE.md`](../apps/desktop/docs/SMOKE.md).
+It requires a Mac with the needed local grants. Full runbook and dev-only env vars: [`apps/desktop/docs/SMOKE.md`](../apps/desktop/docs/SMOKE.md).
 
 ### Reliability & privacy verification map
 
-#43's eight original `Verify X` acceptance criteria collapse into **three deep
-guarantees** ([ADR-0023](../apps/desktop/docs/adr/0023-desktop-three-guarantee-reliability-verification.md)):
-**A** local invariants (Rust unit, every commit), **B** cross-language contract
-(every commit), **C** privacy efficacy (out-of-band eval). Each row below maps an
-original criterion to its guarantee and the exact test that proves it.
-
-| #   | Original criterion                             | Guarantee | Proven by                                                                                                                                                                                                                                                                                                                    |
-| --- | ---------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Secrets never leak into a snapshot             | C         | prompt-wiring `summarize_prompt_includes_privacy_constraints` (`summarization/service/tests.rs`) + structural Snapshot Privacy Boundary; **efficacy → privacy eval** `privacy_eval_planted_secrets_do_not_leak_into_summaries` (`summarization/service/eval.rs`, `#[ignore]`d — see [EVAL.md](../apps/desktop/docs/EVAL.md)) |
-| 2   | No raw ScreenPipe data stored or sent          | A         | structural — the `ContextSnapshot` struct (`snapshots/types/mod.rs`) has no raw field                                                                                                                                                                                                                                        |
-| 3   | Snapshot written before emit                   | A         | `snapshot_is_in_store_before_push` (`snapshots/runtime/heartbeat/tests.rs`)                                                                                                                                                                                                                                                  |
-| 4   | Delivery-failure modes                         | A + B     | **narrowed**: only socket-down is client-observable → `failed_push_leaves_snapshot_unmarked`. Timeout / gateway-reject are silent by design (no ack, ADR-0005); **B is the compensating control**. See ADR-0023                                                                                                              |
-| 5   | `pushed_at` null on a failed emit              | A         | `failed_push_leaves_snapshot_unmarked` (`heartbeat/tests.rs`)                                                                                                                                                                                                                                                                |
-| 6   | 7-day retention purge                          | A         | `launch_purges_rows_older_than_seven_days` (`snapshots/repo/tests.rs`)                                                                                                                                                                                                                                                       |
-| 7   | Heartbeat survives a failed emit               | A         | `failed_push_leaves_snapshot_unmarked` + later ticks keep producing rows (`heartbeat/tests.rs`)                                                                                                                                                                                                                              |
-| —   | No retry of an undelivered snapshot (ADR-0005) | A         | `failed_snapshot_is_never_re_emitted_on_a_later_tick` (`heartbeat/tests.rs`)                                                                                                                                                                                                                                                 |
-| 8   | CI stays model-free                            | A         | summarization unit tests use fakes; the privacy eval is `#[ignore]`d and excluded from `pnpm test` / `pnpm harness`                                                                                                                                                                                                          |
-| B   | Cross-language frame contract                  | B         | `protocol-contract.test.ts` (`apps/desktop/src/`) + Rust golden `context_snapshot_frame_matches_the_committed_golden_fixture` (`src-tauri/src/lib.rs`)                                                                                                                                                                       |
-
-Guarantee C runbook (how to run, pass threshold, the LLM-judge next layer):
-[`apps/desktop/docs/EVAL.md`](../apps/desktop/docs/EVAL.md).
+Desktop privacy and reliability verification collapses into three guarantees:
+**A** local boundary invariants, **B** cross-language Protocol fixture contract,
+and **C** redaction/privacy efficacy. See [`apps/desktop/docs/EVAL.md`](../apps/desktop/docs/EVAL.md).
 
 ## Shared Contracts
 
@@ -150,7 +145,7 @@ pnpm --dir apps/mobile typecheck
 
 The root `pnpm test` runs the Node `test` script above. The React Native harness
 is included in the blocking root harness through `pnpm --dir apps/mobile test:rn`
-(`pnpm harness` locally, `pnpm harness:ci` in CI), so run it directly for focused
+(`pnpm harness` locally, the `node-workspaces` Gate group in CI), so run it directly for focused
 mobile UI debugging. The mounted experience is frontend-only: its RN journey
 tests assert zero auth-provider, Contacts, notification, fetch, WebSocket,
 SecureStore, and durable-storage calls. Named render snapshots cover A, B1/B2,
@@ -162,7 +157,7 @@ Unit tests don't cover native rendering. To verify a change visually on the iOS
 Simulator (e.g. via XcodeBuildMCP `build_run_sim` or `expo run:ios`):
 
 1. **Start Metro first, from `apps/mobile`** — `pnpm --dir apps/mobile dev`. A Debug
-   build loads JS from Metro at `localhost:8081`. Starting it from the repo root makes
+   build loads JS from Metro at `localhost:8082`. Starting it from the repo root makes
    Metro pick the wrong project root and every bundle 404s (`Unable to resolve ./index`).
 2. **Repo path must contain no spaces** — CocoaPods/Ruby resolves the real path and a
    space (e.g. the old `Desktop/Hey Intentive`) breaks `pod install` and the build. The
@@ -252,11 +247,10 @@ vertical slices land.
 
 ## CI Expectations
 
-- `.github/workflows/monorepo-foundation.yml` is the root PR gate. Its final blocking step runs `pnpm harness:ci`, which mirrors `pnpm harness` and includes typecheck, lint, format check, architecture and sensor contract tests, contract drift, workspace tests, and Mobile React Native tests.
-- `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. It builds optional BTAR base/head JSON reports, then runs `pnpm sensor:factory-report` with those reports so the sticky comment can include a BTAR agent-readiness delta alongside impact-radius and harness-health. BTAR setup or analysis failures are advisory only and do not fail the job. Use `--audit` locally for full repo-wide maintenance output.
-- `.github/workflows/control-plane-ci.yml` runs Control Plane typecheck and the full test suite on pull requests that touch `services/control-plane/` or its shared-package dependencies. It intentionally omits `NEON_*` so branch-spawning repo integration tests skip in PR CI.
-- `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, runs the Control Plane checks without creating extra Neon branches, and deletes the branch when the PR closes.
-- `.github/workflows/desktop-ci.yml` runs desktop frontend and Rust checks when desktop-relevant paths change.
-- `.github/workflows/security-audit.yml` runs `pnpm audit --prod --audit-level high` on pull requests only when pnpm dependency inputs change; its weekly/manual path runs the full `pnpm audit --audit-level high`.
-- `.github/workflows/desktop-audit.yml` runs Cargo dependency audits for desktop Rust paths.
-- `.github/workflows/coverage.yml` uploads desktop JS coverage as a GitHub Actions artifact and sends LCOV to Codecov when configured.
+- `.github/workflows/monorepo-foundation.yml` is the root PR Gate. It runs repository contracts on Ubuntu, Node workspaces on Ubuntu, and Desktop Swift tests plus bundle and coverage evidence on macOS. The stable `Gate` job succeeds only when all three modules pass.
+- `.github/workflows/codeql.yml` is the versioned security-analysis contract. It analyzes Actions, JavaScript/TypeScript, and Swift, then joins them behind the stable `Security` status. GitHub default setup must remain disabled so its stale auto-detected language list cannot compete with this workflow.
+- `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. Radar is changed-file-first and keeps the full repository audit behind `--audit`; it does not execute unpinned third-party analyzers.
+- `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, and deletes the branch when the PR closes. Typecheck/tests belong to the Node Gate and are not replayed here.
+- `.github/workflows/security-audit.yml` runs `pnpm audit --prod --audit-level moderate` on pull requests when pnpm dependency inputs change; its weekly/manual path runs the full `pnpm audit --audit-level moderate`.
+- `.github/workflows/desktop-dependency-policy.yml` enforces the Desktop provider-SDK boundary. It is a dependency-policy check, not a vulnerability database scan.
+- Desktop coverage is produced by the same `desktop-swift` Gate execution that runs tests; there is no separate recompilation-only coverage workflow.

@@ -1,101 +1,244 @@
-# Internal build (disposable clean slate)
+# Desktop Development
 
-How to exercise the real `Intentive.app` bundle against a **fresh permission slate**, for anything touching **Desktop Capture Readiness**. Tag this file and say _"spin up an internal build"_ or _"close it"_ — the **Agent operations** below are the exact commands to run.
+The current desktop app is a Swift Package Manager macOS app under `apps/desktop/macos`.
 
-macOS has no simulator — the host Mac _is_ the device, so `pnpm tauri dev` already runs the real Rust backend end-to-end. The one thing it can't reproduce is **real permission identity**: in dev the running binary is a bare, ad-hoc-signed Mach-O at `target/debug/`, not the signed `Intentive.app`, so TCC grants (Screen Recording / Microphone / Accessibility) churn on every rebuild and don't reflect the shipped `com.heyintentive.tauri` identity. For anything touching **Desktop Capture Readiness**, build a real bundle and run it in a disposable [Tart](https://tart.run) macOS VM, which gives a fresh TCC slate every clone.
+```bash
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
+apps/desktop/macos/run.sh
+```
 
-## Agent operations
+Use `apps/desktop/macos/run.sh` for live local runs. Release bundling is handled by `macos/scripts/build-app-bundle.sh`; pass `INTENTIVE_BUNDLE_ID` (default `com.heyintentive.desktop` — use `com.heyintentive.desktop.dev` for internal/dev builds), `INTENTIVE_APP_VERSION`, `INTENTIVE_APP_BUILD`, `INTENTIVE_AUTH_CALLBACK_SCHEME`, `INTENTIVE_CONTROL_PLANE_URL`, `INTENTIVE_HOSTED_AUTH_URL`, `INTENTIVE_SPARKLE_FEED_URL`, `INTENTIVE_SPARKLE_PUBLIC_ED_KEY`, `INTENTIVE_SENTRY_DSN`, `INTENTIVE_POSTHOG_PROJECT_KEY`, and optionally `INTENTIVE_AUTH_TOKEN_EXCHANGE_URL` and `INTENTIVE_POSTHOG_HOST` when assembling a release candidate outside GitHub Actions. Production-identity release bundles require HTTPS Control Plane and hosted-auth URLs and embed them in audited bundle metadata; raw and `.dev` launches may override endpoints through the same environment variables. Sparkle's feed and Ed25519 key are required for signed updates; missing telemetry values disable their respective transport without changing local diagnostics.
 
-**This machine's canonical env** (T9 is the storage volume — keeps the ~26 GB VM and ~7 GB Rust `target/` off the small boot volume). Every command below assumes it:
+### Three channels, isolated by bundle ID
+
+| Channel                            | Bundle ID                     | App name        | Updates | When to use                           |
+| ---------------------------------- | ----------------------------- | --------------- | ------- | ------------------------------------- |
+| **Daily dev** (`run.sh`, raw bin)  | _(nil — `.dev` fallback)_     | Intentive Dev   | none    | fast iteration, hot-reload, eyeballing |
+| **Internal assembled** (Tart VM)   | `com.heyintentive.desktop.dev` | Intentive Dev   | none    | clean-slate permission/onboarding flows |
+| **Dogfood / release** (signed DMG) | `com.heyintentive.desktop`     | Intentive       | Sparkle | use the product like a real user      |
+
+`KeychainTokenStore` derives its `service` from `Bundle.main.bundleIdentifier`,
+falling back to `com.heyintentive.desktop.dev.auth` for the raw-binary `run.sh`
+path, so dev auth and dogfood auth never share a Keychain item. TCC grants and
+`~/Library/Application Support/<bundle-id>` directory ownership follow the same
+split — agents can trash the `.dev` world without touching the dogfood install.
+
+Product analytics is consent-controlled and deny-by-default: only the typed operational property allow-list can reach PostHog. Sentry errors use category/code metadata rather than raw error descriptions. Screenshots, OCR, app/window titles, audio transcripts, conversation text, tokens, and local paths must never be added to either payload. Local JSONL diagnostics rotate at 14 days or 100 MB and can be exported or cleared from Diagnostics.
+
+Tagged GitHub releases reuse the pre-Omi Apple secrets and public Developer ID identity documented in [`RELEASE.md`](RELEASE.md). They additionally require the Sparkle key pair, `DESKTOP_POSTHOG_PROJECT_KEY`, and the public `DESKTOP_SENTRY_DSN`, `DESKTOP_CONTROL_PLANE_URL`, and `DESKTOP_HOSTED_AUTH_URL` repository variables. `DESKTOP_AUTH_TOKEN_EXCHANGE_URL` is optional and is embedded only when the hosted callback uses a code exchange. Workflow-dispatch smoke builds may omit telemetry values; the transports then stay disabled.
+
+All active SwiftPM commands go through `macos/scripts/swiftpm.sh`. On this Mac it
+fails closed unless T9 is mounted, and gives every Conductor workspace an isolated
+scratch path under `/Volumes/T9/Developer/Intentive/workspaces/<workspace>/swiftpm/desktop`.
+Do not bypass the wrapper with a raw `xcrun swift build`: that recreates a package-local
+`.build` directory on the internal SSD. CI and machines without the local storage policy
+fall back to a git-ignored workspace build root.
+
+## Internal build: clean macOS permission slate
+
+Use an internal build for changes to Desktop Capture Readiness, permission onboarding, or native-bundle behavior. It builds the real SwiftPM `Intentive.app`, then runs it in a disposable [Tart](https://tart.run) macOS VM. Each run clones a pristine base VM, so Screen Recording, Microphone, and system-audio capture begin ungranted without changing the host Mac.
+
+Internal builds assemble under the **`com.heyintentive.desktop.dev` bundle ID** and
+app name **Intentive Dev** (overridable via `INTENTIVE_BUNDLE_ID` /
+`INTENTIVE_APP_NAME`). This is the middle channel of the
+[Three channels](#three-channels-isolated-by-bundle-id) table above — the VM's
+state stays isolated from the dogfood install by bundle ID, and the same `.dev`
+Keychain fallback applies, so dev and dogfood never share a Keychain item.
+Release CI continues to build and sign under `com.heyintentive.desktop`; that path
+is unchanged.
+
+### Agent operations
+
+Tag this runbook into an agent and use the following phrases. The canonical VM store on this machine is `/Volumes/T9/Tart`; `internal:run` stays alive for the visible VM, so the agent starts it in the background and then hands off to the person at the keyboard.
+
+| You say… | Agent runs | What happens |
+| --- | --- | --- |
+| **"spin up an internal build"** | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` **in the background** | Builds the native `.app`, clones `intentive-base` into a fresh `intentive-clean`, opens the VM, and shares the bundle. |
+| **"close it" / "kill it"** | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` | Stops and deletes `intentive-clean`. The pristine base is preserved. |
+| **"is it running?"** | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:status` | Shows the base and disposable clone, if present. |
+| **"just build the app"** | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:build` | Builds and signs the native `.app` only. |
+| **"rebuild the base"** | `TART_HOME=/Volumes/T9/Tart apps/desktop/macos/scripts/tart-internal-build.sh --create-base <ipsw-url-or-path>` | Creates a new pristine base; complete Setup Assistant before using it. |
+
+> **VM login (OCI base):** username `admin`, password `admin`. macOS may prompt for these when you grant Screen Recording, Microphone, or system-audio permission inside the VM. The `admin` account is a member of the `admin` group (UID 501) and can authorize TCC prompts. This only applies to clones of the OCI base image (`ghcr.io/cirruslabs/macos-tahoe-base:latest`); a local `intentive-base` created via `--create-base` uses whatever credentials you set during Setup Assistant.
+
+The normal run is deliberately away-from-keyboard safe: closing the VM window, interrupting its runner, or using **"kill it"** invokes the same stop-and-delete procedure. Tart terminates every process inside the guest before it deletes the guest disk. The script starts no host-side backend, capture daemon, or helper process, so a completed cleanup leaves no internal-build servers running on the host.
+
+### Why we use a VM
+
+The desktop app relies on native macOS screen and optional audio capture plus their privacy/TCC prompts. Testing these on the real Mac is unreliable because permissions and preferences persist across runs; you can't tell whether a flow actually triggers a first-time prompt or is silently reusing a grant from a previous test.
+
+The VM solves this. It gives us a fresh macOS install with **zero pre-existing permissions**, simulating a brand-new user opening the app for the first time. Every `internal:run` clones a pristine base into a disposable VM, so each test starts from the same clean slate: no TCC grants, no Keychain entries, no Screen Memory, no prior onboarding state. You see exactly what a real first-time user sees.
+
+**What we're validating in the VM:** the first-launch onboarding flow, screen/audio permission prompts, and behavior when optional or required access is granted, denied, or deferred. This is not a replacement for a signed/notarized release smoke — it is the fast iteration loop for native permission behavior.
+
+### How the VM stack works
+
+Two pieces:
+
+| | `intentive-base` | `intentive-clean` |
+| --- | --- | --- |
+| **What it is** | A template VM — macOS + Setup Assistant done, nothing else installed. Created once. | A clone of the base, created fresh every `internal:run`. This is the VM you actually see and test in. |
+| **What lives in it** | Nothing test-related. No `Intentive.app`, no TCC grants, no Keychain entries. | Whatever the current test puts there: the app copy, permissions you grant, onboarding state. All of it. |
+| **How long it takes to create** | An hour or more (IPSW download + Setup Assistant). This is why it's precious. | ~30 seconds (copy-on-write clone). |
+| **How to reset it** | You don't. It's the template. **Never delete it.** If it needs rebuilding, see [Rebuilding the base](#rebuilding-the-base) below. | `internal:close` — deletes the clone. The next `internal:run` makes a fresh one. This is the normal, expected reset. |
+| **What the script does with it** | `--create-base` creates it (one-time). No other command touches it. | `--delete` / `internal:close` / closing the VM window all delete the clone only. |
+
+The script is deliberately built so the base cannot be deleted by normal operations: `--delete` stops/deletes only `intentive-clean`; `--create-base` refuses to run if a base already exists. **Never run a raw `tart delete intentive-base`.**
+
+### Agent guardrail: the base is immutable
+
+> **Read this before touching any Tart command.** The base (`intentive-base` or the OCI image `ghcr.io/cirruslabs/macos-tahoe-base:latest`) is a one-time, hour-plus download that is never to be deleted, mutated, or "reset" by an agent. This is a hard rule. It exists because the base is the only expensive artifact in the VM stack; everything else is disposable in seconds.
+
+**NEVER do any of the following — no exceptions, no "I thought it was dirty," no speculative cleanup:**
+
+- `tart delete intentive-base` — not to fix a dirty clone, not to free disk, not because a run failed. Never.
+- `tart delete` any `ghcr.io/cirruslabs/macos-*` OCI image from the local store. The OCI image is immutable and read-only; it cannot be contaminated and has no reason to be removed.
+- Boot the base VM and install `Intentive.app`, grant TCC permissions, or change system settings. The base stays at "fresh Setup Assistant completed, nothing else." If you need to test something, do it in a clone.
+- Run `--create-base` when a base already exists. The script refuses; do not work around it.
+- Delete the base to "start over" because a clone looks wrong. A dirty clone is the expected, normal state — see [The one rule that caused a major incident](#the-one-rule-that-caused-a-major-incident).
+
+**If you suspect the base is contaminated:** STOP. Do not act on assumption.
+
+1. Boot the base VM directly: `TART_HOME=/Volumes/T9/Tart tart run intentive-base`.
+2. Inspect `/Applications` and System Settings > Privacy & Security for stale grants.
+3. If it is genuinely contaminated, **rename it out of the way first** (`tart rename intentive-base intentive-base-suspect-<date>`) so it can be recovered, then rebuild — never delete speculatively.
+
+**What you SHOULD do instead — always:**
+
+- All app installs, TCC grants, onboarding state, and test artifacts belong in the disposable clone `intentive-clean`. That is its purpose.
+- To reset state for a fresh test: `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close` and then `internal:run`. This deletes the clone only (~30 s) and makes a fresh one. This is the normal, expected, repeatable reset.
+- The base and the clone are deliberately independent. Keep the base warm and untouched; reset the clone freely.
+
+### The one rule that caused a major incident
+
+**A dirty clone is normal and expected — it is not a problem.** The clone is where app installs, TCC grants, and test state belong. If `Intentive.app` is sitting in `intentive-clean`'s `/Applications`, that's the whole point — someone copied it there to test. You reset it with `internal:close` and a fresh `internal:run`. That takes 30 seconds.
+
+**Never delete the base to "fix" a dirty clone.** The base is the expensive template that took an hour+ to set up. The clone is disposable. If you see something unexpected in the VM, the first question is always: is this the clone or the base? If it's the clone, run `internal:close` and move on. If you think the base itself is wrong, **boot the base VM directly and verify by inspection** — do not act on assumption. If the base genuinely needs rebuilding, rename it out of the way first so it can be recovered, then rebuild. Never nuke speculatively.
+
+### Keep the caches; reset the guest
+
+The fast development cache and the clean permission slate are deliberately independent. SwiftPM keeps its per-workspace incremental build cache on T9 through `macos/scripts/swiftpm.sh`, and Tart keeps the macOS base image and copy-on-write layers in `TART_HOME` (on this machine, `/Volumes/T9/Tart`). Keep both warm for fast builds and fast cloning. Only `intentive-clean` is reset: deleting that clone removes test state without rebuilding Swift dependencies or recreating macOS. When Conductor archives the workspace, its archive hook deletes that workspace's external SwiftPM cache so a useful cache cannot become abandoned deadweight.
+
+```bash
+# Build the native app and open a fresh, self-cleaning VM.
+TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run
+
+# Build only or delete the disposable VM.
+TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:build
+TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
+```
+
+The default clone is `intentive-clean`; its base is a local `intentive-base` when present, otherwise Tart's `ghcr.io/cirruslabs/macos-tahoe-base:latest`. **OCI base images are immutable and read-only — they can never be contaminated.** A local `intentive-base` VM takes priority over the OCI image; if it exists and was tainted, every clone inherits the taint. Before creating a local base, prefer the OCI image unless you have a specific reason (e.g. custom macOS configuration).
+
+`--delete` only removes the clone. A normal run deletes the clone when its VM window closes or the command is interrupted; the next run also removes any stale clone before creating a new one.
+
+### Agent pre-run checklist
+
+Before running `internal:run`, verify:
+
+1. `tart list` shows the OCI base or a local `intentive-base`. If neither exists, the script will pull the OCI image (~27 GB, one-time). Wait for the pull to finish. Once the base exists, it is permanent — see [Agent guardrail](#agent-guardrail-the-base-is-immutable); never delete it.
+2. If a local `intentive-base` exists, it **must** be clean. To verify: `tart run intentive-base` and check `/Applications` for stale `Intentive.app`. If present, the base is contaminated — rename it out of the way (never delete) and rebuild from IPSW or OCI.
+3. If only the OCI image exists (no local base), every clone is guaranteed clean. OCI images are immutable.
+4. The disposable `intentive-clean` is expected to get dirty — that's where test state lives. Kill and re-clone, never touch the base.
+
+**If you think the base is contaminated:** STOP. Boot the base VM directly and inspect `/Applications`. Do not delete the base on assumption. The clone being dirty is normal and expected.
+
+<a id="rebuilding-the-base"></a>
+
+### Rebuilding the base
+
+The base is needed once (and again only if it's genuinely broken — not just because a clone looks dirty). Three options, fastest first:
+
+**Option A — cached IPSW (fastest, no download).** Tart caches IPSWs it has already pulled at `$TART_HOME/cache/IPSWs/`. If files exist there, reuse one:
 
 ```bash
 export TART_HOME=/Volumes/T9/Tart
-export CARGO_TARGET_DIR=/Volumes/T9/intentive-target
+ls /Volumes/T9/Tart/cache/IPSWs/*.ipsw   # pick the largest one (~18 GB)
+apps/desktop/macos/scripts/tart-internal-build.sh --create-base \
+  "/Volumes/T9/Tart/cache/IPSWs/<filename>.ipsw"
+tart run intentive-base
 ```
 
-| You say…                        | Agent runs                                                                  | What happens                                                                                                                           |
-| ------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **"spin up an internal build"** | `apps/desktop/scripts/tart-internal-build.sh` &nbsp;(**run in background**) | Builds the `--debug` `.app`, clones `intentive-base` → a fresh ephemeral `intentive-clean`, opens the VM window, shares the bundle in. |
-| **"close it" / "kill it"**      | `apps/desktop/scripts/tart-internal-build.sh --delete`                      | Stops + deletes the ephemeral `intentive-clean`. The `intentive-base` golden base is left untouched.                                   |
-| **"is it running?" / status**   | `tart list`                                                                 | `intentive-base` = the kept base; `intentive-clean` present only while a build is live.                                                |
-| **"just build the app"**        | `apps/desktop/scripts/tart-internal-build.sh --build`                       | Builds the `--debug` bundle only, no VM.                                                                                               |
-| **"rebuild the base"** (rare)   | see [Recreating the base](#recreating-the-base-rare)                        | One-time; only if the base is deleted or macOS drifts.                                                                                 |
+**Option B — OCI pull (no local IPSW, ~27 GB download, takes hours).** Skip `--create-base`; `internal:run` will pull `ghcr.io/cirruslabs/macos-tahoe-base:latest` automatically when no local base exists. Requires ~90 GB free in `TART_HOME`.
 
-**Agent notes:**
-
-- **Run "spin up" in the background** (it blocks on the live VM window). The script is **self-cleaning**: closing the VM window, killing the run process (TERM), or `--delete` all stop _and delete_ the ephemeral instance — ScreenPipe/Ollama run **inside** the guest, so nothing leaks onto the host. There is no "stale server" to chase.
-- **The agent boots the VM, then hands off.** Granting the three macOS permissions is a GUI-only TCC flow that can't be scripted — the agent's job ends at a booted VM with the bundle shared in; the human does the in-VM steps below.
-- **Never delete `intentive-base`** as part of "close" — `--delete` only touches the ephemeral instance, by design.
-
-### In-VM steps (human, after the agent boots it)
-
-In the VM window, log in as `admin` if prompted (the account set during base setup). Then:
-
-1. Finder → **Go → Go to Folder…** → `/Volumes/My Shared Files/intentive-build/` → drag **`Intentive.app`** into `/Applications`.
-2. Launch from `/Applications`. Ad-hoc signed, so if macOS blocks it: **right-click → Open → Open**.
-3. Grant **Screen Recording + Microphone + Accessibility** when prompted — this is the clean-slate first-run flow you came here to exercise.
-
-## How it stays disposable
-
-`intentive-base` is the **golden base**: macOS + the `admin` account, captured **pre-permission-grants**. Every "spin up" makes a copy-on-write clone (`intentive-clean`) — so each run starts from the base's _clean TCC slate_ and the first-run grant flow behaves exactly as it does for a brand-new user, without polluting the host's permission state. Any stale `intentive-clean` is deleted before the next clone, so it self-heals even after a hard `kill -9`. Clones are cheap (CoW); the base holds no grants and runs nothing.
-
-## Debugging the clone (Sentry)
-
-A clone has no host-visible terminal, so the way errors reach a coding agent is **Sentry** — but only if the DSN is **baked into the bundle at build time**. Rust reads `option_env!("SENTRY_DSN")` at compile time and Vite inlines `VITE_SENTRY_DSN` at build time; the clone carries neither, so a build with no DSN ships Sentry **off** and the VM reports nothing.
-
-`tart-internal-build.sh` bakes it for you: it reads `SENTRY_DSN` / `VITE_SENTRY_DSN` from your shell or `apps/desktop/.env`, tags `environment=internal-build` (so VM errors stay separate from production), stamps a `desktop@internal-<sha>` release, **re-bakes only when the DSN changes**, and **warns if no DSN is found** (so Sentry-off is never silent).
-
-**One-time setup** — drop the **public** DSN into `apps/desktop/.env` (keys are in `.env.example`):
-
-```
-SENTRY_DSN=…            # public DSN, Sentry project heyintentive/desktop
-VITE_SENTRY_DSN=…       # same value (webview)
-```
-
-Then a coding agent reads VM errors via the **Sentry MCP** — org `heyintentive`, project `desktop`, filter `environment:internal-build` — or the Sentry UI. The DSN is public; only the source-map upload token is secret. Note this is **errors/panics only**, not a full debug-log stream (the Rust side has no logging facade yet — only `eprintln!` to stderr, which stays inside the VM).
-
-## The build ladder
-
-From least to most production-like: `pnpm --filter ./apps/desktop dev` (UI only) → `pnpm tauri dev` (real backend, unstable permission identity) → **`--debug` bundle in a Tart VM (real backend + clean permission identity)** → `pnpm tauri build` notarized DMG (Gatekeeper-clean, updater-backed; [`RELEASE.md`](RELEASE.md)).
-
----
-
-## Reference
-
-### Recreating the base (rare)
-
-The base only needs (re)building if it's deleted or the host macOS drifts far from it. Two sources; the script clones from whatever `TART_BASE_IMAGE` points at (an OCI ref _or_ a local VM name), and **auto-detects a local `intentive-base` when present**, so day-to-day runs need no flags.
-
-**Option A — ghcr OCI image.** `ghcr.io/cirruslabs/macos-sequoia-base:latest`, pulled automatically, ships a baked-in `admin`/`admin` user + SSH. Use it when ghcr's blob CDN is reachable. (On some networks `pkg-containers.githubusercontent.com` stalls/drops large pulls — then use Option B.)
-
-**Option B — local base from an Apple IPSW.** Builds the base straight from Apple's CDN:
+**Option C — fresh IPSW from Apple.** Download a UniversalMac Restore IPSW from Apple's public CDN and point `--create-base` at the URL or local path:
 
 ```bash
-# 1) one-time create — IPSW macOS version MUST be <= host's (sw_vers -productVersion)
-apps/desktop/scripts/tart-internal-build.sh --create-base \
-  "https://updates.cdn-apple.com/.../UniversalMac_<ver>_<build>_Restore.ipsw"
-
-# 2) boot the new base once, complete Setup Assistant (create the admin account),
-#    do NOT grant any permissions, then shut it down:
+export TART_HOME=/Volumes/T9/Tart
+apps/desktop/macos/scripts/tart-internal-build.sh --create-base \
+  "https://updates.cdn-apple.com/.../UniversalMac_<version>_<build>_Restore.ipsw"
 tart run intentive-base
-
-# 3) from here on, normal runs auto-detect it — just:
-apps/desktop/scripts/tart-internal-build.sh
 ```
 
-Three things bite, all handled by `--create-base`:
+**After the base boots (any option):** Complete Setup Assistant, create an admin user, and do **not** install Intentive or grant any permissions. Shut it down; every `internal:run` clones that clean state. The IPSW macOS version must be no newer than the host macOS version.
 
-- **Version ceiling.** Virtualization.framework can only restore a guest macOS **≤ the host's**. `--from-ipsw latest` grabs a newer macOS than an un-updated host and fails the _install_ step (after the full ~18 GB download) with `a software update is required to complete the installation`. Pick an IPSW `≤ sw_vers -productVersion`; matching the host version exactly is safest. Find current `UniversalMac_*_Restore.ipsw` URLs via [mrmacintosh.com](https://mrmacintosh.com/apple-silicon-m1-full-macos-restore-ipsw-firmware-files-database/) / [theapplewiki.com](https://theapplewiki.com/wiki/Firmware/Mac/26.x); HEAD-check the URL (expect `200` + ~18 GB) before committing.
-- **No retry in tart's downloader.** `tart create --from-ipsw <url>` has no resume — a single transient drop kills the whole ~18 GB. `--create-base` downloads URLs with `curl -C -` (resume + retry) so drops resume instead of restarting; the install then reads the **local** IPSW with zero network risk.
-- **No prebaked user.** A from-IPSW base is bare macOS — hence the one-time Setup Assistant. Keep the base pristine (never grant permissions in it).
+Inside the fresh VM, copy `Intentive.app` from `/Volumes/My Shared Files/intentive-build/` into `/Applications`, then launch it and exercise the permission flow. The default internal build is ad-hoc signed, which is enough for a fresh-VM permission test; set `INTENTIVE_INTERNAL_SIGNING_IDENTITY` to test with a local signing identity. This lane does not replace a signed/notarized release-candidate smoke.
 
-### Storage / offloading
+The app receives no shell environment when launched from Finder. The internal-build lane therefore validates bundle identity and permission readiness by default. To validate authentication or a live backend in the VM, launch the installed executable from Terminal with VM-reachable `INTENTIVE_CONTROL_PLANE_URL` and hosted-auth variables—never bake a user JWT or provider key into the app. VM capture validates the first-run flow, not a physical multi-display setup.
 
-The two large artifacts are the VM images (base ~26 GB + each clone's CoW delta) and the Rust `target/` (~7 GB+). On this machine both live on **T9** via the env vars above; the script runs its disk-space guardrail against whichever volume each points at. See [`AGENTS.md`](../AGENTS.md) § Stack & deploy.
+To connect the executable to the local stack, start the Control Plane and Agent Runtime from the root runbook, then launch Desktop with:
 
-### Constraints, called out because they bite
+```bash
+export INTENTIVE_CONTROL_PLANE_URL=http://localhost:8080
+export INTENTIVE_DESKTOP_USER_JWT="$(scripts/local-dev-auth-token.mjs --user-id local-dev-user)"
+cd apps/desktop/macos
+./run.sh
+```
 
-- **Disk.** A from-scratch ghcr base pull is ~50–90 GB; the script **refuses to `tart pull` below ~90 GB free on the `TART_HOME` volume**, and the `--debug` build needs ~12 GB on the `CARGO_TARGET_DIR` volume — a partial pull on a near-full boot volume can wedge macOS. (The local `intentive-base` route sidesteps the pull entirely.)
-- **Apple Silicon only**, matching V1. Clones are copy-on-write, so a fresh pristine instance per run is cheap once the base exists.
-- **VM capture is the virtual display**, not your real multi-display setup — fine for exercising the permission/readiness _flow_, not representative of real capture content.
-- **`CARGO_HOME` relocation.** The build invokes `cargo` via `pnpm tauri build`. This machine relocates `CARGO_HOME`/`RUSTUP_HOME` to T9 (via `~/.zshenv`); run from a terminal where T9 is mounted (see [`AGENTS.md`](../AGENTS.md) § Stack & deploy).
+Without `INTENTIVE_DESKTOP_USER_JWT`, Desktop uses its Keychain-backed hosted-auth seam and reports sign-in required until a token is available.
+
+Hosted auth configuration:
+
+```bash
+export INTENTIVE_HOSTED_AUTH_URL=https://<auth-host>/sign-in
+export INTENTIVE_AUTH_CALLBACK_SCHEME=intentive-desktop
+# Required only when the callback returns an authorization code instead of a JWT.
+export INTENTIVE_AUTH_TOKEN_EXCHANGE_URL=https://<auth-host>/desktop/token
+```
+
+The native path opens `INTENTIVE_HOSTED_AUTH_URL` with `ASWebAuthenticationSession`, validates the callback `state`, stores only the returned User JWT in Keychain, and never stores provider API keys on the Mac.
+
+The target Protocol spine is:
+
+```text
+capture -> Screen Memory / Desktop Context Compiler -> perception_event -> Agent Runtime
+text-only Floating Bar -> user_message -> Agent Runtime
+Agent Runtime -> companion_message -> Effect Runner / floating bar
+```
+
+Do not put provider API keys in the desktop app. Local models and local embeddings are allowed; cloud judgment belongs in the Agent Runtime.
+
+## Host cleanup
+
+SwiftPM `swift build` writes to `~/Library/Developer/Xcode/DerivedData/Intentive-*`,
+and `run.sh` / internal builds accumulate TCC grants, UserDefaults, and caches
+under the `com.heyintentive.desktop*` / legacy `com.intentive.desktop*` bundle-id prefixes on
+the host Mac (not inside the Tart VM). These accumulate across sessions and are
+not swept by `pnpm development:clean`, which covers backend ports, Metro, the
+simulator, and the disposable Tart clone only.
+
+Reset them with:
+
+```bash
+pnpm desktop:clean-host:status    # dry-run; show what would be reset and the total size
+pnpm desktop:clean-host           # delete DerivedData/Intentive-*, caches, prefs
+                                  # plists, and reset TCC grants for the
+                                  # legacy com.intentive.desktop / dev com.heyintentive.desktop.dev prefixes
+```
+
+The script (`scripts/desktop-host-cleanup.sh`) keeps the SwiftPM `.build/`
+incremental cache (`/Volumes/T9/Developer/...`) and the Tart base — those
+shorten the next build. Run it before installing a fresh dogfood DMG, before a
+clean round of permission testing, or whenever an agent session has left
+DerivedData growing.
+
+### Routine cadence
+
+- **Before a dogfood install** — reset host state so `/Applications/Intentive.app`
+  starts from a clean permission slate, like a real first-time user.
+- **First-launch permission testing on the host** — reset, then `run.sh`, so
+  TCC prompts fire from zero.
+- **Whenever `du -sh ~/Library/Developer/Xcode/DerivedData/Intentive-*` gets
+  large** — agents running `swift build` (compile + unit tests) accumulate
+  DerivedData; this is the bulk of the host-side desktop footprint.

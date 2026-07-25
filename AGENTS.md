@@ -36,12 +36,12 @@ Workflow skills (issues, labels, vocabulary): [`docs/agents/`](docs/agents/).
 
 ## The four deployables
 
-| Path                                                 | Role                                           | Stack                         | Agent guide                                                            |
-| ---------------------------------------------------- | ---------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------- |
-| [`apps/mobile/`](apps/mobile/)                       | Mobile Client (iOS, chat surface)              | Expo / React Native           | [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md)                       |
-| [`apps/desktop/`](apps/desktop/)                     | Desktop Client (macOS, capture only — no chat) | Tauri (Rust + Vite/React)     | [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md)                     |
-| [`services/control-plane/`](services/control-plane/) | Identity, devices, routing, notifications      | Node/TS → Cloud Run           | [`services/control-plane/AGENTS.md`](services/control-plane/AGENTS.md) |
-| [`services/agent-runtime/`](services/agent-runtime/) | The always-alive Companion runtime             | Node/TS + DeepAgents → GCE VM | [`services/agent-runtime/AGENTS.md`](services/agent-runtime/AGENTS.md) |
+| Path                                                 | Role                                                                             | Stack                         | Agent guide                                                            |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------- |
+| [`apps/mobile/`](apps/mobile/)                       | Mobile Client (iOS, chat surface)                                                | Expo / React Native           | [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md)                       |
+| [`apps/desktop/`](apps/desktop/)                     | Desktop Client (macOS capture, Screen Memory, floating-bar chat, voice, effects) | Swift / SwiftPM               | [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md)                     |
+| [`services/control-plane/`](services/control-plane/) | Identity, devices, routing, notifications                                        | Node/TS → Cloud Run           | [`services/control-plane/AGENTS.md`](services/control-plane/AGENTS.md) |
+| [`services/agent-runtime/`](services/agent-runtime/) | The always-alive Companion runtime                                               | Node/TS + DeepAgents → GCE VM | [`services/agent-runtime/AGENTS.md`](services/agent-runtime/AGENTS.md) |
 
 ## The shared packages
 

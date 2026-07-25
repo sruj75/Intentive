@@ -6,61 +6,109 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
-const rootChecks = [
-  { label: "Typecheck", command: "pnpm", args: ["typecheck"] },
-  { label: "Lint", command: "pnpm", args: ["lint"] },
-  { label: "Format check", command: "pnpm", args: ["format:check"] },
-  { label: "Harness template fixture tests", command: "pnpm", args: ["harness:test"] },
-  { label: "CONTEXT vocabulary docs tests", command: "pnpm", args: ["docs:context:test"] },
-  { label: "Agent docs integrity tests", command: "pnpm", args: ["docs:agents:test"] },
-  { label: "Architecture lint plugin tests", command: "pnpm", args: ["lint:architecture:test"] },
+const rootGroups = [
   {
-    label: "Architecture lint (Rust layer + structure)",
-    command: "pnpm",
-    args: ["lint:architecture:rust"],
+    name: "repo-contracts",
+    label: "Repository Contracts",
+    checks: [
+      { label: "Lint", command: "pnpm", args: ["lint"] },
+      { label: "Format check", command: "pnpm", args: ["format:check"] },
+      { label: "CI contracts", command: "pnpm", args: ["ci:contracts"] },
+      { label: "CI contract fixture tests", command: "pnpm", args: ["ci:contracts:test"] },
+      {
+        label: "Dependency exception policy",
+        command: "pnpm",
+        args: ["ci:dependency-exceptions"],
+      },
+      {
+        label: "Dependency exception fixture tests",
+        command: "pnpm",
+        args: ["ci:dependency-exceptions:test"],
+      },
+      {
+        label: "Baseline shell portability",
+        command: "pnpm",
+        args: ["ci:shell-portability"],
+      },
+      { label: "Harness template fixture tests", command: "pnpm", args: ["harness:test"] },
+      { label: "CONTEXT vocabulary docs tests", command: "pnpm", args: ["docs:context:test"] },
+      { label: "Agent docs integrity tests", command: "pnpm", args: ["docs:agents:test"] },
+      {
+        label: "Architecture lint plugin tests",
+        command: "pnpm",
+        args: ["lint:architecture:test"],
+      },
+      {
+        label: "Impact radius sensor fixture tests",
+        command: "pnpm",
+        args: ["sensor:impact-radius:test"],
+      },
+      {
+        label: "Harness health sensor fixture tests",
+        command: "pnpm",
+        args: ["sensor:harness-health:test"],
+      },
+      {
+        label: "Factory report sensor fixture tests",
+        command: "pnpm",
+        args: ["sensor:factory-report:test"],
+      },
+      {
+        label: "Factory self-improvement fixture tests",
+        command: "pnpm",
+        args: ["factory:test"],
+      },
+      {
+        label: "Factory docs integrity tests",
+        command: "pnpm",
+        args: ["docs:factory:test"],
+      },
+      {
+        label: "Contract drift sensor",
+        command: "pnpm",
+        args: ["sensor:contract-drift"],
+      },
+      {
+        label: "Contract drift sensor fixture tests",
+        command: "pnpm",
+        args: ["sensor:contract-drift:test"],
+      },
+    ],
   },
   {
-    label: "Impact radius sensor fixture tests",
-    command: "pnpm",
-    args: ["sensor:impact-radius:test"],
+    name: "node-workspaces",
+    label: "Node Workspaces",
+    checks: [
+      {
+        label: "Node workspace typecheck",
+        command: "pnpm",
+        args: ["exec", "turbo", "run", "typecheck", "--filter=!@intentive/desktop"],
+      },
+      {
+        label: "Node workspace tests",
+        command: "pnpm",
+        args: ["exec", "turbo", "run", "test", "--filter=!@intentive/desktop"],
+      },
+      {
+        label: "Mobile React Native tests",
+        command: "pnpm",
+        args: ["--dir", "apps/mobile", "test:rn"],
+      },
+    ],
   },
   {
-    label: "Harness health sensor fixture tests",
-    command: "pnpm",
-    args: ["sensor:harness-health:test"],
-  },
-  {
-    label: "Factory report sensor fixture tests",
-    command: "pnpm",
-    args: ["sensor:factory-report:test"],
-  },
-  {
-    label: "Factory self-improvement fixture tests",
-    command: "pnpm",
-    args: ["factory:test"],
-  },
-  {
-    label: "Factory docs integrity tests",
-    command: "pnpm",
-    args: ["docs:factory:test"],
-  },
-  {
-    label: "Contract drift sensor",
-    command: "pnpm",
-    args: ["sensor:contract-drift"],
-  },
-  {
-    label: "Contract drift sensor fixture tests",
-    command: "pnpm",
-    args: ["sensor:contract-drift:test"],
-  },
-  { label: "Workspace tests", command: "pnpm", args: ["test"] },
-  {
-    label: "Mobile React Native tests",
-    command: "pnpm",
-    args: ["--dir", "apps/mobile", "test:rn"],
+    name: "desktop-swift",
+    label: "Desktop Swift",
+    checks: [
+      {
+        label: "Desktop check",
+        command: "pnpm",
+        args: ["--dir", "apps/desktop", "desktop:check"],
+      },
+    ],
   },
 ];
+const rootChecks = rootGroups.flatMap((group) => group.checks);
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 const scopeTemplateFiles = [
@@ -89,12 +137,15 @@ from tools/harness/<deployable>.json.
 
 Usage:
   pnpm harness
+  pnpm harness --group repo-contracts
   pnpm harness --scope apps/mobile
   pnpm harness --scope services/agent-runtime
   node tools/harness/run-harness.mjs
 
 Options:
+  --group <group>  Run one root Gate group.
   --scope <scope>  Run a deployable-scoped harness template.
+  --list-groups    Print configured root Gate groups.
   --list-scopes    Print configured harness scopes.
   --dry-run        Print the selected guide and commands without running them.
   --help           Show this help.
@@ -102,6 +153,13 @@ Options:
 
 if (args.help) {
   console.log(usage);
+  process.exit(0);
+}
+
+if (args.listGroups) {
+  for (const group of rootGroups) {
+    console.log(`${group.name} (${group.label})`);
+  }
   process.exit(0);
 }
 
@@ -119,10 +177,12 @@ const startedAt = performance.now();
 try {
   const harness = args.scope
     ? selectScopedHarness(args.scope, scopeTemplates)
-    : {
-        name: "Root",
-        checks: rootChecks,
-      };
+    : args.group
+      ? selectRootGroup(args.group)
+      : {
+          name: "Root",
+          checks: rootChecks,
+        };
 
   if (harness.template) {
     printScopeGuide(harness.template);
@@ -252,6 +312,18 @@ function selectScopedHarness(scope, templates) {
   };
 }
 
+function selectRootGroup(name) {
+  const group = rootGroups.find((candidate) => candidate.name === name);
+  if (!group) {
+    throw new Error(
+      `Unknown harness group "${name}". Available groups: ${rootGroups
+        .map((candidate) => candidate.name)
+        .join(", ")}`,
+    );
+  }
+  return { name: group.label, checks: group.checks };
+}
+
 function printScopeGuide(template) {
   console.log(`\n# ${template.name} Harness`);
   console.log(`Scope: ${template.scope}`);
@@ -275,7 +347,9 @@ function printList(label, values) {
 function parseArgs(rawArgs) {
   const parsed = {
     dryRun: false,
+    group: null,
     help: false,
+    listGroups: false,
     listScopes: false,
     scope: null,
   };
@@ -298,6 +372,21 @@ function parseArgs(rawArgs) {
       continue;
     }
 
+    if (arg === "--list-groups") {
+      parsed.listGroups = true;
+      continue;
+    }
+
+    if (arg === "--group") {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--group requires a value");
+      }
+      parsed.group = value;
+      index += 1;
+      continue;
+    }
+
     if (arg === "--scope") {
       const value = rawArgs[index + 1];
       if (!value || value.startsWith("--")) {
@@ -310,6 +399,10 @@ function parseArgs(rawArgs) {
     }
 
     throw new Error(`Unknown option: ${arg}`);
+  }
+
+  if (parsed.group && parsed.scope) {
+    throw new Error("--group and --scope cannot be used together");
   }
 
   return parsed;

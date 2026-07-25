@@ -19,6 +19,13 @@ export function createCronTurnHandler(params: {
   readonly loadUserTz?: (userId: string) => Promise<string | null>;
   readonly turn: Turn;
   readonly newThreadId?: (job: CronJob, firedAt: Date) => string;
+  /**
+   * Post-fire heap hooks (ADR-0035). Invoked after the reschedule/delete
+   * transaction commits so the in-memory clock mirrors what just landed in Neon.
+   * Composition-root wired; this handler stays clock-agnostic.
+   */
+  readonly onRescheduleCron?: (job: CronJob, nextFireAt: Date) => void;
+  readonly onCancelCron?: (id: string) => void;
   readonly logger?: Logger;
 }): (job: CronJob, context: { firedAt: Date }) => Promise<void> {
   const newThreadId = params.newThreadId ?? ((job) => job.userId);
@@ -75,12 +82,61 @@ export function createCronTurnHandler(params: {
       status: turnError ? "failed" : "ok",
       duration_ms: Date.now() - startedAt,
     } as const;
+    // ADR-0035: push the committed lifecycle onto the in-memory clock. The same
+    // pure helper that built the SQL row decides the heap mutation, so the two
+    // can never drift.
+    const lifecycle = computeLifecycle(job, firedAt, userTz, turnError);
+    if (lifecycle.kind === "delete") {
+      params.onCancelCron?.(job.id);
+    } else {
+      params.onRescheduleCron?.(job, lifecycle.nextFireAt);
+    }
     if (turnError) {
       logger.error("cron.turn", turnError, attrs);
     } else {
       logger.info("cron.turn", attrs);
     }
   };
+}
+
+type Lifecycle =
+  | { readonly kind: "delete" }
+  | { readonly kind: "reschedule"; readonly nextFireAt: Date; readonly attemptCount: number };
+
+/**
+ * Pure post-fire lifecycle decision shared by both the SQL row batched into the
+ * turn transaction and the in-memory clock hook (ADR-0035), so the two can never
+ * drift. Pass `error = null` for the success path; a non-null transient error
+ * with attempts remaining reschedules with backoff, otherwise the job advances
+ * forward from `firedAt` (recurring) or is deleted (one-shot `at`).
+ */
+function computeLifecycle(
+  job: CronJob,
+  firedAt: Date,
+  userTz: string | null | undefined,
+  error: unknown,
+): Lifecycle {
+  if (error !== null) {
+    const nextAttempt = job.attemptCount + 1;
+    if (isTransient(error) && nextAttempt < MAX_ATTEMPTS) {
+      return {
+        kind: "reschedule",
+        nextFireAt: new Date(firedAt.getTime() + backoffMs(job.attemptCount)),
+        attemptCount: nextAttempt,
+      };
+    }
+  }
+  return job.scheduleKind === "at"
+    ? { kind: "delete" }
+    : {
+        kind: "reschedule",
+        nextFireAt: computeNextFireAt(
+          { kind: job.scheduleKind, expr: job.scheduleExpr },
+          resolveTz(job.tz, userTz),
+          firedAt,
+        ),
+        attemptCount: 0,
+      };
 }
 
 function successLifecycleQuery(
@@ -91,17 +147,10 @@ function successLifecycleQuery(
   firedAt: Date,
   userTz: string | null | undefined,
 ): SqlQuery {
-  return job.scheduleKind === "at"
+  const lifecycle = computeLifecycle(job, firedAt, userTz, null);
+  return lifecycle.kind === "delete"
     ? params.cronJobs.deleteQuery(job.id)
-    : params.cronJobs.rescheduleQuery(
-        job.id,
-        computeNextFireAt(
-          { kind: job.scheduleKind, expr: job.scheduleExpr },
-          resolveTz(job.tz, userTz),
-          firedAt,
-        ),
-        0,
-      );
+    : params.cronJobs.rescheduleQuery(job.id, lifecycle.nextFireAt, lifecycle.attemptCount);
 }
 
 function failureQueries(
@@ -139,24 +188,10 @@ function failureLifecycleQuery(
   userTz: string | null | undefined,
   error: unknown,
 ): SqlQuery {
-  const nextAttempt = job.attemptCount + 1;
-  return isTransient(error) && nextAttempt < MAX_ATTEMPTS
-    ? params.cronJobs.rescheduleQuery(
-        job.id,
-        new Date(firedAt.getTime() + backoffMs(job.attemptCount)),
-        nextAttempt,
-      )
-    : job.scheduleKind === "at"
-      ? params.cronJobs.deleteQuery(job.id)
-      : params.cronJobs.rescheduleQuery(
-          job.id,
-          computeNextFireAt(
-            { kind: job.scheduleKind, expr: job.scheduleExpr },
-            resolveTz(job.tz, userTz),
-            firedAt,
-          ),
-          0,
-        );
+  const lifecycle = computeLifecycle(job, firedAt, userTz, error);
+  return lifecycle.kind === "delete"
+    ? params.cronJobs.deleteQuery(job.id)
+    : params.cronJobs.rescheduleQuery(job.id, lifecycle.nextFireAt, lifecycle.attemptCount);
 }
 
 export function isTransient(error: unknown): boolean {

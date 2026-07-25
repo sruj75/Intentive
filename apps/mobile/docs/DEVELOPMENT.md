@@ -27,10 +27,10 @@ EAS cloud, and simulator builds need **no Apple credentials**.
 Use one booted simulator at a time. For the normal 8 GB Mac development loop,
 use the lighter iPhone 16 lane; reserve the latest lane for final smoke checks:
 
-| Lane          | Runtime  | Device        | Use                                                        |
-| ------------- | -------- | ------------- | ---------------------------------------------------------- |
-| Daily         | iOS 18.5 | iPhone 16     | Default development on an 8 GB Mac                         |
-| Latest        | iOS 26.2 | iPhone 17 Pro | Final smoke and latest-runtime verification                |
+| Lane   | Runtime  | Device        | Use                                         |
+| ------ | -------- | ------------- | ------------------------------------------- |
+| Daily  | iOS 18.5 | iPhone 16     | Default development on an 8 GB Mac          |
+| Latest | iOS 26.2 | iPhone 17 Pro | Final smoke and latest-runtime verification |
 
 Do not boot both lanes at once. Re-check `xcrun simctl list runtimes` and
 `xcrun simctl list devices available` when Xcode or the installed runtimes change,
@@ -56,7 +56,7 @@ that creates an unusable duplicate instead of repairing the registry.
 
 ### Low-heat development setup
 
-- Keep exactly one simulator booted and one Metro process listening on port 8081.
+- Keep exactly one simulator booted and one Metro process listening on port 8082.
 - After the dev client is installed, JS/TS changes use Metro hot reload; do not run
   `pnpm ios` for those changes.
 - Rebuild with `pnpm ios` only after a native dependency, config plugin, native
@@ -112,12 +112,12 @@ xcrun simctl io booted screenshot /tmp/intentive-sim.png
 # --- Dev client already installed and nothing native changed? Skip 0–4; just start
 #     Metro and point the client at it — JS/TS hot-reloads, no native build: ---
 
-# 5. start the single Metro process (pnpm ios already started it; run only if port 8081 is free)
-pnpm --dir apps/mobile dev                # = expo start, serves http://localhost:8081
+# 5. start the single Metro process (pnpm ios already started it; run only if port 8082 is free)
+pnpm --dir apps/mobile dev                # = expo start --port 8082
 
 # 6. launch the dev client and point it at Metro
 xcrun simctl launch booted com.heyintentive.expo
-xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
+xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
 ```
 
 For navigation, layout, or native UI changes, repeat the install/launch smoke on the
@@ -150,9 +150,9 @@ cache (fresh temp dir every run, always ~10–20 min) and doesn't seed the `pnpm
 cache (see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight)):
 
 ```bash
-# build the portable simulator artifact  →  apps/mobile/build-<ts>.tar.gz
-eas build --platform ios --profile development-simulator --local --non-interactive
-# (if `eas` isn't on PATH, use `npx eas-cli build …` — same flags)
+# build the portable artifact → apps/mobile/build-<ts>.tar.gz. The wrapper gives
+# EAS an empty, workspace-isolated working directory on T9 and removes it on exit.
+pnpm --dir apps/mobile ios:portable
 
 # extract + install onto the booted sim, then start Metro + launch with steps 5–6 above
 APP_TGZ=$(ls -t build-*.tar.gz | head -1)
@@ -174,7 +174,7 @@ dep, a new/changed config plugin, `app.json` native keys, SDK bump, icons/splash
 same rule as [`RELEASE.md`](RELEASE.md)). For everything else:
 
 - **JS/TS edit** → Metro hot-reloads automatically. Force a reload with
-  `xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"`
+  `xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"`
   or the dev menu (`Cmd-D` in the simulator → Reload).
 - **Changed a shared `@intentive/*` package** → re-run step 0
   (`pnpm --filter "@intentive/mobile^..." build`), then reload Metro.
@@ -242,15 +242,15 @@ safe to run even if some pieces are already gone. Run from the repo root.
 setopt nonomatch
 
 # 1. stop Metro and every Mobile build worker started by this workflow
-lsof -ti tcp:8081 | xargs kill -9 2>/dev/null
+lsof -ti tcp:8082 | xargs kill -9 2>/dev/null
 pkill -f "expo start" 2>/dev/null; pkill -f "expo run:ios" 2>/dev/null
 pkill -f "metro" 2>/dev/null; pkill -f "eas build.*--local" 2>/dev/null
 pkill -f "xcodebuild.*Intentive" 2>/dev/null
 
-# 2. terminate + uninstall the app, shut the simulator down, quit the Simulator UI
+# 2. terminate the app, shut the simulator down, quit the Simulator UI.
+#    Keep the installed dev client: it is the fastest reusable native cache.
 for D in $(xcrun simctl list devices booted -j | grep -o '"udid" : "[^"]*"' | cut -d'"' -f4); do
   xcrun simctl terminate "$D" com.heyintentive.expo 2>/dev/null
-  xcrun simctl uninstall "$D" com.heyintentive.expo 2>/dev/null
 done
 xcrun simctl shutdown all 2>/dev/null
 osascript -e 'tell application id "com.apple.iphonesimulator" to quit' 2>/dev/null
@@ -270,12 +270,12 @@ rm -rf "${TMPDIR}eas-build-local-nodejs" "${TMPDIR}eas-cli-nodejs"
 ```
 
 If the agent ran Metro as a backgrounded task (not via `&`), **stop that task**
-too — `kill` on port 8081 only catches a foreground/own-shell process.
+too — `kill` on port 8082 only catches a foreground/own-shell process.
 
 **Verify the sweep** (every line should report empty/none):
 
 ```bash
-lsof -ti tcp:8081 || echo "port free ✓"
+lsof -ti tcp:8082 || echo "port free ✓"
 xcrun simctl list devices booted | grep -i booted || echo "no sims booted ✓"
 pgrep -f '/Simulator.app/Contents/MacOS/[S]imulator' || echo "Simulator GUI quit ✓"
 ls apps/mobile/build-*.tar.gz 2>/dev/null || echo "no artifacts ✓"
@@ -291,6 +291,12 @@ clean sweep leaves it like `node_modules`). A clean sweep removes _runtime +
 scratch_, not the repo's committed state or expensive local caches. (`eas build
 --local` builds in its own system-temp copy, so there is no
 `apps/mobile/ios/build` DerivedData to clear.)
+
+On this Mac, Xcode and DerivedData already resolve through T9, while CoreSimulator
+runtimes and device data deliberately remain internal. Apple manages those runtime
+images and prior attempts to relocate simulator state were fragile. Keep one current
+daily simulator plus one compatibility runtime; prune older runtimes with `simctl`
+instead of moving `~/Library/Developer/CoreSimulator`.
 
 ---
 
