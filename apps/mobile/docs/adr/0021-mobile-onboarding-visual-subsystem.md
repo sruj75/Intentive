@@ -1,8 +1,10 @@
 # Onboarding is an always-dark visual sub-system with its own typeface, glyphs, and paywall
 
-The pre-chat onboarding funnel ([ADR 0018](0018-mobile-pre-chat-funnel-minimum.md)/[0019](0019-mobile-onboarding-funnel-collapses-to-one-gate.md)) shipped as an omi-modeled shell (full-bleed imagery + a dark bottom sheet). A production-polish pass found it looked unfinished and, worse, **silently contradicted [`DESIGN.md`](../DESIGN.md)**: pure `#050505` canvas (DESIGN forbids pure black), 40px radii, scattered hard-coded color literals, a mix of full-color brand PNGs and SF Symbols, no brand typeface, and a Free Trial screen that reused the generic sheet instead of reading like a real paywall.
+Status: superseded by ADR 0022 and [ADR 0023](0023-mobile-two-zone-layered-frontend.md); retained as historical presentation rationale
 
-This ADR sanctions onboarding as a deliberate, documented **visual sub-system** rather than drift. It records four non-trivial decisions; DESIGN.md gains an "Onboarding visual sub-system" section that points here.
+The pre-chat onboarding funnel ([ADR 0018](0018-mobile-pre-chat-funnel-minimum.md)/[0019](0019-mobile-onboarding-funnel-collapses-to-one-gate.md)) shipped as an omi-modeled shell (full-bleed imagery + a dark bottom sheet). A production-polish pass found it looked unfinished and, worse, silently contradicted the then-current DESIGN.md: pure `#050505` canvas (the guide forbade pure black), 40px radii, scattered hard-coded color literals, a mix of full-color brand PNGs and SF Symbols, no brand typeface, and a Free Trial screen that reused the generic sheet instead of reading like a real paywall.
+
+This ADR historically sanctioned onboarding as a deliberate visual sub-system rather than drift. Its retired DESIGN.md authority is superseded by ADR 0023's domain-owned configuration and architecture contract.
 
 ## Context and constraint
 
@@ -20,7 +22,7 @@ Onboarding uses **Manrope** (a warm humanist sans) at weights 400/500/600/700/80
 
 One uniform, muted, **monochrome** glyph set via `@expo/vector-icons` FontAwesome6 — `fa6-brand` for platform logos (TikTok, YouTube, Instagram, X, Reddit, LinkedIn, Apple, Google), `fa6-solid` for generic marks. A single tint: muted near-white unselected → near-black on the selected (near-white) surface. This replaces the mixed set of full-color brand PNGs (`iconTintColor: null`) and SF Symbols that made the list look inconsistent. The color-PNG `ONBOARDING_ICONS` set and `assets/onboarding/icons/*` are retired.
 
-**SF Symbols remain the icon language for system chrome** elsewhere in the app ([DESIGN.md → Icons](../DESIGN.md)); FA6 brand glyphs are scoped to onboarding brand marks, where SF Symbols have no equivalent.
+SF Symbols remained the icon language for system chrome elsewhere in that presentation; FA6 brand glyphs were scoped to onboarding brand marks, where SF Symbols had no equivalent.
 
 - _Considered:_ curated monochrome PNGs (rejected: an asset-pipeline burden for what a glyph font gives free); tinting the existing color PNGs (rejected: logos don't read as single-color silhouettes).
 
@@ -34,12 +36,12 @@ Billing is still deferred (v1 has no StoreKit): the CTA writes `trial: "complete
 
 ### 4. Warm near-black canvas + centralized tokens
 
-`src/design/onboarding-tokens.ts` centralizes the always-dark palette (warm near-black `#141316` canvas per DESIGN.md — **never pure black**), surfaces, borders, muted ink (AA-verified for body/fine print), the sage accent (`#6B9E8A`, the DESIGN dark-appearance value, used directly because onboarding never flips to light), radii (16/20 cards; pill reserved for buttons and choice selectors), and the Manrope family map. The screens read from these tokens instead of hard-coded literals. Onboarding keeps its own accent rather than reading `theme.ts`'s scheme-dependent `colors.action`, which would render navy on the dark surface in light mode.
+`src/design/onboarding-tokens.ts` centralized the always-dark palette (warm near-black `#141316`, never pure black), surfaces, borders, muted ink, sage accent, radii, and Manrope family map. This path and presentation are retired; ADR 0023 places current tokens in the global design layer and copy in domain config.
 
 ## Consequences
 
 - New dependencies: `expo-font`, `@expo/vector-icons`, `@expo-google-fonts/manrope` (all Expo-ecosystem).
 - `app/_layout.tsx` gates first render on font load; a load error is non-fatal (text degrades to the platform font rather than trapping the app).
 - `OnboardingChoice` / `OnboardingAction` / `OnboardingInfoRow` take a glyph descriptor (`{ set, name }`) instead of an image source; `OnboardingScreen`'s `trial` backdrop and `assets/onboarding/trial.png` are removed (the paywall has no backdrop).
-- DESIGN.md gains an "Onboarding visual sub-system" section; this ADR is the rationale of record. The chat surface's DESIGN.md rules (SF Pro, SF Symbols, scheme-following light/dark) are unchanged and still authoritative outside onboarding.
+- The retired DESIGN.md once carried an onboarding visual-subsystem section. ADR 0023 is now authoritative for the mounted frontend's ownership and configuration boundaries.
 - Real StoreKit entitlements, persisting the entered name/acquisition source, and publishing the legal pages remain pre-ship dependencies ([`docs/BACKLOGS.md`](../BACKLOGS.md)).

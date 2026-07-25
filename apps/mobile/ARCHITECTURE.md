@@ -1,120 +1,83 @@
 # Mobile Client Architecture
 
-For Mobile Client vocabulary, see [`CONTEXT.md`](CONTEXT.md); for the context map and shared product language, see the root [`CONTEXT-MAP.md`](../../CONTEXT-MAP.md). For the cross-deployable architecture and layer rule, see [`ARCHITECTURE.md`](../../ARCHITECTURE.md). This file describes Mobile Client-specific structure only.
-
 ## Bird's-eye Overview
 
-The Mobile Client is an iOS-first Expo app — one of three Clients that talk to the Intentive Agent Runtime. It is **not** the Agent Runtime, the Control Plane, or any kind of server. It is the only Client with a chat surface in v1 (Desktop is capture-only; Android is future).
+The Mobile Client is an iPhone-first Expo deployable with two orthogonal structures:
 
-The app owns native onboarding screens, the Liquid Glass Chat Shell, Intentive Chat Components, the Runtime Adapter (Mobile-internal Protocol WebSocket client), notification permission flow, and the Account Surface. **Conversation History is server-truth, owned by the Agent Runtime — the Mobile Client does not persist messages locally.** Identity, device registry, Pre-Chat Gate state, and Routing live in the Control Plane.
+- Expo Router owns navigation zones: `(onboarding)` serves A–D at `/`; `(main)` serves E–L at `/chat`.
+- Layered domains own product behavior through `types → config → repo → service → runtime → ui`.
 
-The V1 product spine is:
+The mounted frontend preserves the A–L interaction contract while live routes inject production auth, Control Plane, notifications, telemetry, and Agent Runtime seams from one composition root. Capability-free entrypoint defaults keep the local A–L harness deterministic.
 
-Launch state → Get Started (signed-out landing, not a gate) → Identity Gate → Consent Primer (Data & Privacy) → Onboarding funnel (name → acquisition source → grant permissions, one collapsed gate) → Sibling Client Invitation (skippable) → Free Trial → Liquid Glass Companion Chat (Companion's bootstrap-guided opening lands here) → Account Surface for utility and recovery.
+```text
+app/_layout ──> Launch State + Notifications + Launch Curtain
+      │
+      ├── app/(onboarding) ──> OnboardingEntry ──> Google Auth + durable gates + onboarding
+      │
+      └── app/(main)/chat ──> ChatEntry ──> welcome | education | ready
+                                      ├── Account State + settings UI
+                                      └── ConversationSession
+                                              ├── Runtime Adapter (live route)
+                                              └── local session (offline default)
+```
 
-V1 optimizes for one calm continuous chat, visible Companion state, capability honesty, and a single source of truth for every piece of knowledge. It must not grow into tabs, dashboards, task boards, streaks, or a local Agent Runtime.
-
-Enforceable import boundaries and explicit provider interfaces are now wired at the repo root (architecture lint + `packages/providers/`). The deployable-specific work is to keep each domain shallow at the right layer and resist re-introducing a local Conversation Store, a chat surface for proactive-Companion features that already belong in `chat/`, or any direct import of `apps/desktop/` or `services/` source.
+`(onboarding)` and `(main)` are navigation zones, not business domains. B2, K2, education pages, drawer/settings, F/G overlays, and L1–L4 remain component or domain-session state rather than routes.
 
 ## Codemap
 
-Root shape (v1 foundation — Pre-Chat Gate screens through Sibling Invitation (#19–#21); Chat Primitive Engine spike (#22) + Protocol Runtime Adapter (#33) landed as `CompanionChat` + external-store runtime; resolver + launch-state provider wired):
-
-- `app/`: Expo Router routes only — thin shells grouped by UX context (`(gates)`, `(onboarding)`, `(chat)`). No reusable components or logic live here; a route file renders a single domain `ui` export or a `src/entrypoints/` route-entry and nothing else. The `(chat)/` route is navigation-only: it renders `<ChatEntry/>`. The `(onboarding)/` route is a composition point: it wires the notifications port into the Onboarding funnel's Grant Permissions step. The **Account Surface** opens as a sheet from `(chat)/`, not as a peer route (see [`adr/0008`](docs/adr/0008-mobile-liquid-glass-chat-shell.md)). This is the **navigation axis**, deliberately distinct from the capability axis below (see [`adr/0010`](docs/adr/0010-mobile-navigation-and-capability-as-orthogonal-axes.md)).
-- `src/entrypoints/`: route-entry composition that wires more than one domain together — the lint-safe home for explicit cross-domain wiring, since it sits outside `src/domains/` and so is not bound by the domain-boundary lint (which only governs files under `domains/<domain>/<layer>/`). `chat-entry.tsx` (`ChatEntry`) is the single place `chat` and `account` are composed: it builds the Runtime Adapter and the Account State source, holds the in-memory Account State projection, and renders `CompanionChat` plus the `AccountSurface` sheet. It keeps `app/` navigation-only and keeps `chat/ui` from importing `account/ui`. Production builds its dependencies from the Auth Adapter + Control Plane base URL; tests inject `adapter`, `accountStateSource`, `controlPlaneBaseUrl`, and safe-area metrics.
-- `src/domains/auth/`: **Auth Adapter** (`service/`), **Get Started** (`ui/get-started.tsx`), and **Identity Gate** (`ui/`) — Neon Auth and launch-only Dev providers behind one `signIn`/`signOut` boundary (ADR 0012). Get Started is the pre-auth landing inside `/(gates)/identity` (local step forward, not a gate). Session persistence is owned by the Neon Auth SDK; the Mobile Client does not verify **User JWT**s (#23). A screen lives where its logic lives, so the Identity Gate is owned here, not by `onboarding`.
-- `src/domains/chat/`: Companion Chat domain — `ui/companion-chat.tsx` + `ui/use-companion-runtime.ts` (Intentive Chat Components over `@assistant-ui/react-native` via `useExternalStoreRuntime`, ADR 0009/0015), `runtime/runtime-adapter.ts` (Protocol WebSocket client + in-memory **Message Store**; exposes `retryUserMessage` for failed outbound), `runtime/dev-transport.ts` (dev WebSocket fixture), `service/conversation-reducer.ts` (pure snapshot/backfill/live merge + Agent State derivation), `service/chat-presentation.ts` (pure Agent State labels, continuity cues, Mac setup banner visibility), `service/routing-client.ts` (`GET /agent`). The **Message Store** (`service/message-store.ts`) is the Runtime Adapter's single stateful interface to Conversation History: intent-named methods (`replaceServerWindow`, `prependServerPage`, `appendCompanionMessage`, `appendPendingUserMessage`, `retryFailedUserMessage`, `markPendingFailed`) over the pure `conversation-reducer` engine. Seeded from the reconnect snapshot and live events; never persists to disk. **Delivery Status** is a local inference owned by the Runtime Adapter; Agent State presentation is capability-honest (`Thinking` from pending outbound, `Following up` from server-truth `via_post_message_back`, `Paused` explicit-only). `CompanionChat` renders the projected `accountState` for the Mac setup banner (no source read of its own); `src/entrypoints/chat-entry.tsx` wires `createRuntimeAdapter` and the Account State projection — no vendor types in `app/`.
-- `src/domains/onboarding/`: the Pre-Chat Gate **sequence** — Consent Primer (Data & Privacy), the collapsed Onboarding funnel (`ui/onboarding-funnel.tsx`: name → acquisition source → grant permissions with injected permission ask), Sibling Client Invitation, and Free Trial screens, plus the launch decision in `service/`: the **Launch State Resolver** (`resolve-launch-state.ts`, gate ordering through `MISSING_ONBOARDING` and `MISSING_TRIAL`) and **Launch Route** (`route-for-destination.ts`, `LaunchDestination →` splash or one route zone). Funnel steps advance with local state inside `/(onboarding)`; only the last step writes `onboarding: "completed"`. The Identity Gate screen itself lives in `auth/`; `onboarding` only decides when to show it (by resolving to `SIGNED_OUT`). The Companion's bootstrap-guided opening message renders inside `chat/`, not here. See ADRs 0018–0020.
-- `src/domains/notifications/`: Expo Push Token registration with the Control Plane (via `POST /devices/register`). The OS permission **prompt** fires in the Onboarding funnel's Grant Permissions step (wired by the `(onboarding)` route); registration still proceeds around first chat entry without re-prompting once permission is decided.
-- `src/domains/account/`: **Account Surface** (`ui/account-surface.tsx`) and **Connection Status** derivation (`service/account-status.ts`). Logout calls the **Auth Adapter** then `markSignedOut()` on Launch State; identity reads Control Plane account state only — never a concrete Auth Provider.
-- `src/providers/`: explicit provider interfaces — auth (Neon JWKS verify), Control Plane HTTP client (from `packages/api-contract/`), the Protocol WebSocket client (from `packages/protocol/`), platform capabilities (notifications, secure storage), telemetry, and feature flags. Cross-cutting only enters domains through here.
-  - `src/providers/account-state/`: `AccountStateSource` seam + `createControlPlaneAccountStateSource` (`GET /me` via injected JWT + fetch), plus the in-memory **Account State projection** (`useAccountStateProjection`, in `projection.tsx`) — a transient read-through view exposing `{ accountState, refreshAccountState }` (with `clearBeforeRead` to drop stale identity before a reopened surface re-reads). `ChatEntry` holds the projection and passes the projected `accountState` to both the Companion Chat Mac setup banner and the Account Surface, so neither surface reads account state itself. The seam + source are RN-free (node:test core); the projection hook is navigation-axis.
-  - `src/providers/launch-state/`: the shared **Launch State** — its `types`, the `LaunchStateSource` seam (`createControlPlaneLaunchStateSource` for `GET /me`; stub for tests), and the in-memory `store` (`LaunchStateProvider` + `useLaunchState`, including `markSignedOut` for Account Surface logout). It lives here, not in a domain, because both `auth` (Identity Gate writes `signedIn`) and `onboarding` (Consent/Sibling write their `GateStatus`) mutate it; a store inside one domain would be a banned cross-domain import. The **resolver** itself stays in `onboarding/service/` and imports only these provider types.
-  - `src/providers/telemetry/`: the errors-only Sentry seam for the Mobile Client. `app/_layout.tsx` initializes it from `EXPO_PUBLIC_SENTRY_DSN` and wraps the root; domains receive only the `Telemetry` port for explicit runtime/auth failure capture. No tracing, replay, profiling, or Conversation History payloads are configured.
-- `src/design/`: `theme.ts` maps `DESIGN.md` semantic tokens to light/dark `MobileThemeColors`; `onboarding.tsx` owns the shared pre-chat presentation shell (full-screen backdrop, bottom sheet, progress/back affordance, pill actions, choice rows, and dark-field styling) so gate screens keep behavior while the visual system changes in one place.
-- `src/dev-companion/`: MVP-only development companion implementing the same Protocol contract as the real Agent Runtime.
-- `src/testing/`: contract fixtures and test helpers shared across domains.
-
-Domain-internal layer order:
-
-Types -> Config -> Repo -> Service -> Runtime -> UI
-
-Each business domain may use those layers, but should not create all of them unless the layer hides real complexity. Shallow files are worse than fewer deeper modules.
-
-Primary deep modules:
-
-- **Runtime Adapter** (Mobile-internal name for the Protocol WebSocket client): hides handshake, idempotency, ordering, reconnect-snapshot recovery, `companion_message` streaming, `presence_update`/`delivery_ack` semantics, and future inbound event types behind one chat-domain-friendly interface. Imports `packages/protocol/`.
-- **Intentive Chat Components**: hide `assistant-ui/native` (or any future chat primitive engine) behind local product components — Liquid Glass message rows, composer, agent-state indicator.
-- **Launch State Resolver** + **Launch Route** (`onboarding/service/`): the resolver hides Pre-Chat Gate branching behind `LaunchState → LaunchDestination`; `route-for-destination.ts` maps each destination to a splash or a single redirect href. Gate screens never choose the next step — they write `GateStatus` into `LaunchState`; `app/_layout.tsx` runs `router.replace` on the mapped href only. The resolver receives `signedIn` as plain input (no `auth` import). In v1 `LaunchState` is sourced from Control Plane's `GET /me` via `createControlPlaneLaunchStateSource` + `mapAccountStateToLaunchState`.
-- **Design Theme** (`src/design/theme.ts`): hides light/dark token resolution (`useMobileTheme`, `resolveMobileTheme`) and platform appearance details.
+- `app/_layout.tsx` — root gesture/profile/Launch State composition, navigation, push lifecycle, and launch curtain.
+- `app/(onboarding)/` — headerless `/` route for A–D.
+- `app/(main)/` — headerless `/chat` route for E–L.
+- `src/entrypoints/` — cross-domain composition and Router replacement callbacks only.
+- `src/domains/auth/` — Google-only Identity Gate presentation, Auth Adapter, and native Better Auth boundary.
+- `src/domains/onboarding/` — B–D journey types, copy, validation/controller, Education Deck, and UI.
+- `src/domains/chat/` — Conversation Timeline Item, local/runtime conversation implementations, drawer, composer, and shared E/K/L surface.
+- `src/domains/account/` — settings copy and session-only settings/logout presentation.
+- `src/domains/notifications/` — notification permission, Expo Push Token, device fingerprint, and Control Plane registration.
+- `src/providers/profile/` — one non-durable Profile Store shared across Router zones.
+- `src/providers/account-state/`, `launch-state/`, `telemetry/` — live Control Plane projections and errors-only telemetry.
+- `src/design/` — global theme, brand identity, and prop-only visual primitives.
+- `test/` — pure domain/session tests, live-seam boundary tests, Router lifecycle tests, and the 19-snapshot A–L journey.
 
 ## Architectural Invariants
 
-The Mobile Client talks **directly** to the Agent Runtime over a WebSocket using the Protocol from `packages/protocol/`. The Control Plane is **not** on the data path — it only issues Routing (Agent Runtime URL + JWT) via `GET /agent` before the WebSocket opens.
+- Within a domain, imports depend only on the same or a lower layer in `types → config → repo → service → runtime → ui`.
+- Cross-domain access targets public `types/` contracts or is composed from `src/entrypoints/`; one domain never reaches into another domain's internal service/runtime/UI.
+- Allowed Mobile `src/` roots are exactly `domains`, `providers`, `entrypoints`, `design`, and `index.ts`. Domain layers are exactly `types`, `config`, `repo`, `service`, `runtime`, `ui`, plus an explicit domain-local `providers` seam.
+- `app/` contains routes and layouts only. Routes render an entrypoint and own no journey behavior.
+- E and K are `welcome` and `ready` modes of one conversation surface. Education is a mode between them, not a second chat implementation.
+- `ConversationTimelineItem` is UI-owned. Protocol or server records must be translated before reaching visual components.
+- `ConversationSession` is the chat runtime seam: `getSnapshot`, `subscribe`, `send`, and `dispose`. Timers are cancellable on replacement turns and disposal.
+- Profile and account settings are memory-only. Cold launch resolves Control-Plane gate truth before exposing `/` or `/chat`; logout resets profile state and replaces to `/`.
+- Live routes may call only the capabilities injected by the composition root. Capability-free entrypoint defaults perform no auth, permissions, Contacts, notification, HTTP, WebSocket, SecureStore, durable storage, telemetry, Control Plane, or Agent Runtime calls.
+- A–L copy, interactions, test IDs, and 390×844 snapshots are regression contracts during this architecture-only refactor.
 
-The Mobile Client never owns durable shared identity, the Device Registry, Pre-Chat Gate state, Conversation History, push-provider credentials, or proactive Companion behavior. Those belong to the Control Plane and Agent Runtime.
-
-The first real relationship-forming conversation happens only after Identity Gate, Consent Primer, the one-time Onboarding funnel, Sibling Client Invitation (when pending), and Free Trial (when entitlement requires it).
-
-Sibling Client Invitation (macOS Setup) happens before Companion Chat, but is skippable. It does not block entry into chat. Free Trial is a separate re-triggerable gate for entitlement checks.
-
-Companion Chat is the V1 home. No bottom tabs, primary dashboard, task board, streak system, calendar shell, or conventional productivity frame.
-
-The Account Surface is utility, not primary navigation. It is opened through a visible but quiet Account Affordance.
-
-`assistant-ui/native` is replaceable infrastructure. Vendor visuals, route shape, persistence model, or backend assumptions must not leak into product components.
-
-**Conversation History is server-truth, owned by the Agent Runtime in Neon.** The Mobile Client renders the authoritative timeline streamed back on WebSocket reconnect; it stores nothing locally — not even as a cache — until measured latency proves one is needed.
-
-The notification permission **prompt** fires in the Onboarding funnel's Grant Permissions step (omi-style: ask on Continue, always advance). Expo Push Token registration still happens around first chat entry; the port does not re-prompt once permission is decided. Not at cold launch.
-
-Agent State must be capability-honest. The UI must not imply the Companion read, acted, scheduled, or connected anything unless the Agent Runtime actually did.
+These rules are enforced by the Intentive architecture ESLint plugin, including `mobile-source-structure`, layer direction, cross-domain/deployable checks, and Providers-only cross-cutting access.
 
 ## Boundaries
 
-`app/` may import route screens only. Route files compose domain UI but do not contain business logic, persistence, runtime calls, or reusable components.
+- Router boundary: the mounted onboarding route persists Consent Primer acceptance
+  and Sibling Client Invitation skip through the Launch State source, reconciles
+  `GET /me`, and lets the root resolver replace to `/chat` only from confirmed
+  `READY_FOR_CHAT`. The capability-free entrypoint default still replaces
+  locally; logout resets profile state and replaces to `/`.
+- Profile boundary: `ProfileStore` exposes `getSnapshot`, `subscribe`, `setName`, and `reset`; it has no persistence adapter.
+- Onboarding boundary: `OnboardingEntry` owns explicit consent and retry
+  presentation; `OnboardingJourneyController` owns B–D transitions and name
+  validation; the Launch State provider owns durable gate commands and
+  reconciliation; `EducationDeckController` owns slide navigation, skip,
+  completion, and reset.
+- Conversation boundary: chat UI owns composer text, focus, gestures, and overlays; the injected `ConversationSession` owns either Runtime translation/WebSocket lifecycle or deterministic local reply timing.
+- Account boundary: account UI owns settings copy and session-only preferences; composition passes only callbacks and the proactive-suggestions presentation value.
+- Design boundary: `src/design/` is domain-agnostic and accepts props; domain-specific copy stays in each domain's `config/` layer.
+- Production boundary: `src/entrypoints/platform.ts` constructs auth, Runtime Adapter, Control Plane, notification, and telemetry capabilities once; routes inject only their narrow public seams.
 
-UI code may call Services or Runtime facades, not provider implementations directly. Layer direction (`types → config → repo → service → runtime → ui`) is enforced by the architecture lint rules — see [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
-
-Repo code owns local-storage details (secure storage of auth tokens, settings, telemetry buffer). **No chat-message repo exists** — Conversation History is read from the WebSocket reconnect snapshot, not from a local DB.
-
-Runtime code owns transport details. Chat UI must not know whether the assistant response comes from the Dev Companion or the production Agent Runtime — both speak the same Protocol from `packages/protocol/`.
-
-Providers are the only approved path to cross-cutting systems: auth (JWKS verify), Control Plane HTTP, the Protocol WebSocket client, storage, notifications, telemetry, platform APIs, and feature flags. Shared providers may come from `packages/providers/` at the repo root.
-
-`assistant-ui/native` may appear only inside the Chat Primitive Engine wrapper layer. If imports spread into routes or unrelated domains, the dependency is leaking.
-
-Design tokens come from `DESIGN.md` through `src/design/`. Components should consume semantic theme values, not hard-code product colors.
-
-WebSocket events arrive as Zod-validated `packages/protocol/` types. They are used directly as the domain model where the shapes are a perfect fit; a translation layer is only added if a domain needs a different shape than the wire format provides.
+Future integrations must enter through the existing domain/provider seams and translate Runtime data into `ConversationTimelineItem`. They must not bypass Providers, add durable Mobile Conversation History, or put product logic in routes.
 
 ## Cross-cutting Concerns
 
-Testing should assert user-visible behavior and contracts, not vendor internals or style object details.
-
-Required contract tests:
-
-- Auth Adapter: provider selection, disabled providers return `not-configured` without opening OAuth, Neon outcome mapping, dev provider `__DEV__` gating (Node).
-- Identity Gate: success writes `signedIn` via the launch-state seam; recoverable failure surfaces (RN harness).
-- Consent Primer: Data & Privacy copy; accept writes `consent: "completed"` via the launch-state seam (RN harness).
-- Onboarding funnel: local step sequencing (name → acquisition source → grant permissions); only the last step writes `onboarding: "completed"`; injected permission ask (RN harness).
-- Free Trial: accept writes `trial: "completed"`; gate is independently re-triggerable (RN harness).
-- Get Started: pre-auth local step inside signed-out zone; no Launch State write (RN harness).
-- Sibling Client Invitation: skip writes `siblingInvitation: "skipped"`; production UI never self-attests `completed` (RN harness).
-- Launch state resolver + Launch Route: signed out, missing Consent Primer, missing onboarding, sibling-invitation pending, missing trial, entry to Companion Chat; `RESOLVING` stays on splash (Node).
-- Runtime Adapter (Protocol WebSocket client): `connect` handshake with the Control Plane-issued JWT, seed the Message Store from the reconnect snapshot (including empty history), reject malformed `hello_ok` at the Protocol boundary without clobbering the store, merge history backfill without reordering newer timeline state, handle live `companion_message` chunks, reconcile outbound `user_message` **Delivery Status** by `message_id`, `retryUserMessage` for failed outbound (same idempotency key), queue until `hello_ok`, ignore stale callbacks across reconnect generations, reconnect cleanly after a drop (`runtime-adapter.test.mjs`, `message-store.test.mjs`, `conversation-reducer.test.mjs`, `routing-client.test.mjs`).
-- Account Surface: projected Control Plane account state (not Auth Provider SDK or per-surface source reads), coarse Connection Status, manual Mac setup guidance without reviving skipped gates, sign-out through Auth Adapter + `markSignedOut()` (`account-surface.rn.test.tsx`, `account-status.test.mjs`, `control-plane-account-state-source.test.mjs`, `account-state-projection.rn.test.tsx`).
-- Chat Components: custom user/assistant rows, streaming, loading, error, retry; Agent State chip (`Available` / `Thinking` / `Following up` / explicit `Paused`); Post-Message-Back continuity cue; Mac setup banner from projected `AccountState.has_desktop_client` (nonblocking, session-dismissible); Account Affordance opens injected surface (`companion-chat.rn.test.tsx`, `chat-presentation.test.mjs`).
-- ChatEntry composition: cross-domain wiring of Runtime Adapter, Account State projection, `CompanionChat`, and Account Surface; Mac setup banner refresh after surface close (`chat-entry.rn.test.tsx`).
-- Composer layout: keyboard safety, safe area, scroll inset correctness.
-- Permission behavior: notification prompt fires in the Onboarding funnel's Grant Permissions step; token registration around first chat entry without re-prompting.
-
-Mechanical checks (already wired at the repo root — see [`ARCHITECTURE.md`](../../ARCHITECTURE.md)):
-
-- Layer-direction lint (`types → config → repo → service → runtime → ui`).
-- No-cross-deployable lint (no relative imports into `apps/desktop/` or `services/`).
-- Ban reusable components under `app/` (route-only directory).
-- Ban direct `assistant-ui/native` imports outside the chat primitive wrapper.
-- Accessibility and contrast checks for light and dark chat surfaces.
-
-Design complexity rule: when a new feature needs shared knowledge in multiple places, first ask whether a deeper module should own that knowledge. Prefer one deep boundary over several shallow wrappers.
+- Auth, telemetry, and feature flags enter through `packages/providers/` or an explicit deployable/domain provider seam; the composition root initializes them and domains receive only injected ports.
+- Safe areas, keyboard behavior, gestures, and motion use Expo-compatible React Native primitives and remain responsive across iPhone sizes.
+- Disabled capabilities remain visible and accessibility-disabled until a separately approved integration mounts them.
+- Pure behavior runs under `node:test`; Router/UI behavior and golden output run under Jest with React Native Testing Library.
+- Required gates use Node 24 or newer: `pnpm lint:architecture:test`, `pnpm docs:check`, `pnpm lint`, and `pnpm harness --scope apps/mobile`.

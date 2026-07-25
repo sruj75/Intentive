@@ -17,11 +17,11 @@ and in which build/environment?_
 
 ## What gets reported
 
-| Source                 | When                                                                                       | Typical tags                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| **Root crash handler** | Unhandled JS/native errors bubble to the app root                                          | (Sentry default grouping)                                   |
-| **Auth Adapter**       | Sign-in returns an error, sign-in throws, or JWT read throws                               | `error_type: auth`, `auth_provider: google \| apple \| dev` |
-| **Runtime Adapter**    | Terminal connection/protocol/routing failure (socket closed, bad frame, routing exhausted) | `error_type: protocol`, `error_type: routing`, …            |
+| Source                 | When                                                                                       | Typical tags                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| **Root crash handler** | Unhandled JS/native errors bubble to the app root                                          | (Sentry default grouping)                        |
+| **Auth Adapter**       | Sign-in returns an error, sign-in throws, or JWT read throws                               | `error_type: auth`, `auth_provider: google`      |
+| **Runtime Adapter**    | Terminal connection/protocol/routing failure (socket closed, bad frame, routing exhausted) | `error_type: protocol`, `error_type: routing`, … |
 
 Runtime Adapter failures also leave a **breadcrumb** immediately before the
 exception — a short note that the adapter entered an error state, with the
@@ -123,8 +123,8 @@ When triaging a mobile issue:
    a deliberate local repro.
 2. **Check `error_type`** — `auth` vs `protocol` vs `routing` tells you which
    deep module failed without reading Mobile Client source.
-3. **For auth**, use **`auth_provider`** — separates Neon Google/Apple from
-   dev-only paths.
+3. **For auth**, use **`auth_provider: google`** to isolate failures in the
+   Google-only production sign-in path.
 4. **Open breadcrumbs** on runtime issues — confirms the adapter transitioned
    to error state before the exception.
 5. **Match release/build** to the EAS channel (preview vs production) using

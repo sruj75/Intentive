@@ -1,16 +1,23 @@
-/**
- * Onboarding funnel route — thin shell. As a composition point (not layer-linted)
- * it is the one place allowed to wire the `notifications` domain's port to the
- * `onboarding` domain's Grant Permissions step, keeping that cross-domain wiring
- * out of the domain UI. The funnel owns its own local step sequencing.
- */
-import { createExpoNotificationsPort } from "../../src/domains/notifications/repo/expo-notifications-port";
-import { OnboardingFunnel } from "../../src/domains/onboarding/ui/onboarding-funnel";
-
-const notificationsPort = createExpoNotificationsPort();
+import { OnboardingEntry } from "../../src/entrypoints/onboarding-entry";
+import { getPlatform } from "../../src/entrypoints/platform";
+import { useLaunchState } from "../../src/providers/launch-state";
 
 export default function OnboardingRoute(): React.JSX.Element {
+  // The route composes the real seams: the Auth Adapter drives the Identity Gate,
+  // and Launch State callbacks report gate progress so the RootNavigator (in the
+  // root layout) owns the actual `/` ↔ `/chat` navigation. Shared gate callbacks
+  // persist to the Control Plane and reconcile before READY can be observed.
+  // `googleAuthConfigured` is the Identity Gate's single capability (ADR 0030).
+  const launch = useLaunchState();
   return (
-    <OnboardingFunnel requestNotificationPermission={() => notificationsPort.requestPermission()} />
+    <OnboardingEntry
+      authAdapter={getPlatform().auth}
+      googleAuthConfigured={getPlatform().config.googleAuthConfigured}
+      signedIn={launch.state.signedIn}
+      consentRequired={launch.state.consent === null ? null : launch.state.consent === "pending"}
+      onSignedIn={launch.markSignedIn}
+      onAcceptConsent={launch.acceptConsent}
+      onComplete={launch.completeOnboardingFunnel}
+    />
   );
 }

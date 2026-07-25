@@ -69,3 +69,44 @@ test("clearBeforeRead drops stale identity before the next read resolves", async
   });
   expect(await screen.findByText("u_456")).toBeTruthy();
 });
+
+test("rerendering with the same singleton source does not issue another GET /me", async () => {
+  const read = jest.fn().mockResolvedValue(account("u_singleton"));
+  const source: AccountStateSource = { read };
+
+  const view = render(<Harness source={source} />);
+  expect(await screen.findByText("u_singleton")).toBeTruthy();
+  expect(read).toHaveBeenCalledTimes(1);
+
+  // An unrelated rerender (props/state churn) with the SAME source reference must
+  // not re-read: refreshAccountState is stable across renders for one source, so
+  // the mount hydration is the only call (ADR-0030, account-state replay).
+  view.rerender(<Harness source={source} />);
+  view.rerender(<Harness source={source} />);
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+test("a refresh applying a changed account state updates the projection", async () => {
+  let resolveSecond: ((value: ReturnType<typeof account>) => void) | null = null;
+  const source: AccountStateSource = {
+    read: jest
+      .fn()
+      .mockResolvedValueOnce(account("u_first"))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          }),
+      ),
+  };
+
+  render(<Harness source={source} />);
+  expect(await screen.findByText("u_first")).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId("refresh-clear"));
+  await act(async () => {
+    resolveSecond?.(account("u_changed"));
+  });
+  // The replay refresh updated the projection so feature gating can change.
+  expect(await screen.findByText("u_changed")).toBeTruthy();
+});

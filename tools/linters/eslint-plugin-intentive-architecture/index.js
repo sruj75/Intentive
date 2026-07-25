@@ -5,6 +5,7 @@ const noCrossDeployable = require("./lib/rules/no-cross-deployable");
 const contextVocabulary = require("./lib/rules/context-vocabulary");
 const filenameCase = require("./lib/rules/filename-case");
 const providerOnlyCrossCutting = require("./lib/rules/provider-only-cross-cutting");
+const mobileSourceStructure = require("./lib/rules/mobile-source-structure");
 
 const plugin = {
   meta: {
@@ -17,6 +18,7 @@ const plugin = {
     "context-vocabulary": contextVocabulary,
     "filename-case": filenameCase,
     "provider-only-cross-cutting": providerOnlyCrossCutting,
+    "mobile-source-structure": mobileSourceStructure,
   },
 };
 
@@ -30,6 +32,7 @@ plugin.configs = {
       "intentive-architecture/context-vocabulary": "error",
       "intentive-architecture/filename-case": "error",
       "intentive-architecture/provider-only-cross-cutting": "error",
+      "intentive-architecture/mobile-source-structure": "error",
     },
   },
 };

@@ -1,101 +1,149 @@
-import { useColorScheme, type ColorSchemeName } from "react-native";
-
-export interface MobileThemeColors {
-  readonly action: string;
-  readonly actionDisabled: string;
-  readonly actionMuted: string;
-  readonly assistantBubble: string;
-  readonly backdrop: string;
-  readonly canvas: string;
-  readonly companion: string;
-  readonly danger: string;
-  readonly dangerBorder: string;
-  readonly elevated: string;
-  readonly glassShadow: string;
-  readonly ink: string;
-  readonly inkMuted: string;
-  readonly inkSubtle: string;
-  readonly line: string;
-  readonly notice: string;
-  readonly noticeText: string;
-  readonly paper: string;
-  readonly surfaceMuted: string;
-  readonly user: string;
-  readonly userBubbleShadow: string;
-  readonly userDeep: string;
-  readonly userText: string;
-  readonly companionBubbleShadow: string;
-}
-
-export interface MobileTheme {
-  readonly colors: MobileThemeColors;
-  readonly isDark: boolean;
-}
-
-export const lightTheme: MobileTheme = {
-  isDark: false,
-  colors: {
-    action: "#1D4E89",
-    actionDisabled: "rgba(29, 78, 137, 0.32)",
-    actionMuted: "rgba(29, 78, 137, 0.14)",
-    assistantBubble: "#FFFCF7",
-    backdrop: "rgba(37, 31, 24, 0.26)",
-    canvas: "#F7F3EC",
-    companion: "#FFFCF7",
-    danger: "#7A3A26",
-    dangerBorder: "rgba(122, 58, 38, 0.36)",
-    elevated: "#FFFCF7",
-    glassShadow: "rgba(51, 43, 34, 0.18)",
-    ink: "#251F18",
-    inkMuted: "#62584B",
-    inkSubtle: "#948879",
-    line: "rgba(51, 43, 34, 0.14)",
-    notice: "rgba(37, 31, 24, 0.82)",
-    noticeText: "#FFFCF7",
-    paper: "#FFFCF7",
-    surfaceMuted: "rgba(238, 235, 230, 0.92)",
-    user: "#1D4E89",
-    userBubbleShadow: "rgba(18, 54, 95, 0.18)",
-    userDeep: "#12365F",
-    userText: "#FFFCF7",
-    companionBubbleShadow: "rgba(54, 44, 34, 0.10)",
+export const mobileTheme = {
+  color: {
+    canvas: "#FFFFFF",
+    ink: "#151515",
+    secondaryInk: "#858585",
+    mutedInk: "#B2B2B2",
+    hairline: "#E7E7E7",
+    surface: "#F6F6F6",
+    surfaceStrong: "#EEEEEE",
+    scrim: "rgba(20, 20, 20, 0.16)",
+    action: "#181818",
+    actionInk: "#FFFFFF",
+    error: "#CC5B13",
+    accent: "#7A5AF8",
+    blue: "#4C78E8",
+    coral: "#F16F5C",
+    gold: "#E8B63E",
+    teal: "#3C9D9B",
+    avatarPlaceholder: "#DCD7F8",
+    mediaLavender: "#E8E1FF",
+    mediaCoral: "#FFE7DE",
+    mediaTeal: "#DCEEEA",
+    mediaLine: "#E1E1E1",
+    mediaLineMuted: "#E9E9E9",
+    floatingSurface: "rgba(255,255,255,0.96)",
   },
-};
-
-export const darkTheme: MobileTheme = {
-  isDark: true,
-  colors: {
-    action: "#6B9E8A",
-    actionDisabled: "rgba(107, 158, 138, 0.32)",
-    actionMuted: "rgba(107, 158, 138, 0.18)",
-    assistantBubble: "#1F1E22",
-    backdrop: "rgba(0, 0, 0, 0.48)",
-    canvas: "#141316",
-    companion: "#1F1E22",
-    danger: "#E86A52",
-    dangerBorder: "rgba(232, 106, 82, 0.36)",
-    elevated: "#28262C",
-    glassShadow: "rgba(0, 0, 0, 0.36)",
-    ink: "#EEEBE6",
-    inkMuted: "#9C989F",
-    inkSubtle: "#A8A39A",
-    line: "#3A383F",
-    notice: "rgba(238, 235, 230, 0.9)",
-    noticeText: "#141316",
-    paper: "#1F1E22",
-    surfaceMuted: "#1A191D",
-    user: "#2A282E",
-    userBubbleShadow: "rgba(0, 0, 0, 0.28)",
-    userDeep: "#1A191D",
-    userText: "#EEEBE6",
-    companionBubbleShadow: "rgba(0, 0, 0, 0.32)",
+  space: { xxs: 4, xs: 8, sm: 12, md: 16, lg: 24, xl: 32, xxl: 48 },
+  radius: { sm: 12, md: 18, lg: 26, xl: 34, pill: 999 },
+  stroke: { hairline: 1 },
+  type: {
+    display: { fontFamily: "Georgia", fontSize: 34, lineHeight: 40, fontWeight: "400" as const },
+    title: { fontFamily: "Georgia", fontSize: 28, lineHeight: 34, fontWeight: "400" as const },
+    body: { fontSize: 17, lineHeight: 25, fontWeight: "400" as const },
+    bodyLarge: { fontSize: 20, lineHeight: 29, fontWeight: "400" as const },
+    label: { fontSize: 16, lineHeight: 21, fontWeight: "500" as const },
+    caption: { fontSize: 13, lineHeight: 18, fontWeight: "400" as const },
   },
-};
-
-export function resolveMobileTheme(scheme: ColorSchemeName): MobileTheme {
-  return scheme === "dark" ? darkTheme : lightTheme;
-}
-
-export function useMobileTheme(): MobileTheme {
-  return resolveMobileTheme(useColorScheme());
-}
+  motion: { quick: 180, standard: 240 },
+  component: {
+    auth: {
+      contentMinHeight: 700,
+      windowInset: 80,
+      heroMinHeight: 380,
+      pressedOpacity: 0.68,
+      greeting: {
+        fontSize: 49,
+        lineHeight: 57,
+        fontWeight: "300" as const,
+        letterSpacing: -1.4,
+      },
+    },
+    name: {
+      contentMinHeight: 520,
+      windowInset: 100,
+      fieldMinHeight: 58,
+      fieldBorderWidth: 1.5,
+      fieldTrailingPadding: 5,
+      inputVerticalPadding: 12,
+    },
+    intro: {
+      exampleMinHeight: 410,
+      bubbleVerticalPadding: 10,
+      avatarSize: 32,
+      previewComposerMinHeight: 42,
+    },
+    primaryButton: {
+      minHeight: 56,
+      pressedScale: 0.985,
+      pressedOpacity: 0.86,
+      disabledOpacity: 0.45,
+    },
+    circleButton: {
+      size: 44,
+      labelSize: 25,
+      labelLineHeight: 29,
+    },
+    identity: {
+      minHeight: 48,
+      gap: 6,
+      padding: 5,
+      trailingPadding: 13,
+      badgeSize: 38,
+      textSize: 17,
+      ellipsisSize: 24,
+      ellipsisLineHeight: 25,
+    },
+    media: {
+      minHeight: 210,
+      wideLineHeight: 14,
+      lineHeight: 10,
+      tileAspectRatio: 1.2,
+    },
+    education: {
+      exampleMinHeight: 430,
+      systemCircleSize: 20,
+      systemCircleBorderWidth: 2,
+      dotSize: 7,
+      activeDotWidth: 28,
+    },
+    chat: {
+      headerMinHeight: 60,
+      welcomeTitleMaxWidth: 260,
+      welcomeButtonMinWidth: 140,
+      welcomeButtonMinHeight: 52,
+      capabilityButtonMinHeight: 30,
+      suggestionGap: 2,
+      suggestionMinHeight: 46,
+      activityMinHeight: 54,
+      activityDotSize: 5,
+      composerMinHeight: 54,
+      composerInputMaxHeight: 120,
+      composerDisabledOpacity: 0.75,
+      composerInputVerticalPadding: 10,
+      composerAffordanceWidth: 36,
+      composerAffordanceHeight: 42,
+      composerIconSize: 24,
+    },
+    drawer: {
+      maxWidth: 310,
+      widthRatio: 0.78,
+      profileBadgeSize: 44,
+      profileTextSize: 20,
+      iconWidth: 24,
+      iconSize: 20,
+      homeMinHeight: 52,
+      homeIconSize: 18,
+    },
+    settings: {
+      headerMinHeight: 64,
+      headerBalanceWidth: 76,
+      profileBadgeSize: 92,
+      profileTextSize: 31,
+      actionMinHeight: 44,
+      rowMinHeight: 48,
+      privacyFieldMinHeight: 48,
+    },
+    interaction: {
+      softPressedOpacity: 0.6,
+      subtlePressedOpacity: 0.65,
+      standardPressedOpacity: 0.7,
+    },
+  },
+  shadow: {
+    identity: "0 8px 28px rgba(0, 0, 0, 0.08)",
+    card: "0 8px 30px rgba(0, 0, 0, 0.08)",
+    drawer: "12px 0 36px rgba(0, 0, 0, 0.14)",
+    floating: "0 8px 30px rgba(0, 0, 0, 0.10)",
+  },
+} as const;

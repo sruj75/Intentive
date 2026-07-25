@@ -138,15 +138,18 @@ pnpm --dir packages/providers test
 ## Mobile Client
 
 ```bash
-pnpm --dir apps/mobile test       # build + Node tests (auth adapter, launch resolver/source/route, control-plane launch + account-state sources, account-state mapper, account-status, route-for-destination, runtime adapter, message store, conversation reducer, routing client, dev transport)
-pnpm --dir apps/mobile test:rn    # Jest / React Native harness (gates #19–#21, CompanionChat external-store runtime, Account Surface #46, Account State projection, ChatEntry composition)
+pnpm --dir apps/mobile test       # build + Node tests (onboarding, education, profile, local Conversation Session, plus dormant production adapters)
+pnpm --dir apps/mobile test:rn    # Jest / React Native harness (two-zone A-to-L journey, Router boundaries, 19 golden snapshots, zero-call boundaries, and dormant Account State projection)
 pnpm --dir apps/mobile typecheck
 ```
 
 The root `pnpm test` runs the Node `test` script above. The React Native harness
 is included in the blocking root harness through `pnpm --dir apps/mobile test:rn`
 (`pnpm harness` locally, the `node-workspaces` Gate group in CI), so run it directly for focused
-mobile UI/gate debugging.
+mobile UI debugging. The mounted experience is frontend-only: its RN journey
+tests assert zero auth-provider, Contacts, notification, fetch, WebSocket,
+SecureStore, and durable-storage calls. Named render snapshots cover A, B1/B2,
+C, D, E, F, G, all five education states, K1/K2, and L1-L4 at 390×844.
 
 ### iOS simulator verification (visual / on-device)
 
@@ -159,10 +162,13 @@ Simulator (e.g. via XcodeBuildMCP `build_run_sim` or `expo run:ios`):
 2. **Repo path must contain no spaces** — CocoaPods/Ruby resolves the real path and a
    space (e.g. the old `Desktop/Hey Intentive`) breaks `pod install` and the build. The
    working tree is now `Desktop/Intentive`; keep it space-free.
-3. **Walk the gates to reach chat** — the app opens on the Identity Gate. Tap
-   **Continue as dev → Continue → Not now** to reach `CompanionChat`. The Send button is
-   a vendor `Pressable` with no AX button role, so UI-automation snapshots won't list it;
-   tap it by its testID (`intentive-composer-send`).
+3. **Walk the complete A-to-L journey** — start at A, exercise invalid and
+   valid name entry, advance through C/D, confirm E is the welcome state of the
+   shared chat surface, open F/G, complete or skip all five education states,
+   then confirm K is the ready state of that same chat surface. Focus and submit
+   the Composer, observing L1 user-sent, L2 thinking, L3 composing, and L4 reply.
+   Also verify drawer drag/background dismissal, keyboard clearance, top/bottom
+   safe areas, disabled affordances, and that a fresh process returns to A.
 
 #### ⚠️ Wipe DerivedData on compiler/module-cache crashes (recurs — clean build needed)
 
@@ -237,7 +243,7 @@ vertical slices land.
 
 ## Scaffold Deployables
 
-`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` adds auth-adapter, launch-state resolver/source, control-plane launch + account-state sources, `account-state-to-launch-state`, `account-status`, `route-for-destination`, Runtime Adapter + Message Store (`runtime-adapter`, `message-store`, `conversation-reducer`, `routing-client`, `dev-transport`) tests (Node), Pre-Chat Gate screen tests (#19–#21, RN), Companion Chat external-store tests (`companion-chat.rn.test.tsx`, #33), Account Surface tests (`account-surface.rn.test.tsx`, #46), Account State projection (`account-state-projection.rn.test.tsx`), and ChatEntry cross-domain composition (`chat-entry.rn.test.tsx`).
+`services/control-plane` exercises identity + cross-client gates (`GET /me`, `POST /consent`, `POST /sibling-invitation/skip`, users + user_gates repos, `migrations/0001_users.sql` and `0002_user_gates.sql`). `services/agent-runtime` has moved past contract-sample scaffolds to the `loadConfig` boot seam. `apps/mobile` exercises onboarding, education, Profile Store, and the local Conversation Session plus dormant auth, launch-state, Control Plane, Runtime Adapter, Message Store, reducer, routing, and notification modules through Node tests. Its RN axis owns the two-zone A-to-L journey, Router replacements, golden states, and dormant Account State projection.
 
 ## CI Expectations
 

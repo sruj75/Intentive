@@ -1,267 +1,115 @@
-/**
- * Companion Chat route-entry composition.
- *
- * This is the single place the `chat` and `account` domains are wired together —
- * the Runtime Adapter, the Account State source, the Companion Chat surface, and
- * the Account Surface sheet. It lives in `src/entrypoints/` (not a domain)
- * because `chat/ui` cannot import `account/ui` under the domain-boundary lint;
- * route-entry composition is the lint-safe home for explicit cross-domain
- * wiring. The `(chat)/` route stays navigation-only and renders `<ChatEntry/>`.
- *
- * Production builds the adapter and Account State source from the Auth Adapter
- * and the Control Plane base URL; tests inject `adapter`, `accountStateSource`,
- * `controlPlaneBaseUrl`, and safe-area metrics directly.
- */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppState, type AppStateStatus } from "react-native";
-import type { Metrics } from "react-native-safe-area-context";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 
-import {
-  createControlPlaneAccountStateSource,
-  useAccountStateProjection,
-  type AccountStateSource,
-} from "../providers/account-state";
-import { createSentryTelemetry, type Telemetry } from "../providers/telemetry";
-import { useOptionalAuthAdapter } from "../domains/auth/ui/auth-context";
-import { AccountSurface } from "../domains/account/ui/account-surface";
-import { createDevRuntimeAdapter } from "../domains/chat/runtime/dev-transport";
-import {
-  createRuntimeAdapter,
-  defaultResolveTimeZone,
-  type WebSocketLike,
-} from "../domains/chat/runtime/runtime-adapter";
-import { CompanionChat } from "../domains/chat/ui/companion-chat";
-import type { RuntimeAdapter } from "../domains/chat/types/conversation";
-import { getOrCreateDeviceFingerprint } from "../domains/notifications/repo/device-fingerprint";
-import { createExpoNotificationsPort } from "../domains/notifications/repo/expo-notifications-port";
-import {
-  registerForPush,
-  type PushRegistrationResult,
-} from "../domains/notifications/service/push-registration";
-import type {
-  NotificationsPort,
-  NotificationsSubscription,
-} from "../domains/notifications/types/notifications-port";
+import { ScreenFrame } from "../design/screen-frame";
+import { AccountSettingsBoundary } from "../domains/account/ui/account-settings";
+import { deriveFeatureAccess } from "../domains/account/service/feature-access";
+import { createLocalConversationSession } from "../domains/chat/runtime/local-conversation-session";
+import type { ConversationSession } from "../domains/chat/types/conversation-timeline";
+import { ComposerBoundary } from "../domains/chat/ui/composer-boundary";
+import { ConversationScene } from "../domains/chat/ui/conversation-scene";
+import { EducationDeck } from "../domains/onboarding/ui/education-deck";
+import { useAccountStateProjection } from "../providers/account-state";
+import type { AccountStateSource } from "../providers/account-state";
+import { useProfileSnapshot, useProfileStore } from "../providers/profile/profile-provider";
 
-const PUSH_REGISTRATION_RETRY_DELAY_MS = 60_000;
-
-type PushRegistration = () => Promise<PushRegistrationResult>;
-
-export interface PushRegistrationEvents {
-  subscribeToForeground(listener: () => void): NotificationsSubscription;
-  subscribeToPushTokenChanges(listener: () => void): NotificationsSubscription;
-}
-
-export interface ChatEntryProps {
-  readonly adapter?: RuntimeAdapter;
-  readonly accountStateSource?: AccountStateSource;
-  readonly controlPlaneBaseUrl?: string;
-  readonly initialSafeAreaMetrics?: Metrics;
-  readonly pushRegistration?: PushRegistration;
-  readonly pushRegistrationEvents?: PushRegistrationEvents;
-  readonly telemetry?: Telemetry;
-}
+const defaultCreateSession = (firstName: string) => createLocalConversationSession({ firstName });
 
 export function ChatEntry({
-  adapter: injectedAdapter,
-  accountStateSource: injectedAccountStateSource,
-  controlPlaneBaseUrl,
-  initialSafeAreaMetrics,
-  pushRegistration: injectedPushRegistration,
-  pushRegistrationEvents: injectedPushRegistrationEvents,
-  telemetry: injectedTelemetry,
-}: ChatEntryProps = {}): React.JSX.Element {
-  const authAdapter = useOptionalAuthAdapter();
-  const telemetry = useMemo(
-    () => injectedTelemetry ?? createSentryTelemetry(),
-    [injectedTelemetry],
-  );
-  const [accountVisible, setAccountVisible] = useState(false);
-  const didRegisterForPush = useRef(false);
-  const pushRegistrationInFlight = useRef(false);
-  const pendingPushRegistrationAttempt = useRef(false);
-  const pendingPushRegistrationReset = useRef(false);
-  const lastPushRegistrationResult = useRef<PushRegistrationResult | null>(null);
-  const [pushRegistrationAttempt, setPushRegistrationAttempt] = useState(0);
-  const baseUrl = controlPlaneBaseUrl ?? process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "";
-
-  const adapter = useMemo(() => {
-    if (injectedAdapter) return injectedAdapter;
-    if (baseUrl.trim().length === 0) return createDevRuntimeAdapter();
-
-    return createRuntimeAdapter({
-      baseUrl,
-      getUserJwt: () => authAdapter?.getUserJwt() ?? Promise.resolve(null),
-      fetch: (url, init) => globalThis.fetch(url, init),
-      createWebSocket: (url) => new WebSocket(url) as unknown as WebSocketLike,
-      clientVersion: "mobile-v1",
-      now: () => new Date().toISOString(),
-      id: () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-      schedule: (fn, delayMs) => {
-        const timer = setTimeout(fn, delayMs);
-        return { cancel: () => clearTimeout(timer) };
-      },
-      resolveTimeZone: defaultResolveTimeZone,
-      telemetry,
-    });
-  }, [authAdapter, baseUrl, injectedAdapter, telemetry]);
-
-  const accountStateSource = useMemo(
-    () =>
-      injectedAccountStateSource ??
-      createControlPlaneAccountStateSource({
-        baseUrl,
-        getUserJwt: () => authAdapter?.getUserJwt() ?? Promise.resolve(null),
-        fetch: (url, init) => globalThis.fetch(url, init),
-      }),
-    [authAdapter, baseUrl, injectedAccountStateSource],
-  );
-
+  createSession = defaultCreateSession,
+  accountStateSource,
+  onLogout,
+}: {
+  readonly createSession?: (firstName: string) => ConversationSession;
+  readonly accountStateSource?: AccountStateSource;
+  readonly onLogout?: () => void | Promise<void>;
+} = {}) {
+  const profileStore = useProfileStore();
+  const profile = useProfileSnapshot();
+  // Real Control-Plane account state gates Companion affordances. With no injected
+  // source (the offline default) this projects null, so the gate stays open and
+  // the local experience is unchanged (ADR-0027). `refreshAccountState` is the
+  // seam the education replay restart uses so feature gating reflects updated
+  // account state instead of remaining stuck on the original projection (ADR-0030).
   const { accountState, refreshAccountState } = useAccountStateProjection(accountStateSource);
-  const runtimeState = useSyncExternalStore(adapter.subscribe, adapter.getState, adapter.getState);
-  const notifications = useMemo<NotificationsPort | null>(() => {
-    if (injectedPushRegistration) return null;
-    if (!authAdapter || baseUrl.trim().length === 0) return null;
-    return createExpoNotificationsPort();
-  }, [authAdapter, baseUrl, injectedPushRegistration]);
-  const pushRegistration = useMemo(() => {
-    if (injectedPushRegistration) return injectedPushRegistration;
-    if (!authAdapter || baseUrl.trim().length === 0 || !notifications) return null;
+  const featureAccess = deriveFeatureAccess(accountState);
+  const [mode, setMode] = useState<"welcome" | "education" | "ready">("welcome");
+  const [sessionGeneration, setSessionGeneration] = useState(0);
+  const [educationSource, setEducationSource] = useState<"onboarding" | "replay">("onboarding");
+  const session = useMemo(
+    () => createSession(profile.firstName),
+    [createSession, profile.firstName, sessionGeneration],
+  );
+  useEffect(() => () => session.dispose(), [session]);
 
-    return () =>
-      registerForPush({
-        baseUrl,
-        getUserJwt: () => authAdapter.getUserJwt(),
-        fetch: (url, init) => globalThis.fetch(url, init),
-        notifications,
-        getDeviceFingerprint: getOrCreateDeviceFingerprint,
-        onError: (error) => console.warn("Push registration failed", error),
-      });
-  }, [authAdapter, baseUrl, injectedPushRegistration, notifications]);
-  const pushRegistrationEvents = useMemo<PushRegistrationEvents | null>(() => {
-    if (injectedPushRegistrationEvents) return injectedPushRegistrationEvents;
-    if (!notifications) return null;
-
-    return {
-      subscribeToForeground(listener) {
-        return AppState.addEventListener("change", (state: AppStateStatus) => {
-          if (state === "active") listener();
-        });
-      },
-      subscribeToPushTokenChanges(listener) {
-        return notifications.subscribeToPushTokenChanges(listener);
-      },
-    };
-  }, [injectedPushRegistrationEvents, notifications]);
-  const requestPushRegistrationAttempt = useCallback((resetSuccessfulRegistration = false) => {
-    if (resetSuccessfulRegistration) didRegisterForPush.current = false;
-    if (pushRegistrationInFlight.current) {
-      pendingPushRegistrationAttempt.current = true;
-      pendingPushRegistrationReset.current =
-        pendingPushRegistrationReset.current || resetSuccessfulRegistration;
-      return;
-    }
-
-    setPushRegistrationAttempt((attempt) => attempt + 1);
-  }, []);
-
-  useEffect(() => {
-    if (!pushRegistration || didRegisterForPush.current || pushRegistrationInFlight.current) return;
-
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    pushRegistrationInFlight.current = true;
-
-    void pushRegistration()
-      .then((result) => {
-        if (cancelled) return;
-        lastPushRegistrationResult.current = result;
-        if (result.status === "registered") {
-          didRegisterForPush.current = true;
+  const logout = useCallback(() => {
+    void (async () => {
+      if (onLogout) {
+        try {
+          // The live boundary clears the durable auth session before reporting
+          // signed-out Launch State. Keep the in-memory profile intact when that
+          // operation fails so the UI never claims a session was cleared when it
+          // still exists in SecureStore.
+          await onLogout();
+        } catch {
           return;
         }
+      }
 
-        if (result.status === "terminal") return;
+      profileStore.reset();
+      if (!onLogout) router.replace("/");
+    })();
+  }, [onLogout, profileStore]);
 
-        retryTimer = setTimeout(() => {
-          setPushRegistrationAttempt((attempt) => attempt + 1);
-        }, PUSH_REGISTRATION_RETRY_DELAY_MS);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.warn("Push registration failed", error);
-        lastPushRegistrationResult.current = {
-          status: "retryable",
-          reason: "registration_failed",
-        };
-        retryTimer = setTimeout(() => {
-          requestPushRegistrationAttempt();
-        }, PUSH_REGISTRATION_RETRY_DELAY_MS);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          pushRegistrationInFlight.current = false;
-          if (pendingPushRegistrationAttempt.current) {
-            const resetSuccessfulRegistration = pendingPushRegistrationReset.current;
-            pendingPushRegistrationAttempt.current = false;
-            pendingPushRegistrationReset.current = false;
-            requestPushRegistrationAttempt(resetSuccessfulRegistration);
-          }
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      pushRegistrationInFlight.current = false;
-      pendingPushRegistrationAttempt.current = false;
-      pendingPushRegistrationReset.current = false;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [pushRegistration, pushRegistrationAttempt, requestPushRegistrationAttempt]);
-
-  useEffect(() => {
-    if (!pushRegistrationEvents) return;
-
-    const foregroundSubscription = pushRegistrationEvents.subscribeToForeground(() => {
-      const lastResult = lastPushRegistrationResult.current;
-      if (lastResult?.status === "terminal" && lastResult.reason !== "permission_denied") return;
-
-      requestPushRegistrationAttempt(lastResult?.status === "registered");
-    });
-    const pushTokenSubscription = pushRegistrationEvents.subscribeToPushTokenChanges(() => {
-      requestPushRegistrationAttempt(true);
-    });
-
-    return () => {
-      foregroundSubscription.remove();
-      pushTokenSubscription.remove();
-    };
-  }, [pushRegistrationEvents, requestPushRegistrationAttempt]);
+  // Education replay becomes one named restart operation: when the Education Deck
+  // returns from a *replay*, a fresh conversation session is created (bumping the
+  // generation disposes the prior runtime/local session) and Account State is
+  // refreshed before the ready surface returns, so updated feature access can
+  // change gating after the replay (ADR-0030). The first onboarding run keeps the
+  // welcome session and only refreshes nothing — no extra reads.
+  const restartConversation = useCallback(async (): Promise<void> => {
+    if (educationSource === "replay") {
+      setSessionGeneration((current) => current + 1);
+      if (accountStateSource) {
+        await refreshAccountState({ clearBeforeRead: true });
+      }
+    }
+    setMode("ready");
+  }, [accountStateSource, educationSource, refreshAccountState]);
 
   return (
-    <>
-      <CompanionChat
-        adapter={adapter}
-        accountState={accountState}
-        initialSafeAreaMetrics={initialSafeAreaMetrics}
-        onOpenAccount={() => {
-          // Drop any stale identity from a prior session before the read resolves.
-          refreshAccountState({ clearBeforeRead: true });
-          setAccountVisible(true);
-        }}
-      />
-      <AccountSurface
-        accountState={accountState}
-        controlPlaneBaseUrl={baseUrl}
-        onSignOut={() => authAdapter?.signOut() ?? Promise.resolve()}
-        runtimeConnectionState={runtimeState.connectionState}
-        visible={accountVisible}
-        onClose={() => {
-          setAccountVisible(false);
-          // Re-read so the Mac setup banner reflects a newly registered Desktop Client.
-          refreshAccountState();
-        }}
-      />
-    </>
+    <AccountSettingsBoundary fullName={profile.fullName} initials={profile.initials}>
+      {({ proactiveSuggestions, renderSettings }) => (
+        <ComposerBoundary>
+          {({ onChange, value }) => (
+            <ScreenFrame sceneKey={mode === "education" ? "education" : "chat"}>
+              {mode === "education" ? (
+                <EducationDeck onComplete={restartConversation} />
+              ) : (
+                <ConversationScene
+                  composerValue={value}
+                  firstName={profile.firstName}
+                  initials={profile.initials}
+                  mode={mode}
+                  onBeginEducation={() => {
+                    setEducationSource("onboarding");
+                    setMode("education");
+                  }}
+                  onComposerChange={onChange}
+                  onLogout={logout}
+                  onReplayEducation={() => {
+                    setEducationSource("replay");
+                    setMode("education");
+                  }}
+                  proactiveSuggestions={proactiveSuggestions && featureAccess.proactiveSuggestions}
+                  renderSettings={renderSettings}
+                  session={session}
+                />
+              )}
+            </ScreenFrame>
+          )}
+        </ComposerBoundary>
+      )}
+    </AccountSettingsBoundary>
   );
 }

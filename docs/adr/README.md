@@ -51,6 +51,19 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0015 | Push external-store runtime for proactive Companion              | accepted                        |
 | 0016 | Mobile never authors the opening; idempotent by store            | accepted                        |
 | 0017 | iOS native via Continuous Native Generation (CNG)                | accepted                        |
+| 0018 | Pre-chat onboarding funnel minimum                               | accepted                        |
+| 0019 | Onboarding funnel collapses to one gate                          | accepted                        |
+| 0020 | Consent Primer is data and privacy acceptance                    | accepted                        |
+| 0021 | Onboarding visual subsystem                                      | superseded by 0022 and 0023     |
+| 0022 | Scene-driven local frontend foundation                           | superseded by 0023              |
+| 0023 | Two-zone layered Mobile frontend                                 | accepted                        |
+| 0024 | Reconnect the Auth seam via a composition root                   | accepted                        |
+| 0025 | Reconnect Launch State — two-zone re-target                      | accepted                        |
+| 0026 | Reconnect Chat Runtime — translation adapter                     | accepted                        |
+| 0027 | Reconnect Account State — feature gating                         | accepted                        |
+| 0028 | Reconnect Notifications — push registration                      | accepted                        |
+| 0029 | Reconnect Telemetry (Sentry)                                     | accepted                        |
+| 0030 | Google-only production auth and lifecycle complexity reduction   | accepted                        |
 
 ### Desktop Client — `apps/desktop/docs/adr/`
 

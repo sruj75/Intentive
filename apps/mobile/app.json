@@ -6,8 +6,7 @@
     "version": "0.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "light",
     "runtimeVersion": "0.0.0",
     "updates": {
       "url": "https://u.expo.dev/fd429803-2de2-493f-960f-cdaebdea7714"
@@ -15,19 +14,22 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.heyintentive.expo",
-      "icon": "./assets/Intentive.icon"
+      "icon": "./assets/Intentive.icon",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F5F5F5"
-      }
+      },
+      "package": "com.heyintentive.expo"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-image",
       "expo-notifications",
       [
         "@sentry/react-native/expo",

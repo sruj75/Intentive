@@ -9,8 +9,17 @@
  * request *throws*, so the store's hydration `.catch` applies its signed-out
  * fallback. We don't duplicate that fallback here.
  */
+import {
+  PostConsentRequest,
+  PostConsentResponse,
+  PostSiblingInvitationSkipRequest,
+  PostSiblingInvitationSkipResponse,
+  parseBoundary,
+} from "@intentive/api-contract";
+
 import { mapAccountStateToLaunchState } from "../../domains/onboarding/service/account-state-to-launch-state.js";
 import { createControlPlaneAccountStateSource } from "../account-state/control-plane-account-state-source.js";
+import type { AccountStateSource } from "../account-state/source.js";
 import type { LaunchStateSource } from "./source.js";
 import type { LaunchState } from "./types.js";
 
@@ -23,7 +32,14 @@ export interface FetchResponseLike {
   json(): Promise<unknown>;
 }
 export interface FetchLike {
-  (url: string, init?: { headers?: Record<string, string> }): Promise<FetchResponseLike>;
+  (
+    url: string,
+    init?: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+    },
+  ): Promise<FetchResponseLike>;
 }
 
 export interface ControlPlaneLaunchStateSourceDeps {
@@ -32,6 +48,13 @@ export interface ControlPlaneLaunchStateSourceDeps {
   /** Returns the current Neon Auth User JWT, or null when there is no session. */
   getUserJwt: () => Promise<string | null>;
   fetch: FetchLike;
+  /**
+   * The shared `GET /me` reader. Injected by the composition root so Launch State
+   * and the Account State projection read through one Account State Source instead
+   * of constructing the seam twice (ADR-0027). Defaults to a fresh source built
+   * from the fetch deps, keeping the standalone/test call sites unchanged.
+   */
+  accountStateSource?: AccountStateSource;
 }
 
 // Walk-safe signed-out projection: the resolver short-circuits on `signedIn:
@@ -47,7 +70,7 @@ const SIGNED_OUT: LaunchState = {
 export function createControlPlaneLaunchStateSource(
   deps: ControlPlaneLaunchStateSourceDeps,
 ): LaunchStateSource {
-  const accountStateSource = createControlPlaneAccountStateSource(deps);
+  const accountStateSource = deps.accountStateSource ?? createControlPlaneAccountStateSource(deps);
 
   return {
     async read(): Promise<LaunchState> {
@@ -55,5 +78,41 @@ export function createControlPlaneLaunchStateSource(
       if (account === null) return SIGNED_OUT;
       return mapAccountStateToLaunchState(account);
     },
+    acceptConsent: () =>
+      postGate(deps, "/consent", PostConsentRequest, PostConsentResponse, "Consent acceptance"),
+    skipSiblingInvitation: () =>
+      postGate(
+        deps,
+        "/sibling-invitation/skip",
+        PostSiblingInvitationSkipRequest,
+        PostSiblingInvitationSkipResponse,
+        "Sibling invitation skip",
+      ),
   };
+}
+
+async function postGate(
+  deps: ControlPlaneLaunchStateSourceDeps,
+  path: string,
+  requestSchema: typeof PostConsentRequest | typeof PostSiblingInvitationSkipRequest,
+  responseSchema: typeof PostConsentResponse | typeof PostSiblingInvitationSkipResponse,
+  operation: string,
+): Promise<void> {
+  const jwt = await deps.getUserJwt();
+  if (jwt === null) throw new Error(`${operation} requires a signed-in session`);
+  if (deps.baseUrl.trim().length === 0) {
+    throw new Error("Control Plane base URL is not configured");
+  }
+
+  const request = parseBoundary(requestSchema, {});
+  const response = await deps.fetch(`${deps.baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`${operation} failed with status ${response.status}`);
+  parseBoundary(responseSchema, await response.json());
 }

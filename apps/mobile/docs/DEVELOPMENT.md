@@ -22,9 +22,46 @@ verification conventions (DerivedData wipes, visual checks) see
 Builds run **locally on the Mac** via `eas build --local` (Xcode + fastlane) — no
 EAS cloud, and simulator builds need **no Apple credentials**.
 
+## Simulator lanes on this Mac
+
+Use one booted simulator at a time. For the normal 8 GB Mac development loop,
+use the lighter iPhone 16 lane; reserve the latest lane for final smoke checks:
+
+| Lane   | Runtime  | Device        | Use                                         |
+| ------ | -------- | ------------- | ------------------------------------------- |
+| Daily  | iOS 18.5 | iPhone 16     | Default development on an 8 GB Mac          |
+| Latest | iOS 26.2 | iPhone 17 Pro | Final smoke and latest-runtime verification |
+
+Do not boot both lanes at once. Re-check `xcrun simctl list runtimes` and
+`xcrun simctl list devices available` when Xcode or the installed runtimes change,
+then update this table.
+
+CoreSimulator runtime images can remain installed while their profiles are temporarily
+unmounted after an Xcode switch or service restart. If `simctl` reports the devices as
+unavailable or says `runtime profile not found`, re-discover the existing local images
+without downloading or duplicating them:
+
+```bash
+xcrun simctl runtime scan-and-mount
+xcrun simctl list runtimes
+xcrun simctl list devices available
+```
+
+Do not run `simctl runtime add` for an image already shown by `simctl runtime list -v`;
+that creates an unusable duplicate instead of repairing the registry.
+
 ---
 
 ## Agent runbook
+
+### Low-heat development setup
+
+- Keep exactly one simulator booted and one Metro process listening on port 8082.
+- After the dev client is installed, JS/TS changes use Metro hot reload; do not run
+  `pnpm ios` for those changes.
+- Rebuild with `pnpm ios` only after a native dependency, config plugin, native
+  `app.json` key, SDK, icon, or splash change.
+- Shut the simulator down before large native builds or harness/test runs.
 
 Run from the repo root unless a step says otherwise. This runbook is **cache-aware**:
 it does the cheapest thing that leaves a dev client running on a booted simulator, so
@@ -51,9 +88,14 @@ xcframeworks between runs, and also installs to the sim and starts Metro. Reach 
 # 0. (one-time / when shared contracts change) build the workspace deps Metro needs
 pnpm --filter "@intentive/mobile^..." build
 
-# 1. boot a simulator (skip if one is already booted)
-xcrun simctl boot "iPhone 16"             # or any available device; UDID also works
-open -a Simulator
+# 1. discover installed runtimes, then boot the daily lane (skip boot if already running)
+xcrun simctl runtime scan-and-mount
+xcrun simctl list runtimes
+xcrun simctl list devices available
+DAILY_DEVICE="iPhone 16"                  # iOS 18.5; see Simulator lanes above
+xcrun simctl shutdown all                  # keep only one simulator in the loop
+xcrun simctl boot "$DAILY_DEVICE"         # UDID also works
+open "$(xcode-select -p)/Applications/Simulator.app"
 
 # 2. generate the native iOS project from app.json (CNG — ios/ is git-ignored, see ADR-0017)
 cd apps/mobile
@@ -62,7 +104,7 @@ npx expo prebuild -p ios                  # skip if ios/ exists & nothing native
 # 3. CACHED in-place build + install on the booted sim + start Metro, all in one.
 #    Reuses ios/Pods, Xcode DerivedData, and the RN xcframeworks → seconds-to-minutes
 #    after the first cold build. bundle id: com.heyintentive.expo
-pnpm ios --device "iPhone 16"             # = expo run:ios; --device targets a booted sim by name or UDID
+pnpm ios --device "$LATEST_DEVICE"         # = expo run:ios; targets the booted latest lane
 
 # 4. confirm it rendered
 xcrun simctl io booted screenshot /tmp/intentive-sim.png
@@ -70,12 +112,25 @@ xcrun simctl io booted screenshot /tmp/intentive-sim.png
 # --- Dev client already installed and nothing native changed? Skip 0–4; just start
 #     Metro and point the client at it — JS/TS hot-reloads, no native build: ---
 
-# 5. start Metro (pnpm ios in step 3 already started it; run this only if it isn't up)
+# 5. start the single Metro process (pnpm ios already started it; run only if port 8082 is free)
 pnpm --dir apps/mobile dev                # = expo start --port 8082
 
 # 6. launch the dev client and point it at Metro
 xcrun simctl launch booted com.heyintentive.expo
 xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
+```
+
+For navigation, layout, or native UI changes, repeat the install/launch smoke on the
+latest lane after the daily lane passes:
+
+```bash
+xcrun simctl shutdown "$DAILY_DEVICE"
+LATEST_DEVICE="iPhone 17 Pro"              # iOS 26.2
+xcrun simctl boot "$LATEST_DEVICE"
+xcrun simctl bootstatus "$LATEST_DEVICE" -b
+# `pnpm ios` can install the cached build on this booted target; no clean prebuild.
+pnpm ios --device "$LATEST_DEVICE"
+xcrun simctl io booted screenshot /tmp/intentive-sim-latest.png
 ```
 
 A successful run shows `iOS Bundled <N>ms … (NNNN modules)` in the Metro log and the
@@ -183,9 +238,14 @@ wrote, so nothing keeps running and nothing stale is left on disk. Idempotent �
 safe to run even if some pieces are already gone. Run from the repo root.
 
 ```bash
-# 1. stop Metro (free its reserved port 8082 + any expo/metro process)
+# zsh treats an unmatched glob as an error; keep cleanup idempotent when no files exist.
+setopt nonomatch
+
+# 1. stop Metro and every Mobile build worker started by this workflow
 lsof -ti tcp:8082 | xargs kill -9 2>/dev/null
-pkill -f "expo start" 2>/dev/null; pkill -f "metro" 2>/dev/null
+pkill -f "expo start" 2>/dev/null; pkill -f "expo run:ios" 2>/dev/null
+pkill -f "metro" 2>/dev/null; pkill -f "eas build.*--local" 2>/dev/null
+pkill -f "xcodebuild.*Intentive" 2>/dev/null
 
 # 2. terminate the app, shut the simulator down, quit the Simulator UI.
 #    Keep the installed dev client: it is the fastest reusable native cache.
@@ -193,7 +253,13 @@ for D in $(xcrun simctl list devices booted -j | grep -o '"udid" : "[^"]*"' | cu
   xcrun simctl terminate "$D" com.heyintentive.expo 2>/dev/null
 done
 xcrun simctl shutdown all 2>/dev/null
-osascript -e 'tell application "Simulator" to quit' 2>/dev/null
+osascript -e 'tell application id "com.apple.iphonesimulator" to quit' 2>/dev/null
+
+# Shutting down devices does not prove that the Simulator GUI quit. Give normal quit
+# a moment, then kill the concrete GUI executable if it is still alive. The [S]
+# pattern matches Simulator without matching this command's own shell process.
+sleep 1
+pkill -9 -f '/Simulator.app/Contents/MacOS/[S]imulator' 2>/dev/null
 
 # 3. delete the build artifact(s)
 rm -f apps/mobile/build-*.tar.gz
@@ -211,6 +277,7 @@ too — `kill` on port 8082 only catches a foreground/own-shell process.
 ```bash
 lsof -ti tcp:8082 || echo "port free ✓"
 xcrun simctl list devices booted | grep -i booted || echo "no sims booted ✓"
+pgrep -f '/Simulator.app/Contents/MacOS/[S]imulator' || echo "Simulator GUI quit ✓"
 ls apps/mobile/build-*.tar.gz 2>/dev/null || echo "no artifacts ✓"
 ls -d /tmp/intentive-* 2>/dev/null || echo "no temp ✓"
 ```

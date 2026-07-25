@@ -6,8 +6,37 @@ All notable changes to the Intentive Mobile Client (`apps/mobile/`). Format foll
 
 ## [Unreleased]
 
-Everything below is on the foundation lane (`#18`–`#22`) and has not shipped to
-TestFlight or the App Store. Entries are grouped by issue where that mapping is clear.
+### Simplified
+
+- **Google-only production auth and lifecycle complexity reduction** ([ADR 0030](adr/0030-mobile-google-only-production-auth.md)) — narrowed the six-seam mounted frontend's auth, chat, notifications, account-state, and launch behavior to a single v1-shippable path:
+  - **Auth** is Google-only. Removed Apple and dev branches from the UI, provider types, adapter dispatch (`signIn()` takes no provider argument), `NeonAuthClientPort` (`signInSocial(provider)` → `signInWithGoogle()`), and the runtime config (`enabledAuthProviders` → a single `googleAuthConfigured` derived from both public client IDs). The Identity Gate shows one Google button with pending/disabled state; cancellation is silent; missing configuration and recoverable failures show an actionable retry notice. A production / internal-production build missing either Google client ID now fails config resolution, preventing an unusable binary from shipping. Offline default (no injected adapter) advances with zero capability calls. Tests: `auth-adapter`, `auth-entry` (new), `neon-client` (new port + production-config failure).
+  - **Chat** shows the capability card and suggestions only while the Runtime conversation holds zero messages; once any user, historical, or Companion message exists, `projectTimeline` projects only server-truth rows plus the active thinking indicator. Tests: `runtime-conversation-session` (scaffold-on-empty + dropped-on-message).
+  - **Notifications** now register from the persistent root layout (above both navigation zones) with a once-per-signed-in-period guard: the `false/null → true` transition attempts registration once, rerenders/navigation that stay signed-in do not, and logout resets the guard so a later session registers correctly. Tests: `notifications-registrar` (new) asserts `false→true→true→false→true` produces exactly two attempts.
+  - **Account-state replay** is one named restart operation: a replay creates a fresh conversation session and refreshes Account State before the ready surface returns, so feature gating can change after replay. Unrelated rerenders with the same singleton source never re-read `GET /me`. Tests: `account-state-projection` (no-reread-on-rerender + refresh-applies-change).
+  - **Launch** hides a one-frame Identity Gate flash for returning users behind an opaque white curtain that stays through `RESOLVING` and route replacement and disappears only on pathname agreement. One 96×96 brand mark pulses `scale 0.94 → 1.0` / `opacity 0.65 → 1.0` every 800 ms; under Reduce Motion it is static. One VoiceOver label, "Loading Intentive," with progress/busy semantics; no secondary spinner. Tests: `launch-curtain` (new). The committed app icon is reused; no duplicate asset.
+
+### Reassembled
+
+- **Two-zone layered frontend** ([ADR 0023](adr/0023-mobile-two-zone-layered-frontend.md)) — preserved the Huracán A–L output while moving authentication, onboarding, education, chat, account settings, profile state, and design primitives from the catch-all frontend directory into layered domain owners, explicit entrypoints, and an in-memory Profile Store.
+- Added `/` and `/chat` Router zones, a replaceable local `ConversationSession`, split controller/session tests, Router replacement coverage, and hard Mobile source-root/domain-layer lint enforcement.
+
+### Added
+
+- **Native Google ID-token sign-in** — added `@react-native-google-signin/google-signin`
+  and its Expo config plugin. The Auth Adapter now obtains native Google tokens,
+  exchanges them through Better Auth's `idToken` branch, confirms the resulting
+  session, and leaves SecureStore/session/JWT ownership unchanged. Supplying the
+  public Google iOS client ID deliberately enables Google in an internal build;
+  external distribution still waits on the physical TestFlight real-token gate.
+  This requires a new iOS binary and does not use an `intentive://` OAuth callback.
+
+### Rebuilt
+
+- **Huracán frontend foundation** ([ADR 0022](adr/0022-mobile-scene-driven-local-frontend-foundation.md)) — replaced the mounted route-per-gate and assistant-ui presentation with one scene-driven, locally simulated Expo experience. E and K now render as `welcome` and `ready` modes of the same chat surface. Added configurable content/theme, five education scenes, drawer/settings overlays, keyboard composer behavior, and deterministic L1-L4 response phases.
+- Added pure controller coverage and a 390×844 React Native journey that verifies B2/F/G/K2/L1-L4 and zero auth, permission, network, WebSocket, notification, or durable-storage calls.
+- Parked the stable auth, Control Plane, Protocol runtime, Message Store, notification, and telemetry modules as dormant production adapters. Removed obsolete visual assets, route groups, presentation tests, Manrope, assistant-ui, and their Babel/Metro/Jest workarounds.
+
+The historical foundation-lane entries below describe superseded presentations and the dormant adapters that remain source-controlled. Nothing in those entries should be read as mounted capability.
 
 ### Added
 
@@ -119,7 +148,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 - **Monorepo import** — Mobile Client brought into the Intentive workspace as
   `@intentive/mobile` (Expo SDK 56, React Native, TypeScript, `expo-router`). Domain
   layout under `src/domains/{auth,onboarding,chat,…}/` with layer-direction lint;
-  mobile-specific `CONTEXT.md`, `ARCHITECTURE.md`, `docs/DESIGN.md`, and ADRs
+  mobile-specific `CONTEXT.md`, `ARCHITECTURE.md`, the historical DESIGN.md, and ADRs
   `0001`–`0011` (product direction: chat-first surface, remote Agent Runtime,
   navigation vs capability axes, in-memory Launch State, Liquid Glass shell intent).
 
@@ -205,7 +234,7 @@ TestFlight or the App Store. Entries are grouped by issue where that mapping is 
 
 - **Onboarding production-polish pass** ([ADR 0021](adr/0021-mobile-onboarding-visual-subsystem.md))
   — onboarding is now a sanctioned always-dark visual sub-system, reconciled with
-  [`DESIGN.md`](DESIGN.md) instead of silently contradicting it:
+  the then-current DESIGN.md instead of silently contradicting it:
   - **Manrope brand typeface** (onboarding-scoped; chat stays SF Pro) — loaded in
     `app/_layout.tsx` via `@expo-google-fonts/manrope` + `expo-font`, gated behind
     first render. New deps: `expo-font`, `@expo/vector-icons`, `@expo-google-fonts/manrope`.

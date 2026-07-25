@@ -74,6 +74,15 @@ prebuild` writes it into `Expo.plist` as `EXUpdatesRuntimeVersion`. Bump
   requires a **new binary** (OTA cannot add this plugin to an older build). Set
   `EXPO_PUBLIC_SENTRY_DSN` in the EAS build environment for production error
   capture; leave blank in local dev to keep telemetry disabled.
+- `ios.infoPlist.ITSAppUsesNonExemptEncryption` is `false`, so EAS can provide
+  the App Store export-compliance answer for the app's ordinary HTTPS use. Change
+  this before release if the app later adds non-exempt encryption functionality.
+- `app.config.js` adds `@react-native-google-signin/google-signin` when
+  `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` is present and derives its required reversed
+  iOS URL scheme. It also applies the local modular-header config plugin required
+  for the Google App Check CocoaPods dependency graph. The existing `intentive`
+  scheme remains in `app.json`. This native module/config-plugin change requires
+  a **new iOS binary**.
 
 **2. `eas.json`** (committed) — each build profile is bound to an update **channel**
 and an EAS **environment** (so `EXPO_PUBLIC_*` vars from EAS inject at build time):
@@ -113,12 +122,23 @@ To pull EAS vars for local simulator runs against a specific environment:
 eas env:pull --environment preview   # writes .env.local (gitignored)
 ```
 
-Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL) follow the same
-pattern when they differ per environment. See [Expo EAS environment variables](https://docs.expo.dev/eas/environment-variables/).
+Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL, and the public
+Google iOS and web client IDs) follow the same pattern when they differ per environment.
+Both Google client IDs are public configuration, not secrets. See [Expo EAS
+environment variables](https://docs.expo.dev/eas/environment-variables/).
+
+**Google provider configuration (Google Cloud + Neon Auth).** Create the iOS
+OAuth client for bundle ID `com.heyintentive.expo`; retain the web client and
+secret already configured in Neon Auth. In the Mobile Client, supply both
+`EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`:
+the former identifies the native app and installs its reversed URL scheme, while
+the latter is the audience of the Google ID token that Neon Auth verifies. Do
+not commit secrets. Use the resulting physical-device internal build for proof
+before external distribution.
 
 **3. Generated iOS native (CNG)** (`ios/Intentive/Supporting/Expo.plist`,
 `ios/Intentive/Intentive.entitlements`) — `ios/` is **not** committed; `expo
-prebuild` generates it from `app.json` + config plugins at build time ([ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
+prebuild` generates it from `app.json`, `app.config.js`, and config plugins at build time ([ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
 EAS Build prebuilds automatically when `ios/` is absent. The generated plist
 carries the resolved values:
 
@@ -172,6 +192,82 @@ prebuild` resolves `EXUpdatesRuntimeVersion` from `app.json` at build time. If y
 -p ios` (it runs `pod install` for the `expo-updates` / `expo-notifications`
    native deps). EAS Build does both automatically. For the local dev-client
    simulator loop, see [`DEVELOPMENT.md`](DEVELOPMENT.md).
+
+### Mandatory zero-quota EAS preflight
+
+Before **every** `eas build`, run the matching profile locally. Do not use EAS
+as the first place that discovers a CocoaPods, native compilation, or Metro
+resolution failure. This is particularly important in this monorepo: shared
+workspace packages publish their runtime entry points into ignored `dist/`
+directories. A local test or harness may have built those directories already,
+while an EAS worker always starts from a clean checkout.
+
+`package.json` makes the package-build step reusable:
+
+- `pnpm run eas:prepare` builds the monorepo workspace outputs required by the
+  Mobile Client at runtime.
+- `pnpm run eas:preflight` runs that same preparation plus the exact
+  `expo export:embed` JavaScript bundle command.
+- `eas-build-post-install` calls `eas:prepare` automatically in EAS after iOS
+  dependency installation, CNG prebuild, and CocoaPods, but before EAS bundles
+  JavaScript. It prevents a clean EAS worker from resolving workspace packages
+  against missing `dist/` entries.
+
+From `apps/mobile`, use the _same EAS environment_ and run the reusable
+preflight. Replace `preview` with `production` when preparing a store build:
+
+```bash
+pnpm dlx eas-cli@latest env:exec preview \
+  "pnpm run eas:preflight"
+```
+
+For a native-surface change, also run the iOS gates locally using the same
+environment:
+
+```bash
+pnpm dlx eas-cli@latest env:exec preview \
+  "pnpm exec expo prebuild --clean"
+
+pnpm dlx expo-doctor@latest
+
+cd ios
+SENTRY_DISABLE_AUTO_UPLOAD=true \
+SENTRY_CLI_EXECUTABLE="$(cd ../../.. && node -p 'require.resolve(\"@sentry/cli-darwin/bin/sentry-cli\", { paths: [\"node_modules/.pnpm/node_modules\"] })')" \
+  xcodebuild -workspace Intentive.xcworkspace -scheme Intentive \
+  -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+Finally, run EAS's local builder. It uses the `local-preview` profile solely
+for this no-quota gate: it extends `preview`, fetches the same managed signing
+credentials, and runs Fastlane's archive/export pipeline. It deliberately
+disables only Sentry source-map upload because EAS secret variables are not
+available to a local builder; the cloud `preview` profile retains authenticated
+uploads. A successful command writes a signed internal-distribution IPA.
+
+```bash
+pnpm dlx eas-cli@latest build --local --profile local-preview --platform ios \
+  --output /tmp/Intentive-preview-preflight.ipa
+```
+
+`expo prebuild --clean` runs CocoaPods. The unsigned Xcode command verifies
+the generated physical-device Release app without using Apple signing or EAS
+quota; local Sentry upload is deliberately disabled, while EAS keeps its
+authenticated upload. The local EAS build adds Fastlane, signing, and IPA export
+to that proof. Treat all five commands as release blockers. Only submit
+to EAS after they pass and after `eas env:list <environment>` confirms the
+public endpoint, Google client-ID, Sentry DSN, and Sentry build-token values
+required by that profile.
+
+Before the one production cloud build, repeat the local builder gate from the
+merged `main` commit with `local-production`. That profile extends `production`
+and disables only local Sentry upload, so its channel, environment, store
+distribution, and other production settings remain unchanged.
+
+```bash
+pnpm dlx eas-cli@latest build --local --profile local-production --platform ios \
+  --output /tmp/Intentive-production-preflight.ipa
+```
 
 ---
 
@@ -233,6 +329,14 @@ client** (`Updates.channel` is `null` there).
 ```bash
 eas build:list --platform ios --limit 1
 ```
+
+For the native Google gate, use a physical-device internal-distribution build to
+complete Google sign-in, confirm the app returns without an `intentive://` OAuth callback,
+relaunch and verify SecureStore session restoration, then verify the shared
+`getUserJwt()` token is accepted by Control Plane `GET /me` and `GET /agent`.
+Do not distribute the build externally until all checks pass. If any fail,
+remove the Google client ID from the next build environment and hand off the
+exact Neon compatibility or configuration error.
 
 **Push** only works on a **physical device** with a real build — never in the
 simulator, Expo Go, or a dev client (`getExpoPushTokenAsync` is gated on

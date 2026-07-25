@@ -1,94 +1,73 @@
-/**
- * Root layout — composition root for the navigation axis. This is the one place
- * allowed to wire providers to a domain service (it is not under `src/` and is
- * not lint-checked). It owns the single reactive route replacement: it reads the
- * shared Launch State, runs the resolver, and replaces to the matching route zone
- * whenever the destination changes. Gate screens never navigate themselves.
- */
 import { useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack, router } from "expo-router";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import { OnboardingFontsProvider } from "../src/design/onboarding-fonts";
-import { createAuthAdapter } from "../src/domains/auth/service/auth-adapter";
-import {
-  NEON_ENABLED_PROVIDERS,
-  createNeonAuthClient,
-} from "../src/domains/auth/service/neon-client";
-import { AuthAdapterProvider } from "../src/domains/auth/ui/auth-context";
+import { getPlatform } from "../src/entrypoints/platform";
+import { LaunchCurtain } from "../src/entrypoints/launch-curtain";
+import { NotificationsRegistrar } from "../src/entrypoints/notifications-registrar";
 import { resolveLaunchState } from "../src/domains/onboarding/service/resolve-launch-state";
 import { routeForDestination } from "../src/domains/onboarding/service/route-for-destination";
-import {
-  LaunchStateProvider,
-  createControlPlaneLaunchStateSource,
-  useLaunchState,
-} from "../src/providers/launch-state";
-import { createSentryTelemetry, initTelemetry, wrapRoot } from "../src/providers/telemetry";
+import { LaunchStateProvider, useLaunchState } from "../src/providers/launch-state";
+import { ProfileProvider } from "../src/providers/profile/profile-provider";
+import { wrapRoot } from "../src/providers/telemetry";
 
-initTelemetry({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? "",
-  environment: __DEV__ ? "development" : "production",
-});
-const telemetry = createSentryTelemetry();
+// Build the composition root at module load: constructing it runs `initTelemetry`,
+// so `wrapRoot` below sees a ready Sentry when a DSN is configured (ADR 0029). A
+// blank DSN keeps telemetry the no-op and `wrapRoot` returns the component as-is.
+getPlatform();
 
-/**
- * The single real Auth Adapter, built once from the Neon client. No social
- * provider is a working capability yet (`NEON_ENABLED_PROVIDERS` is empty — see
- * neon-client.ts), so Google/Apple report `not-configured`; the launch-only dev
- * provider, exposed only under `__DEV__` and never shipped, is the working path
- * until #23 lands the https callback (ADR 0012).
- */
-const authAdapter = createAuthAdapter({
-  client: createNeonAuthClient(),
-  enabled: NEON_ENABLED_PROVIDERS,
-  includeDev: __DEV__,
-  telemetry,
-});
+// Module-level so the registrar's effect dependency stays stable across renders;
+// a fresh arrow each render would re-arm the one-shot registration attempt.
+const registerForPush = () => getPlatform().registerForPush();
 
 /**
- * The real Launch State source: hydrates from Control Plane `GET /me` using the
- * Auth Adapter's User JWT (#23). With no Neon session `getUserJwt()` returns null
- * and the source yields signed-out without a network call — so under the dev
- * provider (no real session) and a blank base URL the app still boots cleanly to
- * the Identity Gate. The launch-only signed-in path arrives with real on-device
- * sign-in (#61). `fetch` is injected (the source stays RN-free and testable).
+ * Runs the launch decision as an effect: resolve the in-memory Launch State to a
+ * Launch Destination, map it to a Launch Route, and replace into the target zone.
+ * A `splash` route (state still RESOLVING) does nothing, leaving the default `/`
+ * route mounted until `GET /me` hydrates. This replaces the old "cold launch
+ * always → `/`" rule with Control-Plane gate truth (ADR 0025).
  */
-const launchStateSource = createControlPlaneLaunchStateSource({
-  baseUrl: process.env.EXPO_PUBLIC_CONTROL_PLANE_BASE_URL ?? "",
-  getUserJwt: () => authAdapter.getUserJwt(),
-  fetch: (url, init) => globalThis.fetch(url, init),
-});
-
-function RootNavigator(): React.JSX.Element {
+function RootNavigator(): null {
   const { state } = useLaunchState();
   const route = routeForDestination(resolveLaunchState(state));
-  const router = useRouter();
-
-  // The launch decision (resolver + route mapping) is pure and tested in
-  // route-for-destination.ts; the layout owns only the effect. A `splash` route
-  // stays on the initial `index`; a `replace` route swaps to its zone. Replacing
-  // to the current route is a no-op, so this is safe to run on every change.
-  // `replace` (not `push`) so users can't back-navigate past the gate.
-  const zone = route.kind === "replace" ? route.zone : null;
+  const target = route.kind === "replace" ? route.zone : null;
   useEffect(() => {
-    if (zone !== null) router.replace(zone);
-  }, [zone, router]);
-
-  return <Stack screenOptions={{ headerShown: false }} />;
+    if (target !== null) router.replace(target);
+  }, [target]);
+  return null;
 }
 
-function RootLayout(): React.JSX.Element {
-  // Start Manrope loading at boot (onboarding-scoped — chat stays SF Pro) but do
-  // not block Launch State hydration; onboarding surfaces gate locally. See
-  // src/design/onboarding-fonts.tsx and apps/mobile/docs/adr/0021-*.
+function RootExperience(): React.JSX.Element {
+  // Push registration owns the persistent signed-in lifecycle (ADR 0028 / 0030):
+  // it lives at the root, under LaunchStateProvider and above both navigation
+  // zones, so remounting the (main) zone never re-arms it within one signed-in
+  // period. Registration becomes eligible only after the user reaches chat:
+  // first-time users therefore see the OS prompt after the contextual
+  // Permissions Intro action, while returning ready users register on launch.
+  const { state } = useLaunchState();
+  const registrationReady = resolveLaunchState(state) === "READY_FOR_CHAT";
   return (
-    <OnboardingFontsProvider>
-      <LaunchStateProvider source={launchStateSource}>
-        <AuthAdapterProvider adapter={authAdapter}>
-          <RootNavigator />
-        </AuthAdapterProvider>
-      </LaunchStateProvider>
-    </OnboardingFontsProvider>
+    <>
+      <RootNavigator />
+      <NotificationsRegistrar registrationReady={registrationReady} register={registerForPush} />
+      <Stack screenOptions={{ headerShown: false, animation: "none" }} />
+      <LaunchCurtain />
+    </>
   );
 }
 
+function RootLayout(): React.JSX.Element {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ProfileProvider>
+        <LaunchStateProvider source={getPlatform().launchStateSource}>
+          <RootExperience />
+        </LaunchStateProvider>
+      </ProfileProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+// Sentry's error boundary + performance wrapper when a DSN is configured; the
+// identity function otherwise (ADR 0029).
 export default wrapRoot(RootLayout);

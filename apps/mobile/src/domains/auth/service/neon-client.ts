@@ -1,52 +1,40 @@
 /**
  * Neon Auth boundary — the ONE native-SDK-importing file in the auth domain, and
  * the single sanctioned seam to the sign-in SDK for the whole Mobile Client (ADR
- * 0012, CONTEXT.md → Auth Adapter / Auth Provider). Product code never imports an
- * auth SDK directly: the UI reaches sign-in only through the **Auth Adapter**,
- * which depends on the RN-free `NeonAuthClientPort` this file alone implements —
- * so this *is* the provider seam, just expressed as the auth domain's own deep
- * boundary rather than a shared package. It does NOT belong in
- * `packages/providers/`: that package holds the cross-deployable, server-side
- * JWKS *verify* concern (`packages/providers/src/auth.ts`, used by the Control
- * Plane and Agent Runtime); this is the RN-native, Mobile-only sign-in client and
- * cannot run server-side. It adapts Better Auth's native client path (SecureStore
- * cookies + deep-link OAuth) into the port the provider and adapter depend on.
+ * 0012, narrowed to Google-only by ADR 0030, CONTEXT.md → Auth Adapter). Product
+ * code never imports an auth SDK directly: the UI reaches sign-in only through
+ * the **Auth Adapter**, which depends on the RN-free `NeonAuthClientPort` this
+ * file alone implements — so this *is* the sign-in seam, just expressed as the
+ * auth domain's own deep boundary rather than a shared package. It does NOT
+ * belong in `packages/providers/`: that package holds the cross-deployable,
+ * server-side JWKS *verify* concern (`packages/providers/src/auth.ts`, used by
+ * the Control Plane and Agent Runtime); this is the RN-native, Mobile-only
+ * sign-in client and cannot run server-side. It adapts Better Auth's native
+ * client path (SecureStore cookies) into the port the adapter depends on.
  * Because this file imports native Mobile Client modules, it is excluded from
  * the pure-core node:test build (tsconfig.build.json) and lives on the RN axis.
  *
  * The client points at the Neon Auth base URL, whose Better Auth server is the
  * same one whose JWKS backs the shared verifier (#15). Mobile uses Better Auth
  * directly (not neon-js's React-DOM adapter the Desktop Client uses) because
- * only the Better Auth native plugin handles session persistence and the OAuth
- * callback. See apps/mobile/docs/adr/0012-*.
+ * the Expo plugin owned SecureStore session persistence. Production auth is
+ * Google-only (ADR 0030): the native ID-token path reaches Better Auth through
+ * its idToken branch; the `intentive` scheme remains for the app's general
+ * deep-link surface.
  *
- * The native path differs from BetterAuth's web SDK; its setup gotchas (the
- * scheme/trusted-origins constraint above is one) live in the Expo guide:
+ * The native path differs from BetterAuth's web SDK; its setup gotchas (native
+ * client configuration and session persistence) live in the Expo guide:
  * https://better-auth.com/docs/integrations/expo
  */
 import { expoClient } from "@better-auth/expo/client";
+import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
 import { createAuthClient } from "better-auth/client";
 import * as SecureStore from "expo-secure-store";
 
-import type { NeonAttempt, NeonAuthClientPort, SocialProvider } from "./ports.js";
+import type { NeonAttempt, NeonAuthClientPort } from "./ports.js";
 
 /** Read from app config; the Neon Auth base URL is a public endpoint. */
 const NEON_AUTH_BASE_URL = process.env.EXPO_PUBLIC_NEON_AUTH_BASE_URL ?? "";
-
-/**
- * Which social providers are a *working* sign-in capability on mobile today —
- * deliberately empty.
- *
- * Capability honesty (ADR 0012): "enabled" must mean "completes a sign-in", not
- * "has credentials". Google has Neon's shared OAuth credentials, but its
- * on-device round-trip cannot complete because Neon's managed `trusted_origins`
- * rejects the custom `intentive://` callback scheme — so advertising it would
- * open a flow that dead-ends. Apple has no credentials at all. Both therefore
- * report `not-configured`, and the only working path is the `__DEV__` dev
- * provider until #23 lands the https-based callback; re-enable `"google"` (and
- * later `"apple"`) here once that round-trip actually completes.
- */
-export const NEON_ENABLED_PROVIDERS: ReadonlySet<SocialProvider> = new Set<SocialProvider>();
 
 function createClient() {
   return createAuthClient({
@@ -65,24 +53,69 @@ function createClient() {
  * Build the real `NeonAuthClientPort`. Session/token persistence is owned by
  * the Better Auth native plugin (SecureStore) — the Mobile Client hand-rolls none of it.
  */
-export function createNeonAuthClient(): NeonAuthClientPort {
+export function createNeonAuthClient(options: {
+  googleIosClientId: string;
+  googleWebClientId: string;
+}): NeonAuthClientPort {
   const client = createClient();
+  const googleIosClientId = options.googleIosClientId.trim();
+  const googleWebClientId = options.googleWebClientId.trim();
+  let googleConfigurationError: string | null = null;
+
+  // Native auth initialization belongs here, behind the Auth Adapter's
+  // platform boundary. A missing public client ID leaves Google unconfigured.
+  if (googleIosClientId && googleWebClientId) {
+    try {
+      GoogleSignin.configure({
+        iosClientId: googleIosClientId,
+        // Neon Auth is configured with this existing web client. Supplying it
+        // here makes Google's native ID token carry that accepted audience.
+        webClientId: googleWebClientId,
+      });
+    } catch (error) {
+      googleConfigurationError =
+        error instanceof Error ? error.message : "Google configuration failed.";
+    }
+  }
 
   return {
-    async signInSocial(provider: SocialProvider): Promise<NeonAttempt> {
+    async signInWithGoogle(): Promise<NeonAttempt> {
       // This boundary always *returns* a NeonAttempt — never throws — so the
-      // provider/adapter chain stays a pure outcome map. SDK/network throws are
+      // adapter chain stays a pure outcome map. SDK/network throws are
       // collapsed into `failed` here, the same recoverable shape as a returned error.
       try {
-        // The Better Auth native plugin opens the system browser and returns once the deep-link
-        // callback fires (or the user dismisses it).
-        const { error } = await client.signIn.social({ provider, callbackURL: "/" });
+        if (!googleIosClientId || !googleWebClientId) {
+          return { result: "failed", message: "Google sign-in is not configured." };
+        }
+        if (googleConfigurationError) {
+          return { result: "failed", message: googleConfigurationError };
+        }
+
+        const response = await GoogleSignin.signIn();
+        if (!isSuccessResponse(response)) {
+          return { result: "dismissed" };
+        }
+
+        const tokens = await GoogleSignin.getTokens();
+        if (!tokens.idToken) {
+          return { result: "failed", message: "Google did not return an ID token." };
+        }
+
+        const { error } = await client.signIn.social({
+          provider: "google",
+          idToken: {
+            token: tokens.idToken,
+            accessToken: tokens.accessToken,
+          },
+        });
         if (error) {
           return { result: "failed", message: error.message ?? "Sign-in failed." };
         }
-        // A dismissed browser leaves no session; a completed flow sets one.
+
         const session = await client.getSession();
-        return session.data ? { result: "authenticated" } : { result: "dismissed" };
+        return session.data
+          ? { result: "authenticated" }
+          : { result: "failed", message: "Google sign-in did not establish a session." };
       } catch (err) {
         return {
           result: "failed",

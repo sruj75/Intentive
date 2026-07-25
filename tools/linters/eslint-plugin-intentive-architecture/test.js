@@ -104,6 +104,9 @@ const ruleTester = new RuleTester({
 
 const MOBILE_CHAT_SERVICE = "/repo/apps/mobile/src/domains/chat/service/sendMessage.ts";
 const MOBILE_CHAT_TYPES = "/repo/apps/mobile/src/domains/chat/types/index.ts";
+const MOBILE_ENTRYPOINT = "/repo/apps/mobile/src/entrypoints/chat-entry.tsx";
+const MOBILE_EXPERIENCE = "/repo/apps/mobile/src/experience/controller.ts";
+const MOBILE_UNKNOWN_LAYER = "/repo/apps/mobile/src/domains/chat/controllers/chat.ts";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CONTROL_PLANE_CONFIG = `${REPO_ROOT}/services/control-plane/src/config/env.ts`;
 const CONTROL_PLANE_IDENTITY_SERVICE = `${REPO_ROOT}/services/control-plane/src/domains/identity/service/resolve-account.ts`;
@@ -248,10 +251,72 @@ ruleTester.run("provider-only-cross-cutting", plugin.rules["provider-only-cross-
   ],
 });
 
+ruleTester.run("mobile-source-structure", plugin.rules["mobile-source-structure"], {
+  valid: [
+    {
+      name: "Mobile entrypoints are an allowed composition root",
+      filename: MOBILE_ENTRYPOINT,
+      code: "export const entry = true;",
+    },
+    {
+      name: "canonical Mobile domain layers are allowed",
+      filename: MOBILE_CHAT_TYPES,
+      code: "export interface TimelineItem {}",
+    },
+    {
+      name: "the Mobile public source index is allowed",
+      filename: "/repo/apps/mobile/src/index.ts",
+      code: "export const ready = true;",
+    },
+    {
+      name: "Mobile providers are an allowed source root",
+      filename: "/repo/apps/mobile/src/providers/profile/profile-store.ts",
+      code: "export const profile = true;",
+    },
+    {
+      name: "Mobile design is an allowed source root",
+      filename: "/repo/apps/mobile/src/design/theme.ts",
+      code: "export const theme = true;",
+    },
+    ...["config", "repo", "service", "runtime", "ui", "providers"].map((layer) => ({
+      name: `Mobile domain ${layer} is an allowed layer`,
+      filename: `/repo/apps/mobile/src/domains/chat/${layer}/fixture.ts`,
+      code: "export const fixture = true;",
+    })),
+    {
+      name: "other deployables are outside the Mobile structure rule",
+      filename: CONTROL_PLANE_IDENTITY_SERVICE,
+      code: "export const identity = true;",
+    },
+  ],
+  invalid: [
+    {
+      name: "catch-all experience root is rejected",
+      filename: MOBILE_EXPERIENCE,
+      code: "export const controller = true;",
+      errors: [{ messageId: "unknownRoot" }],
+    },
+    {
+      name: "unknown Mobile domain layer is rejected",
+      filename: MOBILE_UNKNOWN_LAYER,
+      code: "export const controller = true;",
+      errors: [{ messageId: "unknownLayer" }],
+    },
+  ],
+});
+
 test("plugin exports and recommends provider-only-cross-cutting", () => {
   assert.ok(plugin.rules["provider-only-cross-cutting"]);
   assert.equal(
     plugin.configs.recommended.rules["intentive-architecture/provider-only-cross-cutting"],
+    "error",
+  );
+});
+
+test("plugin exports and recommends mobile-source-structure", () => {
+  assert.ok(plugin.rules["mobile-source-structure"]);
+  assert.equal(
+    plugin.configs.recommended.rules["intentive-architecture/mobile-source-structure"],
     "error",
   );
 });
@@ -264,6 +329,7 @@ test("root ESLint config enables provider-only-cross-cutting", () => {
   assert.equal(architectureRuleConfigs.length, 2);
   for (const config of architectureRuleConfigs) {
     assert.equal(config.rules["intentive-architecture/provider-only-cross-cutting"], "error");
+    assert.equal(config.rules["intentive-architecture/mobile-source-structure"], "error");
   }
 });
 

@@ -49,6 +49,7 @@ module.exports = [
       "intentive-architecture/context-vocabulary": "error",
       "intentive-architecture/filename-case": "error",
       "intentive-architecture/provider-only-cross-cutting": "error",
+      "intentive-architecture/mobile-source-structure": "error",
     },
   },
   {
@@ -70,6 +71,7 @@ module.exports = [
       "intentive-architecture/context-vocabulary": "error",
       "intentive-architecture/filename-case": "error",
       "intentive-architecture/provider-only-cross-cutting": "error",
+      "intentive-architecture/mobile-source-structure": "error",
     },
   },
 ];

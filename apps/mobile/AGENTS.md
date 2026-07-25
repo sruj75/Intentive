@@ -1,54 +1,59 @@
 # Mobile Client — Agent Guide
 
-iOS Expo client. The chat surface for the **Companion**. Capture concerns and Mac-specific work live in `apps/desktop/`.
+iPhone-first Expo frontend for the Intentive Mobile Client. Read this file, the root [`AGENTS.md`](../../AGENTS.md), [`CONTEXT.md`](CONTEXT.md), and [`ARCHITECTURE.md`](ARCHITECTURE.md) before changing mounted behavior.
 
-**Read first:** [`CONTEXT.md`](CONTEXT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), then root [`AGENTS.md`](../../AGENTS.md) Start here (testing, ADRs).
+## Mounted frontend
 
-## Role in V1
+The Huracán frontend preserves the A–L journey while live routes compose production auth, Control Plane, notifications, telemetry, and Agent Runtime integrations. Entrypoint defaults remain capability-free for deterministic frontend tests.
 
-The Mobile Client is the **only client with a chat surface**. It:
+- `(onboarding)` owns the `/` navigation zone for A–D.
+- `(main)` owns the `/chat` navigation zone for E–L.
+- B2, K2, Education Deck pages, F/G overlays, and L1–L4 are local state, not routes.
+- Completion uses Router replacement to `/chat`; logout clears the in-memory profile and replaces to `/`.
+- **Launch State drives cold-launch navigation** (ADR 0025): the root layout's `RootNavigator` resolves `GET /me` gate truth to `/` or `/chat`, so a signed-out launch stays on A while a fully-onboarded account resumes on `/chat`. The two-zone router re-target folds the six ADR-0011 gates onto the two live zones. Still no on-device persistence.
 
-- Renders the **Liquid Glass Chat Shell** (no header, no bottom tabs)
-- Runs the Pre-Chat Gate sequence: Identity Gate → Consent Primer (Data & Privacy) → Onboarding funnel (name → acquisition source → grant permissions) → Sibling Client Invitation → Free Trial. Get Started precedes Identity in the signed-out zone but is not a gate ([`adr/0018`](docs/adr/0018-mobile-pre-chat-funnel-minimum.md)/[`0019`](docs/adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)/[`0020`](docs/adr/0020-mobile-consent-primer-is-data-and-privacy-acceptance.md))
-- Connects to the **Agent Runtime** directly via WebSocket using **Protocol** schemas from `packages/protocol/`
-- Reports the device **IANA timezone** as optional `client_tz` on every `connect` frame so the Runtime can resolve wall-clock Cron schedules while the user is offline ([ADR-0025](https://github.com/sruj75/Intentive/blob/main/services/agent-runtime/docs/adr/0025-agent-runtime-device-reported-user-timezone.md) on the Runtime side)
-- Renders **Conversation History** from the Runtime Adapter's in-memory **Message Store** (server-truth projection seeded by the reconnect snapshot — never persisted to disk)
-- Registers the Expo Push Token with the Control Plane; receives **Push Notifications** triggered by **Post-Message-Back**
+## Structure
 
-## Domains
+```text
+app/                         routes and headerless zone layouts only
+src/entrypoints/             cross-domain composition only
+src/domains/
+  auth/                      A presentation and live Google-only auth boundary
+  onboarding/                B–D plus Education Deck
+  chat/                      E/K/L, drawer, composer, local/runtime ConversationSession
+  account/                   session settings and logout presentation
+  notifications/             push permission and device registration
+src/providers/profile/       in-memory name and initials shared across zones
+src/providers/*              live Launch/Account State and telemetry seams
+src/design/                  theme, brand identity, prop-only primitives
+```
 
-Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
+Every business domain follows `types → config → repo → service → runtime → ui`. Cross-domain behavior is composed in `src/entrypoints/`; do not reach into another domain's internal layer. Allowed source roots and domain layers are mechanically enforced, so never recreate a catch-all root.
 
-- `auth` — **Auth Adapter**, Identity Gate, Neon/Dev providers ([`adr/0012`](docs/adr/0012-mobile-auth-adapter-with-dev-provider.md))
-- `onboarding` — Consent Primer (Data & Privacy) + Onboarding funnel (`ui/onboarding-funnel.tsx` sequencing name → acquisition source → grant permissions) + Sibling Invitation + Free Trial screens; **Launch State Resolver** + **Launch Route** (`service/resolve-launch-state.ts`, `service/route-for-destination.ts`). The funnel collapses to one `onboarding` gate ([`adr/0019`](docs/adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)); its Grant Permissions step takes an injected notification-permission ask (wired by the `(onboarding)` route), never importing `notifications`
-- `chat` — `CompanionChat` Intentive Chat Components (`@assistant-ui/react-native`, ADR 0009/0015); **Runtime Adapter** in `runtime/` + `use-companion-runtime.ts` external-store binding (`retryUserMessage` for failed outbound); **Message Store** in `service/message-store.ts` (the adapter's intent-named interface over `conversation-reducer`); `service/chat-presentation.ts` for Agent State, continuity, and Mac setup banner; `CompanionChat` renders a projected `accountState` (Mac setup banner); Account Affordance opens the Account Surface sheet from `(chat)/`; `dev-transport.ts` for local fixtures. Cross-domain composition (Runtime Adapter, Account State projection, `CompanionChat` + Account Surface) lives in `src/entrypoints/chat-entry.tsx`; the `(chat)/` route renders `<ChatEntry/>` only
-- `notifications` — Expo Push Token registration (around first chat entry). The permission **prompt** now first fires in the Onboarding funnel's Grant Permissions step ([`adr/0019`](docs/adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)); the port does not re-prompt once permission is decided, so registration still proceeds at chat entry
-- `account` — Account Surface sheet (`ui/account-surface.tsx`), Connection Status (`service/account-status.ts`), logout via Auth Adapter + Launch State `markSignedOut()`
+## Frontend invariants
 
-## Working docs
+- E and K remain `welcome` and `ready` modes of one conversation component.
+- UI renders `ConversationTimelineItem`, never Protocol shapes. **Chat Runtime is reconnected** (ADR 0026): the `(main)` route composes an Agent-Runtime-backed `ConversationSession` via `runtime-conversation-session.ts`, which translates Protocol `ConversationMessage`s → `ConversationTimelineItem[]` and Agent/connection state → `phase`, so `ConversationScene` still renders only timeline shapes.
+- The `ConversationSession` is replaceable; the local one owns deterministic thinking/composing/reply timers and the runtime-backed one owns a live WebSocket. Either must release its work on replacement and disposal (the local cancels timers; the runtime `close`s the connection).
+- Composer text, focus, gestures, drawer state, and account settings remain UI-owned.
+- Domain copy belongs in that domain's `config/`; global theme, brand, and visual primitives belong in `src/design/`.
+- The six production seams enter through the `src/entrypoints/` composition root (`platform.ts` / `runtime-config.ts`), which live `app/` routes inject: Google-only Auth (ADRs 0024/0030), Launch State (0025), Chat Runtime (0026), Account State (0027), Notifications (0028/0030), and Telemetry (0029).
+- Entrypoint components keep a capability-free offline default (no injected adapter/callbacks ⇒ no auth/HTTP/WebSocket/SecureStore/telemetry/notification calls). That default is what the `experience-journey` invariant test drives; Contacts and durable storage remain parked and must make zero calls on that path.
+- Production modules not yet reached by the integration plan stay parked, not deleted or reconnected without extending the approved plan and recording an ADR.
+- Preserve A–L visuals, copy, interactions, test IDs, and all 19 snapshots unless a later design task explicitly changes them.
 
-- [`../../docs/prd/mobile-PRD.md`](../../docs/prd/mobile-PRD.md) — Mobile PRD
-- [`docs/DESIGN.md`](docs/DESIGN.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) — Mobile-specific design and architecture
-- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — shipped and in-progress Mobile Client changes
-- [`docs/BACKLOGS.md`](docs/BACKLOGS.md) — deferred polish and legal-copy follow-ups (not shippable as-is)
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local dev workflow (tag it to build + run the dev client in the iOS simulator)
-- [`docs/RELEASE.md`](docs/RELEASE.md) — release/OTA path (EAS Build + EAS Update)
-- [`docs/adr/`](docs/adr/) — Mobile Client ADRs (system-wide → [`docs/adr/`](../../docs/adr/))
+## Verify
 
-## Stack & deploy
+Use Node 24 or newer.
 
-- Expo / React Native, TypeScript
-- Local dev: `pnpm --dir apps/mobile dev` (or `ios` / `android`); tests: `pnpm --dir apps/mobile test` (Node) and `pnpm --dir apps/mobile test:rn` (Jest / RN harness); harness: `pnpm harness --scope apps/mobile`
-- iOS Simulator verification (start Metro from `apps/mobile`; wipe DerivedData on `clang`/`swift-frontend` crashes): see [`docs/TESTING.md` → Mobile Client → iOS simulator verification](../../docs/TESTING.md#ios-simulator-verification-visual-on-device)
-- Deploys to TestFlight / App Store via **EAS Build** (Git-based); JS-only changes ship over-the-air via **EAS Update** (`expo-updates`). Push notifications go through the Expo Push Service (`expo-notifications`, APNs key in EAS credentials). Both paths + the push wiring: [`docs/RELEASE.md`](docs/RELEASE.md)
-- `@assistant-ui/react-native` is the **Chat Primitive Engine** behind Intentive Chat Components — keep it replaceable (ADR 0009 spike: KEEP)
-- Error reporting goes through `src/providers/telemetry`; never import `@sentry/react-native` directly in domains or routes.
+```bash
+pnpm --dir apps/mobile typecheck
+pnpm --dir apps/mobile test
+pnpm --dir apps/mobile test:rn
+pnpm lint:architecture:test
+pnpm docs:check
+pnpm lint
+pnpm harness --scope apps/mobile
+```
 
-## Guardrails specific to this deployable
-
-- The Mobile Client is **not** the Agent Runtime, Control Plane, or DeepAgents. It is a view.
-- Persist **nothing** durably about messages — the server is truth.
-- **`connect.client_tz`:** include the device IANA zone on every reconnect via injectable `resolveTimeZone` in `chat/runtime/runtime-adapter.ts` (defaults to `defaultResolveTimeZone` → `Intl.DateTimeFormat().resolvedOptions().timeZone`). Last report wins across devices; omit only when the platform cannot resolve a zone (Runtime falls back to UTC). Field is optional on the wire but required product behavior once Cron is live.
-- The notification permission **prompt** fires in the Onboarding funnel's Grant Permissions step (omi-style: ask on Continue, always advance); registering the Expo Push Token still happens around first chat entry. Do not re-prompt once permission is decided ([`adr/0019`](docs/adr/0019-mobile-onboarding-funnel-collapses-to-one-gate.md)).
-- Keep `@assistant-ui/react-native` behind Intentive Chat Components — never let vendor visuals or data shapes leak into product code.
-- Consume semantic colors via `src/design/theme.ts` (`useMobileTheme()`); do not hard-code product colors in domain UI.
+Finish UI changes with an Expo Go smoke, then a 390×844 iPhone simulator walkthrough of A–L.

@@ -22,7 +22,7 @@ export interface RefreshAccountStateOptions {
 
 export interface AccountStateProjection {
   readonly accountState: AccountState | null;
-  readonly refreshAccountState: (options?: RefreshAccountStateOptions) => void;
+  readonly refreshAccountState: (options?: RefreshAccountStateOptions) => Promise<void>;
 }
 
 export function useAccountStateProjection(source?: AccountStateSource): AccountStateProjection {
@@ -30,7 +30,7 @@ export function useAccountStateProjection(source?: AccountStateSource): AccountS
   const readGenerationRef = useRef(0);
 
   const refreshAccountState = useCallback(
-    (options?: RefreshAccountStateOptions) => {
+    async (options?: RefreshAccountStateOptions): Promise<void> => {
       const generation = readGenerationRef.current + 1;
       readGenerationRef.current = generation;
 
@@ -40,21 +40,19 @@ export function useAccountStateProjection(source?: AccountStateSource): AccountS
       }
       if (options?.clearBeforeRead === true) setAccountState(null);
 
-      void source
-        .read()
-        .then((next) => {
-          if (readGenerationRef.current === generation) setAccountState(next);
-        })
-        .catch(() => {
-          if (readGenerationRef.current === generation) setAccountState(null);
-        });
+      try {
+        const next = await source.read();
+        if (readGenerationRef.current === generation) setAccountState(next);
+      } catch {
+        if (readGenerationRef.current === generation) setAccountState(null);
+      }
     },
     [source],
   );
 
   // Hydrate on mount and whenever a new source is wired.
   useEffect(() => {
-    refreshAccountState();
+    void refreshAccountState();
   }, [refreshAccountState]);
 
   return { accountState, refreshAccountState };
