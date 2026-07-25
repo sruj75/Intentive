@@ -42,6 +42,27 @@ test("projectTimeline projects only server-truth rows once a message exists", ()
   );
   assert.equal(timeline.at(-2).text, "hello");
   assert.equal(timeline.at(-1).text, "hi back");
+  assert.equal(timeline.at(-1).delivery, "confirmed");
+});
+
+test("projectTimeline preserves outbound delivery state for pending and failed rows", () => {
+  const base = {
+    beforeCursor: null,
+    agentState: "available",
+    connectionState: "connected",
+    error: null,
+  };
+  const pending = projectTimeline({
+    ...base,
+    messages: [{ id: "u1", author: "user", body: "send me", at, delivery: "pending" }],
+  });
+  const failed = projectTimeline({
+    ...base,
+    messages: [{ id: "u1", author: "user", body: "send me", at, delivery: "failed" }],
+  });
+
+  assert.equal(pending.at(-1).delivery, "pending");
+  assert.equal(failed.at(-1).delivery, "failed");
 });
 
 test("projectTimeline appends the thinking activity while the Agent State is thinking", () => {
@@ -155,6 +176,55 @@ test("getSnapshot returns a stable reference until the adapter changes", async (
   session.dispose();
 });
 
+test("session projects a terminal connection error and reconnects on retry", async () => {
+  const harness = createHarness();
+  const session = createRuntimeConversationSession(harness.deps);
+  await harness.flush();
+  harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
+
+  harness.sockets[0].error(new Error("offline"));
+  assert.equal(session.getSnapshot().connectionState, "error");
+  assert.deepEqual(session.getSnapshot().error, {
+    kind: "network",
+    message: "Companion Chat connection failed.",
+  });
+
+  session.retryConnection();
+  await harness.flush();
+  assert.equal(harness.sockets.length, 2);
+  assert.equal(session.getSnapshot().connectionState, "connecting");
+
+  session.dispose();
+});
+
+test("retryUserMessage restores the failed row and reconnects with the same message id", async () => {
+  const harness = createHarness();
+  const session = createRuntimeConversationSession(harness.deps);
+  await harness.flush();
+  harness.sockets[0].open();
+  harness.sockets[0].message(emptySnapshot());
+
+  session.send("hello");
+  harness.sockets[0].error(new Error("offline"));
+  assert.equal(session.getSnapshot().timeline.at(-1).delivery, "failed");
+
+  session.retryUserMessage("id-1");
+  assert.equal(
+    session.getSnapshot().timeline.find((item) => item.id === "id-1").delivery,
+    "pending",
+  );
+  await harness.flush();
+  harness.sockets[1].open();
+  harness.sockets[1].message(emptySnapshot());
+
+  const retried = JSON.parse(harness.sockets[1].sent.at(-1));
+  assert.equal(retried.type, "user_message");
+  assert.equal(retried.message_id, "id-1");
+
+  session.dispose();
+});
+
 function createHarness() {
   const sockets = [];
   let ids = 0;
@@ -206,6 +276,10 @@ class FakeSocket {
 
   message(frame) {
     this.onmessage?.({ data: JSON.stringify(frame) });
+  }
+
+  error(value) {
+    this.onerror?.(value);
   }
 }
 

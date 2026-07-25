@@ -16,7 +16,14 @@ The rest of the stack was sound and reusable: the pure `resolveLaunchState` reso
 
 **Launch State owns navigation.** `app/_layout.tsx` mounts `LaunchStateProvider` with `getPlatform().launchStateSource` (the real `GET /me`-backed source) and a `RootNavigator` effect that runs `resolveLaunchState → routeForDestination → router.replace`. A `RESOLVING` state is a splash (no replacement), so the default `/` stays mounted until `GET /me` hydrates. This replaces the old "cold launch always begins at A" rule with gate truth: a signed-out cold launch stays on `/`, a fully-onboarded account is replaced to `/chat`, a mid-funnel account resumes on `/`.
 
-**The two-zone funnel folds the shared gates.** Because the frontend presents no separate consent / sibling / trial screens, funnel completion must resolve the gates they stand in for. The `(onboarding)` route injects Launch State callbacks into `OnboardingEntry`: `onSignedIn → store.markSignedIn` (reconcile with `GET /me` after a real sign-in) and `onComplete → store.completeOnboardingFunnel`, a new terminal optimistic mutator that marks onboarding completed and folds consent / sibling / trial (ADR 0011's re-triggerable gates) so `RootNavigator` crosses the user into `/chat`. It bumps the store's read generation so a still-in-flight hydration cannot clobber the funnel result.
+**The two-zone funnel presents and persists the shared gates.** Amended
+2026-07-25: folding Control-Plane-owned gates into local completion was not
+truthful—the Runtime routing endpoint correctly rejected the resulting session.
+The mounted funnel now presents explicit Data & Privacy acceptance, persists it
+through `POST /consent`, persists the terminal sibling decision through
+`POST /sibling-invitation/skip`, and reconciles with `GET /me` after each write.
+`RootNavigator` can cross into `/chat` only after the reconciled projection is
+`READY_FOR_CHAT`; failed writes remain on a retryable onboarding scene.
 
 The offline/dev default is preserved: with no injected callbacks, `OnboardingEntry` makes no Launch State calls and navigates locally, which is the path the `experience-journey` invariant test drives.
 
@@ -24,5 +31,6 @@ The offline/dev default is preserved: with no injected callbacks, `OnboardingEnt
 
 - The whole launch decision (resolver + routing) stays assertable on the pure node:test path; `route-for-destination.test.mjs` now encodes the two-zone map and the pre-chat fold. The resolver's own contract tests are unchanged.
 - `mapAccountStateToLaunchState` already collapses `onboarding` and `trial` to always-completed (the Control Plane cannot yet report them), so in practice only consent and sibling ever block a real signed-in user — both resolve to `/` under the re-target.
-- Reinstating a richer gate topology later is a router-map change plus new route files; the resolver and source need no change. If the funnel ever collects consent/trial explicitly, the fold in `completeOnboardingFunnel` narrows accordingly.
+- Reinstating a richer gate topology later is a router-map change plus new route
+  files; the resolver and durable gate commands remain unchanged.
 - The `apps/mobile/CLAUDE.md` "cold launch always begins at A / do not add persistence" rule and the launch-state line of the "zero calls" invariant are relaxed for the live root-layout composition only; the entrypoint default remains capability-free.

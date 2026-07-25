@@ -100,3 +100,37 @@ test("a malformed /me body is rejected at the boundary", async () => {
 
   await assert.rejects(() => source.read());
 });
+
+test("consent acceptance posts the canonical empty request and parses the acknowledgement", async () => {
+  let seen;
+  const source = createControlPlaneLaunchStateSource({
+    baseUrl: "https://cp.test",
+    getUserJwt: async () => "jwt-consent",
+    fetch: async (url, init) => {
+      seen = { url, init };
+      return jsonResponse({ ok: true });
+    },
+  });
+
+  await source.acceptConsent();
+  assert.equal(seen.url, "https://cp.test/consent");
+  assert.equal(seen.init.method, "POST");
+  assert.equal(seen.init.headers.authorization, "Bearer jwt-consent");
+  assert.equal(seen.init.headers["content-type"], "application/json");
+  assert.equal(seen.init.body, "{}");
+});
+
+test("sibling invitation skip posts the canonical request and rejects malformed acknowledgements", async () => {
+  const source = createControlPlaneLaunchStateSource({
+    baseUrl: "https://cp.test",
+    getUserJwt: async () => "jwt-sibling",
+    fetch: async (url, init) => {
+      assert.equal(url, "https://cp.test/sibling-invitation/skip");
+      assert.equal(init.method, "POST");
+      assert.equal(init.body, "{}");
+      return jsonResponse({ accepted: true });
+    },
+  });
+
+  await assert.rejects(() => source.skipSiblingInvitation());
+});

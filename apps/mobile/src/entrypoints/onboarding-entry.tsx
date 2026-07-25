@@ -7,15 +7,20 @@ import type { AuthAdapter, SignInOutcome } from "../domains/auth/types/auth";
 import { AuthScene } from "../domains/auth/ui/auth-scene";
 import { createOnboardingJourneyController } from "../domains/onboarding/service/onboarding-journey";
 import {
+  ConsentScene,
   FriendsIntroScene,
   NameScene,
   PermissionsIntroScene,
 } from "../domains/onboarding/ui/onboarding-scenes";
+import { onboardingContent } from "../domains/onboarding/config/content";
 import { useProfileStore } from "../providers/profile/profile-provider";
 
 export function OnboardingEntry({
   googleAuthConfigured = true,
+  signedIn,
+  consentRequired = false,
   onComplete,
+  onAcceptConsent,
   onSignedIn,
   authAdapter,
 }: {
@@ -27,7 +32,13 @@ export function OnboardingEntry({
    * walk the `experience-journey` invariant test drives.
    */
   readonly googleAuthConfigured?: boolean;
-  readonly onComplete?: () => void;
+  /** Hydrated Launch State identity truth. Omitted by the capability-free harness. */
+  readonly signedIn?: boolean | null;
+  /** Whether Control Plane currently reports the Consent Primer as outstanding. */
+  readonly consentRequired?: boolean | null;
+  readonly onComplete?: () => void | Promise<void>;
+  /** Persist explicit Data & Privacy acceptance and reconcile Launch State. */
+  readonly onAcceptConsent?: () => Promise<void>;
   /**
    * Launch State notification: a real sign-in landed. The route injects
    * `store.markSignedIn` so the `RootNavigator` reconciles gate truth. Omitted on
@@ -42,15 +53,40 @@ export function OnboardingEntry({
   readonly authAdapter?: AuthAdapter;
 } = {}) {
   const profile = useProfileStore();
-  const [phase, setPhase] = useState<"auth" | "journey">("auth");
+  const [phase, setPhase] = useState<"auth" | "resolving" | "consent" | "journey">(
+    signedIn === true
+      ? consentRequired === null
+        ? "resolving"
+        : consentRequired
+          ? "consent"
+          : "journey"
+      : "auth",
+  );
   const [authPending, setAuthPending] = useState(false);
+  const [consentPending, setConsentPending] = useState(false);
+  const [consentNotice, setConsentNotice] = useState<string | null>(null);
+  const [completionPending, setCompletionPending] = useState(false);
+  const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(
     googleAuthConfigured ? null : authContent.notConfiguredNotice,
   );
   const disabled = !googleAuthConfigured;
 
+  useEffect(() => {
+    if (signedIn !== true) return;
+    if (consentRequired === null) {
+      setPhase("resolving");
+      return;
+    }
+    setPhase(consentRequired ? "consent" : "journey");
+  }, [consentRequired, signedIn]);
+
   const advance = useCallback(() => {
-    onSignedIn?.();
+    if (onSignedIn) {
+      setPhase("resolving");
+      onSignedIn();
+      return;
+    }
     setPhase("journey");
   }, [onSignedIn]);
 
@@ -97,10 +133,23 @@ export function OnboardingEntry({
   );
   useEffect(() => () => journey.dispose(), [journey]);
 
-  const complete = (fullName: string) => {
+  const complete = async (fullName: string): Promise<void> => {
+    if (completionPending) return;
     profile.setName(fullName);
-    if (onComplete) onComplete();
-    else router.replace("/chat");
+    if (!onComplete) {
+      router.replace("/chat");
+      return;
+    }
+    setCompletionPending(true);
+    setCompletionNotice(null);
+    try {
+      await onComplete();
+      journey.dispatch({ type: "advanced" });
+    } catch {
+      setCompletionNotice(onboardingContent.consent.completionError);
+    } finally {
+      setCompletionPending(false);
+    }
   };
 
   let scene: React.JSX.Element;
@@ -111,6 +160,24 @@ export function OnboardingEntry({
         notice={authNotice}
         onPress={handlePress}
         pending={authPending}
+      />
+    );
+  } else if (phase === "resolving") {
+    scene = <></>;
+  } else if (phase === "consent") {
+    scene = (
+      <ConsentScene
+        notice={consentNotice}
+        onAccept={() => {
+          if (consentPending || !onAcceptConsent) return;
+          setConsentPending(true);
+          setConsentNotice(null);
+          void onAcceptConsent()
+            .then(() => setPhase("journey"))
+            .catch(() => setConsentNotice(onboardingContent.consent.error))
+            .finally(() => setConsentPending(false));
+        }}
+        pending={consentPending}
       />
     );
   } else if (snapshot.stage === "name") {
@@ -126,10 +193,10 @@ export function OnboardingEntry({
   } else if (snapshot.stage === "permissions_intro") {
     scene = (
       <PermissionsIntroScene
+        notice={completionNotice}
+        pending={completionPending}
         onAdvance={() => {
-          journey.dispatch({ type: "advanced" });
-          const completed = journey.getSnapshot();
-          if (completed.stage === "complete") complete(completed.fullName);
+          void complete(snapshot.fullName);
         }}
       />
     );
@@ -137,5 +204,5 @@ export function OnboardingEntry({
     scene = <></>;
   }
 
-  return <ScreenFrame sceneKey={phase === "auth" ? "auth" : snapshot.stage}>{scene}</ScreenFrame>;
+  return <ScreenFrame sceneKey={phase === "journey" ? snapshot.stage : phase}>{scene}</ScreenFrame>;
 }

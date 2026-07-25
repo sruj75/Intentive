@@ -12,7 +12,7 @@ The mounted frontend preserves the A–L interaction contract while live routes 
 ```text
 app/_layout ──> Launch State + Notifications + Launch Curtain
       │
-      ├── app/(onboarding) ──> OnboardingEntry ──> Google Auth + onboarding
+      ├── app/(onboarding) ──> OnboardingEntry ──> Google Auth + durable gates + onboarding
       │
       └── app/(main)/chat ──> ChatEntry ──> welcome | education | ready
                                       ├── Account State + settings UI
@@ -56,9 +56,17 @@ These rules are enforced by the Intentive architecture ESLint plugin, including 
 
 ## Boundaries
 
-- Router boundary: onboarding completion writes the in-memory Profile Store and calls `router.replace("/chat")`; logout resets it and calls `router.replace("/")`.
+- Router boundary: the mounted onboarding route persists Consent Primer acceptance
+  and Sibling Client Invitation skip through the Launch State source, reconciles
+  `GET /me`, and lets the root resolver replace to `/chat` only from confirmed
+  `READY_FOR_CHAT`. The capability-free entrypoint default still replaces
+  locally; logout resets profile state and replaces to `/`.
 - Profile boundary: `ProfileStore` exposes `getSnapshot`, `subscribe`, `setName`, and `reset`; it has no persistence adapter.
-- Onboarding boundary: `OnboardingJourneyController` owns B–D transitions and name validation; `EducationDeckController` owns slide navigation, skip, completion, and reset.
+- Onboarding boundary: `OnboardingEntry` owns explicit consent and retry
+  presentation; `OnboardingJourneyController` owns B–D transitions and name
+  validation; the Launch State provider owns durable gate commands and
+  reconciliation; `EducationDeckController` owns slide navigation, skip,
+  completion, and reset.
 - Conversation boundary: chat UI owns composer text, focus, gestures, and overlays; the injected `ConversationSession` owns either Runtime translation/WebSocket lifecycle or deterministic local reply timing.
 - Account boundary: account UI owns settings copy and session-only preferences; composition passes only callbacks and the proactive-suggestions presentation value.
 - Design boundary: `src/design/` is domain-agnostic and accepts props; domain-specific copy stays in each domain's `config/` layer.

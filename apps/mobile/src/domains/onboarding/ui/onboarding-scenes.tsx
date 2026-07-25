@@ -1,5 +1,6 @@
 import {
   KeyboardAvoidingView,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +13,63 @@ import { CircleButton, MediaSlot, PrimaryButton } from "../../../design/primitiv
 import { mobileTheme as theme } from "../../../design/theme";
 import { onboardingContent as content } from "../config/content";
 import type { OnboardingJourneySnapshot } from "../types/journey";
+
+export function ConsentScene({
+  onAccept,
+  pending,
+  notice,
+}: {
+  readonly onAccept: () => void;
+  readonly pending: boolean;
+  readonly notice: string | null;
+}) {
+  return (
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={styles.consentContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.consentCopy}>
+        <Text selectable style={styles.introTitle}>
+          {content.consent.title}
+        </Text>
+        <Text selectable style={styles.introBody}>
+          {content.consent.body}
+        </Text>
+        <Text selectable style={styles.policyNotice}>
+          {content.consent.policyNotice}
+          <Text
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(content.consent.privacyPolicyUrl).catch(() => {})}
+            style={styles.policyLink}
+          >
+            {content.consent.privacyPolicy}
+          </Text>{" "}
+          and{" "}
+          <Text
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(content.consent.termsOfServiceUrl).catch(() => {})}
+            style={styles.policyLink}
+          >
+            {content.consent.termsOfService}
+          </Text>
+          .
+        </Text>
+        {notice ? (
+          <Text accessibilityRole="alert" selectable style={styles.fieldError}>
+            {notice}
+          </Text>
+        ) : null}
+      </View>
+      <PrimaryButton
+        disabled={pending}
+        label={pending ? content.consent.pendingAction : content.consent.action}
+        onPress={onAccept}
+        testID="accept-consent"
+      />
+    </ScrollView>
+  );
+}
 
 export function NameScene({
   snapshot,
@@ -132,7 +190,15 @@ export function FriendsIntroScene({ onAdvance }: { readonly onAdvance: () => voi
   );
 }
 
-export function PermissionsIntroScene({ onAdvance }: { readonly onAdvance: () => void }) {
+export function PermissionsIntroScene({
+  onAdvance,
+  pending = false,
+  notice = null,
+}: {
+  readonly onAdvance: () => void;
+  readonly pending?: boolean;
+  readonly notice?: string | null;
+}) {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -162,8 +228,14 @@ export function PermissionsIntroScene({ onAdvance }: { readonly onAdvance: () =>
       <Text selectable style={styles.introTitle}>
         {content.permissions.title}
       </Text>
+      {notice ? (
+        <Text accessibilityRole="alert" selectable style={styles.fieldError}>
+          {notice}
+        </Text>
+      ) : null}
       <PrimaryButton
-        label={content.permissions.action}
+        disabled={pending}
+        label={pending ? content.consent.pendingAction : content.permissions.action}
         onPress={onAdvance}
         testID="enable-permissions"
       />
@@ -207,6 +279,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: theme.space.lg,
   },
+  consentContent: {
+    flexGrow: 1,
+    paddingHorizontal: theme.space.lg,
+    paddingTop: theme.space.xl,
+    paddingBottom: theme.space.xl,
+    justifyContent: "space-between",
+    gap: theme.space.xl,
+  },
+  consentCopy: { flex: 1, justifyContent: "center", gap: theme.space.lg },
+  policyNotice: { ...theme.type.caption, color: theme.color.mutedInk, textAlign: "center" },
+  policyLink: { color: theme.color.ink, textDecorationLine: "underline" },
   conversationExample: {
     flex: 1,
     justifyContent: "center",

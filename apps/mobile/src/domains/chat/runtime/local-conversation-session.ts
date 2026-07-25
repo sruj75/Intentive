@@ -44,7 +44,12 @@ export function createLocalConversationSession(
   const delays = options.delays ?? defaultDelays;
   const listeners = new Set<() => void>();
   const timerHandles = new Set<unknown>();
-  let snapshot: ConversationSessionSnapshot = { timeline: createReadyTimeline(), phase: "idle" };
+  let snapshot: ConversationSessionSnapshot = {
+    timeline: createReadyTimeline(),
+    phase: "idle",
+    connectionState: "connected",
+    error: null,
+  };
   let disposed = false;
   let turnId = 0;
 
@@ -85,6 +90,8 @@ export function createLocalConversationSession(
       ).length;
       publish({
         phase: "user_sent",
+        connectionState: "connected",
+        error: null,
         timeline: [
           ...snapshot.timeline.filter(
             (item) => item.kind === "user_message" || item.kind === "companion_message",
@@ -97,6 +104,8 @@ export function createLocalConversationSession(
         if (activeTurn !== turnId) return;
         publish({
           phase: "thinking",
+          connectionState: "connected",
+          error: null,
           timeline: replaceActivity(snapshot.timeline, {
             id: `activity-${activeTurn}`,
             kind: "activity",
@@ -109,6 +118,8 @@ export function createLocalConversationSession(
         if (activeTurn !== turnId) return;
         publish({
           phase: "composing",
+          connectionState: "connected",
+          error: null,
           timeline: replaceActivity(snapshot.timeline, {
             id: `activity-${activeTurn}`,
             kind: "activity",
@@ -128,12 +139,20 @@ export function createLocalConversationSession(
             : chatContent.laterReply;
         publish({
           phase: "replied",
+          connectionState: "connected",
+          error: null,
           timeline: [
             ...snapshot.timeline.filter((item) => item.kind !== "activity"),
             { id: `companion-${activeTurn}`, kind: "companion_message", text: reply },
           ],
         });
       }, delays.replyMs);
+    },
+    retryUserMessage() {
+      // Local turns never fail delivery, so there is nothing to retry.
+    },
+    retryConnection() {
+      // The capability-free local session has no connection lifecycle.
     },
     dispose() {
       if (disposed) return;

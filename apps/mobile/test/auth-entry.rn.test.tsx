@@ -61,6 +61,53 @@ test("Identity Gate advances only after the auth exchange reports a session", as
   expect(screen.queryByTestId("continue-with-google")).toBeNull();
 });
 
+test("a signed-in account with outstanding consent sees explicit acceptance before onboarding", async () => {
+  const acceptConsent = jest.fn().mockResolvedValue(undefined);
+  const screen = render(
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 47, left: 0, right: 0, bottom: 34 },
+      }}
+    >
+      <ProfileProvider store={createProfileStore()}>
+        <OnboardingEntry consentRequired onAcceptConsent={acceptConsent} signedIn />
+      </ProfileProvider>
+    </SafeAreaProvider>,
+  );
+
+  expect(screen.getByText("Data & Privacy")).toBeTruthy();
+  expect(screen.getByText("Privacy Policy").props.accessibilityRole).toBe("link");
+  expect(screen.getByText("Terms of Service").props.accessibilityRole).toBe("link");
+  expect(screen.queryByTestId("full-name-input")).toBeNull();
+  fireEvent.press(screen.getByTestId("accept-consent"));
+
+  await waitFor(() => expect(acceptConsent).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByTestId("full-name-input")).toBeTruthy());
+});
+
+test("failed consent persistence stays on the acceptance screen and offers retry", async () => {
+  const acceptConsent = jest.fn().mockRejectedValue(new Error("offline"));
+  const screen = render(
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 47, left: 0, right: 0, bottom: 34 },
+      }}
+    >
+      <ProfileProvider store={createProfileStore()}>
+        <OnboardingEntry consentRequired onAcceptConsent={acceptConsent} signedIn />
+      </ProfileProvider>
+    </SafeAreaProvider>,
+  );
+
+  fireEvent.press(screen.getByTestId("accept-consent"));
+
+  await waitFor(() => expect(screen.getByText(/couldn’t save your acceptance/i)).toBeTruthy());
+  expect(screen.getByTestId("accept-consent")).toBeEnabled();
+  expect(screen.queryByTestId("full-name-input")).toBeNull();
+});
+
 test("Identity Gate stays put when native auth is cancelled", async () => {
   const screen = renderEntry({ status: "cancelled" });
 

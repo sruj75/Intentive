@@ -9,6 +9,14 @@
  * request *throws*, so the store's hydration `.catch` applies its signed-out
  * fallback. We don't duplicate that fallback here.
  */
+import {
+  PostConsentRequest,
+  PostConsentResponse,
+  PostSiblingInvitationSkipRequest,
+  PostSiblingInvitationSkipResponse,
+  parseBoundary,
+} from "@intentive/api-contract";
+
 import { mapAccountStateToLaunchState } from "../../domains/onboarding/service/account-state-to-launch-state.js";
 import { createControlPlaneAccountStateSource } from "../account-state/control-plane-account-state-source.js";
 import type { AccountStateSource } from "../account-state/source.js";
@@ -24,7 +32,14 @@ export interface FetchResponseLike {
   json(): Promise<unknown>;
 }
 export interface FetchLike {
-  (url: string, init?: { headers?: Record<string, string> }): Promise<FetchResponseLike>;
+  (
+    url: string,
+    init?: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+    },
+  ): Promise<FetchResponseLike>;
 }
 
 export interface ControlPlaneLaunchStateSourceDeps {
@@ -63,5 +78,41 @@ export function createControlPlaneLaunchStateSource(
       if (account === null) return SIGNED_OUT;
       return mapAccountStateToLaunchState(account);
     },
+    acceptConsent: () =>
+      postGate(deps, "/consent", PostConsentRequest, PostConsentResponse, "Consent acceptance"),
+    skipSiblingInvitation: () =>
+      postGate(
+        deps,
+        "/sibling-invitation/skip",
+        PostSiblingInvitationSkipRequest,
+        PostSiblingInvitationSkipResponse,
+        "Sibling invitation skip",
+      ),
   };
+}
+
+async function postGate(
+  deps: ControlPlaneLaunchStateSourceDeps,
+  path: string,
+  requestSchema: typeof PostConsentRequest | typeof PostSiblingInvitationSkipRequest,
+  responseSchema: typeof PostConsentResponse | typeof PostSiblingInvitationSkipResponse,
+  operation: string,
+): Promise<void> {
+  const jwt = await deps.getUserJwt();
+  if (jwt === null) throw new Error(`${operation} requires a signed-in session`);
+  if (deps.baseUrl.trim().length === 0) {
+    throw new Error("Control Plane base URL is not configured");
+  }
+
+  const request = parseBoundary(requestSchema, {});
+  const response = await deps.fetch(`${deps.baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`${operation} failed with status ${response.status}`);
+  parseBoundary(responseSchema, await response.json());
 }

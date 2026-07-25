@@ -88,6 +88,23 @@ test("session, token, and sign-out delegate to the shared client", async () => {
   assert.equal(client.signedOut, true);
 });
 
+test("thrown sign-out failures are captured and rethrown", async () => {
+  const telemetry = createTelemetry();
+  const signOutError = new Error("secure session could not be cleared");
+  const client = fakeClient();
+  client.signOut = () => Promise.reject(signOutError);
+  const adapter = createAuthAdapter({
+    client,
+    googleAuthConfigured: true,
+    telemetry: telemetry.port,
+  });
+
+  await assert.rejects(() => adapter.signOut(), signOutError);
+  assert.equal(telemetry.captured.length, 1);
+  assert.equal(telemetry.captured[0].error, signOutError);
+  assert.equal(telemetry.captured[0].ctx.tags.error_type, "auth");
+});
+
 test("thrown JWT failures are captured and rethrown", async () => {
   const telemetry = createTelemetry();
   const jwtError = new Error("jwt unavailable");

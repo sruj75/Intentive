@@ -18,6 +18,10 @@ import type { GateStatus, LaunchState } from "./types.js";
 export interface LaunchStateSource {
   /** Hydrate the current Launch State from the source of truth. */
   read(): Promise<LaunchState>;
+  /** Durably accept the Consent Primer before reconciling Launch State. */
+  acceptConsent?(): Promise<void>;
+  /** Durably skip the Sibling Client Invitation before reconciling Launch State. */
+  skipSiblingInvitation?(): Promise<void>;
 }
 
 /**

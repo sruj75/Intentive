@@ -1,8 +1,8 @@
 /**
  * Runtime Conversation Session — the translation adapter that lets the mounted
  * chat UI drive the real Agent Runtime. `ConversationScene` renders a
- * `ConversationSession` (`getSnapshot() → { timeline, phase }`, `send`,
- * `dispose`); the dormant `RuntimeAdapter` speaks a different shape
+ * `ConversationSession` (`getSnapshot() → { timeline, phase, connectionState,
+ * error }`, `send`, retry actions, `dispose`); the `RuntimeAdapter` speaks a different shape
  * (`getState() → { messages, connectionState, agentState, error }`,
  * `connect`/`sendUserMessage`/`close`) over Protocol `ConversationMessage`s.
  * This wraps `createRuntimeAdapter` and projects its state onto the UI session
@@ -40,7 +40,12 @@ export function projectTimeline(state: RuntimeAdapterState): readonly Conversati
   for (const message of state.messages) {
     items.push(
       message.author === "user"
-        ? { id: message.id, kind: "user_message", text: message.body }
+        ? {
+            id: message.id,
+            kind: "user_message",
+            text: message.body,
+            delivery: message.delivery,
+          }
         : { id: message.id, kind: "companion_message", text: message.body },
     );
   }
@@ -63,7 +68,12 @@ export function projectPhase(state: RuntimeAdapterState): ChatPhase {
 }
 
 function toSnapshot(state: RuntimeAdapterState): ConversationSessionSnapshot {
-  return { timeline: projectTimeline(state), phase: projectPhase(state) };
+  return {
+    timeline: projectTimeline(state),
+    phase: projectPhase(state),
+    connectionState: state.connectionState,
+    error: state.error,
+  };
 }
 
 /**
@@ -97,6 +107,14 @@ export function createRuntimeConversationSession(deps: RuntimeAdapterDeps): Conv
     },
     send(message) {
       void adapter.sendUserMessage(message);
+    },
+    retryUserMessage(messageId) {
+      const shouldReconnect = adapter.getState().connectionState === "error";
+      void adapter.retryUserMessage(messageId);
+      if (shouldReconnect) void adapter.connect();
+    },
+    retryConnection() {
+      void adapter.connect();
     },
     dispose() {
       if (disposed) return;

@@ -49,7 +49,14 @@ export function createAuthAdapter(deps: {
         throw error;
       }
     },
-    signOut: () => client.signOut(),
+    async signOut(): Promise<void> {
+      try {
+        await client.signOut();
+      } catch (error) {
+        captureAuthFailure(error);
+        throw error;
+      }
+    },
     restoreSession: () => client.hasSession(),
     async getUserJwt() {
       try {

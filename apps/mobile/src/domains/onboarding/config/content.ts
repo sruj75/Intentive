@@ -10,6 +10,19 @@ export interface EducationSlide {
 }
 
 export const onboardingContent = {
+  consent: {
+    title: "Data & Privacy",
+    body: "Intentive uses the information you share to provide personalized conversations, remember context, and act on your requests. Your data is handled according to our Privacy Policy and Terms of Service.",
+    policyNotice: "By continuing, you agree to our ",
+    privacyPolicy: "Privacy Policy",
+    privacyPolicyUrl: "https://heyintentive.com/privacy",
+    termsOfService: "Terms of Service",
+    termsOfServiceUrl: "https://heyintentive.com/terms",
+    action: "Agree & Continue",
+    pendingAction: "Saving…",
+    error: "We couldn’t save your acceptance. Check your connection and try again.",
+    completionError: "We couldn’t finish setup. Check your connection and try again.",
+  },
   name: {
     label: "Full Name",
     placeholder: "First and last name",

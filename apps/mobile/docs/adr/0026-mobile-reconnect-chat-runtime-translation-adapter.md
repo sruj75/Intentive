@@ -12,10 +12,11 @@ The dormant production stack is shaped differently. `createRuntimeAdapter` (the 
 
 ## Decision
 
-**Add a translation adapter, leave `ConversationScene` untouched.** `chat/runtime/runtime-conversation-session.ts` wraps `createRuntimeAdapter` and projects its state onto the `ConversationSession` contract:
+**Add a translation adapter and preserve the healthy `ConversationScene`.** `chat/runtime/runtime-conversation-session.ts` wraps `createRuntimeAdapter` and projects its state onto the `ConversationSession` contract:
 
 - **Timeline** (`projectTimeline`): keep the ready scaffold (`createReadyTimeline()` — capability card + suggestions) as the opening rows so the runtime-backed ready state matches the local one, then map each `ConversationMessage` to a `user_message` / `companion_message` row by author. A live `thinking` Agent State appends the existing `activity` indicator.
 - **Phase** (`projectPhase`): the adapter's only in-flight signal is Agent State `thinking` → `"thinking"`; otherwise the phase follows the latest message (`companion → "replied"`, `user → "user_sent"`, empty → `"idle"`). `phase` is not read by `ConversationScene` today, so this is an honest projection, not a load-bearing mapping.
+- **Delivery and connection state**: preserve outbound `pending` / `failed` state on user timeline rows and expose the Runtime Adapter's `connectionState` / terminal `error` in the session snapshot. Failed rows can invoke `retryUserMessage`; recoverable routing, network, and Protocol failures can invoke `connect` again. Reauth and Pre-Chat Gate failures remain explanatory because repeating the same connection attempt cannot resolve them.
 
 The snapshot is recomputed on every adapter notification and cached, so `getSnapshot` returns a stable reference between changes — the contract `useSyncExternalStore` (in `ConversationScene`) depends on. The session opens the connection eagerly on creation and `close`s the adapter on `dispose`, mirroring the local session's lifecycle (which cancels its timers on disposal).
 
@@ -23,8 +24,7 @@ The snapshot is recomputed on every adapter notification and cached, so `getSnap
 
 ## Consequences
 
-- `ConversationScene`, its snapshots, and the composer stay byte-for-byte unchanged; all 19 RN snapshots and the `experience-journey` / `router-boundaries` invariant tests (which drive local sessions through the entrypoints, never the `app/` route) stay green.
+- The healthy `ConversationScene` and local-session snapshots stay unchanged. Runtime failures add a concise status/retry surface and disable the composer until the blocking error is resolved. The `experience-journey` / `router-boundaries` invariant tests continue to drive local sessions through the entrypoints, never the `app/` route.
 - The translation is unit-tested on the pure node:test path: `projectTimeline` / `projectPhase` as pure functions, plus a socket-harness test that drives `createRuntimeConversationSession` end-to-end (connect → `hello_ok` → send → dispose) reusing the Runtime Adapter's fake-socket style. The adapter's own 30+ tests are unchanged.
-- **Connection errors are not surfaced in v1.** The `ConversationSession` contract and the mounted scene have no error affordance (no error timeline item, no error `phase`), and adding one would change the preserved visuals. The Runtime Adapter still captures terminal errors through the injected telemetry; the UI simply does not yet render `reauth-required` / `gate-required` / `network` states. A later design task can extend the contract and lift these through the projection.
-- Delivery status (`pending` / `failed`) and `retryUserMessage` exist on the adapter but have no UI surface yet, so the translation drops them — outbound messages render as plain user rows. Same deferral, same later-design path.
+- Connection failures no longer look like a healthy conversation: the scene renders the adapter's actionable error message, offers retry only for recoverable kinds, and marks failed outbound rows with their own retry.
 - The `apps/mobile/CLAUDE.md` "zero WebSocket / Agent Runtime calls" invariant line is relaxed for the live `(main)` route composition only; the `ChatEntry` entrypoint default remains capability-free, which is what the invariant test drives.

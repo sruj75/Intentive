@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -65,5 +65,45 @@ describe("Mobile Router boundaries", () => {
 
     expect(store.getSnapshot().fullName).toBe("");
     expect(router.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("resets the profile only after an injected live logout succeeds", async () => {
+    const store = createProfileStore();
+    store.setName("Srujan Gowda");
+    let finishLogout: (() => void) | undefined;
+    const onLogout = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = resolve;
+        }),
+    );
+    const { screen } = renderRoute(<ChatEntry onLogout={onLogout} />, store);
+    fireEvent.press(screen.getByTestId("identity-control"));
+    fireEvent.press(screen.getByTestId("open-settings"));
+    fireEvent.press(screen.getByTestId("log-out"));
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().fullName).toBe("Srujan Gowda");
+
+    await act(async () => finishLogout?.());
+    await waitFor(() => expect(store.getSnapshot().fullName).toBe(""));
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("preserves the profile when an injected live logout fails", async () => {
+    const store = createProfileStore();
+    store.setName("Srujan Gowda");
+    const onLogout = jest.fn().mockRejectedValue(new Error("session persisted"));
+    const { screen } = renderRoute(<ChatEntry onLogout={onLogout} />, store);
+    fireEvent.press(screen.getByTestId("identity-control"));
+    fireEvent.press(screen.getByTestId("open-settings"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("log-out"));
+    });
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().fullName).toBe("Srujan Gowda");
+    expect(router.replace).not.toHaveBeenCalled();
   });
 });

@@ -22,7 +22,7 @@ export function ChatEntry({
 }: {
   readonly createSession?: (firstName: string) => ConversationSession;
   readonly accountStateSource?: AccountStateSource;
-  readonly onLogout?: () => void;
+  readonly onLogout?: () => void | Promise<void>;
 } = {}) {
   const profileStore = useProfileStore();
   const profile = useProfileSnapshot();
@@ -42,11 +42,24 @@ export function ChatEntry({
   );
   useEffect(() => () => session.dispose(), [session]);
 
-  const logout = () => {
-    profileStore.reset();
-    if (onLogout) onLogout();
-    else router.replace("/");
-  };
+  const logout = useCallback(() => {
+    void (async () => {
+      if (onLogout) {
+        try {
+          // The live boundary clears the durable auth session before reporting
+          // signed-out Launch State. Keep the in-memory profile intact when that
+          // operation fails so the UI never claims a session was cleared when it
+          // still exists in SecureStore.
+          await onLogout();
+        } catch {
+          return;
+        }
+      }
+
+      profileStore.reset();
+      if (!onLogout) router.replace("/");
+    })();
+  }, [onLogout, profileStore]);
 
   // Education replay becomes one named restart operation: when the Education Deck
   // returns from a *replay*, a fresh conversation session is created (bumping the

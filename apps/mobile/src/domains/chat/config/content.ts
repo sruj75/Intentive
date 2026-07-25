@@ -33,6 +33,10 @@ export const chatContent = {
   microphoneUnavailable: "Microphone unavailable",
   thinkingLabel: "Intentive is thinking",
   composingLabel: "Intentive is composing",
+  deliveryPending: "Sending…",
+  deliveryFailed: "Not sent",
+  retryMessage: "Retry",
+  retryConnection: "Try again",
   replyNameFallback: "there",
   firstReply: "Hey {firstName}. Good to see you. How’s your day looking—anything on your mind?",
   laterReply:

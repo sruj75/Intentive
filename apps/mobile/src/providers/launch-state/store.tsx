@@ -8,9 +8,8 @@
  * Roles, kept separate (see apps/mobile/docs/adr/0011-*):
  *   - read path:  `LaunchStateSource` hydrates the store on mount and reconciles
  *                 it after a successful sign-in.
- *   - write path: gate completion calls a mutator, which updates the store
- *                 OPTIMISTICALLY (instant Launch Route transition). The durable POST to the
- *                 Control Plane is a later concern (#23/#26).
+ *   - write path: shared gate completion is persisted by the source, then the
+ *                 store reconciles before navigation can advance.
  *
  * Nothing is persisted to disk. Cold launch starts UNKNOWN (→ RESOLVING).
  * The resolver reads only this store; it never reads the source directly.
@@ -79,19 +78,17 @@ export interface LaunchStateStore {
   markSignedIn: () => void;
   /** Account Surface logout completed; keep known gate progress for same-session re-login. */
   markSignedOut: () => void;
-  /** Consent Primer answered (optimistic). */
+  /** Consent Primer answered locally (dev/test only). */
   setConsent: (status: GateStatus) => void;
   /** Onboarding funnel (name → source → permissions) completed (optimistic). */
   setOnboarding: (status: GateStatus) => void;
   /**
-   * The two-zone onboarding funnel completed. The `(onboarding)` zone is the one
-   * pre-chat surface the two-zone frontend presents, so its completion folds the
-   * shared Pre-Chat Gates it stands in for (consent, sibling, trial) — see ADR
-   * 0025. Optimistic and terminal for the session: it bumps the read generation
-   * so a still-in-flight hydration can't clobber the funnel result, letting the
-   * `RootNavigator` cross the user into `/chat`.
+   * Persist the terminal Sibling Client Invitation skip, then reconcile with
+   * Control Plane truth. READY is never asserted locally.
    */
-  completeOnboardingFunnel: () => void;
+  completeOnboardingFunnel: () => Promise<void>;
+  /** Persist explicit Consent Primer acceptance, then reconcile server truth. */
+  acceptConsent: () => Promise<void>;
   /** Sibling Client Invitation answered — `completed` or `skipped` (optimistic). */
   setSiblingInvitation: (status: GateStatus) => void;
   /** Free Trial gate answered (optimistic). */
@@ -109,6 +106,14 @@ export function LaunchStateProvider({
 }): React.JSX.Element {
   const [state, setState] = useState<LaunchState>(UNKNOWN);
   const readGenerationRef = useRef(0);
+
+  const reconcile = async (): Promise<LaunchState> => {
+    const generation = readGenerationRef.current + 1;
+    readGenerationRef.current = generation;
+    const hydrated = await source.read();
+    if (readGenerationRef.current === generation) setState(hydrated);
+    return hydrated;
+  };
 
   // Read path: hydrate from the source of truth once on mount.
   useEffect(() => {
@@ -168,15 +173,39 @@ export function LaunchStateProvider({
       },
       setConsent: (status) => setState((s) => ({ ...s, consent: status })),
       setOnboarding: (status) => setState((s) => ({ ...s, onboarding: status })),
-      completeOnboardingFunnel: () => {
-        readGenerationRef.current += 1;
-        setState((s) => ({
-          ...s,
-          consent: "completed",
-          onboarding: "completed",
-          siblingInvitation: "skipped",
-          trial: "completed",
-        }));
+      acceptConsent: async () => {
+        if (!source.acceptConsent) {
+          setState((s) => ({ ...s, consent: "completed" }));
+          return;
+        }
+        await source.acceptConsent();
+        const hydrated = await reconcile();
+        if (hydrated.signedIn !== true || hydrated.consent !== "completed") {
+          throw new Error("Control Plane did not confirm consent completion");
+        }
+      },
+      completeOnboardingFunnel: async () => {
+        if (!source.skipSiblingInvitation) {
+          setState((s) => ({
+            ...s,
+            onboarding: "completed",
+            siblingInvitation: "skipped",
+            trial: "completed",
+          }));
+          return;
+        }
+        await source.skipSiblingInvitation();
+        const hydrated = await reconcile();
+        if (
+          hydrated.signedIn !== true ||
+          hydrated.consent !== "completed" ||
+          hydrated.onboarding !== "completed" ||
+          hydrated.siblingInvitation === "pending" ||
+          hydrated.siblingInvitation === null ||
+          hydrated.trial !== "completed"
+        ) {
+          throw new Error("Control Plane did not confirm onboarding completion");
+        }
       },
       setSiblingInvitation: (status) => setState((s) => ({ ...s, siblingInvitation: status })),
       setTrial: (status) => setState((s) => ({ ...s, trial: status })),

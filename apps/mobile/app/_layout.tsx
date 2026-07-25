@@ -41,12 +41,15 @@ function RootExperience(): React.JSX.Element {
   // Push registration owns the persistent signed-in lifecycle (ADR 0028 / 0030):
   // it lives at the root, under LaunchStateProvider and above both navigation
   // zones, so remounting the (main) zone never re-arms it within one signed-in
-  // period — the false→true transition attempts registration exactly once.
+  // period. Registration becomes eligible only after the user reaches chat:
+  // first-time users therefore see the OS prompt after the contextual
+  // Permissions Intro action, while returning ready users register on launch.
   const { state } = useLaunchState();
+  const registrationReady = resolveLaunchState(state) === "READY_FOR_CHAT";
   return (
     <>
       <RootNavigator />
-      <NotificationsRegistrar signedIn={state.signedIn === true} register={registerForPush} />
+      <NotificationsRegistrar registrationReady={registrationReady} register={registerForPush} />
       <Stack screenOptions={{ headerShown: false, animation: "none" }} />
       <LaunchCurtain />
     </>

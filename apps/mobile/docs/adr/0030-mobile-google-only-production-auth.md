@@ -34,7 +34,11 @@ Collapse all five into one source-of-truth pass, preserving the native Google ID
 ### Signed-in lifecycle ownership
 
 - Move `NotificationsRegistrar` from the remounting `(main)` zone to the persistent root under `LaunchStateProvider`.
-- Register exactly once per signed-in period: the `false/null → true` transition attempts registration; ordinary rerenders/navigation do not; logout resets the guard so a later user/session registers correctly.
+- Register exactly once per chat-ready signed-in period: authentication alone
+  does not request notification permission. The user becomes eligible after the
+  contextual Permissions Intro action completes onboarding; returning ready
+  users become eligible on launch. Ordinary rerenders/navigation do not
+  re-register, and logout resets the guard for a later user/session.
 - Keep denial and retryable failures nonblocking; do not repeatedly prompt during one signed-in period.
 
 ### Account-state replay
@@ -60,7 +64,11 @@ Collapse all five into one source-of-truth pass, preserving the native Google ID
 
 - The Auth Adapter is a deeper module with one fewer indirection: capability honesty is a single boolean, interpretation is inline, and the UI reaches one button. The offline default (no injected adapter) still advances with zero capability calls, so the `experience-journey` invariant test and its 19 snapshots are preserved (A-auth updated to drop the Apple control and notices added).
 - A production build without both Google client IDs fails at config resolution; an internal build with them enables Google and the UI's single button. The physical-device internal-production gate in `docs/RELEASE.md` still gates external distribution.
-- Push registration survives `(main)` remounts within a signed-in period and re-arms only after a logout. The `experience-journey` test's avoidance of push calls on the offline default is unchanged (no `register` prop ⇒ zero calls).
+- Push registration survives `(main)` remounts within a chat-ready signed-in
+  period and re-arms only after logout. First-time authentication does not put
+  an OS permission prompt in front of the onboarding explanation. The
+  `experience-journey` test's avoidance of push calls on the offline default is
+  unchanged (no `register` prop ⇒ zero calls).
 - Education replay can now change feature access (e.g. gating proactive suggestions) after it returns instead of remaining stuck on the original Account State projection; the deck remains visible until the refresh resolves, and unrelated rerenders never re-read the shared source.
 - Returning users no longer see a one-frame Identity Gate flash. The curtain is a presentation-only overlay with no new timeout or retry screen.
 
@@ -69,7 +77,8 @@ Collapse all five into one source-of-truth pass, preserving the native Google ID
 - Unit-test empty versus non-empty Runtime timelines (history, outbound user messages, replies, thinking state).
 - Test Google-only adapter success, cancellation, missing configuration, exchange failure, telemetry, SecureStore session restoration, JWT delegation, and production config failure when either client ID is absent.
 - Update the A-scene journey snapshot and assert that neither Apple nor dev controls exist.
-- Test push transitions `false→true→true→false→true`, proving exactly one attempt per signed-in period.
+- Test chat-ready transitions `false→true→true→false→true`, proving exactly one
+  attempt per eligible signed-in period.
 - Test replay performs one Account State refresh and applies changed feature access, while unrelated rerenders do not re-read.
 - Test the launch curtain remains through `RESOLVING` and route replacement, disappears only on pathname agreement, and becomes static under Reduce Motion.
 - Run `pnpm --dir apps/mobile typecheck`, `test`, `test:rn`, architecture/docs checks, and `pnpm harness --scope apps/mobile`.
@@ -78,6 +87,7 @@ Collapse all five into one source-of-truth pass, preserving the native Google ID
 ## Assumptions
 
 - Google is the sole v1 production Auth Provider; Apple and dev auth are intentionally removed rather than parked.
-- Push registration follows the selected once-per-signed-in-period model.
+- Push registration follows the selected once-per-chat-ready-signed-in-period
+  model.
 - Launch hydration retains the existing signed-out fallback on failure; this change does not invent a new timeout or retry screen.
 - The committed app icon is the single source of truth for the launch mark; no duplicate asset is added.

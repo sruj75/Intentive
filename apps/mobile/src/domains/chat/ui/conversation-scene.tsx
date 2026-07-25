@@ -76,9 +76,11 @@ function ActivityDot({ delay }: { readonly delay: number }) {
 
 function TimelineRow({
   item,
+  onRetryUserMessage,
   onSuggestionSelected,
 }: {
   readonly item: ConversationTimelineItem;
+  readonly onRetryUserMessage: (messageId: string) => void;
   readonly onSuggestionSelected: (suggestion: string) => void;
 }) {
   if (item.kind === "capability_card") {
@@ -121,6 +123,37 @@ function TimelineRow({
             {item.text}
           </Text>
         </View>
+        {item.delivery === "pending" ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={styles.deliveryPending}
+            testID={`message-${item.id}-pending`}
+          >
+            {content.deliveryPending}
+          </Text>
+        ) : null}
+        {item.delivery === "failed" ? (
+          <View style={styles.deliveryFailure}>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={styles.deliveryFailed}
+              testID={`message-${item.id}-failed`}
+            >
+              {content.deliveryFailed}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => onRetryUserMessage(item.id)}
+              style={({ pressed }) => [
+                styles.retryMessageButton,
+                pressed && styles.suggestionPressed,
+              ]}
+              testID={`message-${item.id}-retry`}
+            >
+              <Text style={styles.retryText}>{content.retryMessage}</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </Animated.View>
     );
   }
@@ -249,8 +282,9 @@ export function ConversationScene({
   const scrollRef = useRef<ScrollView>(null);
   const nearBottom = useRef(true);
   const isWelcome = mode === "welcome";
+  const composerDisabled = isWelcome || snapshot.error !== null;
   const submitComposer = () => {
-    if (isWelcome || composerValue.trim().length === 0) return;
+    if (composerDisabled || composerValue.trim().length === 0) return;
     session.send(composerValue);
     onComposerChange("");
   };
@@ -301,12 +335,43 @@ export function ConversationScene({
           </View>
         ) : (
           <View style={styles.timeline} testID="chat-ready-state">
+            {snapshot.error ? (
+              <View
+                accessibilityLiveRegion="assertive"
+                style={styles.connectionError}
+                testID="chat-connection-error"
+              >
+                <Text selectable style={styles.connectionErrorText}>
+                  {snapshot.error.message}
+                </Text>
+                {snapshot.error.kind === "routing-unavailable" ||
+                snapshot.error.kind === "network" ||
+                snapshot.error.kind === "protocol" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={session.retryConnection}
+                    style={({ pressed }) => [
+                      styles.retryConnectionButton,
+                      pressed && styles.suggestionPressed,
+                    ]}
+                    testID="chat-retry-connection"
+                  >
+                    <Text style={styles.retryConnectionText}>{content.retryConnection}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
             {snapshot.timeline.map((item) => {
               if (item.kind === "suggestion_group" && !proactiveSuggestions) {
                 return null;
               }
               return (
-                <TimelineRow item={item} key={item.id} onSuggestionSelected={onComposerChange} />
+                <TimelineRow
+                  item={item}
+                  key={item.id}
+                  onRetryUserMessage={session.retryUserMessage}
+                  onSuggestionSelected={onComposerChange}
+                />
               );
             })}
           </View>
@@ -318,7 +383,7 @@ export function ConversationScene({
         </View>
       ) : null}
       <Composer
-        disabled={isWelcome}
+        disabled={composerDisabled}
         onChange={onComposerChange}
         onSubmit={submitComposer}
         value={composerValue}
@@ -413,6 +478,40 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.sm,
   },
   messageText: { ...theme.type.body, color: theme.color.ink },
+  deliveryPending: {
+    ...theme.type.caption,
+    color: theme.color.secondaryInk,
+    marginTop: theme.space.xxs,
+  },
+  deliveryFailure: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space.xs,
+    marginTop: theme.space.xxs,
+  },
+  deliveryFailed: { ...theme.type.caption, color: theme.color.error },
+  retryMessageButton: {
+    minHeight: 28,
+    justifyContent: "center",
+    paddingHorizontal: theme.space.xs,
+  },
+  retryText: { ...theme.type.caption, color: theme.color.ink, fontWeight: "500" },
+  connectionError: {
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surface,
+    padding: theme.space.md,
+    gap: theme.space.sm,
+  },
+  connectionErrorText: { ...theme.type.body, color: theme.color.error },
+  retryConnectionButton: {
+    minHeight: 36,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.action,
+    paddingHorizontal: theme.space.md,
+  },
+  retryConnectionText: { ...theme.type.label, color: theme.color.actionInk },
   companionMessageRow: { alignItems: "flex-start", paddingVertical: theme.space.lg },
   companionMessageText: { ...theme.type.body, color: theme.color.ink, maxWidth: "92%" },
   activityRow: {
