@@ -193,31 +193,32 @@ export function inspectCiContracts(repo = process.cwd()) {
     }
   }
 
-  const desktopLfsJobs = [
+  const lfsDependentJobs = [
     [codeqlPath, "swift"],
+    [foundationPath, "repo-contracts"],
     [foundationPath, "desktop-swift"],
     [candidatePath, "candidate-acceptance"],
     [releasePath, "release"],
     [releasePath, "stage2-proof-and-publish"],
   ];
-  for (const [file, jobName] of desktopLfsJobs) {
+  for (const [file, jobName] of lfsDependentJobs) {
     if (!existsSync(file)) continue;
     const workflow = readWorkflow(file, errors);
     const steps = workflow?.jobs?.[jobName]?.steps;
     const label = `${path.basename(file)}#${jobName}`;
     if (!Array.isArray(steps)) {
-      errors.push(`Desktop CI contract is missing job: ${label}`);
+      errors.push(`LFS-dependent CI contract is missing job: ${label}`);
       continue;
     }
     const checkoutSteps = steps.filter((step) =>
       String(step?.uses ?? "").startsWith("actions/checkout@"),
     );
     if (checkoutSteps.length === 0) {
-      errors.push(`Desktop job is missing checkout: ${label}`);
+      errors.push(`LFS-dependent job is missing checkout: ${label}`);
       continue;
     }
     if (checkoutSteps.some((step) => step?.with?.lfs !== true)) {
-      errors.push(`Desktop job must checkout Git LFS objects: ${label}`);
+      errors.push(`LFS-dependent job must checkout Git LFS objects: ${label}`);
     }
   }
 

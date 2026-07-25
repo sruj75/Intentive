@@ -41,8 +41,11 @@ try {
     ".github/workflows/monorepo-foundation.yml",
     [
       "jobs:",
-      "  contracts:",
+      "  repo-contracts:",
       "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          lfs: true",
       "      - run: pnpm harness --group repo-contracts",
       "  node:",
       "    steps:",
@@ -194,7 +197,7 @@ try {
   assert.ok(
     inspectCiContracts(repo).some((error) =>
       error.includes(
-        "Desktop job must checkout Git LFS objects: desktop-release-candidate.yml#candidate-acceptance",
+        "LFS-dependent job must checkout Git LFS objects: desktop-release-candidate.yml#candidate-acceptance",
       ),
     ),
   );
