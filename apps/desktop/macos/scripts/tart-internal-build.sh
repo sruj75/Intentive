@@ -6,13 +6,17 @@ set -euo pipefail
 # the user grants Screen Recording, Microphone, or Accessibility permission.
 
 MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_SCRIPT="$MACOS_DIR/scripts/build-app-bundle.sh"
+BUILD_SCRIPT="${INTENTIVE_INTERNAL_BUILD_SCRIPT:-$MACOS_DIR/scripts/build-app-bundle.sh}"
+VERIFY_SCRIPT="${INTENTIVE_INTERNAL_VERIFY_SCRIPT:-$MACOS_DIR/scripts/verify-app-bundle.sh}"
 CONFIGURATION="${INTENTIVE_INTERNAL_BUILD_CONFIGURATION:-debug}"
 APP_NAME="${INTENTIVE_APP_NAME:-Intentive Dev}"
 BUNDLE_ID="${INTENTIVE_BUNDLE_ID:-com.heyintentive.desktop.dev}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.0}"
 APP_BUILD="${INTENTIVE_APP_BUILD:-901}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
+CONTROL_PLANE_URL="${INTENTIVE_CONTROL_PLANE_URL:-}"
+HOSTED_AUTH_URL="${INTENTIVE_HOSTED_AUTH_URL:-}"
+AUTH_TOKEN_EXCHANGE_URL="${INTENTIVE_AUTH_TOKEN_EXCHANGE_URL:-}"
 TART_STORE="${TART_HOME:-$HOME/.tart}"
 TART_BASE_VM="${TART_BASE_VM:-intentive-base}"
 TART_VM_NAME="${TART_VM_NAME:-intentive-clean}"
@@ -43,6 +47,9 @@ Configuration:
                                    Signing identity; defaults to ad-hoc signing.
   INTENTIVE_INTERNAL_BUILD_CONFIGURATION
                                    SwiftPM configuration (default: debug).
+  INTENTIVE_CONTROL_PLANE_URL       Optional local Control Plane URL.
+  INTENTIVE_HOSTED_AUTH_URL         Optional hosted-auth URL for development.
+  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL Optional hosted-auth exchange URL.
 EOF
 }
 
@@ -100,6 +107,12 @@ build_app() {
       INTENTIVE_APP_VERSION="$APP_VERSION" \
       INTENTIVE_APP_BUILD="$APP_BUILD" \
       INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
+      INTENTIVE_CONTROL_PLANE_URL="$CONTROL_PLANE_URL" \
+      INTENTIVE_HOSTED_AUTH_URL="$HOSTED_AUTH_URL" \
+      INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="$AUTH_TOKEN_EXCHANGE_URL" \
+      INTENTIVE_SPARKLE_FEED_URL="" \
+      INTENTIVE_SPARKLE_PUBLIC_ED_KEY="" \
+      GITHUB_REPOSITORY="" \
       "$BUILD_SCRIPT" | tail -n 1
   )"
   [[ -d "$app_bundle" ]] || fail "Bundle builder did not produce an app: $app_bundle"
@@ -113,6 +126,19 @@ build_app() {
     codesign --force --deep --options runtime --sign "$signing_identity" "$app_bundle"
   fi
   codesign --verify --deep --strict --verbose=2 "$app_bundle" >&2
+  log "Verifying exact internal artifact $app_bundle..."
+  CONFIGURATION="$CONFIGURATION" \
+    INTENTIVE_APP_NAME="$APP_NAME" \
+    INTENTIVE_BUNDLE_ID="$BUNDLE_ID" \
+    INTENTIVE_APP_VERSION="$APP_VERSION" \
+    INTENTIVE_APP_BUILD="$APP_BUILD" \
+    INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
+    INTENTIVE_CONTROL_PLANE_URL="$CONTROL_PLANE_URL" \
+    INTENTIVE_HOSTED_AUTH_URL="$HOSTED_AUTH_URL" \
+    INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="$AUTH_TOKEN_EXCHANGE_URL" \
+    INTENTIVE_SPARKLE_FEED_URL="" \
+    INTENTIVE_SPARKLE_PUBLIC_ED_KEY="" \
+    "$VERIFY_SCRIPT" --app "$app_bundle" >&2
   printf '%s\n' "$app_bundle"
 }
 

@@ -10,7 +10,7 @@ The Mobile Client is an iPhone-first Expo deployable with two orthogonal structu
 The mounted frontend preserves the A–L interaction contract while live routes inject production auth, Control Plane, notifications, telemetry, and Agent Runtime seams from one composition root. Capability-free entrypoint defaults keep the local A–L harness deterministic.
 
 ```text
-app/_layout ──> Launch State + Notifications + Launch Curtain
+app/_layout ──> RootEntry ──> Launch State + Notifications + Launch Curtain
       │
       ├── app/(onboarding) ──> OnboardingEntry ──> Google Auth + durable gates + onboarding
       │
@@ -25,10 +25,10 @@ app/_layout ──> Launch State + Notifications + Launch Curtain
 
 ## Codemap
 
-- `app/_layout.tsx` — root gesture/profile/Launch State composition, navigation, push lifecycle, and launch curtain.
+- `app/_layout.tsx` — composition-only root for gesture handling, Profile Provider, and `RootEntry`.
 - `app/(onboarding)/` — headerless `/` route for A–D.
 - `app/(main)/` — headerless `/chat` route for E–L.
-- `src/entrypoints/` — cross-domain composition and Router replacement callbacks only.
+- `src/entrypoints/` — cross-domain composition, root Launch State/navigation/push lifecycle, and Router replacement callbacks.
 - `src/domains/auth/` — Google-only Identity Gate presentation, Auth Adapter, and native Better Auth boundary.
 - `src/domains/onboarding/` — B–D journey types, copy, validation/controller, Education Deck, and UI.
 - `src/domains/chat/` — Conversation Timeline Item, local/runtime conversation implementations, drawer, composer, and shared E/K/L surface.

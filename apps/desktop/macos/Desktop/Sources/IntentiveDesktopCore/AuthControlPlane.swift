@@ -89,6 +89,7 @@ public final class DevAuthProvider: AuthAdapter {
 }
 
 public protocol HostedAuthSessionRunner: AnyObject {
+  @MainActor
   func start(url: URL, callbackScheme: String) async throws -> URL
   func cancel()
 }

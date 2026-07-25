@@ -89,7 +89,14 @@ and an EAS **environment** (so `EXPO_PUBLIC_*` vars from EAS inject at build tim
 
 - `production` → channel `production`, environment `production`
 - `preview` → channel `preview`, environment `preview`
-- `development` (dev client) has no channel and runs any compatible update.
+- `development` (dev client) has no channel, uses the `preview` EAS environment
+  for shared public native configuration, and runs any compatible update.
+
+The `preview` profile is temporary founder dogfooding, not a separate backend:
+it uses internal distribution, the same `com.heyintentive.expo` identity, real
+authentication, production service URLs, and the same telemetry projects as
+Production. After the first public launch, the developer uses the App Store app
+instead of maintaining a permanent parallel Mobile Preview.
 
 A channel points at a branch of published updates; you publish to a branch and map
 the channel to it (`eas update --branch <name>`, `eas channel:edit`).
@@ -123,7 +130,9 @@ eas env:pull --environment preview   # writes .env.local (gitignored)
 ```
 
 Other `EXPO_PUBLIC_*` keys (`NEON_AUTH`, Control Plane base URL, and the public
-Google iOS and web client IDs) follow the same pattern when they differ per environment.
+Google iOS and web client IDs) follow the same pattern. For the current founder
+Preview, those service and auth values match Production even though the EAS
+environment and OTA channel remain named `preview`.
 Both Google client IDs are public configuration, not secrets. See [Expo EAS
 environment variables](https://docs.expo.dev/eas/environment-variables/).
 
@@ -135,6 +144,16 @@ the former identifies the native app and installs its reversed URL scheme, while
 the latter is the audience of the Google ID token that Neon Auth verifies. Do
 not commit secrets. Use the resulting physical-device internal build for proof
 before external distribution.
+
+The Google-hosted account/consent screen gets its user-facing name from
+[Google Auth Platform → Branding → App name](https://support.google.com/cloud/answer/15549049),
+not from the Google Cloud project display name. It must say `Intentive`. For a
+verified external app, changing the name can
+[require brand re-verification](https://support.google.com/cloud/answer/13464018)
+before the new label is visible. Before the device proof, also request
+`"$EXPO_PUBLIC_NEON_AUTH_BASE_URL/get-session"` and require `200`; `412` /
+`COMPUTE_QUOTA_EXCEEDED` means Neon cannot exchange an otherwise valid Google
+token and blocks release acceptance.
 
 **3. Generated iOS native (CNG)** (`ios/Intentive/Supporting/Expo.plist`,
 `ios/Intentive/Intentive.entitlements`) — `ios/` is **not** committed; `expo

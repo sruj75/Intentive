@@ -23,6 +23,7 @@ export function OnboardingEntry({
   onAcceptConsent,
   onSignedIn,
   authAdapter,
+  developmentAuthBypassEnabled = false,
 }: {
   /**
    * Whether Google is a working capability (both public client IDs present).
@@ -51,13 +52,25 @@ export function OnboardingEntry({
    * default the `experience-journey` invariant test drives.
    */
   readonly authAdapter?: AuthAdapter;
+  /**
+   * Development-only experience selection. The entrypoint, rather than its Expo
+   * route, owns the capability-free post-auth composition: no Auth Adapter,
+   * SecureStore, Launch State mutation, or Control Plane seam is invoked.
+   */
+  readonly developmentAuthBypassEnabled?: boolean;
 } = {}) {
+  const effectiveSignedIn = developmentAuthBypassEnabled ? true : signedIn;
+  const effectiveConsentRequired = developmentAuthBypassEnabled ? false : consentRequired;
+  const effectiveOnComplete = developmentAuthBypassEnabled ? undefined : onComplete;
+  const effectiveOnAcceptConsent = developmentAuthBypassEnabled ? undefined : onAcceptConsent;
+  const effectiveOnSignedIn = developmentAuthBypassEnabled ? undefined : onSignedIn;
+  const effectiveAuthAdapter = developmentAuthBypassEnabled ? undefined : authAdapter;
   const profile = useProfileStore();
   const [phase, setPhase] = useState<"auth" | "resolving" | "consent" | "journey">(
-    signedIn === true
-      ? consentRequired === null
+    effectiveSignedIn === true
+      ? effectiveConsentRequired === null
         ? "resolving"
-        : consentRequired
+        : effectiveConsentRequired
           ? "consent"
           : "journey"
       : "auth",
@@ -73,22 +86,22 @@ export function OnboardingEntry({
   const disabled = !googleAuthConfigured;
 
   useEffect(() => {
-    if (signedIn !== true) return;
-    if (consentRequired === null) {
+    if (effectiveSignedIn !== true) return;
+    if (effectiveConsentRequired === null) {
       setPhase("resolving");
       return;
     }
-    setPhase(consentRequired ? "consent" : "journey");
-  }, [consentRequired, signedIn]);
+    setPhase(effectiveConsentRequired ? "consent" : "journey");
+  }, [effectiveConsentRequired, effectiveSignedIn]);
 
   const advance = useCallback(() => {
-    if (onSignedIn) {
+    if (effectiveOnSignedIn) {
       setPhase("resolving");
-      onSignedIn();
+      effectiveOnSignedIn();
       return;
     }
     setPhase("journey");
-  }, [onSignedIn]);
+  }, [effectiveOnSignedIn]);
 
   const handlePress = useCallback(() => {
     if (authPending || disabled) return;
@@ -98,8 +111,8 @@ export function OnboardingEntry({
       try {
         // The offline default (no adapter) advances with ZERO capability calls.
         // A real adapter run awaits the exchange and projects the outcome.
-        const outcome: SignInOutcome = authAdapter
-          ? await authAdapter.signIn()
+        const outcome: SignInOutcome = effectiveAuthAdapter
+          ? await effectiveAuthAdapter.signIn()
           : { status: "signed-in" };
         if (outcome.status === "signed-in") {
           advance();
@@ -123,7 +136,7 @@ export function OnboardingEntry({
       }
     };
     void run();
-  }, [authAdapter, authPending, disabled, advance]);
+  }, [effectiveAuthAdapter, authPending, disabled, advance]);
 
   const journey = useMemo(() => createOnboardingJourneyController(), []);
   const snapshot = useSyncExternalStore(
@@ -136,14 +149,14 @@ export function OnboardingEntry({
   const complete = async (fullName: string): Promise<void> => {
     if (completionPending) return;
     profile.setName(fullName);
-    if (!onComplete) {
+    if (!effectiveOnComplete) {
       router.replace("/chat");
       return;
     }
     setCompletionPending(true);
     setCompletionNotice(null);
     try {
-      await onComplete();
+      await effectiveOnComplete();
       journey.dispatch({ type: "advanced" });
     } catch {
       setCompletionNotice(onboardingContent.consent.completionError);
@@ -169,10 +182,10 @@ export function OnboardingEntry({
       <ConsentScene
         notice={consentNotice}
         onAccept={() => {
-          if (consentPending || !onAcceptConsent) return;
+          if (consentPending || !effectiveOnAcceptConsent) return;
           setConsentPending(true);
           setConsentNotice(null);
-          void onAcceptConsent()
+          void effectiveOnAcceptConsent()
             .then(() => setPhase("journey"))
             .catch(() => setConsentNotice(onboardingContent.consent.error))
             .finally(() => setConsentPending(false));

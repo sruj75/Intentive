@@ -19,11 +19,19 @@ export function ChatEntry({
   createSession = defaultCreateSession,
   accountStateSource,
   onLogout,
+  developmentAuthBypassEnabled = false,
 }: {
   readonly createSession?: (firstName: string) => ConversationSession;
   readonly accountStateSource?: AccountStateSource;
   readonly onLogout?: () => void | Promise<void>;
+  /** Selects the capability-free local chat composition in development. */
+  readonly developmentAuthBypassEnabled?: boolean;
 } = {}) {
+  const effectiveCreateSession = developmentAuthBypassEnabled
+    ? defaultCreateSession
+    : createSession;
+  const effectiveAccountStateSource = developmentAuthBypassEnabled ? undefined : accountStateSource;
+  const effectiveOnLogout = developmentAuthBypassEnabled ? undefined : onLogout;
   const profileStore = useProfileStore();
   const profile = useProfileSnapshot();
   // Real Control-Plane account state gates Companion affordances. With no injected
@@ -31,35 +39,37 @@ export function ChatEntry({
   // the local experience is unchanged (ADR-0027). `refreshAccountState` is the
   // seam the education replay restart uses so feature gating reflects updated
   // account state instead of remaining stuck on the original projection (ADR-0030).
-  const { accountState, refreshAccountState } = useAccountStateProjection(accountStateSource);
+  const { accountState, refreshAccountState } = useAccountStateProjection(
+    effectiveAccountStateSource,
+  );
   const featureAccess = deriveFeatureAccess(accountState);
   const [mode, setMode] = useState<"welcome" | "education" | "ready">("welcome");
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [educationSource, setEducationSource] = useState<"onboarding" | "replay">("onboarding");
   const session = useMemo(
-    () => createSession(profile.firstName),
-    [createSession, profile.firstName, sessionGeneration],
+    () => effectiveCreateSession(profile.firstName),
+    [effectiveCreateSession, profile.firstName, sessionGeneration],
   );
   useEffect(() => () => session.dispose(), [session]);
 
   const logout = useCallback(() => {
     void (async () => {
-      if (onLogout) {
+      if (effectiveOnLogout) {
         try {
           // The live boundary clears the durable auth session before reporting
           // signed-out Launch State. Keep the in-memory profile intact when that
           // operation fails so the UI never claims a session was cleared when it
           // still exists in SecureStore.
-          await onLogout();
+          await effectiveOnLogout();
         } catch {
           return;
         }
       }
 
       profileStore.reset();
-      if (!onLogout) router.replace("/");
+      if (!effectiveOnLogout) router.replace("/");
     })();
-  }, [onLogout, profileStore]);
+  }, [effectiveOnLogout, profileStore]);
 
   // Education replay becomes one named restart operation: when the Education Deck
   // returns from a *replay*, a fresh conversation session is created (bumping the
@@ -70,12 +80,12 @@ export function ChatEntry({
   const restartConversation = useCallback(async (): Promise<void> => {
     if (educationSource === "replay") {
       setSessionGeneration((current) => current + 1);
-      if (accountStateSource) {
+      if (effectiveAccountStateSource) {
         await refreshAccountState({ clearBeforeRead: true });
       }
     }
     setMode("ready");
-  }, [accountStateSource, educationSource, refreshAccountState]);
+  }, [effectiveAccountStateSource, educationSource, refreshAccountState]);
 
   return (
     <AccountSettingsBoundary fullName={profile.fullName} initials={profile.initials}>

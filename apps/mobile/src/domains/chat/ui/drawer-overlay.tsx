@@ -61,8 +61,10 @@ export function DrawerOverlay({
           testID="drawer-panel"
         >
           <Pressable
+            accessible
             accessibilityLabel={content.drawer.openSettings}
             accessibilityRole="button"
+            onAccessibilityTap={onOpenSettings}
             onPress={onOpenSettings}
             style={styles.drawerProfile}
             testID="open-settings"
@@ -72,9 +74,7 @@ export function DrawerOverlay({
                 {initials || brandIdentity.initialsFallback}
               </Text>
             </View>
-            <Text selectable style={styles.drawerName}>
-              {firstName || brandIdentity.name}
-            </Text>
+            <Text style={styles.drawerName}>{firstName || brandIdentity.name}</Text>
           </Pressable>
           <View style={styles.drawerRows}>
             {content.drawer.rows.map((row) => (

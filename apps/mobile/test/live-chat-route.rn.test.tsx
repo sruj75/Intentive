@@ -33,6 +33,7 @@ describe("live Chat route logout boundary", () => {
     jest.clearAllMocks();
     signOut.mockResolvedValue(undefined);
     mockedGetPlatform.mockReturnValue({
+      config: { devAuthBypassEnabled: false },
       auth: { signOut },
       accountStateSource: {},
       createRuntimeSession: jest.fn(),

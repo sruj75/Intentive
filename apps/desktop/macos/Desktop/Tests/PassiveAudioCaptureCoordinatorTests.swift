@@ -4,6 +4,72 @@ import XCTest
 
 @MainActor
 final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
+  func testEligibilityRequiresAuthenticationAndAmbientAudioSetting() {
+    XCTAssertFalse(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: false,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+    XCTAssertFalse(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        ambientAudioCaptureEnabled: false
+      )
+    )
+    XCTAssertTrue(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+  }
+
+  func testAuthenticationAndAudioToggleControlPhysicalSources() async {
+    let mic = StreamingAudioSourceSpy()
+    let system = StreamingAudioSourceSpy()
+    let coordinator = makeCoordinator(
+      mic: mic, system: system, pipeline: PassiveAudioPipelineSpy())
+
+    coordinator.setUserEnabled(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+    await settle()
+    XCTAssertTrue(mic.isRunning)
+
+    coordinator.setUserEnabled(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        ambientAudioCaptureEnabled: false
+      )
+    )
+    await settle()
+    XCTAssertFalse(mic.isRunning)
+    XCTAssertFalse(system.isRunning)
+
+    coordinator.setUserEnabled(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+    await settle()
+    XCTAssertTrue(mic.isRunning)
+
+    coordinator.setUserEnabled(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: false,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+    await settle()
+    XCTAssertFalse(mic.isRunning)
+    XCTAssertFalse(system.isRunning)
+  }
+
   func testStartsMicrophoneAndMeetingGatesSystemAudio() async {
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy()

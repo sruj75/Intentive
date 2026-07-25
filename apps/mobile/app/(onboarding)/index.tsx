@@ -9,10 +9,12 @@ export default function OnboardingRoute(): React.JSX.Element {
   // persist to the Control Plane and reconcile before READY can be observed.
   // `googleAuthConfigured` is the Identity Gate's single capability (ADR 0030).
   const launch = useLaunchState();
+  const platform = getPlatform();
   return (
     <OnboardingEntry
-      authAdapter={getPlatform().auth}
-      googleAuthConfigured={getPlatform().config.googleAuthConfigured}
+      authAdapter={platform.auth}
+      developmentAuthBypassEnabled={platform.config.devAuthBypassEnabled}
+      googleAuthConfigured={platform.config.googleAuthConfigured}
       signedIn={launch.state.signedIn}
       consentRequired={launch.state.consent === null ? null : launch.state.consent === "pending"}
       onSignedIn={launch.markSignedIn}

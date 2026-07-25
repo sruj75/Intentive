@@ -67,6 +67,25 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     XCTAssertEqual(event.signals["audio_source"], .string("microphone"))
   }
 
+  func testMicrophoneSpeechIsCapturedWhenScreenCaptureIsDisabled() async throws {
+    let h = makeHarness(
+      settings: CompilerSettings(
+        captureEnabled: false,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+
+    let outcome = await h.pipeline.ingest(pcm16k: pcm, source: .microphone)
+
+    XCTAssertEqual(outcome, .captured(source: .microphone, eventPublished: true))
+    XCTAssertEqual(
+      h.store.recentAudioMemory(limit: 1).first?.transcript,
+      "review the launch checklist before standup")
+    XCTAssertEqual(
+      try XCTUnwrap(h.runtime.perceptionEvents.first).artifactType,
+      .ambientAudioSummary)
+  }
+
   func testSystemAudioInAlwaysModeIsStoredAndPublished() async throws {
     let h = makeHarness(systemAudioMode: .always)
 

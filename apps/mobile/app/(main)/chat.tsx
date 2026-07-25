@@ -12,20 +12,22 @@ const createRuntimeSession = () => getPlatform().createRuntimeSession();
 
 export default function ChatRoute(): React.JSX.Element {
   const { markSignedOut } = useLaunchState();
+  const platform = getPlatform();
   const logout = useCallback(async (): Promise<void> => {
     // Durable auth truth leads the transition. If Neon/SecureStore sign-out
     // fails, this rejects and ChatEntry keeps both Launch State and the profile
     // intact rather than presenting a signed-out session that still restores.
-    await getPlatform().auth.signOut();
+    await platform.auth.signOut();
     markSignedOut();
-  }, [markSignedOut]);
+  }, [markSignedOut, platform]);
 
   // The route also composes the real Account State seam (ADR-0027): the shared
   // `GET /me` projection gates Companion affordances (proactive suggestions).
   return (
     <ChatEntry
-      accountStateSource={getPlatform().accountStateSource}
+      accountStateSource={platform.accountStateSource}
       createSession={createRuntimeSession}
+      developmentAuthBypassEnabled={platform.config.devAuthBypassEnabled}
       onLogout={logout}
     />
   );

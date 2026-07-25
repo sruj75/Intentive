@@ -26,6 +26,11 @@ const rootGroups = [
         args: ["ci:dependency-exceptions:test"],
       },
       {
+        label: "Development and Preview workflow contracts",
+        command: "pnpm",
+        args: ["ci:environment-workflows"],
+      },
+      {
         label: "Baseline shell portability",
         command: "pnpm",
         args: ["ci:shell-portability"],

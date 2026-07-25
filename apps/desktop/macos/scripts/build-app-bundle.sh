@@ -12,6 +12,7 @@ BUNDLE_ID="${INTENTIVE_BUNDLE_ID:-com.heyintentive.desktop}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.0}"
 APP_BUILD="${INTENTIVE_APP_BUILD:-1}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
+LAUNCH_AGENT_LABEL="${INTENTIVE_LAUNCH_AGENT_LABEL:-$BUNDLE_ID.login}"
 CONTROL_PLANE_URL="${INTENTIVE_CONTROL_PLANE_URL:-}"
 HOSTED_AUTH_URL="${INTENTIVE_HOSTED_AUTH_URL:-}"
 AUTH_TOKEN_EXCHANGE_URL="${INTENTIVE_AUTH_TOKEN_EXCHANGE_URL:-}"
@@ -28,7 +29,9 @@ NATIVE_ADAPTERS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAdapters.bun
 INTENTIVE_UI_BUNDLE_NAME="IntentiveDesktop_Intentive.bundle"
 VAD_MODEL_SOURCE="$PACKAGE_PATH/Sources/IntentiveDesktopNativeAdapters/Resources/silero_vad.onnx"
 
-if [[ "$CONFIGURATION" == "release" && "$BUNDLE_ID" == "com.heyintentive.desktop" ]]; then
+if [[ "$CONFIGURATION" == "release" ]] \
+  && [[ "$BUNDLE_ID" == "com.heyintentive.desktop" \
+    || "$BUNDLE_ID" == "com.heyintentive.desktop.preview" ]]; then
   "$PUBLIC_ENDPOINT_VERIFIER" "INTENTIVE_CONTROL_PLANE_URL" "$CONTROL_PLANE_URL"
   "$PUBLIC_ENDPOINT_VERIFIER" "INTENTIVE_HOSTED_AUTH_URL" "$HOSTED_AUTH_URL"
   if [[ -n "$AUTH_TOKEN_EXCHANGE_URL" ]]; then
@@ -56,6 +59,7 @@ BUNDLE_ID_XML="$(xml_escape "$BUNDLE_ID")"
 APP_VERSION_XML="$(xml_escape "$APP_VERSION")"
 APP_BUILD_XML="$(xml_escape "$APP_BUILD")"
 AUTH_CALLBACK_SCHEME_XML="$(xml_escape "$AUTH_CALLBACK_SCHEME")"
+LAUNCH_AGENT_LABEL_XML="$(xml_escape "$LAUNCH_AGENT_LABEL")"
 CONTROL_PLANE_URL_XML="$(xml_escape "$CONTROL_PLANE_URL")"
 HOSTED_AUTH_URL_XML="$(xml_escape "$HOSTED_AUTH_URL")"
 AUTH_TOKEN_EXCHANGE_URL_XML="$(xml_escape "$AUTH_TOKEN_EXCHANGE_URL")"
@@ -119,7 +123,7 @@ cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.heyintentive.desktop.login</string>
+  <string>$LAUNCH_AGENT_LABEL_XML</string>
   <key>BundleProgram</key>
   <string>Contents/MacOS/Intentive</string>
   <key>ProgramArguments</key>

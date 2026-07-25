@@ -4,6 +4,7 @@ This is the one-stop production context for agents operating deployable producti
 
 - **Control Plane**: `services/control-plane/`, Cloud Run.
 - **Agent Runtime**: `services/agent-runtime/`, one always-alive GCE VM behind a global HTTPS load balancer.
+- **Mobile Client**: `apps/mobile/`, Expo/EAS iOS app distributed through TestFlight and the App Store.
 - **Desktop Client**: `apps/desktop/`, SwiftPM macOS app distributed as a signed DMG.
 
 Use this with the owning deployable docs:
@@ -12,13 +13,34 @@ Use this with the owning deployable docs:
 - [services/control-plane/ARCHITECTURE.md](../services/control-plane/ARCHITECTURE.md)
 - [services/agent-runtime/README.md](../services/agent-runtime/README.md)
 - [services/agent-runtime/ARCHITECTURE.md](../services/agent-runtime/ARCHITECTURE.md)
+- [apps/mobile/ARCHITECTURE.md](../apps/mobile/ARCHITECTURE.md)
+- [apps/mobile/docs/RELEASE.md](../apps/mobile/docs/RELEASE.md)
 - [apps/desktop/README.md](../apps/desktop/README.md)
 - [apps/desktop/ARCHITECTURE.md](../apps/desktop/ARCHITECTURE.md)
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
 
+Before the initial public launch, Development and founder Preview evidence are
+prerequisites, not substitutes for Production promotion. After launch, Preview is
+retired: changes move from Development through the owning Production release
+runbook. See [DEVELOPMENT.md](DEVELOPMENT.md) and [PREVIEW.md](PREVIEW.md).
+
+## Persistent-data safety
+
+An agent may inspect Production and may apply an already-approved additive
+migration through the documented release path. Before any operation that deletes
+or irreversibly rewrites persistent Production or shared Development data, the
+agent must name the exact target and ask for explicit human approval.
+
+Automatic cleanup is allowed only for a temporary resource that the same test run
+created for that purpose, such as its own disposable Neon branch. This exception
+does not authorize cleanup of `dev-local-smoke`, the production branch, user
+accounts, or production rows.
+
 ## Current Production State
 
-Snapshot date: 2026-06-20.
+Server infrastructure snapshot date: 2026-06-20. Treat the inventory below as a
+handoff record and verify live state before an operation; do not infer current
+client release status from this date.
 
 ### Shared
 
@@ -96,6 +118,51 @@ Runtime Secret Manager values:
 - Directional shared secrets are reused with Control Plane:
   - `INTERNAL_SECRET_TO_RUNTIME`
   - `INTERNAL_SECRET_FROM_RUNTIME`
+
+### Mobile Client
+
+- Package: `apps/mobile`
+- Product: Expo / React Native iOS app
+- Bundle identifier: `com.heyintentive.expo`
+- Build service: EAS Build
+- Preview distribution: internal EAS build, `preview` channel/environment
+- Production distribution: TestFlight/App Store, `production` channel/environment
+- OTA service: EAS Update, guarded by the build's runtime version
+- Latest development-client validation snapshot (2026-07-25):
+  - EAS Simulator build
+    `a0b4c53b-f2b6-46dd-a811-c66661011ea5` installed and rendered;
+  - native Google account selection returned to the app;
+  - Neon Auth then returned `412` / `COMPUTE_QUOTA_EXCEEDED`, so no Neon session
+    or Control Plane User JWT was established;
+  - the Google-hosted account page still displayed the stale OAuth app name
+    `zeroone`; the Google Auth Platform branding value must be changed to
+    `Intentive` and verified from the hosted page.
+- Local gates:
+
+```bash
+pnpm --dir apps/mobile typecheck
+pnpm --dir apps/mobile test
+pnpm --dir apps/mobile test:rn --runInBand
+pnpm --dir apps/mobile eas:preflight
+pnpm harness --scope apps/mobile
+```
+
+The initial production binary must be built from the accepted founder Preview SHA
+after its physical-device proof passes. After public launch, Mobile changes go
+from Development through TestFlight and the App Store without maintaining a
+parallel Preview app. Google Sign-In, APNs/push, SecureStore/Keychain restoration,
+background/foreground behavior, and OTA application still require real-device
+evidence; Simulator screenshots do not satisfy them.
+
+The two snapshot failures above are current external release blockers, not accepted
+limitations. Recheck Neon Auth after the monthly quota reset (or plan change) and
+rerun the hosted Google page after the OAuth brand update before starting the
+physical-device gate.
+
+Native changes require a new binary. JS/assets may ship through EAS Update only
+when compatible with the installed binary's runtime version. Production submission
+remains gated by TestFlight/App Store processing and Apple review. Full procedure:
+[`../apps/mobile/docs/RELEASE.md`](../apps/mobile/docs/RELEASE.md).
 
 ### Desktop Client
 

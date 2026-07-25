@@ -88,9 +88,6 @@ public final class PassiveAudioContextPipeline {
   ) async -> PassiveAudioIngestOutcome {
     let settings = settingsProvider()
 
-    guard settings.captureEnabled else {
-      return .skipped("capture disabled")
-    }
     guard settings.ambientAudioCaptureEnabled else {
       return .skipped("ambient audio capture disabled")
     }

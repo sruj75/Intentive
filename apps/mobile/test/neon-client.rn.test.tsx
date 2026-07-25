@@ -182,6 +182,34 @@ test("Google is configured only when the build carries both public client IDs", 
   }
 });
 
+test("the auth bypass is opt-in in development and cannot activate in production", () => {
+  const originalBypass = process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS;
+  const originalIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const originalWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+  const originalDev = (global as { __DEV__?: boolean }).__DEV__;
+  try {
+    delete process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS;
+    (global as { __DEV__?: boolean }).__DEV__ = true;
+    expect(createRuntimeConfig().devAuthBypassEnabled).toBe(false);
+
+    process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS = "true";
+    expect(createRuntimeConfig().devAuthBypassEnabled).toBe(true);
+
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "123.apps.googleusercontent.com";
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = "web.apps.googleusercontent.com";
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    expect(createRuntimeConfig().devAuthBypassEnabled).toBe(false);
+  } finally {
+    if (originalBypass === undefined) delete process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS;
+    else process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS = originalBypass;
+    if (originalIosClientId === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    else process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = originalIosClientId;
+    if (originalWebClientId === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    else process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = originalWebClientId;
+    (global as { __DEV__?: boolean }).__DEV__ = originalDev;
+  }
+});
+
 test("production config resolution fails when either Google client ID is missing", () => {
   const originalIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
   const originalWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;

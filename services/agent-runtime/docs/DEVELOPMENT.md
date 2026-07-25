@@ -17,6 +17,10 @@ For CI/verification see [`../../../docs/TESTING.md`](../../../docs/TESTING.md); 
 the production release path see [`docs/RELEASE.md`](RELEASE.md) and
 [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md).
 
+The Agent Runtime has no separate Preview deployment. Founder Preview clients use
+the live Production Runtime; backend changes move from this Development workflow
+into the existing Production release workflow.
+
 > **No production behavior changes for local dev.** Same config seam
 > (`src/config/env.ts`) as production; local values point at an isolated Neon dev
 > branch, loopback URLs, dummy internal secrets, your own OpenRouter key, and
@@ -40,7 +44,7 @@ the `dev-local-smoke` branch; **you must set a real `OPENROUTER_API_KEY`** — s
 > **Use Node 24's `--env-file`** — `pnpm start` does not auto-load `.env` (the
 > service never imports dotenv).
 
-For a full four-deployable teardown, use `pnpm development:clean` from the repo
+For a full four-deployable teardown, use `pnpm development:kill` from the repo
 root. The modular `kill it` command above owns only `:8787` and `:8081`; Metro is
 reserved on `:8082`, so Mobile cleanup cannot kill the Runtime.
 

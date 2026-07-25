@@ -597,7 +597,9 @@ final class ScreenMemoryCompilerTests: XCTestCase {
       audioCapture: FixedAmbientAudioCaptureService(pcm16k: Data([1, 2, 3, 4])),
       voiceGate: FixedVoiceActivityGate(hasSpeech: true),
       transcription: FixedAmbientTranscription(text: "ambient launch checklist"),
-      settingsProvider: { CompilerSettings(ambientAudioCaptureEnabled: true) },
+      settingsProvider: {
+        CompilerSettings(captureEnabled: false, ambientAudioCaptureEnabled: true)
+      },
       permissionProvider: { true },
       now: {
         defer { nowCallCount += 1 }

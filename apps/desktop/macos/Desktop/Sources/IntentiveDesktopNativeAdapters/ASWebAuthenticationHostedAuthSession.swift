@@ -45,8 +45,10 @@ public final class ASWebAuthenticationHostedAuthSession: NSObject, HostedAuthSes
     anchorProvider()
   }
 
-  public func cancel() {
-    currentSession?.cancel()
-    currentSession = nil
+  public nonisolated func cancel() {
+    Task { @MainActor [weak self] in
+      self?.currentSession?.cancel()
+      self?.currentSession = nil
+    }
   }
 }
