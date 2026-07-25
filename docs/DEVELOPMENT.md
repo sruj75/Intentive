@@ -273,6 +273,27 @@ An agent should set session defaults once, then reuse the same workspace/project
 scheme, configuration, and Simulator UDID. Avoid rediscovering or booting multiple
 simulators for every action.
 
+## Artifact retention contract
+
+Development teardown has three different responsibilities:
+
+| Class | Examples | End-of-run policy |
+| --- | --- | --- |
+| Live runtime | Metro, local services, app processes, booted Simulator, disposable Tart clone | stop with `pnpm development:kill` |
+| Reusable native work | installed EAS dev client, remote/local EAS artifacts, `node_modules`, SwiftPM scratch, assembled apps, immutable Tart base | preserve and reuse |
+| Proof evidence | EAS build ID/URL, screenshots, logs, event IDs, database query results | report or archive intentionally; temporary screenshots are deleted on kill |
+| Disposable/sensitive state | one-run credentials, expired test databases, transient PID/log directories | remove when its proof window ends |
+
+A continuing branch/worktree is source state, not temporary scratch. Keep it on a
+persistent workspace path; `/tmp` and `/private/tmp` are appropriate only for
+replaceable run files. Shutting down a Simulator must not erase it or uninstall the
+development client.
+
+For Mobile, reuse the installed EAS development client until the native dependency
+graph changes. JS/TS changes need only Metro. A native change requires a new EAS
+artifact, but EAS build caches and the prior build ID stay useful; do not clear
+them by default.
+
 ## Final handoff
 
 Before handing work back:
@@ -291,13 +312,18 @@ Also report:
 - any external gate still required, such as physical iPhone, clean Tart, signing,
   notarization, TestFlight, or App Store review.
 
-Clean up only what the workflow created:
+Stop live development processes without discarding reusable work:
 
 ```bash
-scripts/local-stack.sh --down
-pnpm development:clean
+pnpm development:kill
 ```
 
-Keep useful active-workspace caches (`node_modules`, generated iOS/Pods, DerivedData,
-SwiftPM scratch, and the immutable Tart base). Remove disposable databases when
+`development:kill` stops the local stack, Metro, the Desktop Client, Simulator,
+and the disposable Tart clone. It preserves installed Simulator apps, EAS build
+artifacts and caches, `node_modules`, SwiftPM scratch and assembled apps, and the
+immutable Tart base. Intentive-named temporary screenshots are deleted.
+
+Use `pnpm development:prune` only when local one-run EAS archives and temporary
+EAS builder directories are deliberately no longer useful. It does not delete
+remote EAS builds or shared native caches. Remove disposable databases only when
 their proof window ends.

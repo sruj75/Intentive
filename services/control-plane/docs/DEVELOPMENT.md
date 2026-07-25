@@ -39,7 +39,7 @@ pre-filled for the `dev-local-smoke` branch; see [Configuration](#configuration)
 > (`node dist/main.js`) does **not** auto-load `.env` (the service never imports
 > dotenv). Always launch with `node --env-file=…/.env …/dist/main.js`.
 
-For a full four-deployable teardown, use `pnpm development:clean` from the repo
+For a full four-deployable teardown, use `pnpm development:kill` from the repo
 root. The modular `kill it` command above owns only `:8080`; the full sweep also
 reaps Runtime, Metro, simulator, Tart-clone, and one-run temp deadweight while
 preserving reusable build caches.

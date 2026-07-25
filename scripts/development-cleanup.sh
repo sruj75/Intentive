@@ -41,9 +41,27 @@ runtime_cleanup() {
       bash "$REPO_ROOT/apps/desktop/macos/scripts/tart-internal-build.sh" --delete || true
   fi
 
+  # Runtime-only debris. Keep anything expensive or useful for the next run:
+  # installed Simulator apps, EAS artifacts/caches, node_modules, SwiftPM
+  # scratch, assembled macOS apps, and the immutable Tart base. Screenshots are
+  # one-run evidence, not a build cache, so kill removes Intentive-named images.
+  rm -rf -- /tmp/intentive-metro.log /tmp/intentive-local-stack
+  find /tmp /private/tmp "${TMPDIR:-/tmp}" \
+    -maxdepth 1 -type f -name 'intentive-*.png' -delete 2>/dev/null || true
+
+  echo "development:kill complete; reusable build artifacts and caches were preserved"
+}
+
+prune_artifacts() {
+  runtime_cleanup
+
+  # Explicit opt-in only. These may be useful for reinstalling, debugging, or
+  # comparing a prior native build, so the normal kill path never removes them.
   rm -f -- "$REPO_ROOT"/apps/mobile/build-*.tar.gz
-  rm -rf -- /tmp/intentive-app /tmp/intentive-sim.png /tmp/intentive-metro.log /tmp/intentive-local-stack
+  rm -rf -- /tmp/intentive-app
   rm -rf -- "${TMPDIR:-/tmp/}"eas-build-local-nodejs "${TMPDIR:-/tmp/}"eas-cli-nodejs
+
+  echo "development:prune removed local one-run artifacts; shared native caches remain"
 }
 
 status() {
@@ -60,6 +78,7 @@ status() {
 
 case "$MODE" in
   --runtime|--kill) runtime_cleanup ;;
+  --prune-artifacts) prune_artifacts ;;
   --status) status ;;
-  *) echo "usage: $0 [--runtime|--status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--kill|--runtime|--prune-artifacts|--status]" >&2; exit 2 ;;
 esac

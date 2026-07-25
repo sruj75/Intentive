@@ -196,19 +196,41 @@ XcodeBuildMCP can provide structured simulator/build/log/UI actions. Computer Us
 is useful for visual inspection when semantic iOS UI automation is insufficient.
 The shell commands above remain the reproducible fallback.
 
-## Teardown
+## Stop, reuse, and rebuild
 
-Stop only this loop and keep the installed EAS dev client:
+The normal end-of-run command is:
 
 ```bash
-lsof -ti tcp:8082 | xargs kill 2>/dev/null || true
-xcrun simctl terminate booted com.heyintentive.expo 2>/dev/null || true
-xcrun simctl shutdown all
+pnpm development:kill
 ```
 
-Use `pnpm development:clean` for repository-wide runtime cleanup. EAS owns the
-native build cache; a local generated `ios/`, Pods, or DerivedData tree is not part
-of this workflow.
+This stops Metro and the local services, terminates the Mobile Client, and shuts
+down Simulator. It deliberately does **not** uninstall the EAS development client
+or erase the Simulator. It also preserves EAS/local native artifacts,
+`node_modules`, and the shared build caches. Intentive-named temporary screenshots
+are deleted because they are run evidence, not a reusable native artifact.
+
+Reuse the installed client for every JS/TS-only run. If it needs reinstalling on
+this or another Simulator, use the recorded EAS build ID:
+
+```bash
+npx -y eas-cli@21.2.0 build:run \
+  --platform ios \
+  --id "<recorded-eas-build-id>" \
+  --simulator "$IOS_UDID"
+```
+
+When the native dependency graph, config plugins, native `app.json` values, or
+Expo/React Native SDK changes, build a new development client. Let EAS reuse its
+native build cache; do not pass `--clear-cache` unless a diagnosed cache defect
+requires it. Keep the previous EAS build ID as a rollback artifact.
+
+`pnpm development:clean` remains a compatibility alias for the same cache-safe
+kill behavior. `pnpm development:prune` is the explicit opt-in for deleting local
+one-run EAS archives and temporary EAS builder directories. Neither command
+deletes remote EAS builds, the installed Simulator client, or shared SwiftPM
+caches. A local generated `ios/`, Pods, or DerivedData tree is not part of the
+normal cloud-EAS workflow.
 
 Preview/TestFlight and production App Store procedures are in
 [PREVIEW.md](../../../docs/PREVIEW.md) and [RELEASE.md](RELEASE.md).
