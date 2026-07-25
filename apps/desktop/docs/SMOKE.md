@@ -60,7 +60,7 @@ cd apps/desktop/macos
 
 Confirm:
 
-1. `Connect Runtime` opens the system auth session.
+1. `Connect Runtime` opens the system auth session directly on Google; no provider picker appears.
 2. Cancelling the session does not store a token.
 3. Completing sign-in stores the User JWT in Keychain.
 4. Relaunch restores the token without reopening the auth session.

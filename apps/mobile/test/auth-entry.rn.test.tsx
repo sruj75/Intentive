@@ -119,30 +119,30 @@ test("Identity Gate stays put when native auth is cancelled", async () => {
   expect(screen.queryByText(/try again/i)).toBeNull();
 });
 
-test("a recoverable failure shows an actionable retry notice and stays on the gate", async () => {
-  const screen = renderEntry({ status: "error", message: "exchange failed" } as SignInOutcome);
+test("a recoverable failure stays on the gate without inserting an inline notice", async () => {
+  const screen = renderEntry({ status: "error" });
 
   fireEvent.press(screen.getByTestId("continue-with-google"));
 
-  await waitFor(() => expect(screen.queryByText(/try again/i)).toBeTruthy());
-  expect(screen.getByTestId("continue-with-google")).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId("continue-with-google")).toBeEnabled());
+  expect(screen.queryByText(/try again/i)).toBeNull();
   expect(screen.queryByTestId("full-name-input")).toBeNull();
 });
 
-test("a thrown sign-in failure clears pending state and offers a retry", async () => {
+test("a thrown sign-in failure clears pending state without inserting an inline notice", async () => {
   const authAdapter = createThrowingAuthAdapter(new Error("native Google failure"));
-  const screen = renderEntry({ status: "error", message: "unused" }, { authAdapter });
+  const screen = renderEntry({ status: "error" }, { authAdapter });
 
   fireEvent.press(screen.getByTestId("continue-with-google"));
 
-  await waitFor(() => expect(screen.getByText(/try again/i)).toBeTruthy());
-  expect(screen.getByTestId("continue-with-google")).toBeEnabled();
+  await waitFor(() => expect(screen.getByTestId("continue-with-google")).toBeEnabled());
   expect(screen.getByTestId("continue-with-google")).toHaveTextContent("Continue with Google");
+  expect(screen.queryByText(/try again/i)).toBeNull();
   expect(screen.queryByTestId("full-name-input")).toBeNull();
 });
 
-test("a missing configuration disables the button and shows a not-configured notice", () => {
+test("a missing configuration disables the button without inserting an inline notice", () => {
   const screen = renderEntry({ status: "not-configured" }, { googleAuthConfigured: false });
-  expect(screen.getByText(/isn’t configured/i)).toBeTruthy();
   expect(screen.getByTestId("continue-with-google")).toBeDisabled();
+  expect(screen.queryByText(/isn’t configured/i)).toBeNull();
 });

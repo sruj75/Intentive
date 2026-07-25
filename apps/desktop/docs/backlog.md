@@ -8,13 +8,13 @@ This document records work deliberately deferred from the Omi-derived macOS UI r
 - Mobile remains the only first-time product-onboarding entry point. A V1 user creates the account and completes the shared onboarding gates on Mobile, then installs the Desktop Client and signs in with the same Neon identity.
 - If the Control Plane reports an unfinished cross-client gate, the Desktop Client directs the user to finish setup on Mobile instead of reimplementing that gate on macOS.
 - After sign-in, macOS owns only device-local setup: the retained Omi trust primer, Screen Recording, Microphone, Accessibility, Floating Bar shortcut, and Floating Bar demo screens.
-- The Omi-styled Apple and Google sign-in screen replaces only the visible provider-picker presentation. The current implementation must not change the Neon Auth, JWT, Keychain, Control Plane, Runtime routing, or account behavior behind it.
+- The Omi-styled Google sign-in screen replaces only the visible sign-in presentation. The current implementation must not change the Neon Auth, JWT, Keychain, Control Plane, Runtime routing, or account behavior behind it.
 
 ## Post-V1: macOS as a first-class onboarding entry point
 
 Make macOS capable of starting the same product onboarding that Mobile starts today.
 
-- Apple and Google sign-in on either client authenticate through the same Neon Auth project and resolve to the same Control-Plane User, durable account rows, Agent Instance, and Conversation History.
+- Google sign-in on either client authenticates through the same Neon Auth project and resolves to the same Control-Plane User, durable account rows, Agent Instance, and Conversation History.
 - Move shared onboarding progress behind Control-Plane-owned, idempotent gate contracts. A gate completed on Mobile or macOS is immediately satisfied for the other client.
 - Keep device-local gates device-local. Screen Recording, Microphone, Accessibility, and shortcut/demo completion apply only to the Mac that owns those permissions and preferences.
 - Compose each client flow from shared gates plus its own device-local gates. Never make users repeat identity, consent, or any other cross-client step already completed elsewhere.

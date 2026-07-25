@@ -64,7 +64,10 @@ test("the curtain stays through RESOLVING (hydration unknown)", async () => {
   const curtain = screen.getByLabelText("Loading Intentive");
   expect(curtain).toBeTruthy();
   expect(curtain).toHaveProp("pointerEvents", "auto");
-  expect(screen.getByTestId("launch-icon")).toHaveProp("source", require("../assets/icon.png"));
+  expect(screen.getByTestId("launch-icon")).toHaveProp(
+    "source",
+    require("../assets/brand-head.png"),
+  );
   expect(screen.queryByLabelText("Intentive abstract mark")).toBeNull();
 });
 

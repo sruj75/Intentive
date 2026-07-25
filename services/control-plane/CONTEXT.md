@@ -22,7 +22,7 @@ The Control Plane's `GET /me` returns the caller's **Account State**, including 
 _Avoid_: per-screen onboarding flag, client-local gate state, separate endpoints per gate
 
 **Identity Gate**:
-The Google sign-in step (Apple sign-in later). **Cross-Client Gate**. Same Google account on phone and Mac resolves to the same User.
+The Google sign-in step. **Cross-Client Gate**. Same Google account on phone and Mac resolves to the same User.
 
 **Consent Primer**:
 The one-time relationship-consent screen explaining memory, follow-ups, and user control. **Cross-Client Gate**. Asked once per User across all clients.

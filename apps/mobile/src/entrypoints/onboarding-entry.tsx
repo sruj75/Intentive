@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { router } from "expo-router";
 
 import { ScreenFrame } from "../design/screen-frame";
-import { authContent } from "../domains/auth/config/content";
 import type { AuthAdapter, SignInOutcome } from "../domains/auth/types/auth";
 import { AuthScene } from "../domains/auth/ui/auth-scene";
 import { createOnboardingJourneyController } from "../domains/onboarding/service/onboarding-journey";
@@ -27,10 +26,10 @@ export function OnboardingEntry({
 }: {
   /**
    * Whether Google is a working capability (both public client IDs present).
-   * The Identity Gate disables its single button and shows an actionable notice
-   * when this is false (ADR 0030). Defaults to true so the offline/dev default
-   * path (no injected adapter) keeps the Google button enabled for the local
-   * walk the `experience-journey` invariant test drives.
+   * The Identity Gate disables its single button when this is false (ADR 0030).
+   * Defaults to true so the offline/dev default path (no injected adapter)
+   * keeps the Google button enabled for the local walk the
+   * `experience-journey` invariant test drives.
    */
   readonly googleAuthConfigured?: boolean;
   /** Hydrated Launch State identity truth. Omitted by the capability-free harness. */
@@ -80,9 +79,6 @@ export function OnboardingEntry({
   const [consentNotice, setConsentNotice] = useState<string | null>(null);
   const [completionPending, setCompletionPending] = useState(false);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
-  const [authNotice, setAuthNotice] = useState<string | null>(
-    googleAuthConfigured ? null : authContent.notConfiguredNotice,
-  );
   const disabled = !googleAuthConfigured;
 
   useEffect(() => {
@@ -105,7 +101,6 @@ export function OnboardingEntry({
 
   const handlePress = useCallback(() => {
     if (authPending || disabled) return;
-    setAuthNotice(null);
     const run = async (): Promise<void> => {
       setAuthPending(true);
       try {
@@ -119,18 +114,12 @@ export function OnboardingEntry({
           return;
         }
         if (outcome.status === "cancelled") {
-          // Cancellation is silent: no notice, stay on the gate.
+          // Cancellation is silent: stay on the gate.
           return;
         }
-        setAuthNotice(
-          outcome.status === "not-configured"
-            ? authContent.notConfiguredNotice
-            : authContent.retryNotice,
-        );
       } catch {
-        // The adapter normally maps native failures into a recoverable outcome,
-        // but an unexpected throw must still release the button and offer retry.
-        setAuthNotice(authContent.retryNotice);
+        // Auth errors do not insert layout below the button. The adapter owns
+        // telemetry; finally releases the button so another attempt is possible.
       } finally {
         setAuthPending(false);
       }
@@ -167,14 +156,7 @@ export function OnboardingEntry({
 
   let scene: React.JSX.Element;
   if (phase === "auth") {
-    scene = (
-      <AuthScene
-        disabled={disabled}
-        notice={authNotice}
-        onPress={handlePress}
-        pending={authPending}
-      />
-    );
+    scene = <AuthScene disabled={disabled} onPress={handlePress} pending={authPending} />;
   } else if (phase === "resolving") {
     scene = <></>;
   } else if (phase === "consent") {

@@ -63,7 +63,7 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0027 | Reconnect Account State — feature gating                         | accepted                        |
 | 0028 | Reconnect Notifications — push registration                      | accepted                        |
 | 0029 | Reconnect Telemetry (Sentry)                                     | accepted                        |
-| 0030 | Google-only production auth and lifecycle complexity reduction   | accepted                        |
+| 0030 | Google-only production auth and lifecycle complexity reduction   | accepted; amended 2026-07-26 (Identity Gate notices removed; launch mark retuned) |
 
 ### Desktop Client — `apps/desktop/docs/adr/`
 

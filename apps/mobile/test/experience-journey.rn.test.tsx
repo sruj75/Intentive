@@ -146,6 +146,7 @@ describe("Huracán local experience", () => {
       bottom: "additive",
       left: "off",
     });
+    expect(screen.getByText(/How have you been\?/)).toBeTruthy();
     expect(screen.toJSON()).toMatchSnapshot("A-auth");
 
     // Google is the sole v1 production Auth Provider (ADR 0030): neither Apple

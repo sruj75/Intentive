@@ -9,18 +9,24 @@
 
 /**
  * The result of a sign-in attempt — deliberately token-free, so the Identity Gate
- * learns only whether to advance, retry, or explain:
+ * learns only whether to advance or stay put. Only `signed-in` advances; every
+ * other outcome leaves the user on the gate with the button released for another
+ * attempt, and none of them renders anything (ADR 0030, amended 2026-07-26 — the
+ * gate's action area does not shift). Failure detail reaches Sentry through the
+ * Auth Adapter, not the UI.
  *   - `signed-in`      success; the Identity Gate flips Launch State via `markSignedIn`.
  *   - `cancelled`      the user backed out — NOT an error; return silently.
  *   - `not-configured` Google has no credentials yet (e.g. a build without the public
- *                      client IDs); surfaced honestly, never as a fake success.
- *   - `error`          a recoverable failure; the gate offers a retry.
+ *                      client IDs); never reported as a fake success. Production config
+ *                      resolution already fails without both client IDs, so this is a
+ *                      dev-build state.
+ *   - `error`          a recoverable failure; the adapter has already captured it.
  */
 export type SignInOutcome =
   | { status: "signed-in" }
   | { status: "cancelled" }
   | { status: "not-configured" }
-  | { status: "error"; message: string };
+  | { status: "error" };
 
 /**
  * The boundary the Identity Gate calls. Deep module: four methods over all the

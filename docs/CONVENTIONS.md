@@ -11,7 +11,7 @@ Enforced by the `intentive-architecture/filename-case` ESLint rule
 (`tools/linters/eslint-plugin-intentive-architecture/lib/rules/filename-case.js`).
 
 - **Desktop React components** (`apps/desktop/**/*.tsx`) → **PascalCase**:
-  `Onboarding.tsx`, `IntentiveAuthProvider.tsx`. (React component norm.)
+  `Onboarding.tsx`, `FloatingBar.tsx`. (React component norm.)
 - **Everything else** (mobile, services, packages, and desktop non-`.tsx` files)
   → **kebab-case**: `companion-chat.tsx`, `auth-failure.ts`, `resolve-launch-state.ts`,
   `parse.ts`. Single-word lowercase names are valid kebab-case.

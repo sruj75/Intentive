@@ -3,8 +3,6 @@ import Combine
 import OmiTheme
 import SwiftUI
 
-public enum IntentiveAuthProvider: Sendable { case apple, google }
-
 public enum IntentiveSetupStep: String, CaseIterable, Identifiable, Sendable {
   case trust
   case screenRecording
@@ -26,7 +24,7 @@ public protocol IntentiveSetupPresenting: ObservableObject {
   var microphoneGranted: Bool { get }
   var accessibilityGranted: Bool { get }
   var shortcutLabel: String { get }
-  func signIn(provider: IntentiveAuthProvider)
+  func signIn()
   func cancelSignIn()
   func completeCurrentSetupStep()
   func skipCurrentSetupStep()
@@ -89,10 +87,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
         }
         Spacer()
         VStack(spacing: OmiSpacing.md) {
-          authButton(provider: .apple, label: "Sign in with Apple") {
-            Image(systemName: "applelogo").scaledFont(size: OmiType.heading)
-          }
-          authButton(provider: .google, label: "Sign in with Google") { GoogleLogo() }
+          googleSignInButton
           if model.authenticationLoading {
             ProgressView().tint(.white).padding(.top, OmiSpacing.sm)
             Button("Cancel", action: model.cancelSignIn).buttonStyle(.plain).foregroundColor(OmiColors.textTertiary)
@@ -106,12 +101,15 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     }
   }
 
-  private func authButton<Icon: View>(provider: IntentiveAuthProvider, label: String, @ViewBuilder icon: () -> Icon) -> some View {
-    Button { model.signIn(provider: provider) } label: {
-      HStack(spacing: OmiSpacing.sm) { icon(); Text(label).scaledFont(size: OmiType.subheading, weight: .medium) }
+  private var googleSignInButton: some View {
+    Button(action: model.signIn) {
+      Text("Continue with Google").scaledFont(size: OmiType.subheading, weight: .medium)
         .foregroundColor(.black).frame(maxWidth: .infinity).frame(height: 50)
-        .background(Color.white).cornerRadius(OmiChrome.smallControlRadius)
-    }.buttonStyle(.plain).disabled(model.authenticationLoading)
+        .background(Color.white, in: Capsule())
+    }
+    .buttonStyle(.plain)
+    .disabled(model.authenticationLoading)
+    .accessibilityIdentifier("sign-in-with-google")
   }
 
   private var finishOnPhone: some View {
@@ -268,15 +266,6 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     case .floatingBarShortcut: ("Shortcut", "Intentive is one shortcut away.", "Learn the shortcut you'll use to reach your Companion from anywhere.")
     case .floatingBarDemo: ("Try it", "Meet your Floating Bar.", "Open the real text-only conversation surface before finishing setup.")
     }
-  }
-}
-
-private struct GoogleLogo: View {
-  var body: some View {
-    ZStack {
-      Circle().stroke(Color(red: 0.26, green: 0.52, blue: 0.96), lineWidth: 3)
-      Text("G").font(.system(size: 11, weight: .bold)).foregroundColor(Color(red: 0.26, green: 0.52, blue: 0.96))
-    }.frame(width: 18, height: 18)
   }
 }
 

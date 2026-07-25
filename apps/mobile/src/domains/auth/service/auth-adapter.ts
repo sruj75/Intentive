@@ -34,8 +34,9 @@ export function createAuthAdapter(deps: {
       case "dismissed":
         return { status: "cancelled" };
       case "failed":
+        // The message is telemetry-only; the Identity Gate renders nothing for a failure.
         captureAuthFailure(new Error(attempt.message));
-        return { status: "error", message: attempt.message };
+        return { status: "error" };
     }
   };
 

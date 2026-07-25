@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { usePathname } from "expo-router";
 
+import { brandAssets } from "../design/brand";
 import { mobileTheme as theme } from "../design/theme";
 import { resolveLaunchState } from "../domains/onboarding/service/resolve-launch-state";
 import { routeForDestination } from "../domains/onboarding/service/route-for-destination";
@@ -22,11 +23,11 @@ import { useLaunchState } from "../providers/launch-state";
  * the one-frame Identity Gate flash a returning user would otherwise see while
  * `/` is still mounted before `RootNavigator` replaces into `/chat` (ADR 0030).
  *
- * While shown, one 96×96 brand mark is centered with a pulse: scale
- * `0.94 → 1.0` and opacity `0.65 → 1.0`, reversing every 800 ms. Under Reduce
- * Motion the mark is shown statically. There is exactly one VoiceOver label,
- * "Loading Intentive," with progress/busy semantics — no repeated announcements
- * and no secondary spinner.
+ * While shown, one transparent 96×96 brand mark is centered with a gentle
+ * breathing pulse: scale `0.92 → 1.06` and opacity `0.72 → 1.0`, easing in and
+ * out over 1.1 seconds in each direction. Under Reduce Motion the mark is shown
+ * statically. There is exactly one VoiceOver label, "Loading Intentive," with
+ * progress/busy semantics — no repeated announcements and no secondary spinner.
  */
 export function LaunchCurtain(): React.JSX.Element | null {
   const { state } = useLaunchState();
@@ -39,17 +40,17 @@ export function LaunchCurtain(): React.JSX.Element | null {
   const visible = destination === "RESOLVING" || (target !== null && pathname !== target);
 
   const reduceMotion = useReducedMotion();
-  const scale = useSharedValue(0.94);
-  const opacity = useSharedValue(0.65);
+  const scale = useSharedValue(0.92);
+  const opacity = useSharedValue(0.72);
 
   useEffect(() => {
     if (!visible || reduceMotion) return;
     scale.value = withRepeat(
-      withSequence(withTiming(1, { duration: 800 }), withTiming(0.94, { duration: 800 })),
+      withSequence(withTiming(1.06, { duration: 1_100 }), withTiming(0.92, { duration: 1_100 })),
       -1,
     );
     opacity.value = withRepeat(
-      withSequence(withTiming(1, { duration: 800 }), withTiming(0.65, { duration: 800 })),
+      withSequence(withTiming(1, { duration: 1_100 }), withTiming(0.72, { duration: 1_100 })),
       -1,
     );
   }, [visible, reduceMotion, scale, opacity]);
@@ -61,6 +62,10 @@ export function LaunchCurtain(): React.JSX.Element | null {
 
   if (!visible) return null;
 
+  const icon = (
+    <Image accessible={false} source={brandAssets.head} style={styles.icon} testID="launch-icon" />
+  );
+
   return (
     <View
       accessibilityLabel="Loading Intentive"
@@ -70,23 +75,7 @@ export function LaunchCurtain(): React.JSX.Element | null {
       style={styles.curtain}
     >
       <View style={styles.mark}>
-        {reduceMotion ? (
-          <Image
-            accessible={false}
-            source={require("../../assets/icon.png")}
-            style={styles.icon}
-            testID="launch-icon"
-          />
-        ) : (
-          <Animated.View style={animatedStyle}>
-            <Image
-              accessible={false}
-              source={require("../../assets/icon.png")}
-              style={styles.icon}
-              testID="launch-icon"
-            />
-          </Animated.View>
-        )}
+        {reduceMotion ? icon : <Animated.View style={animatedStyle}>{icon}</Animated.View>}
       </View>
     </View>
   );

@@ -6,7 +6,7 @@ Server-side authority: identity, devices, gate state, agent instance registry, r
 
 ## Role in V1
 
-- Authenticates users via **Neon Auth** (Google in v1, Apple later)
+- Authenticates users via **Neon Auth** (Google)
 - Owns the **Device Registry** (including Expo Push Tokens)
 - Tracks **Pre-Chat Gate** completion state (cross-client vs device-local)
 - Issues **Routing** to clients via `GET /agent` (URL + JWT)

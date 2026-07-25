@@ -948,15 +948,6 @@ final class DesktopViewModel: ObservableObject {
     applyRuntimeState(state)
   }
 
-  func signInAndConnectRuntime(provider: DesktopAuthProvider) async {
-    guard composition.activeSystemBoundaries.contains(.network) else {
-      status = "Runtime network is disabled for this launch"
-      return
-    }
-    status = "Connecting Runtime..."
-    applyRuntimeState(await runtimeSession.signInAndConnect(provider: provider))
-  }
-
   func cancelSignIn() {
     runtimeSession.cancelSignIn()
     applyRuntimeState(.signedOut)
