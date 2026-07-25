@@ -3,7 +3,9 @@ name: desktop-dependency-policy
 on:
   pull_request:
     paths:
-      - "apps/desktop/**"
+      - "apps/desktop/macos/Desktop/Package.swift"
+      - "apps/desktop/macos/Desktop/Package.resolved"
+      - "apps/desktop/macos/scripts/swiftpm.sh"
       - ".github/workflows/desktop-dependency-policy.yml"
   workflow_dispatch:
 
