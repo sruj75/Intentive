@@ -1,6 +1,6 @@
 import Accelerate
 import Foundation
-import NaturalLanguage
+@preconcurrency import NaturalLanguage
 
 /// On-device semantic embedding for Screen Memory search.
 ///

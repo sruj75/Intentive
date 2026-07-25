@@ -190,6 +190,7 @@ public final class FluidAudioTranscriptionService: LocalTranscriptionService, @u
 private actor ParakeetEngine {
   private let language: String
   private var manager: AsrManager?
+  private var managerLoadTask: Task<AsrManager, Error>?
 
   init(language: String) {
     self.language = language
@@ -204,12 +205,25 @@ private actor ParakeetEngine {
 
   private func loadedManager() async throws -> AsrManager {
     if let manager { return manager }
+    if let managerLoadTask { return try await managerLoadTask.value }
+
     // v2 = English-only (better recall); v3 = 25 European languages.
     let version: AsrModelVersion = language.hasPrefix("en") ? .v2 : .v3
-    let models = try await AsrModels.downloadAndLoad(version: version)
-    let manager = AsrManager()
-    try await manager.loadModels(models)
-    self.manager = manager
-    return manager
+    let task = Task {
+      let models = try await AsrModels.downloadAndLoad(version: version)
+      let manager = AsrManager()
+      try await manager.loadModels(models)
+      return manager
+    }
+    managerLoadTask = task
+    do {
+      let manager = try await task.value
+      self.manager = manager
+      managerLoadTask = nil
+      return manager
+    } catch {
+      managerLoadTask = nil
+      throw error
+    }
   }
 }

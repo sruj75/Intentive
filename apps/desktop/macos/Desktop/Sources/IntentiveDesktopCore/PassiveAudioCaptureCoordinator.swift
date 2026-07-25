@@ -1,5 +1,15 @@
 import Foundation
 
+public enum PassiveAudioCaptureEligibility {
+  public static func isEnabled(
+    authenticated: Bool,
+    screenCaptureEnabled: Bool,
+    ambientAudioCaptureEnabled: Bool
+  ) -> Bool {
+    authenticated && screenCaptureEnabled && ambientAudioCaptureEnabled
+  }
+}
+
 public protocol PassiveAudioStreamingSource: AnyObject {
   var isRunning: Bool { get }
   func start(onPCM16k: @escaping @Sendable (Data) -> Void) async throws

@@ -1653,7 +1653,11 @@ final class DesktopViewModel: ObservableObject {
 
   private func reconcileAmbientAudioCapture() {
     passiveAudioCoordinator.setUserEnabled(
-      compilerSettings.captureEnabled && compilerSettings.ambientAudioCaptureEnabled
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: isOnboardingAuthenticated,
+        screenCaptureEnabled: compilerSettings.captureEnabled,
+        ambientAudioCaptureEnabled: compilerSettings.ambientAudioCaptureEnabled
+      )
     )
   }
 
@@ -1847,6 +1851,7 @@ final class DesktopViewModel: ObservableObject {
     runtimeState = state
     let storageStatus = reconfigureScreenMemoryForAuthenticatedUserIfNeeded()
     let flushStatus = flushQueuedPerceptionEventsIfConnected(state)
+    reconcileAmbientAudioCapture()
     status = [Self.renderRuntimeState(state), storageStatus, flushStatus]
       .compactMap { $0 }
       .joined(separator: " · ")

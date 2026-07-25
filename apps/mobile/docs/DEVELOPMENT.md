@@ -1,45 +1,30 @@
-# Mobile Client Development Runbook
+# Mobile Development
 
-**This is the canonical local development workflow for the Mobile Client.**
+Intentive iOS development uses an **Expo Development Client** in an iOS
+Simulator. It does not use Expo Go: Google Sign-In, notifications, SecureStore,
+Sentry, updates, and other native modules must exist in the installed binary.
 
-When the user tags this doc (e.g. "run the dev workflow", "build the simulator",
-"@DEVELOPMENT.md"), the agent should execute the [Agent runbook](#agent-runbook)
-below top-to-bottom: produce a **local EAS iOS simulator dev build**, install it on
-a booted simulator, start Metro, and launch the dev client — then report back with a
-screenshot.
+Continuous Native Generation owns the native project through `app.json`,
+`app.config.js`, and config plugins. The normal workflow lets EAS generate it in
+the cloud; never hand-edit a local `ios/` directory.
 
-When the user says **"kill it"** (or "tear it down", "clean sweep"), the agent
-should execute the [Teardown](#teardown--kill-it) section: a full clean sweep that
-leaves **no running server and no on-disk deadweight** behind.
+## Verify before opening Simulator
 
-This is the **inner loop** for day-to-day work: a debug **dev client** (Expo
-dev-launcher + dev-menu) that loads JS from a local Metro server, so JS/TS changes
-hot-reload without rebuilding the binary. It is **not** the release path — for
-TestFlight / App Store / OTA see [`RELEASE.md`](RELEASE.md). For headless
-verification conventions (DerivedData wipes, visual checks) see
-[`../../docs/TESTING.md`](../../docs/TESTING.md#ios-simulator-verification-visual-on-device).
+Use Node 24 or newer:
 
-Builds run **locally on the Mac** via `eas build --local` (Xcode + fastlane) — no
-EAS cloud, and simulator builds need **no Apple credentials**.
+```bash
+pnpm --dir apps/mobile typecheck
+pnpm --dir apps/mobile test
+pnpm --dir apps/mobile test:rn --runInBand
+pnpm harness --scope apps/mobile
+```
 
-## Simulator lanes on this Mac
+`test:rn` passes Jest flags directly; do not add an extra `--`.
 
-Use one booted simulator at a time. For the normal 8 GB Mac development loop,
-use the lighter iPhone 16 lane; reserve the latest lane for final smoke checks:
+## Pick the simulator that exists
 
-| Lane   | Runtime  | Device        | Use                                         |
-| ------ | -------- | ------------- | ------------------------------------------- |
-| Daily  | iOS 18.5 | iPhone 16     | Default development on an 8 GB Mac          |
-| Latest | iOS 26.2 | iPhone 17 Pro | Final smoke and latest-runtime verification |
-
-Do not boot both lanes at once. Re-check `xcrun simctl list runtimes` and
-`xcrun simctl list devices available` when Xcode or the installed runtimes change,
-then update this table.
-
-CoreSimulator runtime images can remain installed while their profiles are temporarily
-unmounted after an Xcode switch or service restart. If `simctl` reports the devices as
-unavailable or says `runtime profile not found`, re-discover the existing local images
-without downloading or duplicating them:
+Installed runtimes and devices change with Xcode. Discover them every time the
+toolchain changes:
 
 ```bash
 xcrun simctl runtime scan-and-mount
@@ -47,287 +32,183 @@ xcrun simctl list runtimes
 xcrun simctl list devices available
 ```
 
-Do not run `simctl runtime add` for an image already shown by `simctl runtime list -v`;
-that creates an unusable duplicate instead of repairing the registry.
-
----
-
-## Agent runbook
-
-### Low-heat development setup
-
-- Keep exactly one simulator booted and one Metro process listening on port 8082.
-- After the dev client is installed, JS/TS changes use Metro hot reload; do not run
-  `pnpm ios` for those changes.
-- Rebuild with `pnpm ios` only after a native dependency, config plugin, native
-  `app.json` key, SDK, icon, or splash change.
-- Shut the simulator down before large native builds or harness/test runs.
-
-Run from the repo root unless a step says otherwise. This runbook is **cache-aware**:
-it does the cheapest thing that leaves a dev client running on a booted simulator, so
-only the **first** build on a machine costs the full ~10–20 min — every build after
-reuses the on-disk cache, and JS/TS-only edits need no build at all.
-
-**Which path?** (see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight) for the why)
-
-- **Dev client already installed on a booted sim + no native change** → don't build;
-  jump to step 5 (start Metro + reload). Seconds.
-- **First build, or a native change to rebuild** → run the steps below; the build
-  itself is `pnpm ios` (step 3), the **cached** in-place build. A "native change" is a
-  new native dep, a changed/added config plugin, an `app.json` native key, an SDK
-  bump, or icons/splash. First run is cold (~10–20 min); cached and fast every run
-  after.
-
-The build step is **`pnpm ios`** (`expo run:ios`) on purpose: it compiles in place
-into `apps/mobile/ios/` and **keeps** Pods + Xcode DerivedData + the downloaded RN
-xcframeworks between runs, and also installs to the sim and starts Metro. Reach for
-`eas build --local` **only** when you need the portable `.tar.gz` — it can't cache
-(see [Portable artifact](#portable-artifact-eas-local-build) below).
+Use one available iPhone at a time. Prefer the lightest installed current device
+for daily work and the newest installed runtime for the final simulator smoke.
+Never depend on an undefined device variable or a device name that is not in the
+current inventory.
 
 ```bash
-# 0. (one-time / when shared contracts change) build the workspace deps Metro needs
-pnpm --filter "@intentive/mobile^..." build
-
-# 1. discover installed runtimes, then boot the daily lane (skip boot if already running)
-xcrun simctl runtime scan-and-mount
-xcrun simctl list runtimes
-xcrun simctl list devices available
-DAILY_DEVICE="iPhone 16"                  # iOS 18.5; see Simulator lanes above
-xcrun simctl shutdown all                  # keep only one simulator in the loop
-xcrun simctl boot "$DAILY_DEVICE"         # UDID also works
+IOS_UDID="<available-device-udid>"
+xcrun simctl shutdown all
+xcrun simctl boot "$IOS_UDID"
+xcrun simctl bootstatus "$IOS_UDID" -b
 open "$(xcode-select -p)/Applications/Simulator.app"
+```
 
-# 2. generate the native iOS project from app.json (CNG — ios/ is git-ignored, see ADR-0017)
+## Build the development client with EAS
+
+Do not use `expo run:ios`, a local Xcode build, or Expo Go for the normal loop.
+The committed `development-simulator` profile extends `development`, sets
+`ios.simulator=true`, and uses the EAS `preview` environment. The profile produces
+an Intentive-specific debug binary containing `expo-dev-client` and all configured
+native modules.
+
+From `apps/mobile`:
+
+```bash
+npx -y eas-cli@21.2.0 whoami
+npx -y eas-cli@21.2.0 env:list --environment preview
+npx -y eas-cli@21.2.0 build \
+  --platform ios \
+  --profile development-simulator \
+  --non-interactive \
+  --wait
+```
+
+The environment check is a real build precondition. It must list:
+
+- `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`;
+- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`;
+- the intended non-production Neon Auth and Control Plane URLs.
+
+Check the actual Neon Auth endpoint before spending time on the browser handoff:
+
+```bash
+npx -y eas-cli@21.2.0 env:exec preview \
+  'curl -sS -i "$EXPO_PUBLIC_NEON_AUTH_BASE_URL/get-session"'
+```
+
+An unauthenticated healthy endpoint responds `200`. `412` with
+`COMPUTE_QUOTA_EXCEEDED` is an external Neon account/project quota gate: Google
+can issue a valid token while Neon still refuses the exchange. Record the response
+and stop the auth run until the quota resets or the Neon plan changes. Do not
+misdiagnose this as an Expo, native Google, or callback-scheme failure.
+
+Without the iOS client ID, `app.config.js` deliberately omits the native Google
+plugin and URL scheme. Without either client ID, the runtime disables Google.
+A successful compile alone is therefore not proof that the auth-capable client
+was built.
+
+Install the completed EAS artifact into the already booted simulator:
+
+```bash
+npx -y eas-cli@21.2.0 build:run \
+  --platform ios \
+  --profile development-simulator \
+  --latest \
+  --simulator "$IOS_UDID"
+```
+
+Record the EAS build ID and URL in the handoff. The simulator artifact needs no
+Apple signing and cannot be installed on a physical iPhone.
+
+## JS/TS inner loop
+
+Once the dev client is installed, do not rebuild native code for ordinary JS/TS
+changes:
+
+```bash
 cd apps/mobile
-npx expo prebuild -p ios                  # skip if ios/ exists & nothing native changed; --clean forces a regen
+npx -y eas-cli@21.2.0 env:exec preview "pnpm dev"
+```
 
-# 3. CACHED in-place build + install on the booted sim + start Metro, all in one.
-#    Reuses ios/Pods, Xcode DerivedData, and the RN xcframeworks → seconds-to-minutes
-#    after the first cold build. bundle id: com.heyintentive.expo
-pnpm ios --device "$LATEST_DEVICE"         # = expo run:ios; targets the booted latest lane
+In another terminal:
 
-# 4. confirm it rendered
-xcrun simctl io booted screenshot /tmp/intentive-sim.png
-
-# --- Dev client already installed and nothing native changed? Skip 0–4; just start
-#     Metro and point the client at it — JS/TS hot-reloads, no native build: ---
-
-# 5. start the single Metro process (pnpm ios already started it; run only if port 8082 is free)
-pnpm --dir apps/mobile dev                # = expo start --port 8082
-
-# 6. launch the dev client and point it at Metro
+```bash
 xcrun simctl launch booted com.heyintentive.expo
-xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
+xcrun simctl openurl booted \
+  "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
 ```
 
-For navigation, layout, or native UI changes, repeat the install/launch smoke on the
-latest lane after the daily lane passes:
+Metro must stay on `8082`; `8081` belongs to Agent Runtime internal HTTP.
+The `dev` script explicitly passes `--dev-client`; it must not fall back to Expo Go.
+`env:exec` is equally important: Metro creates the JavaScript bundle, so it must
+receive the same public client IDs and endpoints as the EAS-built native shell.
+
+Create a new EAS development-client build after:
+
+- a native dependency changes;
+- a config plugin changes;
+- a native `app.json` key changes;
+- the Expo/React Native SDK changes;
+- icons or splash assets change.
+
+## Local backend
+
+Start the services from the root [Apple development
+workflow](../../../docs/DEVELOPMENT.md), then override only the Control Plane URL
+inside the `env:exec` command:
 
 ```bash
-xcrun simctl shutdown "$DAILY_DEVICE"
-LATEST_DEVICE="iPhone 17 Pro"              # iOS 26.2
-xcrun simctl boot "$LATEST_DEVICE"
-xcrun simctl bootstatus "$LATEST_DEVICE" -b
-# `pnpm ios` can install the cached build on this booted target; no clean prebuild.
-pnpm ios --device "$LATEST_DEVICE"
-xcrun simctl io booted screenshot /tmp/intentive-sim-latest.png
+npx -y eas-cli@21.2.0 env:exec preview \
+  "EXPO_PUBLIC_CONTROL_PLANE_BASE_URL=http://localhost:8080 pnpm dev"
 ```
 
-A successful run shows `iOS Bundled <N>ms … (NNNN modules)` in the Metro log and the
-app rendering in the screenshot (behind the dev-menu sheet). Report the screenshot.
+The Simulator shares the Mac network. A physical iPhone must use a reachable Mac
+LAN address and transport policy appropriate for that build.
 
-> **Why prebuild (step 2)?** The native `ios/` project isn't committed — it's
-> generated from `app.json` + config plugins (Continuous Native Generation). Step 2
-> materializes it, and `pnpm ios` builds it in place. Once `ios/` exists you can skip
-> step 2 unless something native changed. There is no `android/` — this is an iOS-only
-> product (see [ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
+The EAS-built client receives native configuration from the `preview` environment.
+Metro can override JavaScript-facing public URLs through `.env.local`, but it
+cannot retrofit a missing native Google URL scheme. Changing the iOS client ID
+therefore requires another EAS build.
 
-### Portable artifact (eas local build)
+## Live acceptance
 
-Only when you need the portable `.tar.gz` (mirror the cloud build, or install it on a
-machine that didn't build it) — **not** for day-to-day iteration, because it can't
-cache (fresh temp dir every run, always ~10–20 min) and doesn't seed the `pnpm ios`
-cache (see [Build caching](#build-caching--make-rebuilds-fast-cache-not-deadweight)):
+After deterministic tests pass:
+
+1. Cold-launch and verify Launch State chooses `/` or `/chat` from real state.
+2. Walk the affected portion of the A-L journey in Simulator.
+3. Inspect the screen after every action and keep Metro/native logs visible.
+4. Background and foreground the app once.
+5. Terminate and cold-launch once after the warm reload works.
+6. Take a simulator screenshot:
+
+   ```bash
+   xcrun simctl io booted screenshot /tmp/intentive-ios.png
+   ```
+
+7. Repeat on a physical internal build for Google Sign-In, APNs/push,
+   SecureStore/Keychain lifecycle, or background behavior.
+
+Google Sign-In can be exercised in Simulator as a development check when the
+client IDs and URL scheme are present. The production-readiness gate remains a
+physical internal build because device credentials, browser handoff, Keychain,
+push, and lifecycle behavior are not simulator-equivalent.
+
+The Google handoff itself has three separate assertions:
+
+1. the app exposes **Continue with Google**;
+2. tapping it opens Apple's native web-auth consent and then
+   `accounts.google.com`;
+3. Google's page says it is continuing to **Intentive**. A stale product name is
+   an OAuth-brand configuration bug and blocks preview approval even when token
+   exchange works. Renaming the Google Cloud project is not sufficient; the
+   user-facing value is the OAuth app name under
+   [Google Auth Platform → Branding](https://support.google.com/cloud/answer/15549049),
+   and a verified production brand may require
+   [re-verification after a name change](https://support.google.com/cloud/answer/13464018).
+
+Only after those assertions and a healthy Neon endpoint may the run claim the
+Google token was exchanged for a Neon session. Then require `getUserJwt()` to
+return a User JWT accepted by the Control Plane before calling auth end to end.
+
+XcodeBuildMCP can provide structured simulator/build/log/UI actions. Computer Use
+is useful for visual inspection when semantic iOS UI automation is insufficient.
+The shell commands above remain the reproducible fallback.
+
+## Teardown
+
+Stop only this loop and keep the installed EAS dev client:
 
 ```bash
-# build the portable artifact → apps/mobile/build-<ts>.tar.gz. The wrapper gives
-# EAS an empty, workspace-isolated working directory on T9 and removes it on exit.
-pnpm --dir apps/mobile ios:portable
-
-# extract + install onto the booted sim, then start Metro + launch with steps 5–6 above
-APP_TGZ=$(ls -t build-*.tar.gz | head -1)
-rm -rf /tmp/intentive-app && mkdir -p /tmp/intentive-app
-tar -xzf "$APP_TGZ" -C /tmp/intentive-app
-xcrun simctl install booted /tmp/intentive-app/Intentive.app   # bundle id: com.heyintentive.expo
+lsof -ti tcp:8082 | xargs kill 2>/dev/null || true
+xcrun simctl terminate booted com.heyintentive.expo 2>/dev/null || true
+xcrun simctl shutdown all
 ```
 
-> **Human shortcut:** `eas build:run -p ios` (after the build above) interactively
-> picks a simulator and installs the latest local build for you; then run steps 5–6.
-> The explicit `simctl` steps are the deterministic path for agents.
+Use `pnpm development:clean` for repository-wide runtime cleanup. EAS owns the
+native build cache; a local generated `ios/`, Pods, or DerivedData tree is not part
+of this workflow.
 
----
-
-## Inner loop (after the first build)
-
-The binary only needs rebuilding when the **native** surface changes (new native
-dep, a new/changed config plugin, `app.json` native keys, SDK bump, icons/splash —
-same rule as [`RELEASE.md`](RELEASE.md)). For everything else:
-
-- **JS/TS edit** → Metro hot-reloads automatically. Force a reload with
-  `xcrun simctl openurl booted "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"`
-  or the dev menu (`Cmd-D` in the simulator → Reload).
-- **Changed a shared `@intentive/*` package** → re-run step 0
-  (`pnpm --filter "@intentive/mobile^..." build`), then reload Metro.
-- **Native change** → `npx expo prebuild -p ios --clean` to regenerate `ios/`, then
-  re-run the build from step 3 (`pnpm ios`). Never hand-edit `ios/` — it's regenerated and your
-  change will be lost; put native config in `app.json` or a config plugin instead.
-
----
-
-## Build caching — make rebuilds fast (cache, not deadweight)
-
-A cold native build is 10–20 min because it downloads the React Native prebuilt
-xcframeworks (`ReactNativeCore` ~91 MB, `ReactNativeDependencies` ~18 MB, Hermes)
-and compiles the from-source Expo precompiled pods (Reanimated, Screens, Worklets,
-safe-area-context) and the app. The goal is to pay that **once** and reuse the
-outputs — a live **cache**, not [deadweight](#teardown--kill-it).
-
-**`eas build --local` cannot cache across runs — by design.** It builds in a fresh
-temp dir that must be empty (the eas-cli `prepareWorkingdirAsync` throws _"Workingdir
-is not empty"_), and the log says `[RESTORE_CACHE] Local builds do not support
-restoring cache`. So every run re-downloads the frameworks and recompiles from
-scratch. `EAS_LOCAL_BUILD_WORKINGDIR` / `EAS_LOCAL_BUILD_SKIP_CLEANUP=1` only move or
-keep that dir; they don't let the next run reuse it. **Use `eas build --local` only
-when you need the portable `.tar.gz` artifact or want to mirror the cloud build** —
-not for iterating.
-
-**For the fast, cached loop, build in place with `npx expo run:ios`** (= `pnpm
-ios`). It compiles into `apps/mobile/ios/` and **keeps the outputs between runs**:
-
-- `ios/Pods` persists → CocoaPods reinstalls only what changed.
-- Xcode **DerivedData** persists → only changed files recompile (incremental).
-- The downloaded RN prebuilt xcframeworks persist in `ios/Pods/*-artifacts/`.
-- It also installs to the simulator and starts Metro, like the runbook above.
-
-First `expo run:ios` ≈ the same cold cost; **every native build after that is
-seconds-to-minutes.** `pnpm ios` **is** the runbook's build (step 3); step 4 (screenshot) still applies for inspecting the result.
-
-**The biggest cache is the dev client itself.** Once it's installed, JS/TS edits
-**never** trigger a native build — Metro hot-reloads them. You only pay a native
-build when native deps / config plugins / `app.json` native keys change. So daily:
-build natively once with `pnpm ios`, then live in the [inner loop](#inner-loop-after-the-first-build).
-
-**Machine-level caches that persist regardless** (shared by both paths, safe to
-keep): the CocoaPods download cache (`~/Library/Caches/CocoaPods`), the Metro
-transform cache (`$TMPDIR/metro-*`; clear a poisoned one with `pnpm dev -- -c`), and
-the npm/pnpm stores. These are caches — leave them. Only the
-[teardown](#teardown--kill-it) list (eas temp copies, `build-*.tar.gz`, `/tmp`
-scratch) is deadweight.
-
-> **Cache vs. deadweight, concretely:** `apps/mobile/ios/` + its `Pods` +
-> DerivedData are a **cache** — reused on every `pnpm ios`, kept by teardown. The
-> `eas build --local` temp dir and `build-*.tar.gz` are **deadweight** — never
-> reused, removed by teardown.
-
----
-
-## Teardown — "kill it"
-
-A **clean sweep**: stop everything this workflow started and delete everything it
-wrote, so nothing keeps running and nothing stale is left on disk. Idempotent —
-safe to run even if some pieces are already gone. Run from the repo root.
-
-```bash
-# zsh treats an unmatched glob as an error; keep cleanup idempotent when no files exist.
-setopt nonomatch
-
-# 1. stop Metro and every Mobile build worker started by this workflow
-lsof -ti tcp:8082 | xargs kill -9 2>/dev/null
-pkill -f "expo start" 2>/dev/null; pkill -f "expo run:ios" 2>/dev/null
-pkill -f "metro" 2>/dev/null; pkill -f "eas build.*--local" 2>/dev/null
-pkill -f "xcodebuild.*Intentive" 2>/dev/null
-
-# 2. terminate the app, shut the simulator down, quit the Simulator UI.
-#    Keep the installed dev client: it is the fastest reusable native cache.
-for D in $(xcrun simctl list devices booted -j | grep -o '"udid" : "[^"]*"' | cut -d'"' -f4); do
-  xcrun simctl terminate "$D" com.heyintentive.expo 2>/dev/null
-done
-xcrun simctl shutdown all 2>/dev/null
-osascript -e 'tell application id "com.apple.iphonesimulator" to quit' 2>/dev/null
-
-# Shutting down devices does not prove that the Simulator GUI quit. Give normal quit
-# a moment, then kill the concrete GUI executable if it is still alive. The [S]
-# pattern matches Simulator without matching this command's own shell process.
-sleep 1
-pkill -9 -f '/Simulator.app/Contents/MacOS/[S]imulator' 2>/dev/null
-
-# 3. delete the build artifact(s)
-rm -f apps/mobile/build-*.tar.gz
-
-# 4. delete temp scratch (install dir, logs, screenshot, EAS local-build cache)
-rm -rf /tmp/intentive-app /tmp/intentive-sim.png /tmp/intentive-metro.log /tmp/eas-*build*.log
-rm -rf "${TMPDIR}eas-build-local-nodejs" "${TMPDIR}eas-cli-nodejs"
-```
-
-If the agent ran Metro as a backgrounded task (not via `&`), **stop that task**
-too — `kill` on port 8082 only catches a foreground/own-shell process.
-
-**Verify the sweep** (every line should report empty/none):
-
-```bash
-lsof -ti tcp:8082 || echo "port free ✓"
-xcrun simctl list devices booted | grep -i booted || echo "no sims booted ✓"
-pgrep -f '/Simulator.app/Contents/MacOS/[S]imulator' || echo "Simulator GUI quit ✓"
-ls apps/mobile/build-*.tar.gz 2>/dev/null || echo "no artifacts ✓"
-ls -d /tmp/intentive-* 2>/dev/null || echo "no temp ✓"
-```
-
-**What is intentionally _kept_** (not deadweight — committed config or expensive
-regenerable outputs, cheap to reuse vs. costly to rebuild): the `expo-dev-client`
-dep, the `app.json` `runtimeVersion`, the `packages/*/dist` workspace builds, and
-the generated `apps/mobile/ios/` project (regenerate any time with
-`npx expo prebuild -p ios --clean` — but it costs a prebuild + `pod install`, so a
-clean sweep leaves it like `node_modules`). A clean sweep removes _runtime +
-scratch_, not the repo's committed state or expensive local caches. (`eas build
---local` builds in its own system-temp copy, so there is no
-`apps/mobile/ios/build` DerivedData to clear.)
-
-On this Mac, Xcode and DerivedData already resolve through T9, while CoreSimulator
-runtimes and device data deliberately remain internal. Apple manages those runtime
-images and prior attempts to relocate simulator state were fragile. Keep one current
-daily simulator plus one compatibility runtime; prune older runtimes with `simctl`
-instead of moving `~/Library/Developer/CoreSimulator`.
-
----
-
-## Gotchas (why the config is the way it is)
-
-1. **`expo-dev-client` is required.** The `development` profile in
-   [`../eas.json`](../eas.json) sets `developmentClient: true`; without the
-   `expo-dev-client` dep the build has no dev-launcher. It is a committed
-   dependency — keep it.
-2. **Native is generated, not committed (CNG).** `ios/` (and `android/`) are
-   git-ignored; `app.json` + config plugins are the single source of truth, and
-   `npx expo prebuild` materializes the native project ([ADR-0017](adr/0017-mobile-ios-native-via-cng.md)).
-   So **never hand-edit `ios/`** — changes are lost on the next prebuild; add a
-   config plugin instead. `app.json` pins a literal `runtimeVersion` (`"0.0.0"`),
-   which prebuild writes into `ios/Intentive/Supporting/Expo.plist` as
-   `EXUpdatesRuntimeVersion`; bump them together with `expo.version`. (A
-   `runtimeVersion` _policy_ also works now that the project is CNG, but the literal
-   is kept for deterministic OTA runtime versions — see [`RELEASE.md`](RELEASE.md).)
-3. **Build workspace deps before bundling.** `@intentive/protocol` and
-   `@intentive/api-contract` resolve through `exports → dist/index.js`. If those
-   `dist/` outputs are missing, Metro fails with _"Unable to resolve
-   @intentive/protocol"_. Step 0 builds them. (A harmless require-cycle warning in
-   `packages/protocol` remains in the Metro log.)
-
----
-
-## Notes
-
-- **Env:** the `development` EAS environment has no env vars, so Sentry stays
-  disabled in dev builds (the `preview` environment carries the
-  `EXPO_PUBLIC_SENTRY_DSN`). Local `.env` still loads `EXPO_PUBLIC_*` for Metro.
-- **Artifacts:** `apps/mobile/build-*.tar.gz` (~300 MB) is git-ignored.
-- On `clang` / `swift-frontend` crashes during a native build, wipe DerivedData and
-  rebuild — see [`../../docs/TESTING.md`](../../docs/TESTING.md#ios-simulator-verification-visual-on-device).
+Preview/TestFlight and production App Store procedures are in
+[PREVIEW.md](../../../docs/PREVIEW.md) and [RELEASE.md](RELEASE.md).

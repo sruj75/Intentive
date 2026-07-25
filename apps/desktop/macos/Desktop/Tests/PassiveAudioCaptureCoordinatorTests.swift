@@ -4,6 +4,37 @@ import XCTest
 
 @MainActor
 final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
+  func testEligibilityRequiresAuthenticationAndBothCaptureSettings() {
+    XCTAssertFalse(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: false,
+        screenCaptureEnabled: true,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+    XCTAssertFalse(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        screenCaptureEnabled: false,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+    XCTAssertFalse(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        screenCaptureEnabled: true,
+        ambientAudioCaptureEnabled: false
+      )
+    )
+    XCTAssertTrue(
+      PassiveAudioCaptureEligibility.isEnabled(
+        authenticated: true,
+        screenCaptureEnabled: true,
+        ambientAudioCaptureEnabled: true
+      )
+    )
+  }
+
   func testStartsMicrophoneAndMeetingGatesSystemAudio() async {
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy()

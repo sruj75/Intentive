@@ -22,8 +22,19 @@ final class IntentiveDesktopPresentationAdapter: @preconcurrency ObservableObjec
     refreshNotificationAuthorization()
   }
 
+  private var notificationCenter: UNUserNotificationCenter? {
+    // UserNotifications requires a real application bundle identity. Keep the
+    // presentation adapter safe when embedded in tests or other unbundled hosts.
+    guard Bundle.main.bundleIdentifier != nil else { return nil }
+    return UNUserNotificationCenter.current()
+  }
+
   private func refreshNotificationAuthorization() {
-    UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+    guard let notificationCenter else {
+      notificationsAuthorizedState = false
+      return
+    }
+    notificationCenter.getNotificationSettings { [weak self] settings in
       Task { @MainActor in self?.notificationsAuthorizedState = settings.authorizationStatus == .authorized }
     }
   }
@@ -84,7 +95,8 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
     set { model.setLaunchAtLogin(newValue) }
   }
   func requestNotificationPermission() {
-    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { [weak self] _, _ in
+    guard let notificationCenter else { return }
+    notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { [weak self] _, _ in
       Task { @MainActor in self?.refreshNotificationAuthorization() }
     }
   }

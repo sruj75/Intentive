@@ -154,14 +154,31 @@ C, D, E, F, G, all five education states, K1/K2, and L1-L4 at 390×844.
 ### iOS simulator verification (visual / on-device)
 
 Unit tests don't cover native rendering. To verify a change visually on the iOS
-Simulator (e.g. via XcodeBuildMCP `build_run_sim` or `expo run:ios`):
+Simulator, install the EAS-built `development-simulator` client and start Metro
+from `apps/mobile`:
 
-1. **Start Metro first, from `apps/mobile`** — `pnpm --dir apps/mobile dev`. A Debug
-   build loads JS from Metro at `localhost:8082`. Starting it from the repo root makes
-   Metro pick the wrong project root and every bundle 404s (`Unable to resolve ./index`).
-2. **Repo path must contain no spaces** — CocoaPods/Ruby resolves the real path and a
-   space (e.g. the old `Desktop/Hey Intentive`) breaks `pod install` and the build. The
-   working tree is now `Desktop/Intentive`; keep it space-free.
+```bash
+cd apps/mobile
+npx -y eas-cli@21.2.0 build:run \
+  --platform ios \
+  --profile development-simulator \
+  --latest \
+  --simulator "<booted-simulator-udid>"
+npx -y eas-cli@21.2.0 env:exec preview "pnpm dev"
+```
+
+Do not substitute Expo Go or a local `expo run:ios` build. Follow the complete
+[Mobile Development runbook](../apps/mobile/docs/DEVELOPMENT.md) when the EAS
+client does not exist yet or the native surface changed.
+
+1. **Confirm the intended binary** — the installed app is
+   `com.heyintentive.expo`, opens the Expo Development Client launcher, and connects
+   to Metro on `localhost:8082`.
+2. **Confirm auth configuration** — the EAS build used the non-production
+   environment and contains both Google client IDs plus the native callback URL
+   scheme. Tap Google and require Apple's native consent plus
+   `accounts.google.com`; that page must identify Intentive. A rendered signed-out
+   screen does not prove Google is configured.
 3. **Walk the complete A-to-L journey** — start at A, exercise invalid and
    valid name entry, advance through C/D, confirm E is the welcome state of the
    shared chat surface, open F/G, complete or skip all five education states,
@@ -169,55 +186,9 @@ Simulator (e.g. via XcodeBuildMCP `build_run_sim` or `expo run:ios`):
    the Composer, observing L1 user-sent, L2 thinking, L3 composing, and L4 reply.
    Also verify drawer drag/background dismissal, keyboard clearance, top/bottom
    safe areas, disabled affordances, and that a fresh process returns to A.
-
-#### ⚠️ Wipe DerivedData on compiler/module-cache crashes (recurs — clean build needed)
-
-A **corrupt DerivedData / module cache** shows up as a build failure that looks like a
-toolchain bug, **not** a code error. Two signatures seen so far, both the same root cause:
-
-```
-# (a) compiler frontend crash
-clang: error: clang frontend command failed due to signal   # or swift-frontend
-clang: error: unable to execute command: Terminated: 15
-
-# (b) system modules fail to build from the SDK (deeper corruption)
-could not build module 'Foundation' / 'CoreFoundation' / '_DarwinFoundation1'
-  … from the iPhoneSimulator26.2 SDK
-```
-
-Both come with a flood of `Stale file '…' is located outside of the allowed root paths`
-warnings — **those warnings are benign Xcode-26 sandbox noise** (they appear in
-successful builds too); ignore them and look for the real error above. It tends to recur
-after changing build settings (e.g. the bundle identifier) or reusing stale incremental
-state. An incremental rebuild on the corrupt cache keeps crashing; a clean build after a
-**complete** wipe succeeds reliably (~10–12 min from scratch).
-
-**Find the DerivedData path the build actually uses, then wipe THAT — do not trust a
-glob.** On this machine Xcode, the toolchain, _and_ the active DerivedData live on the
-external volume **`/Volumes/T9`** (e.g. `/Volumes/T9/Developer/XcodeBuildMCP/workspaces/<ws>/DerivedData`),
-**not** under `~/Library`. A `rm -rf /Volumes/*/…/DerivedData` glob silently no-ops if the
-path doesn't exist _at wipe time_ or the layout differs — which is exactly how a wipe ends
-up incomplete and the next build keeps failing. Confirm the real path first:
-
-```bash
-# Ask the build where DerivedData / the module cache actually are:
-#   XcodeBuildMCP: show_build_settings  → look for SYMROOT / OBJROOT / MODULE_CACHE_DIR
-#   or grep the failing build log for the DerivedData root:
-grep -oE '/[^ ]*/DerivedData' <build-log> | sort -u
-```
-
-Then wipe **every** DerivedData root that exists (both internal and the external volume),
-including the clang `ModuleCache.noindex` inside them:
-
-```bash
-rm -rf ~/Library/Developer/XcodeBuildMCP/workspaces/*/DerivedData
-rm -rf /Volumes/*/Developer/XcodeBuildMCP/workspaces/*/DerivedData   # external volume — the live one here
-# verify they're actually gone (no path left behind):
-ls -d ~/Library/Developer/XcodeBuildMCP/workspaces/*/DerivedData \
-      /Volumes/*/Developer/XcodeBuildMCP/workspaces/*/DerivedData 2>/dev/null || echo "all wiped"
-```
-
-(Plain Xcode users, not XcodeBuildMCP: `rm -rf ~/Library/Developer/Xcode/DerivedData`.)
+4. **Inspect after every action** — use XcodeBuildMCP or `simctl` for screenshots,
+   app lifecycle, and logs. Those tools drive and observe the EAS artifact; they do
+   not compile a second local copy.
 
 ## Control Plane
 

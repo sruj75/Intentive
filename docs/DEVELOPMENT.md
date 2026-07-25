@@ -1,330 +1,303 @@
-# Full Local Stack Development Runbook
+# Apple Development Workflow
 
-**Run all four deployables together on your Mac and walk the real user journey
-end-to-end** — cold launch → sign-in → Pre-Chat Gates → chat → a live companion
-reply, plus desktop capture and proactive message-backs. This is the meta runbook;
-it composes the four per-deployable runbooks into one stack so you can **evaluate and
-approve the user journey** locally before anything ships.
+This is Intentive's normal code-to-working-product loop. It covers the two Apple
+clients and the local services they depend on:
 
-Want to run just **one** piece in isolation instead? Each deployable has its own
-runbook:
+| Client | Product code             | Daily runtime                               |
+| ------ | ------------------------ | ------------------------------------------- |
+| iOS    | Expo / React Native      | Expo Development Client in an iOS Simulator |
+| macOS  | native SwiftUI / SwiftPM | an assembled `Intentive Dev.app` on macOS   |
 
-| Deployable     | Modular runbook                                                                               |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| Control Plane  | [`services/control-plane/docs/DEVELOPMENT.md`](../services/control-plane/docs/DEVELOPMENT.md) |
-| Agent Runtime  | [`services/agent-runtime/docs/DEVELOPMENT.md`](../services/agent-runtime/docs/DEVELOPMENT.md) |
-| Mobile Client  | [`apps/mobile/docs/DEVELOPMENT.md`](../apps/mobile/docs/DEVELOPMENT.md)                       |
-| Desktop Client | [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md)                     |
+The macOS client is not Tauri. The iOS client is not tested in Expo Go because it
+uses native modules. A green unit test or a permission label is not sufficient
+evidence that a native capability works.
 
-> **This changes no production behavior.** Every deployable boots from the same config
-> seam it uses in production; local-only values differ — an **isolated Neon dev
-> branch** instead of production, loopback URLs, dummy internal secrets, and your
-> own OpenRouter key. Auth can run in either real Neon Auth mode or the explicit
-> `local-dev` signed-token mode. `local-dev` still verifies a real JWT signature
-> with the same issuer/audience/subject contract; it just uses a local HS256
-> signing secret instead of the Neon JWKS endpoint.
+For a single deployable, use its detailed runbook:
 
----
+- [Mobile](../apps/mobile/docs/DEVELOPMENT.md)
+- [Desktop](../apps/desktop/docs/DEVELOPMENT.md)
+- [Control Plane](../services/control-plane/docs/DEVELOPMENT.md)
+- [Agent Runtime](../services/agent-runtime/docs/DEVELOPMENT.md)
 
-## Two ways to exercise the stack (both are "development")
+Preview distribution is defined in [PREVIEW.md](PREVIEW.md). Production promotion
+is defined in [PRODUCTION.md](PRODUCTION.md).
 
-Development is the **code → run → verify** loop, and there are two ways to drive the
-running stack. They are not rivals — they are the iterate phase and the final-check
-phase of the same workflow, the same way you write code and then test it.
+## The evidence ladder
 
-1. **Interactive loop — with the simulator.** Bring the backend up once
-   (`scripts/local-stack.sh`), then iterate on a client and watch real behavior:
-   edit code → reload the **iOS simulator** (and optionally the Desktop app) → tap
-   through sign-in → gates → chat → companion reply → repeat. You leave the two
-   backend services running and keep reloading the client. **Here _you_ are the
-   test** — the simulator is how you drive requests and eyeball the result. This is
-   where you spend most of your day. ([The user journey to approve](#the-user-journey-to-approve)
-   is the script to walk.)
+Use the cheapest useful feedback first, then climb only as far as the change
+requires:
 
-2. **Final check — the headless smoke.** When the loop looks good, run
-   `scripts/local-backend-e2e.mjs` ([Backend E2E without Google sign-in](#backend-e2e-without-google-sign-in)).
-   **No simulator** — a script mints a local token and drives one `user_message` →
-   `companion_message` straight over HTTP/WS, so the backend path is proven
-   automatically and repeatably. This is the "now run the test" at the end of the day.
+1. **Deterministic:** focused tests, typecheck, lint, then
+   `pnpm harness --scope <deployable>`.
+2. **Native build:** EAS Development Client build for iOS; SwiftPM + assembled
+   app bundle for macOS.
+3. **Live UI:** drive the Simulator or macOS Accessibility tree like a user and
+   inspect screenshots, logs, and application state after every action.
+4. **Real integration:** connect the client to a local Control Plane and Agent
+   Runtime backed by a disposable database. Prove durable rows and acknowledgements,
+   not only UI copy.
+5. **Clean environment:** physical iPhone for device-only capabilities and a clean
+   Tart clone for first-run macOS TCC prompts.
+6. **Preview/release candidate:** signed, immutable artifact in its distribution
+   channel. Development evidence never substitutes for this gate.
 
-Crucially, **both modes hit the exact same stack** — local Control Plane → local
-Agent Runtime → the same isolated Neon dev branch → the same OpenRouter model. The
-only thing that changes is _who sends the request_: you through the simulator, or the
-script headlessly. So a green smoke and a good hands-on session are testing the same
-wiring from two angles.
+Every handoff should say which rung passed and which rungs were not run.
 
----
+## Prerequisites
 
-## How the four wire together locally
+- Node 24 or newer and pnpm 11.5.2 or newer.
+- The repository's selected Xcode (`xcode-select -p`) and iOS Simulator.
+- An authenticated Expo account with access to the Intentive EAS project.
+- One booted iOS Simulator at a time.
+- A non-production database branch or disposable Postgres for integration work.
+- Accessibility permission for Codex Computer Use when an agent is driving UI.
 
-```
-Mobile (iOS sim) ──HTTP──> Control Plane :8080 ──HTTP /internal/sessions/start──> Agent Runtime :8081 (internal)
-   │  GET /me, /agent, /consent, /devices/register                                        ▲
-   └──────────────────── WS ws://localhost:8787/ws ─────────────────────────────> Agent Runtime :8787 (public WS)
-                                                                                          │
-Desktop (Mac, optional) ──HTTP /agent──> CP ; ──WS──> Agent Runtime (perception_event/user_message) │
-Agent Runtime ──HTTP /internal/notifications/push──> Control Plane ──> Expo Push ──> Mobile
-```
-
-| Port | Who                              |
-| ---- | -------------------------------- |
-| 8080 | Control Plane (HTTP)             |
-| 8787 | Agent Runtime — public WebSocket |
-| 8081 | Agent Runtime — internal HTTP    |
-| 8082 | Mobile Metro                     |
-
-The paired internal secrets and the Neon dev branch are already wired across the two
-services' git-ignored `.env` files. The **database** is one isolated Neon branch,
-`dev-local-smoke` (`br-shiny-firefly-aq66dcc4`), forked from production — copy-on-write,
-so nothing you do locally can affect production.
-
----
-
-## Prerequisites (one-time)
-
-1. **OpenRouter key.** Put a real key in `services/agent-runtime/.env`
-   (`OPENROUTER_API_KEY=`). It is the one secret not pre-filled, and the only thing
-   the launcher requires you to set. (A free `RUNTIME_MODEL` is the default.)
-2. **Local mocked auth, if you do not want Google sign-in.** In both
-   `services/control-plane/.env` and `services/agent-runtime/.env`, set the same
-   local-only values:
-
-   ```bash
-   INTENTIVE_AUTH_MODE=local-dev
-   INTENTIVE_DEV_AUTH_SECRET=<at-least-32-local-only-characters>
-   ```
-
-   Then mint a bearer token when you need one:
-
-   ```bash
-   scripts/local-dev-auth-token.mjs --user-id local-dev-user
-   ```
-
-   The token is accepted by both server deployables only in `local-dev` mode.
-
-3. **A booted iOS simulator + a Mobile dev build.** Follow
-   [`apps/mobile/docs/DEVELOPMENT.md`](../apps/mobile/docs/DEVELOPMENT.md) once to
-   install the dev client.
-4. _(Optional)_ **Desktop**, if you want to exercise capture, Screen Memory, or floating-bar chat →
-   [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md).
-
-The two services' `.env` files are pre-generated; if either is missing, copy from
-its `.env.example` (the modular runbooks list every value).
-
----
-
-## Bring up the stack — one command
+Run the deterministic baseline before opening either client:
 
 ```bash
-scripts/local-stack.sh            # build + start Control Plane + Agent Runtime, wait for health, tail logs
+pnpm install --frozen-lockfile
+pnpm harness --scope apps/mobile
+pnpm harness --scope apps/desktop
 ```
 
-It builds both services (and their workspace deps), starts the Control Plane on
-`:8080` and the Agent Runtime on `:8787`/`:8081`, waits until both `/health` probes
-pass, prints the wiring, then tails both logs. **Ctrl-C stops everything** (it's
-self-cleaning). To stop a stack started elsewhere:
+On networks where Neon IPv6 races fail on this Mac, launch Node services with:
 
 ```bash
-scripts/local-stack.sh --down     # free :8080, :8787, :8081 (idempotent)
+export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
 ```
 
-> The script owns the **two server deployables** — the always-on backend half. The
-> clients are launched from their own runbooks (simulator / SwiftPM macOS app) and pointed at
-> `:8080`, because each needs its own device/sim toolchain.
+## Start the real local backend
 
-### Then point the clients at the local Control Plane
-
-- **Mobile:** in `apps/mobile/.env` set
-  `EXPO_PUBLIC_CONTROL_PLANE_BASE_URL=http://localhost:8080`, then run the Mobile
-  dev client per its runbook. (Blank = offline dev fixtures; the URL is what flips it
-  to the real local stack. The iOS simulator shares the Mac's network, so `localhost`
-  resolves; a **physical** device needs your Mac's LAN IP instead.)
-- **Desktop (optional):** set `INTENTIVE_CONTROL_PLANE_URL=http://localhost:8080`
-  before launching, then run it per its runbook.
-
----
-
-## Desktop — dev vs. internal vs. dogfood
-
-The Desktop Client is the only deployable that shares the host Mac's Keychain,
-TCC permission buckets, and `~/Library` state with the rest of your machine. To
-keep development, internal testing, and dogfooding from contaminating each other,
-they live under **three separate bundle IDs**. This is the macOS equivalent of
-iOS's simulator sandbox + TestFlight: each channel owns an isolated permission
-and storage world, and agents can run wild in the dev one without touching the
-dogfood install.
-
-| Channel                          | Bundle ID                      | App name        | How you run it                                            | Sparkle updates | Who               |
-| -------------------------------- | ------------------------------ | --------------- | --------------------------------------------------------- | --------------- | ----------------- |
-| **Daily dev** (raw SwiftPM bin)  | _(none — TCC keyed by path)_   | Intentive Dev   | `apps/desktop/macos/run.sh`                              | no              | you, eyeballing    |
-| **Internal assembled** (Tart VM) | `com.heyintentive.desktop.dev` | Intentive Dev   | `TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run` | no              | agents + you      |
-| **Dogfood / release** (signed)  | `com.heyintentive.desktop`     | Intentive       | Install the signed DMG from a GitHub Release into `/Applications` | yes (hourly)     | you, like a user  |
-
-**Why split:**
-- `KeychainTokenStore` derives its `service` from `Bundle.main.bundleIdentifier`
-  (with a `com.heyintentive.desktop.dev` fallback for the raw-binary `run.sh` case),
-  so dev auth and dogfood auth never share a Keychain item.
-- TCC permissions are per-bundle-ID, so Screen Recording / Microphone grants for
-  the dev build don't affect the dogfood install, and vice versa.
-- `/Applications/Intentive.app` (dogfood) and a Tart-internal `Intentive Dev.app`
-  can coexist; Sparkle only updates the production bundle ID.
-
-**One-time host cleanup, repeatable any time:**
+The supported convenience path is:
 
 ```bash
-pnpm desktop:clean-host:status          # show what would be reset
-pnpm desktop:clean-host                 # reset DerivedData/Intentive-*, caches,
-                                        # prefs plists, and TCC grants for
-                                        # legacy com.intentive.desktop / dev com.heyintentive.desktop.dev
+scripts/local-stack.sh
 ```
 
-It keeps the SwiftPM `.build/` incremental cache and the Tart base. Run it before
-installing a fresh dogfood DMG, or whenever an agent session has left
-DerivedData growing. See [`apps/desktop/docs/DEVELOPMENT.md`](../apps/desktop/docs/DEVELOPMENT.md)
-for the mechanics and the Tart VM guardrails.
+It owns Control Plane `:8080`, Agent Runtime WebSocket `:8787`, and Runtime internal
+HTTP `:8081`. Metro owns `:8082`.
 
----
+The local stack must use an isolated database and matching local-dev auth values in
+both services. Never point a development workflow at the production database.
+For a disposable proof, migrate both schemas before launching the services, clear
+the account gates through Control Plane, and use `GET /agent` to obtain the Runtime
+route. Do not fake the Runtime acknowledgement in an end-to-end proof.
 
-## The user journey to approve
+## iOS: Expo Development Client
 
-With the stack up and the Mobile dev client pointed at `:8080`, walk it and confirm
-each step. This is the end-to-end product loop the local stack exists to evaluate:
-
-1. **Cold launch → Get Started → Identity Gate.** Sign in with Google, or use the local signed
-   JWT path for server/backend E2E. → a server-valid User JWT now flows on every
-   request.
-2. **`GET /me` resolves gates.** Consent Primer (Data & Privacy) → Onboarding funnel →
-   Sibling Invitation → Free Trial appear in resolver order; shared gates write
-   cross-client state on the Control Plane when completed (watch the Control Plane log).
-   Onboarding and Free Trial are client-resolved until the Control Plane contract extends.
-3. **Enter chat → `GET /agent`.** The Control Plane enforces the gates, runs Session
-   Start against the Agent Runtime (`:8081`), and returns the WS URL + pass-through
-   JWT. A `403` means a gate is unsatisfied; a `503` means the Runtime wasn't
-   reachable.
-4. **WebSocket connect.** The client dials `ws://localhost:8787/ws`; `connect`
-   returns a Session Snapshot (empty history on a fresh user).
-5. **`user_message` → companion reply.** Send a message; a reply streams back. This
-   is the money shot — it proves WS gateway + Neon + OpenRouter + the turn spine end
-   to end.
-6. _(Optional, Desktop)_ **Screen Memory → `perception_event`.** With capture readiness
-   granted, the desktop heartbeat emits snapshots over its own WS session.
-7. _(Optional, proactive)_ **Cron / Heartbeat → Post-Message-Back.** The Runtime's
-   poll loops can drive a proactive message; delivery to a real device additionally
-   needs an Expo push token (`EXPO_ACCESS_TOKEN` in the CP `.env`) — otherwise the
-   in-session delivery path still works.
-
-Watching the two tailed logs as you go is the fastest way to see exactly where a step
-lands (or stalls).
-
----
-
-## Teardown
+Use the installed Simulator inventory as truth:
 
 ```bash
-scripts/local-stack.sh --down     # clean sweep: free ports, reap stray launchers/tailers, delete the run dir
+xcrun simctl runtime scan-and-mount
+xcrun simctl list runtimes
+xcrun simctl list devices available
 ```
 
-`--down` is a **clean sweep**, not just a port free (idempotent, safe any time):
-it kills whatever holds `:8080/:8787/:8081`, **reaps orphaned launcher + `tail -f`
-processes** left by earlier stacks (see the note below), and deletes the
-`/tmp/intentive-local-stack` run dir.
-
-Then stop the clients via their own runbooks ("kill it" in the Mobile / Desktop
-docs). Nothing local persists except the Neon dev branch, which is meant to stick
-around; delete it from the Neon console / MCP if you want a clean slate.
-
-For the complete machine-local sweep, use `pnpm development:clean`. It stops the
-backend ports, Metro on its reserved `:8082`, booted simulators, and the disposable
-Tart clone, then removes only one-run temp files and portable build archives. It
-keeps active-workspace caches: pnpm packages, Mobile Pods, Xcode DerivedData, the
-per-workspace SwiftPM cache on T9, and the immutable Tart base. `pnpm
-development:status` reports the storage root and reserved-port ownership without
-changing anything.
-
-### Storage hygiene: cache versus deadweight
-
-- **Keep while the workspace is active:** `node_modules`, Mobile `ios/` + Pods,
-  Xcode DerivedData, the current simulator, the workspace's external SwiftPM
-  scratch, and the Tart base. These shorten the next build.
-- **Delete after each clean sweep:** owned servers, orphan launchers/tailers,
-  Metro/EAS temp directories, screenshots, portable `build-*.tar.gz` artifacts,
-  and the disposable Tart clone. No later build reuses them.
-- **Delete when Conductor archives the workspace:** that workspace's T9 build root
-  and generated build trees accidentally placed in `.context`. The archive hook
-  preserves `.context/attachments`, plans, notes, and Conductor's session database,
-  and refuses to archive when unknown context data remains unexpectedly large.
-
-`pnpm development:clean` covers backend ports, Metro, the simulator, and the
-disposable Tart clone — **not** the Desktop Client's host-side state. macOS
-Keychain, TCC grants, DerivedData, and `~/Library` dirs accumulate against the
-shared `com.heyintentive.desktop*` / legacy `com.intentive.desktop*` bundle-id prefix. Reset them with
-`pnpm desktop:clean-host` (see [Desktop — dev vs. internal vs. dogfood](#desktop-dev-vs-internal-vs-dogfood)
-above).
-
-**Verify the sweep** (every line should report free/none):
+Choose one available iPhone and boot it by UDID:
 
 ```bash
-for p in 8080 8787 8081; do lsof -ti tcp:$p >/dev/null 2>&1 && echo ":$p in use ✗" || echo ":$p free ✓"; done
-pgrep -fl "local-stack\.sh|intentive-local-stack" || echo "no stray launchers ✓"
+IOS_UDID="<available-device-udid>"
+xcrun simctl shutdown all
+xcrun simctl boot "$IOS_UDID"
+xcrun simctl bootstatus "$IOS_UDID" -b
+open "$(xcode-select -p)/Applications/Simulator.app"
 ```
 
-> **Zombie launchers — why the reap step exists.** The launcher ends in a
-> foreground `tail -f` and cleans up through an `EXIT/INT/TERM` trap, so a clean
-> **Ctrl-C** tears everything down. But when a stack dies **uncleanly** — an
-> agent/session torn down, a Monitor timeout, or a `SIGKILL` that can't be
-> trapped — the node services die (their **ports free up**) while the **bash
-> launcher + its `tail -f` are orphaned** and survive indefinitely. Because they
-> hold no port, the old port-only teardown never caught them and they quietly
-> accumulate across sessions (we found **9** pairs stacked up once). They're
-> near-idle — a blocked `tail`, not a CPU spinner — so the cost is deadweight
-> (RAM, fds, process-table clutter), not battery. `--down` now reaps them by
-> matching the script path and run dir, so a backend stack leaves **nothing**
-> behind, the same guarantee the Mobile runbook's "kill it" gives.
-
----
-
-## Gotchas
-
-1. **OpenRouter key is required** — the launcher refuses to start until you replace
-   the placeholder in the Agent Runtime `.env`.
-2. **Auth is still verified.** `local-dev` is mocked identity, not no-auth. Both
-   services must share the same `INTENTIVE_DEV_AUTH_SECRET`, and the token must
-   have the configured issuer and audience.
-3. **`localhost` works on the simulator, not on a physical phone.** Use the Mac's LAN
-   IP (and the same for `PUBLIC_WS_URL` if you test on-device).
-4. **Port discipline:** CP `8080`, Runtime WS `8787`, Runtime internal `8081`, Metro
-   `8082`. Metro must never use `8081`: its old teardown command could kill the
-   Agent Runtime. If a start fails on "address in use," run
-   `scripts/local-stack.sh --down` first.
-5. **First request is slow (cold start).** The dev branch scales to zero
-   immediately, so the first DB-backed call after idle takes ~2–3s while it wakes;
-   `local-stack.sh` waits on the Control Plane's `/ready` (which warms it) before
-   declaring the stack up, so by the time you start the clients the branch is awake.
-6. **Production is untouchable from here.** The stack only ever talks to the isolated
-   `dev-local-smoke` branch; keep it that way — never repoint a `.env` at the
-   production branch.
-7. **No IPv6 on this Mac → force IPv4 to Neon.** Neon hosts are dual-stack (publish
-   both IPv4 `A` and IPv6 `AAAA` records). This machine has **no IPv6 egress**, so
-   Node's Happy Eyeballs (`autoSelectFamily`) keeps racing the dead IPv6 route, and
-   stalls surface intermittently as `EHOSTUNREACH`/`ETIMEDOUT` → `AggregateError`
-   (empty message) → `NeonDbError` — which can kill a turn _after_ the model replies,
-   so no `companion_message` lands. `scripts/local-stack.sh` already exports
-   `NODE_OPTIONS=--dns-result-order=ipv4first --no-network-family-autoselection`
-   to pin both services to IPv4 (the `ipv4first` reorder alone is **not** enough —
-   `--no-network-family-autoselection` is what stops the IPv6 race). If you launch a
-   service **standalone** (per its modular runbook) on this network, use the same two
-   flags. The runtime also retries transient Neon connection errors on the turn write
-   path, so a single blip no longer drops a reply — but avoiding the blip is cheaper.
-
-## Backend E2E without Google sign-in
-
-With `scripts/local-stack.sh` running and both services set to
-`INTENTIVE_AUTH_MODE=local-dev`, run:
+The native client is built by EAS, not by local `expo run:ios`, Xcode, or
+CocoaPods. From `apps/mobile`:
 
 ```bash
-scripts/local-backend-e2e.mjs
+npx -y eas-cli@21.2.0 whoami
+npx -y eas-cli@21.2.0 env:list --environment preview
+npx -y eas-cli@21.2.0 build \
+  --platform ios \
+  --profile development-simulator \
+  --non-interactive \
+  --wait
+npx -y eas-cli@21.2.0 build:run \
+  --platform ios \
+  --profile development-simulator \
+  --latest \
+  --simulator "$IOS_UDID"
 ```
 
-It mints a short-lived local JWT, clears the two mobile gates, calls `GET /agent`,
-opens the Runtime WebSocket, sends one `user_message`, and waits for one
-`companion_message`.
+`development-simulator` extends the `development` profile, which enables
+`developmentClient` and uses the non-production EAS `preview` environment. That
+environment must contain both Google public client IDs so `app.config.js` embeds
+the native reversed-client-ID URL scheme and the JavaScript runtime enables Google
+Sign-In. EAS performs Continuous Native Generation when the gitignored `ios/`
+project is absent; do not generate or patch it for this workflow.
+
+Before exercising sign-in, prove the configured Neon Auth service is available:
+
+```bash
+npx -y eas-cli@21.2.0 env:exec preview \
+  'curl -sS -i "$EXPO_PUBLIC_NEON_AUTH_BASE_URL/get-session"'
+```
+
+Require `200`. A `412` / `COMPUTE_QUOTA_EXCEEDED` response is a Neon quota gate,
+not evidence of a broken Google token or Expo callback. Stop and report it until
+the monthly quota resets or the plan changes.
+
+After the native client is installed, JS/TS iteration is:
+
+```bash
+cd apps/mobile
+npx -y eas-cli@21.2.0 env:exec preview "pnpm dev"
+```
+
+In another terminal:
+
+```bash
+xcrun simctl launch booted com.heyintentive.expo
+xcrun simctl openurl booted \
+  "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
+```
+
+Metro must receive the same EAS public environment as the native build. Otherwise
+the binary contains Google's callback scheme but the JavaScript runtime sees empty
+client IDs and disables the button.
+
+Re-run the EAS build only after native dependencies, config plugins, native
+`app.json` keys, the Expo SDK, icons, or splash assets change. Ordinary JS/TS
+changes stay in Metro and the installed client.
+
+For each meaningful iOS change:
+
+- walk the affected A-L journey in the Simulator;
+- inspect the post-action screen and Metro/native logs;
+- tap Google Sign-In and require both the Apple consent sheet and
+  `accounts.google.com`; the OAuth page must identify Intentive, not a stale brand;
+- require Neon to establish a session and `getUserJwt()` to produce a User JWT
+  accepted by the Control Plane;
+- cold-launch once after the warm reload passes;
+- use a physical internal build for Google Sign-In, push, Keychain, backgrounding,
+  and any claim whose behavior differs on real hardware.
+
+The Google-hosted label comes from **Google Auth Platform → Branding → App name**,
+not the Google Cloud project display name. A verified production app-name change
+can require brand re-verification before users see it.
+
+## macOS: assembled SwiftUI app
+
+Build and test:
+
+```bash
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop test
+apps/desktop/macos/run.sh
+```
+
+`run.sh` assembles and launches `Intentive Dev.app` with bundle identifier
+`com.heyintentive.desktop.dev`. Do not launch the raw SwiftPM executable: APIs such
+as notifications, Keychain, TCC, and bundle resources require a real app bundle and
+the raw executable can crash or produce false permission behavior.
+
+To connect the app to the local stack:
+
+```bash
+export INTENTIVE_CONTROL_PLANE_URL=http://127.0.0.1:8080
+export INTENTIVE_DESKTOP_USER_JWT="$(
+  scripts/local-dev-auth-token.mjs --user-id local-dev-user
+)"
+apps/desktop/macos/run.sh
+```
+
+Drive the app through Computer Use using its macOS Accessibility tree. Read fresh
+state after every action; element identities can change while SwiftUI rerenders.
+Use screenshots for visual truth and process logs/database state for behavioral
+truth.
+
+### Screen capture acceptance
+
+Do not accept the onboarding word `Granted` as proof. A valid live proof is:
+
+1. Press the real **Screen Capture** toggle off and on in Settings.
+2. Keep a unique marker visible in another app for at least one capture cadence.
+3. Require a new `screen_memory_records` row with that app/window and Vision OCR.
+4. Require a non-empty local semantic embedding and a searchable Rewind result.
+5. Require the same event ID in Runtime `runtime_events` as `perception_event`.
+6. Require a Runtime `perception_records` projection with
+   `artifact_type=searchable_screen_record`.
+7. Require the local Runtime outbox to drain after the acknowledgement.
+
+OCR is probabilistic; assert stable words and event identity rather than exact
+character equality.
+
+### Microphone/VAD acceptance
+
+Again, the permission label is only the precondition. A valid live proof is:
+
+1. Enable Screen Capture and Audio Recording while authenticated.
+2. Feed audible speech through the real microphone input for more than one
+   four-second segment.
+3. Require the AVAudioEngine source to deliver PCM and Silero VAD to accept speech.
+4. Require Parakeet to produce a non-empty local transcript.
+5. Require `audio_memory_records` to contain the transcript, retention metadata,
+   and a local embedding. Raw PCM must not be retained.
+6. Require Runtime to store an `ambient_audio_summary` whose
+   `signals.audio_source` is `microphone`.
+7. Require the outbox to drain.
+
+Silence must create no transcript. Signing out, disabling screen capture, or
+disabling audio must stop physical microphone capture. A test fixture may verify
+policy branches, but it cannot replace the native-source proof above.
+
+For first-run permission behavior, run only a disposable Tart clone:
+
+```bash
+TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run
+TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
+```
+
+Never install into, mutate, or delete the Tart base image.
+
+## XcodeBuildMCP and Computer Use
+
+Use both; they solve different problems.
+
+- Pin XcodeBuildMCP `2.7.0` for structured Xcode discovery, build/test, Simulator
+  lifecycle, logs, screenshots, and iOS UI automation:
+
+  ```bash
+  npx -y xcodebuildmcp@2.7.0
+  ```
+
+- Use Computer Use for native macOS user interaction and visual inspection. Xcode
+  UI testing supports iOS/tvOS/watchOS apps, but it is not a generic macOS app
+  driver.
+- Keep shell commands as the reproducible fallback and CI contract. An MCP result
+  should map to an inspectable `xcodebuild`, `simctl`, or app-state artifact.
+
+An agent should set session defaults once, then reuse the same workspace/project,
+scheme, configuration, and Simulator UDID. Avoid rediscovering or booting multiple
+simulators for every action.
+
+## Final handoff
+
+Before handing work back:
+
+```bash
+pnpm harness
+git diff --check
+git status --short
+```
+
+Also report:
+
+- iOS device/runtime and whether the dev client rendered;
+- macOS bundle ID and whether the assembled app launched;
+- the exact live capability proof that ran;
+- any external gate still required, such as physical iPhone, clean Tart, signing,
+  notarization, TestFlight, or App Store review.
+
+Clean up only what the workflow created:
+
+```bash
+scripts/local-stack.sh --down
+pnpm development:clean
+```
+
+Keep useful active-workspace caches (`node_modules`, generated iOS/Pods, DerivedData,
+SwiftPM scratch, and the immutable Tart base). Remove disposable databases when
+their proof window ends.

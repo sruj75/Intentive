@@ -37,11 +37,12 @@ final class AppKitMeetingObserver {
       NSWorkspace.didTerminateApplicationNotification,
     ] {
       observers.append(center.addObserver(forName: name, object: nil, queue: .main) {
-        [weak self] _ in self?.probe()
+        [weak self] _ in
+        Task { @MainActor in self?.probe() }
       })
     }
     timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
-      self?.probe()
+      Task { @MainActor in self?.probe() }
     }
     probe()
   }
@@ -53,19 +54,22 @@ final class AppKitMeetingObserver {
   }
 
   private func probe() {
-    Task.detached(priority: .utility) { [weak self] in
-      let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-        as? [[String: Any]] ?? []
-      let detected = windows.contains {
-        ConferencingApps.isCallWindow(
-          ownerName: $0[kCGWindowOwnerName as String] as? String,
-          title: $0[kCGWindowName as String] as? String
-        )
-      }
-      await MainActor.run {
-        self?.detector.applyDetected(detected)
-        self?.isMeetingActive = self?.detector.isMeetingActive ?? false
-      }
+    Task { [weak self] in
+      let detected = await Task.detached(priority: .utility) {
+        let windows = CGWindowListCopyWindowInfo(
+          [.optionOnScreenOnly, .excludeDesktopElements],
+          kCGNullWindowID
+        ) as? [[String: Any]] ?? []
+        return windows.contains {
+          ConferencingApps.isCallWindow(
+            ownerName: $0[kCGWindowOwnerName as String] as? String,
+            title: $0[kCGWindowName as String] as? String
+          )
+        }
+      }.value
+      guard let self else { return }
+      detector.applyDetected(detected)
+      isMeetingActive = detector.isMeetingActive
     }
   }
 }
