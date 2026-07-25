@@ -10,8 +10,9 @@ import { authContent as content } from "../config/content";
  * entrypoint's sign-in flow, while `pending` projects the in-flight outcome.
  * `disabled` (Google not a working capability) plus `pending` drive the
  * button's disabled state so a build without the public client IDs shows the
- * button disabled rather than opening a dead OAuth flow. See ADR 0012 / 0024 /
- * 0030.
+ * button disabled rather than opening a dead OAuth flow. No outcome renders a
+ * notice — the action area never reflows, and failure detail reaches Sentry
+ * through the Auth Adapter. See ADR 0012 / 0024 / 0030 (amended 2026-07-26).
  */
 export function AuthScene({
   disabled,

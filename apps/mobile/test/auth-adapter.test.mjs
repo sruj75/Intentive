@@ -48,8 +48,10 @@ test("a failed exchange is a recoverable error captured through telemetry", asyn
     googleAuthConfigured: true,
     telemetry: telemetry.port,
   });
-  assert.deepEqual(await adapter.signIn(), { status: "error", message: "oauth failed" });
+  assert.deepEqual(await adapter.signIn(), { status: "error" });
   assert.equal(telemetry.captured.length, 1);
+  // The outcome carries no message: failure detail reaches Sentry, not the UI.
+  assert.equal(telemetry.captured[0].error.message, "oauth failed");
   assert.equal(telemetry.captured[0].ctx.tags.error_type, "auth");
   assert.equal(telemetry.captured[0].ctx.tags.auth_provider, "google");
 });

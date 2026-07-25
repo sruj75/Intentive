@@ -120,7 +120,7 @@ test("Identity Gate stays put when native auth is cancelled", async () => {
 });
 
 test("a recoverable failure stays on the gate without inserting an inline notice", async () => {
-  const screen = renderEntry({ status: "error", message: "exchange failed" } as SignInOutcome);
+  const screen = renderEntry({ status: "error" });
 
   fireEvent.press(screen.getByTestId("continue-with-google"));
 
@@ -131,7 +131,7 @@ test("a recoverable failure stays on the gate without inserting an inline notice
 
 test("a thrown sign-in failure clears pending state without inserting an inline notice", async () => {
   const authAdapter = createThrowingAuthAdapter(new Error("native Google failure"));
-  const screen = renderEntry({ status: "error", message: "unused" }, { authAdapter });
+  const screen = renderEntry({ status: "error" }, { authAdapter });
 
   fireEvent.press(screen.getByTestId("continue-with-google"));
 
