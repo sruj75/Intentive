@@ -24,7 +24,6 @@ export function inspectCiContracts(repo = process.cwd()) {
   const securityAuditPath = path.join(workflowDir, "security-audit.yml");
   const dependabotPath = path.join(repo, ".github/dependabot.yml");
   const workspacePath = path.join(repo, "pnpm-workspace.yaml");
-  const marketingPackagePath = path.join(repo, "marketing/package.json");
 
   requireFile(codeqlPath, errors);
   requireFile(foundationPath, errors);
@@ -33,31 +32,6 @@ export function inspectCiContracts(repo = process.cwd()) {
   requireFile(securityAuditPath, errors);
   requireFile(dependabotPath, errors);
   requireFile(workspacePath, errors);
-  requireFile(marketingPackagePath, errors);
-
-  if (existsSync(workspacePath)) {
-    const workspace = parseDocument(readFileSync(workspacePath, "utf8"), {
-      uniqueKeys: true,
-    }).toJS();
-    if (!Array.isArray(workspace?.packages) || !workspace.packages.includes("marketing")) {
-      errors.push("pnpm workspace must include the marketing package");
-    }
-  }
-
-  if (existsSync(marketingPackagePath)) {
-    const marketingPackage = JSON.parse(readFileSync(marketingPackagePath, "utf8"));
-    if (typeof marketingPackage?.scripts?.typecheck !== "string") {
-      errors.push("marketing package must expose a Gate-visible typecheck script");
-    }
-  }
-
-  if (existsSync(securityAuditPath)) {
-    const auditWorkflow = readWorkflow(securityAuditPath, errors);
-    const pullRequestPaths = auditWorkflow?.on?.pull_request?.paths;
-    if (!Array.isArray(pullRequestPaths) || !pullRequestPaths.includes("marketing/package.json")) {
-      errors.push("security audit workflow must watch marketing/package.json");
-    }
-  }
 
   if (existsSync(dependabotPath)) {
     const dependabot = parseDocument(readFileSync(dependabotPath, "utf8"), {

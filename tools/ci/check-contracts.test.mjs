@@ -98,17 +98,15 @@ try {
       "",
     ].join("\n"),
   );
-  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n');
-  write("marketing/package.json", '{"scripts":{"typecheck":"tsc --noEmit"}}\n');
   write(
     ".github/workflows/security-audit.yml",
-    'on:\n  pull_request:\n    paths:\n      - "marketing/package.json"\n',
+    'on:\n  pull_request:\n    paths:\n      - "package.json"\n',
   );
   write(
     ".github/dependabot.yml",
     "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n",
   );
-  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n  - "marketing"\n');
+  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n');
   write("apps/desktop/macos/check.sh", "#!/bin/sh\ngrep -q expected file\n");
 
   assert.deepEqual(inspectCiContracts(repo), []);
@@ -174,14 +172,6 @@ try {
   assert.ok(errors.some((error) => error.includes("missing harness group: desktop-swift")));
   assert.ok(errors.some((error) => error.includes("depends on non-baseline command rg")));
   assert.ok(errors.some((error) => error.includes("exactly one workflow may publish")));
-
-  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n');
-  assert.ok(
-    inspectCiContracts(repo).some((error) =>
-      error.includes("pnpm workspace must include the marketing package"),
-    ),
-  );
-  write("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n  - "marketing"\n');
 
   write(
     ".github/workflows/desktop-release-candidate.yml",
