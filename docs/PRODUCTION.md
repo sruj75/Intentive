@@ -19,9 +19,22 @@ Use this with the owning deployable docs:
 - [apps/desktop/ARCHITECTURE.md](../apps/desktop/ARCHITECTURE.md)
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
 
-Development evidence and preview evidence are prerequisites, not substitutes for
-production promotion. See [DEVELOPMENT.md](DEVELOPMENT.md) and
-[PREVIEW.md](PREVIEW.md).
+Before the initial public launch, Development and founder Preview evidence are
+prerequisites, not substitutes for Production promotion. After launch, Preview is
+retired: changes move from Development through the owning Production release
+runbook. See [DEVELOPMENT.md](DEVELOPMENT.md) and [PREVIEW.md](PREVIEW.md).
+
+## Persistent-data safety
+
+An agent may inspect Production and may apply an already-approved additive
+migration through the documented release path. Before any operation that deletes
+or irreversibly rewrites persistent Production or shared Development data, the
+agent must name the exact target and ask for explicit human approval.
+
+Automatic cleanup is allowed only for a temporary resource that the same test run
+created for that purpose, such as its own disposable Neon branch. This exception
+does not authorize cleanup of `dev-local-smoke`, the production branch, user
+accounts, or production rows.
 
 ## Current Production State
 
@@ -134,10 +147,12 @@ pnpm --dir apps/mobile eas:preflight
 pnpm harness --scope apps/mobile
 ```
 
-A production binary must be built from an accepted SHA after its physical-device
-preview passes. Google Sign-In, APNs/push, SecureStore/Keychain restoration,
-background/foreground behavior, and OTA application require real-device evidence;
-Simulator screenshots do not satisfy them.
+The initial production binary must be built from the accepted founder Preview SHA
+after its physical-device proof passes. After public launch, Mobile changes go
+from Development through TestFlight and the App Store without maintaining a
+parallel Preview app. Google Sign-In, APNs/push, SecureStore/Keychain restoration,
+background/foreground behavior, and OTA application still require real-device
+evidence; Simulator screenshots do not satisfy them.
 
 The two snapshot failures above are current external release blockers, not accepted
 limitations. Recheck Neon Auth after the monthly quota reset (or plan change) and

@@ -143,14 +143,15 @@ release-candidate smoke or a physical multi-display host test.
 
 ## Three identities
 
-| Channel           | Bundle ID                      | Artifact                           | Purpose                         |
-| ----------------- | ------------------------------ | ---------------------------------- | ------------------------------- |
-| Daily development | `com.heyintentive.desktop.dev` | assembled Debug app                | fast host iteration             |
-| Preview/internal  | `com.heyintentive.desktop.dev` | immutable internal app/DMG         | clean TCC and stakeholder smoke |
-| Production        | `com.heyintentive.desktop`     | Developer ID signed, notarized DMG | public distribution and Sparkle |
+| Channel           | Bundle ID                          | Artifact                           | Purpose                         |
+| ----------------- | ---------------------------------- | ---------------------------------- | ------------------------------- |
+| Daily development | `com.heyintentive.desktop.dev`     | assembled Debug app                | fast host iteration             |
+| Preview           | `com.heyintentive.desktop.preview` | Developer-ID-signed Sparkle ZIP    | persistent founder dogfooding   |
+| Production        | `com.heyintentive.desktop`         | Developer ID signed, notarized DMG | public distribution and Sparkle |
 
-Development and production must not share Keychain items, TCC grants, or update
-feeds. Details of preview isolation are in
+Development, Preview, and Production do not share Keychain items, TCC grants, or
+launch-at-login registration. Clean Tart validation remains a Development test;
+it is not how the persistent Preview app is built. Details are in
 [PREVIEW.md](../../../docs/PREVIEW.md); release signing and Stage 2 gates are in
 [RELEASE.md](RELEASE.md).
 

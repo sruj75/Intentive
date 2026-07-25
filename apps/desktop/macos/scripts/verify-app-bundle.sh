@@ -66,6 +66,7 @@ else
   POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-phc_desktop_bundle_smoke}"
   POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
 fi
+LAUNCH_AGENT_LABEL="${INTENTIVE_LAUNCH_AGENT_LABEL:-$BUNDLE_ID.login}"
 # Silero VAD weights ship in the IntentiveDesktopNativeAdapters target bundle.
 NATIVE_ADAPTERS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle"
 INTENTIVE_UI_BUNDLE_NAME="IntentiveDesktop_Intentive.bundle"
@@ -135,6 +136,7 @@ MENU_BAR_ICON="$INTENTIVE_UI_BUNDLE/IntentiveMenuBarIcon.png"
 VAD_MODEL="$NATIVE_ADAPTERS_BUNDLE/silero_vad.onnx"
 SPARKLE_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
+LAUNCH_AGENT_PLIST="$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist"
 
 [[ -f "$PLIST" ]] || fail "Info.plist missing"
 [[ -x "$EXECUTABLE" ]] || fail "executable missing or not executable: $EXECUTABLE"
@@ -145,6 +147,7 @@ SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
 [[ -s "$MENU_BAR_ICON" ]] || fail "Intentive menu-bar icon missing from UI resources bundle"
 [[ -d "$SPARKLE_FRAMEWORK" ]] || fail "Sparkle.framework missing"
 [[ -d "$SENTRY_FRAMEWORK" ]] || fail "Sentry.framework missing"
+[[ -f "$LAUNCH_AGENT_PLIST" ]] || fail "bundled LaunchAgent plist missing"
 
 plutil -lint "$PLIST" >/dev/null
 
@@ -157,6 +160,10 @@ assert_eq "CFBundleShortVersionString" "$APP_VERSION"
 assert_eq "CFBundleVersion" "$APP_BUILD"
 assert_eq "LSMinimumSystemVersion" "14.0"
 assert_eq "CFBundleURLTypes:0:CFBundleURLSchemes:0" "$AUTH_CALLBACK_SCHEME"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :Label' "$LAUNCH_AGENT_PLIST")" == "$LAUNCH_AGENT_LABEL" ]] \
+  || fail "LaunchAgent Label does not match $LAUNCH_AGENT_LABEL"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :AssociatedBundleIdentifiers:0' "$LAUNCH_AGENT_PLIST")" == "$BUNDLE_ID" ]] \
+  || fail "LaunchAgent bundle identity does not match $BUNDLE_ID"
 assert_optional_plist "IntentiveControlPlaneURL" "$CONTROL_PLANE_URL"
 assert_optional_plist "IntentiveHostedAuthURL" "$HOSTED_AUTH_URL"
 assert_optional_plist "IntentiveAuthTokenExchangeURL" "$AUTH_TOKEN_EXCHANGE_URL"

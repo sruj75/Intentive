@@ -12,6 +12,8 @@
     "internal:close": "bash macos/scripts/tart-internal-build.sh --delete",
     "internal:run": "bash macos/scripts/tart-internal-build.sh",
     "internal:status": "bash macos/scripts/tart-internal-build.sh --status",
+    "preview:install": "bash macos/scripts/install-preview.sh",
+    "preview:publish": "bash macos/scripts/publish-preview.sh",
     "release:acceptance:test": "bash macos/tests/test-signed-artifact-smoke.sh",
     "release:smoke": "bash macos/scripts/verify-app-bundle.sh",
     "typecheck": "bash macos/scripts/swiftpm.sh build -c debug --package-path macos/Desktop",

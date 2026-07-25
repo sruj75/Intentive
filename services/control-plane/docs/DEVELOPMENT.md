@@ -16,6 +16,10 @@ conventions see [`../../../docs/TESTING.md`](../../../docs/TESTING.md); for the
 production release path see [`docs/RELEASE.md`](RELEASE.md) and
 [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md).
 
+The Control Plane has no separate Preview deployment. Founder Preview clients use
+the live Production Control Plane; backend changes move from this Development
+workflow into the existing Production release workflow.
+
 > **No production behavior changes for local dev.** The service reads the same
 > config seam (`src/config/env.ts`) it reads in production. The local values point
 > at an isolated Neon dev branch, loopback URLs, dummy internal secrets, and either

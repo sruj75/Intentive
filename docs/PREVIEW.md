@@ -1,149 +1,145 @@
-# Preview Environments
+# Preview: Founder Dogfooding
 
-Preview is the bridge between local development and production. It distributes an
-immutable build to real hardware or a clean machine while keeping data, identity,
-telemetry, update channels, and bundle identity isolated from production.
+Preview is the temporary pre-launch period in which the developer uses installed
+Intentive clients every day like a real user.
 
-Preview is not another daily inner loop:
+It is deliberately simple:
 
-| Stage       | iOS                                                | macOS                                        |
-| ----------- | -------------------------------------------------- | -------------------------------------------- |
-| Development | EAS Development Client + Metro                     | assembled Debug `Intentive Dev.app`          |
-| Preview     | EAS internal build on `preview` channel            | immutable internal `.dev` app/DMG            |
-| Production  | TestFlight/App Store build on `production` channel | Developer ID signed/notarized production DMG |
+- real authentication;
+- the production Control Plane;
+- the production Agent Runtime;
+- production Neon data;
+- the same Sentry and PostHog projects as Production;
+- persistent accounts, permissions, Screen Memory, and settings.
 
-## Environment contract
+Preview is not a separate backend, staging environment, disposable test account,
+or clean-first-launch test. Those tests belong in
+[Development](DEVELOPMENT.md). Preview also is not a consumer release; the App
+Store and notarized Desktop DMG remain [Production](PRODUCTION.md).
 
-Every preview candidate must be bound to:
+## The three stages in plain English
 
-- one exact Git SHA;
-- one isolated Control Plane/Agent Runtime environment;
-- one non-production database branch;
-- preview auth/provider configuration;
-- preview Sentry/PostHog environments;
-- no production secrets or production database URL;
-- an explicit expiry/cleanup owner for generated data.
+| Stage       | What it means                                                              |
+| ----------- | -------------------------------------------------------------------------- |
+| Development | Change code quickly, run local services, and let agents test clean states. |
+| Preview     | Install the clients and personally live with them against Production.      |
+| Production  | Distribute the consumer apps through the normal public channels.           |
 
-The candidate report records artifact ID/digest, SHA, environment URLs, database
-branch, test account, test matrix, and remaining production-only gates.
+There is no Preview deployment for the Control Plane or Agent Runtime. A backend
+change is developed locally and, when accepted, follows its existing Production
+release workflow. Preview clients simply use whichever backend version is live.
 
-## iOS preview
+## Mobile Preview
 
-`apps/mobile/eas.json` defines `preview` as internal distribution with the
-`preview` update channel and EAS environment.
+Mobile Preview is the `preview` profile in
+[`apps/mobile/eas.json`](../apps/mobile/eas.json):
 
-Before spending build quota:
+- EAS internal distribution, so it installs on the registered iPhone;
+- a standalone app, so Metro and a development server are not required;
+- the `preview` EAS Update channel for fast compatible JS/asset updates;
+- the same `com.heyintentive.expo` bundle identifier as Production;
+- real authentication and production service URLs.
+
+The same iOS identity is intentional. Preview is temporary, only one copy needs
+to be installed, and the production App Store app will replace it.
+
+Before building, the EAS `preview` environment must contain the production
+Control Plane and Neon Auth public values plus the normal Sentry/PostHog values.
+Then:
 
 ```bash
 pnpm harness --scope apps/mobile
 pnpm --dir apps/mobile eas:preflight
 cd apps/mobile
 eas env:list --environment preview
-eas env:exec preview \
-  'curl -sS -i "$EXPO_PUBLIC_NEON_AUTH_BASE_URL/get-session"'
-```
-
-The Neon Auth health request must return `200`. `412` with
-`COMPUTE_QUOTA_EXCEEDED` blocks the preview auth run until the account/project
-quota resets or the plan changes; a successful Google account picker does not
-override that gate.
-
-Build and install on a physical iPhone:
-
-```bash
-cd apps/mobile
 eas build --platform ios --profile preview
 ```
 
-For JS/assets compatible with the candidate's runtime version:
+Install the EAS internal-distribution artifact on the physical iPhone and use it
+normally. For a compatible JS/assets-only iteration:
 
 ```bash
+cd apps/mobile
 eas update --branch preview --environment preview
 ```
 
-Preview acceptance:
+Require a real sign-in, a Neon session, a User JWT accepted by the Control Plane,
+a real Companion reply, SecureStore restoration after termination, and normal
+background/foreground behavior. A `412 COMPUTE_QUOTA_EXCEEDED` response from
+Neon blocks this proof until the quota resets or the Neon plan is changed.
 
-1. install the internal build from its EAS artifact, not Metro;
-2. cold-launch and sign in through native Google Sign-In;
-   the Google OAuth page must identify Intentive, not a stale product brand;
-3. require a Neon session and a User JWT accepted by the Control Plane;
-4. complete/resume Launch State and the affected A-L journeys;
-5. connect to preview Control Plane and Agent Runtime;
-6. send a real message and receive a Companion reply;
-7. verify SecureStore restoration across termination;
-8. background/foreground and exercise notification registration;
-9. verify preview telemetry receives only allowed data;
-10. install a preview OTA, relaunch twice, and prove the update applies;
-11. archive screenshots/logs and the EAS build/update IDs.
+After the first public launch, this temporary Mobile Preview phase ends. The
+developer uses the Production App Store app like every other user. A permanent
+parallel Mobile dogfood system can wait until the product has enough users to
+justify it.
 
-Simulator evidence is useful but cannot approve Google Sign-In, APNs, Keychain
-lifecycle, or real background behavior.
+## Desktop Preview
 
-## macOS preview
+Desktop needs a separate identity because macOS TCC permissions, Keychain items,
+and launch-at-login registration are tied to application identity.
 
-Daily and preview builds use `com.heyintentive.desktop.dev`; production uses
-`com.heyintentive.desktop`. Preview must never use the production Sparkle feed or
-production Keychain identity.
+| Setting          | Preview value                            |
+| ---------------- | ---------------------------------------- |
+| App              | `Intentive Preview.app`                  |
+| Bundle ID        | `com.heyintentive.desktop.preview`       |
+| Auth callback    | `intentive-desktop-preview`              |
+| LaunchAgent      | `com.heyintentive.desktop.preview.login` |
+| Installation     | `/Applications/Intentive Preview.app`    |
+| Updates          | Sparkle ZIP from a GitHub pre-release    |
+| Signing          | Developer ID                             |
+| DMG/notarization | not required for Preview                 |
 
-Build the internal app:
+The separate identity ensures Preview permissions cannot make the later
+Production app appear already tested. Unlike a clean Development test, Desktop
+Preview keeps its state for daily use.
 
-```bash
-INTENTIVE_INTERNAL_PREVIEW=1 \
-  INTENTIVE_CONTROL_PLANE_URL=https://control-plane.preview.example.com \
-  INTENTIVE_HOSTED_AUTH_URL=https://auth.preview.example.com/sign-in \
-  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL=https://auth.preview.example.com/desktop/token \
-  TART_HOME=/Volumes/T9/Tart \
-  pnpm --dir apps/desktop internal:build
-```
+Before the first publish, register `intentive-desktop-preview` as an allowed
+callback scheme in the hosted-auth flow. Publishing verifies the scheme embedded
+in the app, but only a real sign-in can prove the external auth service accepts
+the redirect. Do not call Desktop Preview usable until sign-in returns to
+`Intentive Preview.app`, stores the session in its Preview Keychain boundary, and
+reconnects after quitting and reopening the app.
 
-Replace the example values with the deployed preview environment. The command
-fails closed if the required Control Plane or hosted-auth URL is absent, if an
-endpoint is not public HTTPS, if the bundle identity is not
-`com.heyintentive.desktop.dev`, or if Sparkle feed/signing metadata is present.
-`internal:build` signs and then runs the bundle verifier against the exact path
-it produced; do not follow it with `release:smoke`, because that command
-deliberately builds a separate synthetic production-identity bundle for the
-release harness.
+### Publish an update
 
-For a daily clean-TCC development build that does not need live preview services,
-omit `INTENTIVE_INTERNAL_PREVIEW` and the endpoint variables. It still verifies
-the exact `.dev` app, including that optional service/update metadata is absent.
-
-Run first-launch permissions in a disposable clean clone:
+Start from a clean committed Git SHA. Export the same public service and telemetry
+configuration used by Production, plus the existing signing material:
 
 ```bash
-INTENTIVE_INTERNAL_PREVIEW=1 \
-  INTENTIVE_CONTROL_PLANE_URL=https://control-plane.preview.example.com \
-  INTENTIVE_HOSTED_AUTH_URL=https://auth.preview.example.com/sign-in \
-  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL=https://auth.preview.example.com/desktop/token \
-  TART_HOME=/Volumes/T9/Tart \
-  pnpm --dir apps/desktop internal:run
-TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
+export INTENTIVE_CONTROL_PLANE_URL="https://control-plane-pqenui44sa-uw.a.run.app"
+export INTENTIVE_HOSTED_AUTH_URL="<production hosted-auth URL>"
+export INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="<only when required>"
+export INTENTIVE_SPARKLE_PUBLIC_ED_KEY="<public Sparkle key>"
+export INTENTIVE_SPARKLE_PRIVATE_KEY="<private Sparkle key>"
+export INTENTIVE_SENTRY_DSN="<Desktop Sentry DSN>"
+export INTENTIVE_POSTHOG_PROJECT_KEY="<Desktop PostHog key>"
+
+pnpm --dir apps/desktop preview:publish
 ```
 
-Also install the exact candidate on a normal host and drive it through macOS
-Accessibility. Preview acceptance requires:
+`preview:publish` builds `Intentive Preview.app`, embeds the production endpoints,
+Developer-ID-signs the app, creates and Sparkle-signs `Intentive-Preview.zip`, and
+uploads the ZIP plus `appcast-preview.xml` to the repository's
+`desktop-preview` GitHub pre-release. It intentionally does not create a DMG or
+submit to Apple notarization.
 
-1. correct `.dev` bundle identity and embedded preview service endpoints;
-2. authentic hosted sign-in and Runtime connection;
-3. real ScreenCaptureKit frame -> OCR/semantic Rewind index -> Runtime event;
-4. real AVAudioEngine microphone -> Silero VAD -> local Parakeet transcript ->
-   Runtime `ambient_audio_summary`;
-5. no capture while signed out or while either relevant toggle is disabled;
-6. deny/defer/grant and relaunch behavior in a clean Tart clone;
-7. privacy exclusions, retention, deletion/tombstone, sleep/wake, and revocation;
-8. no production update feed, tokens, telemetry environment, or data.
+Install it once:
 
-An ad-hoc internal signature can approve development/permission behavior. It cannot
-approve Gatekeeper, notarization, stapling, or Sparkle. Those remain production
-release-candidate gates.
+```bash
+pnpm --dir apps/desktop preview:install
+```
 
-## Promotion
+The installer places the app in `/Applications`. From then on Sparkle checks the
+Preview feed hourly. The update UI and install-on-quit behavior are the same as
+Production.
 
-Preview artifacts are never relabeled as production. Promotion means building the
-production artifact from the accepted SHA with the production identity and then
-running the production gates in [PRODUCTION.md](PRODUCTION.md) and the owning
-release runbook.
+## What Preview acceptance means
 
-Clean up the preview database/test data when the acceptance window closes. Delete
-only the disposable Tart clone; preserve the immutable base.
+Use both clients normally for days, not minutes. Watch Sentry for errors and
+PostHog for the same product events Production records. Fix problems in
+Development, publish another Preview client update, and continue using the same
+account and state.
+
+Do not reset permissions, create a clean database, or run a disposable VM to
+approve Preview. Those actions answer a different question: whether a brand-new
+user works, which belongs to Development and the final Production release gate.

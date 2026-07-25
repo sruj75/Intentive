@@ -17,6 +17,10 @@ For CI/verification see [`../../../docs/TESTING.md`](../../../docs/TESTING.md); 
 the production release path see [`docs/RELEASE.md`](RELEASE.md) and
 [`../../../docs/PRODUCTION.md`](../../../docs/PRODUCTION.md).
 
+The Agent Runtime has no separate Preview deployment. Founder Preview clients use
+the live Production Runtime; backend changes move from this Development workflow
+into the existing Production release workflow.
+
 > **No production behavior changes for local dev.** Same config seam
 > (`src/config/env.ts`) as production; local values point at an isolated Neon dev
 > branch, loopback URLs, dummy internal secrets, your own OpenRouter key, and

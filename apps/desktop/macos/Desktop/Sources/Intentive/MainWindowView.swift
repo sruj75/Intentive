@@ -1973,11 +1973,15 @@ final class DesktopViewModel: ObservableObject {
 private enum DesktopRuntimeConfiguration {
   private static let services: DesktopServiceConfiguration = {
     let bundle = Bundle.main
+    let installedBundleIDs = [
+      "com.heyintentive.desktop",
+      "com.heyintentive.desktop.preview",
+    ]
     do {
       return try DesktopServiceConfiguration.resolve(
         environment: ProcessInfo.processInfo.environment,
         bundleInfo: bundle.infoDictionary ?? [:],
-        isPublicRelease: bundle.bundleIdentifier == "com.heyintentive.desktop"
+        isPublicRelease: installedBundleIDs.contains(bundle.bundleIdentifier ?? "")
       )
     } catch {
       fatalError("Invalid Desktop service configuration: \(error)")
@@ -2035,7 +2039,26 @@ private enum DesktopRuntimeConfiguration {
   }
 
   private static var callbackScheme: String {
-    environment("INTENTIVE_AUTH_CALLBACK_SCHEME") ?? "intentive-desktop"
+    let bundle = Bundle.main
+    let installedBundleIDs = [
+      "com.heyintentive.desktop",
+      "com.heyintentive.desktop.preview",
+    ]
+    if !installedBundleIDs.contains(bundle.bundleIdentifier ?? ""),
+      let override = environment("INTENTIVE_AUTH_CALLBACK_SCHEME")
+    {
+      return override
+    }
+    if
+      let urlTypes = bundle.object(forInfoDictionaryKey: "CFBundleURLTypes")
+        as? [[String: Any]],
+      let schemes = urlTypes.first?["CFBundleURLSchemes"] as? [String],
+      let bundledScheme = schemes.first,
+      !bundledScheme.isEmpty
+    {
+      return bundledScheme
+    }
+    return "intentive-desktop"
   }
 
   private static func environment(_ key: String) -> String? {

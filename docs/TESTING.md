@@ -197,7 +197,7 @@ pnpm --filter ./services/control-plane test
 pnpm --filter ./services/control-plane typecheck
 ```
 
-The Control Plane suite includes identity and gates service/handler unit tests, HTTP routing via Hono (`app.test.mjs`), and opt-in repo integration tests against a disposable Neon branch (ADR-0003; skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are unset). See `services/control-plane/test/helpers/neon-branch.mjs`. Pull requests also run `.github/workflows/neon-preview-branches.yml` when Control Plane paths change: it creates one Neon branch for the PR, applies all Control Plane migrations with `pnpm --filter ./services/control-plane migrate`, runs Control Plane checks without forwarding `NEON_*`, and deletes the branch when the PR closes.
+The Control Plane suite includes identity and gates service/handler unit tests, HTTP routing via Hono (`app.test.mjs`), and opt-in repo integration tests against a disposable Neon branch (ADR-0003; skips when `NEON_API_KEY` / `NEON_PROJECT_ID` are unset). See `services/control-plane/test/helpers/neon-branch.mjs`. Pull requests also run `.github/workflows/neon-development-branches.yml` when either backend or its shared contracts change: it creates one Neon branch for the PR, applies both Control Plane and Agent Runtime migrations, and deletes the branch immediately even when validation fails.
 
 ## Agent Runtime
 
@@ -222,7 +222,7 @@ vertical slices land.
 - `.github/workflows/codeql.yml` is the versioned security-analysis contract. On pull requests it analyzes only changed Actions, JavaScript/TypeScript, or Swift inputs, then joins them behind the stable, always-reporting `Security` status. Pushes to `main` and scheduled runs remain unfiltered; GitHub default setup must remain disabled so its stale auto-detected language list cannot compete with this workflow.
 - `.github/filters.yml` is the single source of truth for the Gate and CodeQL change scopes; CI-infrastructure changes fail open by running both Node and Swift checks.
 - `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. Radar is changed-file-first and keeps the full repository audit behind `--audit`; it does not execute unpinned third-party analyzers.
-- `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, and deletes the branch when the PR closes. Typecheck/tests belong to the Node Gate and are not replayed here.
+- `.github/workflows/neon-development-branches.yml` creates one temporary Neon branch per relevant pull request, validates both backend schemas against it, and deletes the branch in an `always()` cleanup step. Typecheck/tests belong to the Node Gate and are not replayed here.
 - `.github/workflows/security-audit.yml` runs `pnpm audit --prod --audit-level moderate` on pull requests when pnpm dependency inputs change; its weekly/manual path runs the full `pnpm audit --audit-level moderate`.
 - `.github/workflows/desktop-dependency-policy.yml` enforces the Desktop provider-SDK boundary. It is a dependency-policy check, not a vulnerability database scan.
 - Desktop coverage is produced by the same `desktop-swift` Gate execution that runs tests; there is no separate recompilation-only coverage workflow.

@@ -1,5 +1,9 @@
 # Apple Development Workflow
 
+Development is where code changes, local services, automated checks, and
+brand-new-user tests happen. Nothing in this workflow is a durable app that the
+founder lives with every day; that is [Preview](PREVIEW.md).
+
 This is Intentive's normal code-to-working-product loop. It covers the two Apple
 clients and the local services they depend on:
 
@@ -77,8 +81,23 @@ scripts/local-stack.sh
 It owns Control Plane `:8080`, Agent Runtime WebSocket `:8787`, and Runtime internal
 HTTP `:8081`. Metro owns `:8082`.
 
-The local stack must use an isolated database and matching local-dev auth values in
-both services. Never point a development workflow at the production database.
+The local stack must use an isolated database. Never point a Development workflow
+at the production database. Human testing uses real Neon authentication. An
+automated Development proof may explicitly select the guarded `local-dev` token
+mode, in which case both services must use the same local auth secret.
+
+There are two database modes:
+
+- normal personal development reuses the persistent `dev-local-smoke` Neon branch;
+- an autonomous full-stack integration run creates a temporary Neon branch,
+  applies both `services/control-plane` and `services/agent-runtime` migrations,
+  runs its proof, and deletes that same temporary branch even when the proof
+  fails.
+
+Deleting a branch created by that test is expected cleanup. Any destructive
+operation against persistent development or production data requires explicit
+human approval.
+
 For a disposable proof, migrate both schemas before launching the services, clear
 the account gates through Control Plane, and use `GET /agent` to obtain the Runtime
 route. Do not fake the Runtime acknowledgement in an end-to-end proof.
@@ -158,7 +177,7 @@ xcrun simctl openurl booted \
 Metro keeps the preview environment's public client IDs while overriding only the
 JavaScript-facing Control Plane URL for the local stack. Otherwise the binary can
 contain Google's callback scheme while the JavaScript runtime either sees empty
-client IDs or calls the preview Control Plane instead of local `:8080`.
+client IDs or calls the remotely configured Control Plane instead of local `:8080`.
 
 Re-run the EAS build only after native dependencies, config plugins, native
 `app.json` keys, the Expo SDK, icons, or splash assets change. Ordinary JS/TS
@@ -280,12 +299,12 @@ simulators for every action.
 
 Development teardown has three different responsibilities:
 
-| Class | Examples | End-of-run policy |
-| --- | --- | --- |
-| Live runtime | Metro, local services, app processes, booted Simulator, disposable Tart clone | stop with `pnpm development:kill` |
-| Reusable native work | installed EAS dev client, remote/local EAS artifacts, `node_modules`, SwiftPM scratch, assembled apps, immutable Tart base | preserve and reuse |
-| Proof evidence | EAS build ID/URL, screenshots, logs, event IDs, database query results | report or archive intentionally; temporary screenshots are deleted on kill |
-| Disposable/sensitive state | one-run credentials, expired test databases, transient PID/log directories | remove when its proof window ends |
+| Class                      | Examples                                                                                                                   | End-of-run policy                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Live runtime               | Metro, local services, app processes, booted Simulator, disposable Tart clone                                              | stop with `pnpm development:kill`                                          |
+| Reusable native work       | installed EAS dev client, remote/local EAS artifacts, `node_modules`, SwiftPM scratch, assembled apps, immutable Tart base | preserve and reuse                                                         |
+| Proof evidence             | EAS build ID/URL, screenshots, logs, event IDs, database query results                                                     | report or archive intentionally; temporary screenshots are deleted on kill |
+| Disposable/sensitive state | one-run credentials, expired test databases, transient PID/log directories                                                 | remove when its proof window ends                                          |
 
 A continuing branch/worktree is source state, not temporary scratch. Keep it on a
 persistent workspace path; `/tmp` and `/private/tmp` are appropriate only for

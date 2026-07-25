@@ -8,6 +8,11 @@ Continuous Native Generation owns the native project through `app.json`,
 `app.config.js`, and config plugins. The normal workflow lets EAS generate it in
 the cloud; never hand-edit a local `ios/` directory.
 
+This Development Client is not the standalone founder Preview app. Development
+requires Metro and may use the explicit development-only test identity;
+[Preview](../../../docs/PREVIEW.md) is an internally distributed build with real
+authentication and no Metro dependency.
+
 ## Verify before opening Simulator
 
 Use Node 24 or newer:
@@ -69,7 +74,13 @@ The environment check is a real build precondition. It must list:
 
 - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`;
 - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`;
-- the intended non-production Neon Auth and Control Plane URLs.
+- the shared public Neon Auth and Control Plane configuration used by the
+  internal Preview build.
+
+During the Development inner loop, Metro explicitly overrides the Control Plane
+URL to local `:8080`. The native public OAuth configuration remains embedded so a
+human can use real authentication; automated Development tests may instead opt
+into the guarded local test identity.
 
 Check the actual Neon Auth endpoint before spending time on the browser handoff:
 

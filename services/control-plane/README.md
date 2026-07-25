@@ -40,7 +40,7 @@ pnpm typecheck
 pnpm test         # build + node --test; repo integration tests need NEON_* (see ADR-0003)
 ```
 
-Pull requests run the Control Plane typecheck and hermetic tests in the `node-workspaces` module of `.github/workflows/monorepo-foundation.yml`; `.github/workflows/neon-preview-branches.yml` separately validates migrations on a PR-scoped Neon branch.
+Pull requests run the Control Plane typecheck and hermetic tests in the `node-workspaces` module of `.github/workflows/monorepo-foundation.yml`; `.github/workflows/neon-development-branches.yml` separately validates both backend schemas on a PR-scoped Neon branch.
 `GET /me` resolves a verified JWT to `AccountState` via `control_plane.users` (#23),
 device-aware `next_gate` from cross-client state, the caller's device/client signal, and
 observed devices (#27, ADR-0005), `has_agent_instance` from the Agent Instance
@@ -80,7 +80,7 @@ The service reads **all** configuration from the one config seam (`src/config/en
 
 This service's schema is created here, not assumed to exist. Via the Neon MCP / `neon-postgres` skill: create the `control_plane` schema → create a least-privilege `control_plane_app` role (no superuser, grants scoped to `control_plane` only) → run migrations `0001`–`0005` against production → build `NEON_DATABASE_URL` from that role's pooled connection string. Repo tests bootstrap their own ephemeral branches (ADR-0003); production is provisioned once, here.
 
-Pull requests that touch Control Plane run `.github/workflows/neon-preview-branches.yml`: create a Neon branch named `preview/pr-<number>-<branch>`, apply all Control Plane migrations with `pnpm --filter ./services/control-plane migrate`, run the Control Plane checks without spawning extra Neon branches, and delete the Neon branch when the PR closes.
+Pull requests that touch either backend or its shared contracts run `.github/workflows/neon-development-branches.yml`: create a Neon branch named `development/pr-<number>-<branch>`, apply all Control Plane and Agent Runtime migrations, and delete the Neon branch immediately in an `always()` cleanup step.
 
 ### Deploy procedure (careful path)
 

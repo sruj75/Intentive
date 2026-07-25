@@ -14,6 +14,7 @@
     "ci:contracts:test": "node tools/ci/check-contracts.test.mjs",
     "ci:dependency-exceptions": "node tools/ci/check-dependency-exceptions.mjs",
     "ci:dependency-exceptions:test": "node tools/ci/check-dependency-exceptions.test.mjs",
+    "ci:environment-workflows": "node --test tools/ci/environment-workflow-contract.test.mjs",
     "ci:shell-portability": "node tools/ci/development-cleanup-contract.test.mjs && bash tools/ci/check-shell-portability.sh",
     "coverage:swift:test": "node tools/coverage/summarize-swift.test.mjs",
     "sensor:impact-radius": "node tools/sensors/impact-radius/index.mjs",
