@@ -6,22 +6,20 @@ import { authContent as content } from "../config/content";
 
 /**
  * Presentation for the Identity Gate — a single Google button plus an
- * actionable retry notice. It owns no auth logic: `onPress` runs the entrypoint's
- * sign-in flow; `pending` and `notice` are the entrypoint's projection of the
- * in-flight outcome. `disabled` (Google not a working capability) plus `pending`
- * drive the button's disabled state so a build without the public client IDs
- * shows the button disabled rather than opening a dead OAuth flow. See ADR 0012
- * / 0024 / 0030.
+ * intentionally stable action area. It owns no auth logic: `onPress` runs the
+ * entrypoint's sign-in flow, while `pending` projects the in-flight outcome.
+ * `disabled` (Google not a working capability) plus `pending` drive the
+ * button's disabled state so a build without the public client IDs shows the
+ * button disabled rather than opening a dead OAuth flow. See ADR 0012 / 0024 /
+ * 0030.
  */
 export function AuthScene({
   disabled,
   pending,
-  notice,
   onPress,
 }: {
   readonly disabled: boolean;
   readonly pending: boolean;
-  readonly notice: string | null;
   readonly onPress: () => void;
 }) {
   const { height } = useWindowDimensions();
@@ -55,11 +53,6 @@ export function AuthScene({
           onPress={onPress}
           testID="continue-with-google"
         />
-        {notice ? (
-          <Text accessibilityLiveRegion="polite" selectable style={styles.notice}>
-            {notice}
-          </Text>
-        ) : null}
         <Text selectable style={styles.legal}>
           {content.legal}
         </Text>
@@ -89,13 +82,6 @@ const styles = StyleSheet.create({
   },
   authAccent: { color: theme.color.accent },
   authActions: { gap: theme.space.sm },
-  notice: {
-    ...theme.type.caption,
-    color: theme.color.error,
-    textAlign: "center",
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.xs,
-  },
   legal: {
     ...theme.type.caption,
     color: theme.color.secondaryInk,

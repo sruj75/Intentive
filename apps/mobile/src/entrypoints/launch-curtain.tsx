@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { usePathname } from "expo-router";
 
+import { brandAssets } from "../design/brand";
 import { mobileTheme as theme } from "../design/theme";
 import { resolveLaunchState } from "../domains/onboarding/service/resolve-launch-state";
 import { routeForDestination } from "../domains/onboarding/service/route-for-destination";
@@ -61,6 +62,10 @@ export function LaunchCurtain(): React.JSX.Element | null {
 
   if (!visible) return null;
 
+  const icon = (
+    <Image accessible={false} source={brandAssets.head} style={styles.icon} testID="launch-icon" />
+  );
+
   return (
     <View
       accessibilityLabel="Loading Intentive"
@@ -70,23 +75,7 @@ export function LaunchCurtain(): React.JSX.Element | null {
       style={styles.curtain}
     >
       <View style={styles.mark}>
-        {reduceMotion ? (
-          <Image
-            accessible={false}
-            source={require("../../assets/Intentive.icon/Assets/head.png")}
-            style={styles.icon}
-            testID="launch-icon"
-          />
-        ) : (
-          <Animated.View style={animatedStyle}>
-            <Image
-              accessible={false}
-              source={require("../../assets/Intentive.icon/Assets/head.png")}
-              style={styles.icon}
-              testID="launch-icon"
-            />
-          </Animated.View>
-        )}
+        {reduceMotion ? icon : <Animated.View style={animatedStyle}>{icon}</Animated.View>}
       </View>
     </View>
   );
