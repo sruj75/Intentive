@@ -1,0 +1,36 @@
+ci-infra: &ci-infra
+  - ".github/workflows/**"
+  - ".github/filters.yml"
+  - "tools/ci/**"
+  - "tools/harness/**"
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "pnpm-workspace.yaml"
+  - "turbo.json"
+  - "tsconfig.base.json"
+
+node:
+  - *ci-infra
+  - "apps/mobile/**"
+  - "services/**"
+  - "packages/**"
+  - "tools/**"
+  - "**/*.{ts,tsx,js,jsx,mjs,cjs}"
+  - "**/package.json"
+  - "**/tsconfig*.json"
+
+swift:
+  - "apps/desktop/**"
+  - "!apps/desktop/**/*.md"
+  - "!apps/desktop/docs/**"
+
+actions:
+  - ".github/workflows/**"
+  - ".github/actions/**"
+  - ".github/dependabot.yml"
+
+swift-deps:
+  - "apps/desktop/macos/Desktop/Package.swift"
+  - "apps/desktop/macos/Desktop/Package.resolved"
+  - "apps/desktop/macos/scripts/swiftpm.sh"
+  - ".github/workflows/desktop-dependency-policy.yml"

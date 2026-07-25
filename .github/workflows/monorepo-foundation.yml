@@ -8,12 +8,33 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: gate-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.filter.outputs.node }}
+      swift: ${{ steps.filter.outputs['ci-infra'] == 'true' || steps.swift-filter.outputs.swift == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: .github/filters.yml
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: swift-filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: .github/filters.yml
+          predicate-quantifier: every
+
   repo-contracts:
     name: Repository contracts
     runs-on: ubuntu-latest
@@ -33,6 +54,8 @@ jobs:
 
   node-workspaces:
     name: Node workspaces
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.node == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -47,6 +70,8 @@ jobs:
 
   desktop-swift:
     name: Desktop Swift
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.swift == 'true'
     runs-on: macos-latest
     env:
       INTENTIVE_SWIFTPM_SCRATCH_PATH: ${{ github.workspace }}/.build/swiftpm-gate
@@ -77,6 +102,7 @@ jobs:
     name: Gate
     if: always()
     needs:
+      - changes
       - repo-contracts
       - node-workspaces
       - desktop-swift
@@ -87,7 +113,10 @@ jobs:
           REPO_CONTRACTS: ${{ needs.repo-contracts.result }}
           NODE_WORKSPACES: ${{ needs.node-workspaces.result }}
           DESKTOP_SWIFT: ${{ needs.desktop-swift.result }}
+          CHANGES: ${{ needs.changes.result }}
         run: |
+          for result in "$NODE_WORKSPACES" "$DESKTOP_SWIFT"; do
+            case "$result" in success|skipped) ;; *) exit 1 ;; esac
+          done
           test "$REPO_CONTRACTS" = success
-          test "$NODE_WORKSPACES" = success
-          test "$DESKTOP_SWIFT" = success
+          test "$CHANGES" = success

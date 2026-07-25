@@ -16,7 +16,6 @@ on:
       - "services/**/package.json"
       - "packages/**/package.json"
       - "tools/**/package.json"
-      - "marketing/package.json"
       - ".github/workflows/security-audit.yml"
   schedule:
     # Mondays 07:00 UTC.

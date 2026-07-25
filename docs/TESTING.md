@@ -247,8 +247,9 @@ vertical slices land.
 
 ## CI Expectations
 
-- `.github/workflows/monorepo-foundation.yml` is the root PR Gate. It runs repository contracts on Ubuntu, Node workspaces on Ubuntu, and Desktop Swift tests plus bundle and coverage evidence on macOS. The stable `Gate` job succeeds only when all three modules pass.
-- `.github/workflows/codeql.yml` is the versioned security-analysis contract. It analyzes Actions, JavaScript/TypeScript, and Swift, then joins them behind the stable `Security` status. GitHub default setup must remain disabled so its stale auto-detected language list cannot compete with this workflow.
+- `.github/workflows/monorepo-foundation.yml` is the root PR Gate. Repository contracts always run; Node workspaces and Desktop Swift run only when their inputs change. The stable `Gate` job always reports and accepts an intentionally skipped module, but requires every executed module to pass.
+- `.github/workflows/codeql.yml` is the versioned security-analysis contract. On pull requests it analyzes only changed Actions, JavaScript/TypeScript, or Swift inputs, then joins them behind the stable, always-reporting `Security` status. Pushes to `main` and scheduled runs remain unfiltered; GitHub default setup must remain disabled so its stale auto-detected language list cannot compete with this workflow.
+- `.github/filters.yml` is the single source of truth for the Gate and CodeQL change scopes; CI-infrastructure changes fail open by running both Node and Swift checks.
 - `.github/workflows/harness-health.yml` posts the non-blocking Radar sticky comment on non-draft pull requests. Radar is changed-file-first and keeps the full repository audit behind `--audit`; it does not execute unpinned third-party analyzers.
 - `.github/workflows/neon-preview-branches.yml` creates one Neon branch per Control Plane pull request, validates migrations against it, and deletes the branch when the PR closes. Typecheck/tests belong to the Node Gate and are not replayed here.
 - `.github/workflows/security-audit.yml` runs `pnpm audit --prod --audit-level moderate` on pull requests when pnpm dependency inputs change; its weekly/manual path runs the full `pnpm audit --audit-level moderate`.

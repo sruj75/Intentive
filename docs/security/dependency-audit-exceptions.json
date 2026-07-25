@@ -8,7 +8,7 @@
     },
     {
       "ghsa": "GHSA-mh99-v99m-4gvg",
-      "reachability": "The compatible 5.x dependency path is pinned to patched brace-expansion 5.0.8. Version 1.1.16 remains only behind minimatch 3 in ESLint and Mobile Client Jest/Babel coverage/test-exclude tooling; version 2.1.2 remains only behind minimatch 9 in the Remotion ESLint config's TypeScript parser. These lint/test paths are not loaded by shipped code, and forcing their CommonJS consumers to 5.x would break the callable export contract.",
+      "reachability": "The compatible 5.x dependency path is pinned to patched brace-expansion 5.0.8. Version 1.1.16 remains only behind minimatch 3 in ESLint and Mobile Client Jest/Babel coverage/test-exclude tooling. This lint/test path is not loaded by shipped code, and forcing its CommonJS consumers to 5.x would break the callable export contract.",
       "owner": "Mobile",
       "expires": "2026-08-31"
     }

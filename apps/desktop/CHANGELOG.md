@@ -21,7 +21,6 @@ First public stable Desktop release: a Developer ID signed, notarized, and stapl
 - **Local Screen Memory store and legacy import path** — SQLite-backed Screen Memory with FTS search plus read-only import from Omi-era local databases into the current Intentive profile.
 - **Desktop onboarding** — renovated Omi paged mechanics for first-launch trust, authentication, honest Screen Recording decisions, optional passive audio, privacy controls, text-only Floating Bar demonstration, and resumable completion.
 - **Public release acceptance** — adapts Omi's signed-artifact audit and Intentive's existing Developer ID/notarization identity into a draft-first signed DMG + Sparkle pipeline with digest evidence and dedicated-Mac promotion.
-- **Restored marketing demo assets** — the deleted Remotion demo now lives at root `marketing/` and uses Intentive / Screen Memory terminology.
 
 ### Changed
 
