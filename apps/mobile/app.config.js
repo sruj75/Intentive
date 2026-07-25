@@ -21,6 +21,7 @@ module.exports = ({ config = appJson }) => {
   const plugins = [...(config.plugins ?? [])];
 
   plugins.push("./plugins/with-modular-headers");
+  plugins.push("expo-status-bar");
 
   if (clientId) {
     plugins.push([

@@ -16,20 +16,20 @@ try {
       "jobs:",
       "  actions:",
       "    steps:",
-      "      - uses: github/codeql-action/init@v4",
+      "      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4",
       "        with:",
       "          languages: actions",
       "  js:",
       "    steps:",
-      "      - uses: github/codeql-action/init@v4",
+      "      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4",
       "        with:",
       "          languages: javascript-typescript",
       "  swift:",
       "    steps:",
-      "      - uses: actions/checkout@v7",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
       "        with:",
       "          lfs: true",
-      "      - uses: github/codeql-action/init@v4",
+      "      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4",
       "        with:",
       "          languages: swift",
       "",
@@ -43,7 +43,7 @@ try {
       "jobs:",
       "  repo-contracts:",
       "    steps:",
-      "      - uses: actions/checkout@v7",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
       "        with:",
       "          lfs: true",
       "      - run: pnpm harness --group repo-contracts",
@@ -52,7 +52,7 @@ try {
       "      - run: pnpm harness --group node-workspaces",
       "  desktop-swift:",
       "    steps:",
-      "      - uses: actions/checkout@v7",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
       "        with:",
       "          lfs: true",
       "      - run: pnpm harness --group desktop-swift",
@@ -65,7 +65,7 @@ try {
       "jobs:",
       "  candidate-acceptance:",
       "    steps:",
-      "      - uses: actions/checkout@v7",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
       "        with:",
       "          lfs: true",
       "      - run: pnpm --dir apps/desktop desktop:accept",
@@ -81,17 +81,17 @@ try {
       "jobs:",
       "  release:",
       "    steps:",
-      "      - uses: actions/checkout@v7",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
       "        with:",
       "          lfs: true",
       "      - run: apps/desktop/macos/scripts/smoke-signed-desktop-artifact.sh",
       '      - run: git cat-file -t "$RELEASE_TAG"; gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"; echo already published; git tag --annotate "$RELEASE_TAG" "$SHA" --message release && git push origin "refs/tags/$RELEASE_TAG"',
-      "      - uses: softprops/action-gh-release@v3",
+      "      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2",
       "        with:",
       "          draft: true",
       "  stage2-proof-and-publish:",
       "    steps:",
-      "      - uses: actions/checkout@v7",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
       "        with:",
       "          lfs: true",
       '      - run: gh release edit "$TAG" --draft=false',
@@ -112,6 +112,54 @@ try {
   write("apps/desktop/macos/check.sh", "#!/bin/sh\ngrep -q expected file\n");
 
   assert.deepEqual(inspectCiContracts(repo), []);
+
+  write(
+    ".github/workflows/action-pinning.yml",
+    [
+      "jobs:",
+      "  local:",
+      "    uses: ./.github/workflows/local.yml",
+      "  pinned:",
+      "    steps:",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+      "      - uses: ./path/to/local-action",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(
+    inspectCiContracts(repo).filter((error) =>
+      error.includes("external workflow action must use a full commit SHA"),
+    ).length,
+    0,
+  );
+
+  write(
+    ".github/workflows/action-pinning.yml",
+    [
+      "jobs:",
+      "  mutable-tag:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "  mutable-branch:",
+      "    uses: example/repository/.github/workflows/reusable.yml@main",
+      "",
+    ].join("\n"),
+  );
+  const actionPinningErrors = inspectCiContracts(repo);
+  assert.ok(
+    actionPinningErrors.includes(
+      "external workflow action must use a full commit SHA: .github/workflows/action-pinning.yml: actions/checkout@v7",
+    ),
+  );
+  assert.ok(
+    actionPinningErrors.includes(
+      "external workflow action must use a full commit SHA: .github/workflows/action-pinning.yml: example/repository/.github/workflows/reusable.yml@main",
+    ),
+  );
+  write(
+    ".github/workflows/action-pinning.yml",
+    "jobs:\n  local:\n    steps:\n      - uses: ./path/to/local-action\n",
+  );
 
   write(
     ".github/workflows/desktop-release.yml",

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = process.cwd();
 const ignoredDirs = new Set([
   ".git",
   "node_modules",
@@ -15,8 +15,6 @@ const ignoredDirs = new Set([
   "target",
   ".scratch",
 ]);
-
-const mdFiles = [];
 
 function shouldCheckFile(relativePath) {
   if (
@@ -50,7 +48,7 @@ function shouldCheckFile(relativePath) {
   return false;
 }
 
-async function walk(dir) {
+async function walk({ dir, repoRoot, mdFiles }) {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.name.startsWith(".")) {
@@ -65,7 +63,7 @@ async function walk(dir) {
       if (ignoredDirs.has(entry.name)) {
         continue;
       }
-      await walk(fullPath);
+      await walk({ dir: fullPath, repoRoot, mdFiles });
       continue;
     }
 
@@ -124,11 +122,12 @@ function isExternalLink(target) {
 
 const linkPattern = /(?<!!)\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
-async function main() {
-  await walk(repoRoot);
-
+export async function checkMarkdownLinks({ repoRoot = process.cwd(), openTarget = open } = {}) {
+  const mdFiles = [];
   const headingCache = new Map();
   const failures = [];
+
+  await walk({ dir: repoRoot, repoRoot, mdFiles });
 
   for (const mdFile of mdFiles) {
     const content = await readFile(mdFile, "utf8");
@@ -167,51 +166,68 @@ async function main() {
         const [filePart, anchorPart] = rawTarget.split("#");
         const resolvedPath = path.resolve(path.dirname(mdFile), filePart);
 
-        let exists = false;
-        let fileStats = null;
+        let targetFile;
         try {
-          fileStats = await stat(resolvedPath);
-          exists = true;
+          targetFile = await openTarget(resolvedPath, "r");
         } catch {
-          exists = false;
-        }
-
-        if (!exists) {
           failures.push(
             `${path.relative(repoRoot, mdFile)}:${lineIndex + 1} missing target ${rawTarget}`,
           );
           continue;
         }
 
-        if (anchorPart && fileStats?.isFile() && resolvedPath.toLowerCase().endsWith(".md")) {
-          if (!headingCache.has(resolvedPath)) {
-            const linkedContent = await readFile(resolvedPath, "utf8");
-            headingCache.set(resolvedPath, extractHeadings(linkedContent));
+        try {
+          let fileStats;
+          try {
+            fileStats = await targetFile.stat();
+          } catch {
+            failures.push(
+              `${path.relative(repoRoot, mdFile)}:${lineIndex + 1} missing target ${rawTarget}`,
+            );
+            continue;
           }
 
-          const linkedAnchors = headingCache.get(resolvedPath);
-          if (!linkedAnchors.has(anchorPart)) {
-            failures.push(
-              `${path.relative(repoRoot, mdFile)}:${lineIndex + 1} broken anchor ${rawTarget}`,
-            );
+          if (anchorPart && fileStats.isFile() && resolvedPath.toLowerCase().endsWith(".md")) {
+            const linkedContent = await targetFile.readFile("utf8");
+            const linkedAnchors = extractHeadings(linkedContent);
+            if (!linkedAnchors.has(anchorPart)) {
+              failures.push(
+                `${path.relative(repoRoot, mdFile)}:${lineIndex + 1} broken anchor ${rawTarget}`,
+              );
+            }
           }
+        } finally {
+          await targetFile.close();
         }
       }
     }
   }
 
-  if (failures.length > 0) {
+  return {
+    markdownFilesChecked: mdFiles.length,
+    failures,
+  };
+}
+
+async function main() {
+  const result = await checkMarkdownLinks();
+
+  if (result.failures.length > 0) {
     console.error("Markdown link check failed:\n");
-    for (const failure of failures) {
+    for (const failure of result.failures) {
       console.error(`- ${failure}`);
     }
     process.exit(1);
   }
 
-  console.log(`Markdown link check passed (${mdFiles.length} markdown files scanned).`);
+  console.log(
+    `Markdown link check passed (${result.markdownFilesChecked} markdown files scanned).`,
+  );
 }
 
-main().catch((error) => {
-  console.error("Markdown link check crashed:", error);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error("Markdown link check crashed:", error);
+    process.exit(1);
+  });
+}
