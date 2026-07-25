@@ -28,6 +28,7 @@
     "factory:recommend": "node tools/factory/recommend-cli.mjs",
     "factory:test": "node tools/factory/finding-ids.test.mjs && node tools/factory/test.mjs",
     "docs:check": "node tools/docs/check-markdown-links.mjs && node tools/docs/check-context-vocabulary.mjs && node tools/docs/check-agent-docs.mjs && node tools/docs/check-factory-docs.mjs",
+    "docs:links:test": "node --test tools/docs/check-markdown-links.test.mjs",
     "docs:context:test": "node tools/docs/check-context-vocabulary.test.mjs",
     "docs:agents:test": "node tools/docs/check-agent-docs.test.mjs",
     "docs:factory:test": "node tools/docs/check-factory-docs.test.mjs",

@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const configureApp = require("../app.config.js");
 const googlePlugin = "@react-native-google-signin/google-signin";
 const modularHeadersPlugin = "./plugins/with-modular-headers";
+const statusBarPlugin = "expo-status-bar";
 
 test("configures modular headers even when the Google client ID is absent", () => {
   const originalClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
@@ -15,6 +16,7 @@ test("configures modular headers even when the Google client ID is absent", () =
     const config = configureApp({ config: { plugins: ["expo-router"] } });
 
     assert.ok(config.plugins.includes(modularHeadersPlugin));
+    assert.ok(config.plugins.includes(statusBarPlugin));
     assert.equal(
       config.plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === googlePlugin),
       false,
@@ -34,6 +36,7 @@ test("configures the Google URL scheme when the client ID is present", () => {
 
     assert.deepEqual(config.plugins, [
       modularHeadersPlugin,
+      statusBarPlugin,
       [googlePlugin, { iosUrlScheme: "com.googleusercontent.apps.123" }],
     ]);
   } finally {

@@ -31,6 +31,7 @@ const rootGroups = [
         args: ["ci:shell-portability"],
       },
       { label: "Harness template fixture tests", command: "pnpm", args: ["harness:test"] },
+      { label: "Markdown link fixture tests", command: "pnpm", args: ["docs:links:test"] },
       { label: "CONTEXT vocabulary docs tests", command: "pnpm", args: ["docs:context:test"] },
       { label: "Agent docs integrity tests", command: "pnpm", args: ["docs:agents:test"] },
       {

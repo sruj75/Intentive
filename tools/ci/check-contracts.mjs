@@ -225,8 +225,21 @@ export function inspectCiContracts(repo = process.cwd()) {
   const workflowFiles = existsSync(workflowDir)
     ? readdirSync(workflowDir)
         .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"))
+        .sort()
         .map((file) => path.join(workflowDir, file))
     : [];
+  for (const file of workflowFiles) {
+    const workflow = readWorkflow(file, errors);
+    for (const reference of workflowActionReferences(workflow)) {
+      if (reference.startsWith("./")) continue;
+      if (!isFullCommitShaActionReference(reference)) {
+        errors.push(
+          `external workflow action must use a full commit SHA: ${path.relative(repo, file)}: ${reference}`,
+        );
+      }
+    }
+  }
+
   const publishTransitions = workflowFiles.flatMap((file) => {
     const matches = workflowSteps(readWorkflow(file, errors)).filter(
       (step) =>
@@ -288,6 +301,30 @@ function readWorkflow(file, errors) {
 function workflowSteps(workflow) {
   return Object.values(workflow?.jobs ?? {}).flatMap((job) =>
     Array.isArray(job?.steps) ? job.steps : [],
+  );
+}
+
+function workflowActionReferences(workflow) {
+  return Object.values(workflow?.jobs ?? {}).flatMap((job) => [
+    ...(typeof job?.uses === "string" ? [job.uses] : []),
+    ...(Array.isArray(job?.steps)
+      ? job.steps.map((step) => step?.uses).filter((uses) => typeof uses === "string")
+      : []),
+  ]);
+}
+
+function isFullCommitShaActionReference(reference) {
+  const separator = reference.lastIndexOf("@");
+  if (separator <= 0) return false;
+
+  const actionPath = reference.slice(0, separator);
+  const revision = reference.slice(separator + 1);
+  if (!/^[0-9a-fA-F]{40}$/.test(revision)) return false;
+
+  const segments = actionPath.split("/");
+  return (
+    segments.length >= 2 &&
+    segments.every((segment) => segment.length > 0 && !/[@\s]/.test(segment))
   );
 }
 
