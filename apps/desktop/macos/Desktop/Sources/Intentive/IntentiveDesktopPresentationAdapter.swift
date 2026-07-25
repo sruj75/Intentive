@@ -300,8 +300,8 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
     }
   }
 
-  func signIn(provider: IntentiveAuthProvider) {
-    Task { await model.signInAndConnectRuntime(provider: provider == .apple ? .apple : .google) }
+  func signIn() {
+    Task { await model.signInAndConnectRuntime() }
   }
   func cancelSignIn() { model.cancelSignIn() }
 

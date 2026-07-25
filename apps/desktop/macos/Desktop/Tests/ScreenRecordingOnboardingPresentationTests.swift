@@ -57,7 +57,7 @@ private final class SetupPresentationSpy: @preconcurrency IntentiveSetupPresenti
   var accessibilityGranted: Bool { false }
   var shortcutLabel: String { "⌘ ⇧ Space" }
 
-  func signIn(provider _: IntentiveAuthProvider) {}
+  func signIn() {}
   func cancelSignIn() {}
   func completeCurrentSetupStep() {}
   func skipCurrentSetupStep() {}

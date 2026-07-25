@@ -30,17 +30,11 @@ public protocol AuthAdapter: AnyObject {
   var cachedUserJWT: String? { get }
   func restore() async throws -> String?
   func signIn() async throws -> String
-  func signIn(provider: DesktopAuthProvider) async throws -> String
   func cancelSignIn()
   func signOut() async throws
 }
 
-public enum DesktopAuthProvider: String, Codable, Equatable, Sendable {
-  case apple, google
-}
-
 public extension AuthAdapter {
-  func signIn(provider _: DesktopAuthProvider) async throws -> String { try await signIn() }
   func cancelSignIn() {}
 }
 
@@ -151,29 +145,23 @@ public final class NeonAuthProvider: AuthAdapter {
   }
 
   public func signIn() async throws -> String {
-    try await signIn(provider: .apple)
-  }
-
-  public func signIn(provider: DesktopAuthProvider) async throws -> String {
     guard let authSession else { throw DesktopAuthError.missingHostedAuthSession }
     let state = stateFactory()
-    let signInURL = try hostedSignInURL(state: state, provider: provider)
+    let signInURL = try hostedSignInURL(state: state)
     let callbackURL = try await authSession.start(url: signInURL, callbackScheme: callbackScheme)
     return try await completeHostedCallback(callbackURL, expectedState: state)
   }
 
+  /// Google is the only Auth Provider, so the hosted page is asked for it by name rather than
+  /// rendering a one-option picker. Callers never choose; that knowledge lives here alone.
   public func hostedSignInURL(state: String) throws -> URL {
-    try hostedSignInURL(state: state, provider: nil)
-  }
-
-  public func hostedSignInURL(state: String, provider: DesktopAuthProvider?) throws -> URL {
     guard let hostedAuthURL else { throw DesktopAuthError.missingHostedAuthURL }
     var components = URLComponents(url: hostedAuthURL, resolvingAgainstBaseURL: false)
     var items = components?.queryItems ?? []
     items.append(URLQueryItem(name: "client", value: "desktop"))
     items.append(URLQueryItem(name: "redirect_uri", value: "\(callbackScheme)://auth/callback"))
     items.append(URLQueryItem(name: "state", value: state))
-    if let provider { items.append(URLQueryItem(name: "provider", value: provider.rawValue)) }
+    items.append(URLQueryItem(name: "provider", value: "google"))
     components?.queryItems = items
     return components?.url ?? hostedAuthURL
   }

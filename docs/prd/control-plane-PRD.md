@@ -47,7 +47,6 @@ Request/response schemas are owned by `packages/api-contract/`; the Control Plan
 ## Out of Scope
 
 - Proxying or inspecting any in-session client↔runtime message.
-- Apple Sign-In (Google only in v1; Apple later).
 - Per-user VM / per-user process / per-user schema / org / workspace / `tenant_id`.
 - Direct APNs/FCM delivery and Android-specific push delivery.
 - Any chat, conversation history, or agent behavior — those are Agent Runtime concerns.

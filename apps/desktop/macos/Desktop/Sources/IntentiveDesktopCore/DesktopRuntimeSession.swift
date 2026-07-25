@@ -82,18 +82,8 @@ public final class DesktopRuntimeSessionCoordinator {
 
   @discardableResult
   public func signInAndConnect() async -> DesktopRuntimeSessionState {
-    await signInAndConnect(provider: nil)
-  }
-
-  @discardableResult
-  public func signInAndConnect(provider: DesktopAuthProvider?) async -> DesktopRuntimeSessionState {
     do {
-      let jwt: String
-      if let provider {
-        jwt = try await auth.signIn(provider: provider)
-      } else {
-        jwt = try await auth.signIn()
-      }
+      let jwt = try await auth.signIn()
       return await connect(jwt: jwt)
     } catch DesktopAuthError.missingToken {
       markSignedOut()

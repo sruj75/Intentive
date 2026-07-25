@@ -15,7 +15,7 @@ Build **Mobile Client** V1 as an iOS-first Expo app with native **Pre-Chat Gate*
 The client sequence is:
 
 1. Launch resolves auth and **Pre-Chat Gate** state via **Control Plane** `GET /me` (plus client-resolved onboarding/trial gates until the Control Plane contract extends — see ADR 0019).
-2. Signed-out users see **Get Started**, then **Identity Gate** (Google OAuth; Apple later).
+2. Signed-out users see **Get Started**, then **Identity Gate** (Google OAuth).
 3. Signed-in users see **Consent Primer** (Data & Privacy acceptance) before the onboarding funnel.
 4. Users complete the one-time **Onboarding** funnel (name → acquisition source → grant permissions) as a single collapsed gate.
 5. Users complete **Sibling Client Invitation** (macOS setup guidance; skippable).

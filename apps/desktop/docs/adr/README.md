@@ -16,3 +16,4 @@ Numbering is local to `apps/desktop/`.
 | 0010 | Passive audio sensing is on by default | [0010-passive-audio-sensing-default-on.md](0010-passive-audio-sensing-default-on.md) |
 | 0011 | Launch / activation lifecycle — menu-bar-app pattern (Option A, accepted) | [0011-launch-activation-lifecycle.md](0011-launch-activation-lifecycle.md) |
 | 0012 | Privacy controls without a global Private Mode; PMB is reply-or-ignore | [0012-privacy-controls-without-global-private-mode.md](0012-privacy-controls-without-global-private-mode.md) |
+| 0013 | Google is the only Desktop Auth Provider | [0013-desktop-google-only-auth.md](0013-desktop-google-only-auth.md) |
