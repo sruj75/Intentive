@@ -6,13 +6,20 @@ set -euo pipefail
 # the user grants Screen Recording, Microphone, or Accessibility permission.
 
 MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_SCRIPT="$MACOS_DIR/scripts/build-app-bundle.sh"
+BUILD_SCRIPT="${INTENTIVE_INTERNAL_BUILD_SCRIPT:-$MACOS_DIR/scripts/build-app-bundle.sh}"
+VERIFY_SCRIPT="${INTENTIVE_INTERNAL_VERIFY_SCRIPT:-$MACOS_DIR/scripts/verify-app-bundle.sh}"
 CONFIGURATION="${INTENTIVE_INTERNAL_BUILD_CONFIGURATION:-debug}"
 APP_NAME="${INTENTIVE_APP_NAME:-Intentive Dev}"
 BUNDLE_ID="${INTENTIVE_BUNDLE_ID:-com.heyintentive.desktop.dev}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.0}"
 APP_BUILD="${INTENTIVE_APP_BUILD:-901}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
+PREVIEW_BUILD="${INTENTIVE_INTERNAL_PREVIEW:-0}"
+CONTROL_PLANE_URL="${INTENTIVE_CONTROL_PLANE_URL:-}"
+HOSTED_AUTH_URL="${INTENTIVE_HOSTED_AUTH_URL:-}"
+AUTH_TOKEN_EXCHANGE_URL="${INTENTIVE_AUTH_TOKEN_EXCHANGE_URL:-}"
+SPARKLE_FEED_URL="${INTENTIVE_SPARKLE_FEED_URL:-}"
+SPARKLE_PUBLIC_ED_KEY="${INTENTIVE_SPARKLE_PUBLIC_ED_KEY:-}"
 TART_STORE="${TART_HOME:-$HOME/.tart}"
 TART_BASE_VM="${TART_BASE_VM:-intentive-base}"
 TART_VM_NAME="${TART_VM_NAME:-intentive-clean}"
@@ -43,6 +50,12 @@ Configuration:
                                    Signing identity; defaults to ad-hoc signing.
   INTENTIVE_INTERNAL_BUILD_CONFIGURATION
                                    SwiftPM configuration (default: debug).
+  INTENTIVE_INTERNAL_PREVIEW=1      Require preview service/auth endpoints and
+                                   the isolated .dev identity. Sparkle metadata
+                                   is forbidden for immutable preview builds.
+  INTENTIVE_CONTROL_PLANE_URL       Required public preview URL in preview mode.
+  INTENTIVE_HOSTED_AUTH_URL         Required public hosted-auth URL in preview mode.
+  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL Optional public hosted-auth exchange URL.
 EOF
 }
 
@@ -92,6 +105,18 @@ cleanup_vm() {
 
 build_app() {
   local app_bundle signing_identity
+  [[ "$PREVIEW_BUILD" == 0 || "$PREVIEW_BUILD" == 1 ]] \
+    || fail "INTENTIVE_INTERNAL_PREVIEW must be 0 or 1."
+  if [[ "$PREVIEW_BUILD" == 1 ]]; then
+    [[ "$BUNDLE_ID" == "com.heyintentive.desktop.dev" ]] \
+      || fail "Preview builds require INTENTIVE_BUNDLE_ID=com.heyintentive.desktop.dev."
+    [[ -n "$CONTROL_PLANE_URL" ]] \
+      || fail "INTENTIVE_CONTROL_PLANE_URL is required for a preview build."
+    [[ -n "$HOSTED_AUTH_URL" ]] \
+      || fail "INTENTIVE_HOSTED_AUTH_URL is required for a preview build."
+    [[ -z "$SPARKLE_FEED_URL" && -z "$SPARKLE_PUBLIC_ED_KEY" ]] \
+      || fail "Immutable preview builds must not embed Sparkle feed or signing metadata."
+  fi
   log "Building native $APP_NAME.app ($CONFIGURATION)..."
   app_bundle="$(
     CONFIGURATION="$CONFIGURATION" \
@@ -100,6 +125,11 @@ build_app() {
       INTENTIVE_APP_VERSION="$APP_VERSION" \
       INTENTIVE_APP_BUILD="$APP_BUILD" \
       INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
+      INTENTIVE_CONTROL_PLANE_URL="$CONTROL_PLANE_URL" \
+      INTENTIVE_HOSTED_AUTH_URL="$HOSTED_AUTH_URL" \
+      INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="$AUTH_TOKEN_EXCHANGE_URL" \
+      INTENTIVE_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
+      INTENTIVE_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
       "$BUILD_SCRIPT" | tail -n 1
   )"
   [[ -d "$app_bundle" ]] || fail "Bundle builder did not produce an app: $app_bundle"
@@ -113,6 +143,19 @@ build_app() {
     codesign --force --deep --options runtime --sign "$signing_identity" "$app_bundle"
   fi
   codesign --verify --deep --strict --verbose=2 "$app_bundle" >&2
+  log "Verifying exact internal artifact $app_bundle..."
+  CONFIGURATION="$CONFIGURATION" \
+    INTENTIVE_APP_NAME="$APP_NAME" \
+    INTENTIVE_BUNDLE_ID="$BUNDLE_ID" \
+    INTENTIVE_APP_VERSION="$APP_VERSION" \
+    INTENTIVE_APP_BUILD="$APP_BUILD" \
+    INTENTIVE_AUTH_CALLBACK_SCHEME="$AUTH_CALLBACK_SCHEME" \
+    INTENTIVE_CONTROL_PLANE_URL="$CONTROL_PLANE_URL" \
+    INTENTIVE_HOSTED_AUTH_URL="$HOSTED_AUTH_URL" \
+    INTENTIVE_AUTH_TOKEN_EXCHANGE_URL="$AUTH_TOKEN_EXCHANGE_URL" \
+    INTENTIVE_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
+    INTENTIVE_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+    "$VERIFY_SCRIPT" --app "$app_bundle" >&2
   printf '%s\n' "$app_bundle"
 }
 

@@ -14,6 +14,7 @@ ENDPOINT="$2"
 if ! host="$(
   python3 - "$ENDPOINT" <<'PY'
 import sys
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 value = sys.argv[1]
@@ -34,10 +35,19 @@ if (
 ):
     raise SystemExit(1)
 
-print(parsed.hostname.lower())
+hostname = parsed.hostname.lower()
+try:
+    address = ip_address(hostname)
+except ValueError:
+    pass
+else:
+    if not address.is_global:
+        raise SystemExit(1)
+
+print(hostname)
 PY
 )"; then
-  fail "$ENDPOINT_NAME must be a complete HTTPS URL with a valid host and port"
+  fail "$ENDPOINT_NAME must be a complete public HTTPS URL with a valid host and port"
 fi
 
 case "$host" in

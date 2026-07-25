@@ -143,7 +143,8 @@ After the native client is installed, JS/TS iteration is:
 
 ```bash
 cd apps/mobile
-npx -y eas-cli@21.2.0 env:exec preview "pnpm dev"
+npx -y eas-cli@21.2.0 env:exec preview \
+  "EXPO_PUBLIC_CONTROL_PLANE_BASE_URL=http://localhost:8080 pnpm dev"
 ```
 
 In another terminal:
@@ -154,9 +155,10 @@ xcrun simctl openurl booted \
   "intentive://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
 ```
 
-Metro must receive the same EAS public environment as the native build. Otherwise
-the binary contains Google's callback scheme but the JavaScript runtime sees empty
-client IDs and disables the button.
+Metro keeps the preview environment's public client IDs while overriding only the
+JavaScript-facing Control Plane URL for the local stack. Otherwise the binary can
+contain Google's callback scheme while the JavaScript runtime either sees empty
+client IDs or calls the preview Control Plane instead of local `:8080`.
 
 Re-run the EAS build only after native dependencies, config plugins, native
 `app.json` keys, the Expo SDK, icons, or splash assets change. Ordinary JS/TS
@@ -228,7 +230,7 @@ character equality.
 
 Again, the permission label is only the precondition. A valid live proof is:
 
-1. Enable Screen Capture and Audio Recording while authenticated.
+1. Enable Audio Recording while authenticated; Screen Capture may remain off.
 2. Feed audible speech through the real microphone input for more than one
    four-second segment.
 3. Require the AVAudioEngine source to deliver PCM and Silero VAD to accept speech.
@@ -239,9 +241,10 @@ Again, the permission label is only the precondition. A valid live proof is:
    `signals.audio_source` is `microphone`.
 7. Require the outbox to drain.
 
-Silence must create no transcript. Signing out, disabling screen capture, or
-disabling audio must stop physical microphone capture. A test fixture may verify
-policy branches, but it cannot replace the native-source proof above.
+Silence must create no transcript. Signing out or disabling audio must stop
+physical microphone capture; Screen Capture is independently controlled. A test
+fixture may verify policy branches, but it cannot replace the native-source proof
+above.
 
 For first-run permission behavior, run only a disposable Tart clone:
 

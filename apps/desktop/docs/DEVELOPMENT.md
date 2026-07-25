@@ -16,12 +16,12 @@ workspace's scratch data on T9 when required by the local machine policy.
 
 `run.sh` builds and launches an assembled application:
 
-| Setting | Development value |
-| --- | --- |
-| App | `Intentive Dev.app` |
-| Bundle ID | `com.heyintentive.desktop.dev` |
-| Configuration | Debug |
-| Updates | disabled |
+| Setting       | Development value              |
+| ------------- | ------------------------------ |
+| App           | `Intentive Dev.app`            |
+| Bundle ID     | `com.heyintentive.desktop.dev` |
+| Configuration | Debug                          |
+| Updates       | disabled                       |
 
 Never launch the bare `.build/.../Intentive` executable for a product smoke.
 macOS notification, Keychain, TCC, bundle-resource, and application identity APIs
@@ -83,7 +83,7 @@ and bind the proof by event ID.
 
 Acceptance requires the production `NativeMicrophoneAudioCaptureService`:
 
-1. authenticate and enable both Screen Capture and Audio Recording;
+1. authenticate and enable Audio Recording (Screen Capture may remain off);
 2. deliver audible speech for longer than one four-second segment;
 3. require AVAudioEngine PCM, a positive Silero VAD decision, and a non-empty local
    Parakeet transcript;
@@ -93,9 +93,9 @@ Acceptance requires the production `NativeMicrophoneAudioCaptureService`:
 6. require the outbox to drain.
 
 Raw PCM is consumed and discarded. Silence must not create a transcript. Signing
-out, turning off Screen Capture, or turning off Audio Recording must stop the
-physical sources. The Parakeet actor must share one in-flight model load; multiple
-simultaneous downloads/loads are a bug.
+out or turning off Audio Recording must stop the physical sources; Screen Capture
+is independently controlled. The Parakeet actor must share one in-flight model
+load; multiple simultaneous downloads/loads are a bug.
 
 ### System audio
 
@@ -143,11 +143,11 @@ release-candidate smoke or a physical multi-display host test.
 
 ## Three identities
 
-| Channel | Bundle ID | Artifact | Purpose |
-| --- | --- | --- | --- |
-| Daily development | `com.heyintentive.desktop.dev` | assembled Debug app | fast host iteration |
-| Preview/internal | `com.heyintentive.desktop.dev` | immutable internal app/DMG | clean TCC and stakeholder smoke |
-| Production | `com.heyintentive.desktop` | Developer ID signed, notarized DMG | public distribution and Sparkle |
+| Channel           | Bundle ID                      | Artifact                           | Purpose                         |
+| ----------------- | ------------------------------ | ---------------------------------- | ------------------------------- |
+| Daily development | `com.heyintentive.desktop.dev` | assembled Debug app                | fast host iteration             |
+| Preview/internal  | `com.heyintentive.desktop.dev` | immutable internal app/DMG         | clean TCC and stakeholder smoke |
+| Production        | `com.heyintentive.desktop`     | Developer ID signed, notarized DMG | public distribution and Sparkle |
 
 Development and production must not share Keychain items, TCC grants, or update
 feeds. Details of preview isolation are in

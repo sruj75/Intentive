@@ -88,14 +88,36 @@ production Keychain identity.
 Build the internal app:
 
 ```bash
-TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:build
-pnpm --dir apps/desktop release:smoke
+INTENTIVE_INTERNAL_PREVIEW=1 \
+  INTENTIVE_CONTROL_PLANE_URL=https://control-plane.preview.example.com \
+  INTENTIVE_HOSTED_AUTH_URL=https://auth.preview.example.com/sign-in \
+  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL=https://auth.preview.example.com/desktop/token \
+  TART_HOME=/Volumes/T9/Tart \
+  pnpm --dir apps/desktop internal:build
 ```
+
+Replace the example values with the deployed preview environment. The command
+fails closed if the required Control Plane or hosted-auth URL is absent, if an
+endpoint is not public HTTPS, if the bundle identity is not
+`com.heyintentive.desktop.dev`, or if Sparkle feed/signing metadata is present.
+`internal:build` signs and then runs the bundle verifier against the exact path
+it produced; do not follow it with `release:smoke`, because that command
+deliberately builds a separate synthetic production-identity bundle for the
+release harness.
+
+For a daily clean-TCC development build that does not need live preview services,
+omit `INTENTIVE_INTERNAL_PREVIEW` and the endpoint variables. It still verifies
+the exact `.dev` app, including that optional service/update metadata is absent.
 
 Run first-launch permissions in a disposable clean clone:
 
 ```bash
-TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run
+INTENTIVE_INTERNAL_PREVIEW=1 \
+  INTENTIVE_CONTROL_PLANE_URL=https://control-plane.preview.example.com \
+  INTENTIVE_HOSTED_AUTH_URL=https://auth.preview.example.com/sign-in \
+  INTENTIVE_AUTH_TOKEN_EXCHANGE_URL=https://auth.preview.example.com/desktop/token \
+  TART_HOME=/Volumes/T9/Tart \
+  pnpm --dir apps/desktop internal:run
 TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
 ```
 

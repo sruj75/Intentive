@@ -715,9 +715,6 @@ public final class AmbientAudioCaptureLoop {
     let settings = settingsProvider()
     // Cheap pre-capture guards so the microphone engine never spins up while
     // disabled or unpermitted. The pipeline re-validates these authoritatively.
-    guard settings.captureEnabled else {
-      return recordSkip("capture disabled")
-    }
     guard settings.ambientAudioCaptureEnabled else {
       return recordSkip("ambient audio capture disabled")
     }

@@ -1655,7 +1655,6 @@ final class DesktopViewModel: ObservableObject {
     passiveAudioCoordinator.setUserEnabled(
       PassiveAudioCaptureEligibility.isEnabled(
         authenticated: isOnboardingAuthenticated,
-        screenCaptureEnabled: compilerSettings.captureEnabled,
         ambientAudioCaptureEnabled: compilerSettings.ambientAudioCaptureEnabled
       )
     )

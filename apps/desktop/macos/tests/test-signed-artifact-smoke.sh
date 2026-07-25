@@ -40,8 +40,15 @@ for invalid_endpoint in \
   "https://service.localhost/path" \
   "https://127.0.0.2" \
   "https://0.0.0.0" \
+  "https://10.0.0.1" \
+  "https://172.16.0.1" \
+  "https://192.168.1.1" \
+  "https://169.254.1.1" \
+  "https://100.64.0.1" \
   "https://[::1]" \
-  "https://[::]"; do
+  "https://[::]" \
+  "https://[fc00::1]" \
+  "https://[fe80::1]"; do
   if "$PUBLIC_ENDPOINT_VERIFIER" "fixture" "$invalid_endpoint" >/dev/null 2>&1; then
     fail "loopback or unspecified endpoint must be rejected: $invalid_endpoint"
   fi

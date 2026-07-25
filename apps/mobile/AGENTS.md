@@ -56,4 +56,4 @@ pnpm lint
 pnpm harness --scope apps/mobile
 ```
 
-Finish UI changes with an Expo Go smoke, then a 390×844 iPhone simulator walkthrough of A–L.
+Finish UI changes with an EAS-built Expo Development Client smoke in a 390×844 iPhone Simulator, then walk through A–L.

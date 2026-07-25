@@ -3,10 +3,9 @@ import Foundation
 public enum PassiveAudioCaptureEligibility {
   public static func isEnabled(
     authenticated: Bool,
-    screenCaptureEnabled: Bool,
     ambientAudioCaptureEnabled: Bool
   ) -> Bool {
-    authenticated && screenCaptureEnabled && ambientAudioCaptureEnabled
+    authenticated && ambientAudioCaptureEnabled
   }
 }
 
