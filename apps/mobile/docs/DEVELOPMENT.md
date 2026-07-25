@@ -112,6 +112,19 @@ cd apps/mobile
 npx -y eas-cli@21.2.0 env:exec preview "pnpm dev"
 ```
 
+To walk and debug the post-auth frontend while authentication or its backend is
+externally blocked, opt into the development-only capability-free path:
+
+```bash
+EXPO_PUBLIC_DEV_AUTH_BYPASS=true pnpm dev
+```
+
+This starts at the Full Name screen and uses the local Conversation Session,
+local account settings, and local logout. It does not create a fake Neon
+session, fabricate a User JWT, call the Control Plane or Agent Runtime, request
+push permission, or alter the production Google/SecureStore path. The flag is
+ignored outside Expo `__DEV__` builds.
+
 In another terminal:
 
 ```bash

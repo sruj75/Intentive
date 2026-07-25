@@ -10,7 +10,7 @@ The Huracán frontend preserves the A–L journey while live routes compose prod
 - `(main)` owns the `/chat` navigation zone for E–L.
 - B2, K2, Education Deck pages, F/G overlays, and L1–L4 are local state, not routes.
 - Completion uses Router replacement to `/chat`; logout clears the in-memory profile and replaces to `/`.
-- **Launch State drives cold-launch navigation** (ADR 0025): the root layout's `RootNavigator` resolves `GET /me` gate truth to `/` or `/chat`, so a signed-out launch stays on A while a fully-onboarded account resumes on `/chat`. The two-zone router re-target folds the six ADR-0011 gates onto the two live zones. Still no on-device persistence.
+- **Launch State drives cold-launch navigation** (ADR 0025): `src/entrypoints/root-entry.tsx` owns the root `RootNavigator` and resolves `GET /me` gate truth to `/` or `/chat`, while `app/_layout.tsx` stays composition-only. A signed-out launch stays on A and a fully-onboarded account resumes on `/chat`. The two-zone router re-target folds the six ADR-0011 gates onto the two live zones. Still no on-device persistence.
 
 ## Structure
 

@@ -17,6 +17,9 @@
  * capability, derived from both public client IDs. A production / internal-
  * production build (anything but `__DEV__`) whose either Google client ID is
  * missing fails to resolve config, preventing an unusable binary from shipping.
+ * `EXPO_PUBLIC_DEV_AUTH_BYPASS=true` is a local Expo Development Client escape
+ * hatch: it is honored only when `__DEV__` is true and mounts the existing
+ * capability-free experience instead of fabricating a production session.
  */
 import Constants from "expo-constants";
 
@@ -35,6 +38,8 @@ export interface RuntimeConfig {
   readonly clientVersion: string;
   /** Expo `__DEV__` — labels the build environment. */
   readonly isDev: boolean;
+  /** Local-only switch for walking the capability-free experience without auth. */
+  readonly devAuthBypassEnabled: boolean;
   /** Whether Google is a working sign-in capability (both public client IDs present). */
   readonly googleAuthConfigured: boolean;
 }
@@ -50,6 +55,8 @@ export function createRuntimeConfig(): RuntimeConfig {
   const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() ?? "";
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? "";
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "";
+  const devAuthBypassEnabled =
+    isDev && process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS?.trim().toLowerCase() === "true";
 
   // Native Google needs both client IDs: iOS identifies the app and the web
   // client is the ID-token audience Neon Auth verifies. The iOS value also
@@ -75,6 +82,7 @@ export function createRuntimeConfig(): RuntimeConfig {
     environment: isDev ? "development" : "production",
     clientVersion: Constants.expoConfig?.version ?? "0.0.0",
     isDev,
+    devAuthBypassEnabled,
     googleAuthConfigured,
   };
 }

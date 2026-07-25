@@ -221,6 +221,7 @@ function Composer({
           placeholder={content.composerPlaceholder}
           placeholderTextColor={theme.color.mutedInk}
           returnKeyType="send"
+          submitBehavior="submit"
           style={styles.composerInput}
           testID="composer-input"
           value={value}

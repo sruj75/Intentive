@@ -1956,6 +1956,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -2769,6 +2770,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -3026,6 +3028,7 @@ exports[`Huracán local experience walks and captures A through L without native
                 accessible={true}
                 collapsable={false}
                 focusable={true}
+                onAccessibilityTap={[Function]}
                 onBlur={[Function]}
                 onClick={[Function]}
                 onFocus={[Function]}
@@ -3068,7 +3071,6 @@ exports[`Huracán local experience walks and captures A through L without native
                   </Text>
                 </View>
                 <Text
-                  selectable={true}
                   style={
                     {
                       "color": "#858585",
@@ -4087,6 +4089,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -5454,6 +5457,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -6305,6 +6309,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value="What can you do for me?"
               />
@@ -6804,6 +6809,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -7386,6 +7392,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -7925,6 +7932,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />
@@ -8463,6 +8471,7 @@ exports[`Huracán local experience walks and captures A through L without native
                     "paddingVertical": 10,
                   }
                 }
+                submitBehavior="submit"
                 testID="composer-input"
                 value=""
               />

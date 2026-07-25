@@ -182,7 +182,11 @@ describe("Huracán local experience", () => {
     expect(screen.getByText("Friends")).toBeDisabled();
     expect(screen.toJSON()).toMatchSnapshot("F-drawer");
 
-    fireEvent.press(screen.getByTestId("open-settings"));
+    const openSettings = screen.getByTestId("open-settings");
+    expect(openSettings).toHaveProp("accessible", true);
+    expect(openSettings).toHaveProp("accessibilityRole", "button");
+    expect(openSettings.props.onAccessibilityTap).toEqual(expect.any(Function));
+    fireEvent(openSettings, "accessibilityTap");
     expect(screen.getByTestId("settings-overlay")).toBeTruthy();
     fireEvent(screen.getByTestId("privacy-toggle"), "valueChange", false);
     fireEvent.changeText(screen.getByTestId("privacy-rule-input"), "Keep work private");
@@ -214,6 +218,7 @@ describe("Huracán local experience", () => {
     fireEvent.press(screen.getByText("What can you do for me?"));
     const composer = screen.getByTestId("composer-input");
     expect(composer).toHaveDisplayValue("What can you do for me?");
+    expect(composer).toHaveProp("submitBehavior", "submit");
     fireEvent(composer, "focus");
     expect(composer).toBeEnabled();
     expect(screen.getByTestId("conversation-keyboard-avoiding")).toBeTruthy();
