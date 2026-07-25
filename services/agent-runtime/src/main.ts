@@ -58,6 +58,7 @@ import type { TransactionalSql } from "./domains/sessions/repo/sql.js";
 import { createPerUserChannel } from "./domains/sessions/runtime/per-user-channel.js";
 import { createStartSession } from "./domains/sessions/service/start-session.js";
 import type { PerUserChannel } from "./domains/sessions/types/event.js";
+import { retryTransientDb as retryTransientDbOperation } from "./runtime/db-retry.js";
 import { createShutdown } from "./runtime/shutdown.js";
 
 const config = loadConfig();
@@ -77,6 +78,8 @@ const observability = bootstrapObservability(
   langfuseClient ? { shutdown: [() => drainLangfuseClient(langfuseClient)] } : {},
 );
 const log = observability.createLogger("agent-runtime");
+const retryTransientDb = <T>(operation: () => Promise<T>) =>
+  retryTransientDbOperation(operation, { logger: log });
 const sql = neon(config.neon.url) as unknown as TransactionalSql;
 // The turn write path and Per-User Channel ingress each commit through one Neon
 // array transaction. On a network without IPv6 egress (Neon is dual-stack), a
@@ -364,36 +367,6 @@ function withTransactionRetry(base: TransactionalSql): TransactionalSql {
     base(strings, ...values)) as TransactionalSql;
   wrapped.transaction = (queries) => retryTransientDb(() => base.transaction(queries));
   return wrapped;
-}
-
-async function retryTransientDb<T>(operation: () => Promise<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      if (attempt === 5 || !isTransientDbError(error)) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
-    }
-  }
-  throw lastError;
-}
-
-function isTransientDbError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const code = (error as { code?: unknown }).code;
-  if (code === "ETIMEDOUT" || code === "EHOSTUNREACH") return true;
-  const nested = (error as { errors?: unknown }).errors;
-  if (Array.isArray(nested) && nested.some((item) => isTransientDbError(item))) return true;
-  return (
-    error.name === "NeonDbError" ||
-    error.message.includes("fetch failed") ||
-    error.message.includes("ETIMEDOUT") ||
-    error.message.includes("EHOSTUNREACH")
-  );
 }
 
 interface LangfuseDrainClient {
