@@ -1,5 +1,5 @@
 export const authContent = {
-  greetingLead: "Where have you been?",
+  greetingLead: "How have you been?",
   greetingAccent: " Hi, I’m Intentive.",
   google: "Continue with Google",
   googlePending: "Continuing…",
