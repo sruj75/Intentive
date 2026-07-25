@@ -13,7 +13,9 @@ allowBuilds:
 
 overrides:
   "brace-expansion@<1.1.16": "1.1.16"
-  "brace-expansion@>=3.0.0 <5.0.7": "5.0.7"
+  # GHSA-mh99-v99m-4gvg: brace-expansion <=5.0.7 can exhaust memory through
+  # unbounded expansions. React Native's Jest chain reaches the 5.x line.
+  "brace-expansion@>=3.0.0 <5.0.8": "5.0.8"
   # Mobile's `@better-auth/expo` declares `@better-auth/core: ^1.6.23`, which
   # otherwise floats onto whatever core patch is newest (e.g. a just-published
   # 1.6.25). Pin it to 1.6.23 — the exact version mobile's own `better-auth@1.6.23`
@@ -38,3 +40,4 @@ auditConfig:
   # docs/security/dependency-audit-exceptions.json. CI checks exact parity.
   ignoreGhsas:
     - GHSA-gv7w-rqvm-qjhr
+    - GHSA-mh99-v99m-4gvg
