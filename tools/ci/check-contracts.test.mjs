@@ -133,6 +133,18 @@ try {
     0,
   );
 
+  const longPinnedAction = `${Array.from({ length: 2_048 }, () => "!").join("/")}@${"a".repeat(40)}`;
+  write(
+    ".github/workflows/action-pinning.yml",
+    `jobs:\n  pinned:\n    steps:\n      - uses: "${longPinnedAction}"\n`,
+  );
+  assert.equal(
+    inspectCiContracts(repo).filter((error) =>
+      error.includes("external workflow action must use a full commit SHA"),
+    ).length,
+    0,
+  );
+
   write(
     ".github/workflows/action-pinning.yml",
     [

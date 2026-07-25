@@ -232,7 +232,7 @@ export function inspectCiContracts(repo = process.cwd()) {
     const workflow = readWorkflow(file, errors);
     for (const reference of workflowActionReferences(workflow)) {
       if (reference.startsWith("./")) continue;
-      if (!/^[^/@\s]+\/[^/@\s]+(?:\/[^@\s]+)*@[0-9a-fA-F]{40}$/.test(reference)) {
+      if (!isFullCommitShaActionReference(reference)) {
         errors.push(
           `external workflow action must use a full commit SHA: ${path.relative(repo, file)}: ${reference}`,
         );
@@ -311,6 +311,21 @@ function workflowActionReferences(workflow) {
       ? job.steps.map((step) => step?.uses).filter((uses) => typeof uses === "string")
       : []),
   ]);
+}
+
+function isFullCommitShaActionReference(reference) {
+  const separator = reference.lastIndexOf("@");
+  if (separator <= 0) return false;
+
+  const actionPath = reference.slice(0, separator);
+  const revision = reference.slice(separator + 1);
+  if (!/^[0-9a-fA-F]{40}$/.test(revision)) return false;
+
+  const segments = actionPath.split("/");
+  return (
+    segments.length >= 2 &&
+    segments.every((segment) => segment.length > 0 && !/[@\s]/.test(segment))
+  );
 }
 
 function detectMaintainedLanguages(repo) {
