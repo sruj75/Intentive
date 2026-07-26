@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -140,11 +140,17 @@ try {
     "process_alive",
     "process_identity_matches",
   ]);
-  assert.equal((await stat(healthy.output)).mode & 0o777, 0o600);
-  assert.doesNotMatch(
-    await readFile(healthy.output, "utf8"),
-    /must-not-enter-content-free-evidence/,
-  );
+  // One handle for both assertions: mode and contents must describe the same file.
+  const healthyEvidenceFile = await open(healthy.output, "r");
+  try {
+    assert.equal((await healthyEvidenceFile.stat()).mode & 0o777, 0o600);
+    assert.doesNotMatch(
+      await healthyEvidenceFile.readFile("utf8"),
+      /must-not-enter-content-free-evidence/,
+    );
+  } finally {
+    await healthyEvidenceFile.close();
+  }
 
   const memoryLimit = await runFixture("memory-limit", [
     healthySamples[0],
