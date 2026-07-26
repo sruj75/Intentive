@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 
 public enum PassiveAudioCaptureEligibility {
@@ -61,6 +62,14 @@ public final class PassiveAudioCaptureCoordinator {
   private var healthySources = Set<PassiveAudioSource>()
   private var sourceEpochs: [PassiveAudioSource: Int] = [:]
   private var sourceHealthTasks: [PassiveAudioSource: Task<Void, Never>] = [:]
+  /// Monotonic arrival instant of the newest accepted buffer, per source. The
+  /// native sources call the PCM handler once per CoreAudio IO buffer (~90/s
+  /// per source at 512 frames), so liveness is recorded with a dictionary write
+  /// and one long-lived deadline task per source reads it — rather than each
+  /// buffer cancelling and reallocating a `@MainActor` task.
+  private var lastAudioAtNanoseconds: [PassiveAudioSource: UInt64] = [:]
+  /// Test seam: arming is expected to be O(source starts), not O(buffers).
+  private(set) var sourceHealthArmCount = 0
 
   public private(set) var state: PassiveAudioCaptureState = .disabled {
     didSet { if oldValue != state { onStateChange?(state) } }
@@ -225,7 +234,7 @@ public final class PassiveAudioCaptureCoordinator {
       sourceEpochs[source] == sourceEpoch
     else { return }
     healthySources.insert(source)
-    armSourceHealthTimeout(for: source, sourceEpoch: sourceEpoch)
+    lastAudioAtNanoseconds[source] = DispatchTime.now().uptimeNanoseconds
     publishRunningStateIfHealthy()
     var buffer = buffers[source] ?? Data()
     buffer.append(data)
@@ -264,26 +273,44 @@ public final class PassiveAudioCaptureCoordinator {
   private func prepareSourceForStart(_ source: PassiveAudioSource) -> Int {
     sourceHealthTasks[source]?.cancel()
     sourceHealthTasks[source] = nil
+    lastAudioAtNanoseconds[source] = nil
     healthySources.remove(source)
     let epoch = (sourceEpochs[source] ?? 0) + 1
     sourceEpochs[source] = epoch
     return epoch
   }
 
+  /// Start the single liveness deadline for a source.
+  ///
+  /// The task sleeps to the deadline implied by the newest buffer seen so far.
+  /// If audio arrived while it slept it sleeps out the remainder instead of
+  /// being cancelled and replaced, so the fail-closed instant still tracks the
+  /// last buffer without paying a task allocation per buffer.
   private func armSourceHealthTimeout(
     for source: PassiveAudioSource,
     sourceEpoch: Int
   ) {
     sourceHealthTasks[source]?.cancel()
+    sourceHealthArmCount += 1
+    lastAudioAtNanoseconds[source] = DispatchTime.now().uptimeNanoseconds
     let timeout = sourceHealthTimeoutNanoseconds
     sourceHealthTasks[source] = Task { @MainActor [weak self] in
-      do {
-        try await Task.sleep(nanoseconds: timeout)
-      } catch {
-        return
+      var sleepFor = timeout
+      while true {
+        do {
+          try await Task.sleep(nanoseconds: sleepFor)
+        } catch {
+          return
+        }
+        guard !Task.isCancelled, let self else { return }
+        guard let lastAudioAt = self.lastAudioAtNanoseconds[source] else { return }
+        let elapsed = DispatchTime.now().uptimeNanoseconds &- lastAudioAt
+        guard elapsed < timeout else {
+          self.handleSourceHealthTimeout(source, sourceEpoch: sourceEpoch)
+          return
+        }
+        sleepFor = timeout - elapsed
       }
-      guard !Task.isCancelled else { return }
-      self?.handleSourceHealthTimeout(source, sourceEpoch: sourceEpoch)
     }
   }
 
@@ -316,6 +343,7 @@ public final class PassiveAudioCaptureCoordinator {
   private func stopHealthMonitoring(for source: PassiveAudioSource) {
     sourceHealthTasks[source]?.cancel()
     sourceHealthTasks[source] = nil
+    lastAudioAtNanoseconds[source] = nil
     healthySources.remove(source)
     sourceEpochs[source] = (sourceEpochs[source] ?? 0) + 1
   }

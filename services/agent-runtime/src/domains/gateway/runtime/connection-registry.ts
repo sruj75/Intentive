@@ -114,9 +114,12 @@ export function createConnectionRegistry(
         },
         unregister() {
           connections.delete(connection);
-          if (connections.size === 0) {
-            byUser.delete(session.userId);
-          }
+          releaseUserIfDisconnected(
+            byUser,
+            coachingPresenceHighWater,
+            coachingArrivalGeneration,
+            session.userId,
+          );
           logger.info("gateway.clients", {
             user_id: session.userId,
             client_kind: connection.clientKind,
@@ -145,9 +148,12 @@ export function createConnectionRegistry(
           connections.delete(connection);
         }
       }
-      if (connections.size === 0) {
-        byUser.delete(userId);
-      }
+      releaseUserIfDisconnected(
+        byUser,
+        coachingPresenceHighWater,
+        coachingArrivalGeneration,
+        userId,
+      );
       return delivered;
     },
 
@@ -169,9 +175,12 @@ export function createConnectionRegistry(
           connections.delete(connection);
         }
       }
-      if (connections.size === 0) {
-        byUser.delete(userId);
-      }
+      releaseUserIfDisconnected(
+        byUser,
+        coachingPresenceHighWater,
+        coachingArrivalGeneration,
+        userId,
+      );
       return null;
     },
 
@@ -214,6 +223,31 @@ export function createConnectionRegistry(
       markCoachingWindowTerminal(coachingPresenceHighWater, userId, windowId, endedAt);
     },
   };
+}
+
+/// Drop a user's process-local state once their last socket is gone.
+///
+/// The coaching maps are keyed `userId -> windowId`, and Desktop mints a fresh
+/// `window_id` on every launch, login launch, wake, resume, and permission
+/// restore. Lock/unlock preserves the existing window. Without cleanup the maps
+/// only ever grow, for the lifetime of an always-alive deployment.
+///
+/// Releasing them does not weaken the terminal high-water: it exists to reject
+/// a stale presence frame racing a newer one on live connections, and a frame
+/// cannot outlive the socket it arrived on. `coaching_windows` remains the
+/// durable source of truth for whether a window really ended.
+function releaseUserIfDisconnected(
+  byUser: Map<string, Set<StoredConnection>>,
+  highWaterByUser: Map<string, Map<string, CoachingPresenceHighWater>>,
+  generationByUser: Map<string, Map<string, number>>,
+  userId: string,
+): void {
+  if ((byUser.get(userId)?.size ?? 0) > 0) {
+    return;
+  }
+  byUser.delete(userId);
+  highWaterByUser.delete(userId);
+  generationByUser.delete(userId);
 }
 
 function applyCoachingWindowLock(

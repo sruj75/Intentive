@@ -423,6 +423,7 @@ final class DesktopViewModel: ObservableObject {
   private(set) lazy var coachingWindow = DesktopCoachingWindowCoordinator(
     initialEligibility: coachingEligibility,
     effects: coachingEffects,
+    clientCapabilities: DesktopRuntimeConfiguration.clientCapabilities,
     eligibilityAttestation: { [weak self] in
       self?.readLiveCoachingEligibility()
         ?? DesktopCoachingEligibility(

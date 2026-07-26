@@ -221,6 +221,57 @@ test("first-successful delivery skips a broken matching Desktop and uses the nex
   );
 });
 
+test("connection registry releases per-window coaching state with the user's last socket", () => {
+  const registry = createConnectionRegistry();
+  const userId = session("desktop").userId;
+  const windowId = "11111111-1111-4111-8111-111111111111";
+  const preflightWindowId = "22222222-2222-4222-8222-222222222222";
+
+  const first = registry.register(session("desktop", ["desktop_coaching_v1"]), { send: () => {} });
+  const second = registry.register(session("desktop", ["desktop_coaching_v1"]), { send: () => {} });
+  assert.equal(first.setCoachingPresence(windowId, "active", "2026-07-26T08:00:00.000Z"), true);
+  first.clearCoachingPresence(windowId, "2026-07-26T08:30:00.000Z");
+  const stalePreflight = second.prepareActiveCoachingPresence(
+    preflightWindowId,
+    "2026-07-26T08:20:00.000Z",
+  );
+  assert.notEqual(stalePreflight, null);
+
+  // While any socket for the user survives, the terminal high-water still
+  // rejects a replayed presence frame for that window.
+  first.unregister();
+  assert.equal(
+    second.setCoachingPresence(windowId, "active", "2026-07-26T08:15:00.000Z"),
+    false,
+    "terminal high-water must hold while the user is still connected",
+  );
+
+  // Once the last socket is gone there is nothing left to gate: the maps are
+  // keyed by a window_id Desktop mints fresh per launch, so retaining them
+  // would grow this always-alive process without bound.
+  second.unregister();
+
+  const reconnected = registry.register(session("desktop", ["desktop_coaching_v1"]), {
+    send: () => {},
+  });
+  assert.equal(
+    reconnected.setCoachingPresence(
+      preflightWindowId,
+      "active",
+      "2026-07-26T08:20:00.000Z",
+      stalePreflight,
+    ),
+    false,
+    "a preflight prepared on a disconnected socket must not survive reconnect",
+  );
+  assert.equal(
+    reconnected.setCoachingPresence(windowId, "active", "2026-07-26T08:15:00.000Z"),
+    true,
+    "per-window coaching state must not outlive the user's last socket",
+  );
+  assert.equal(registry.hasActiveCoachingWindow(userId, windowId), true);
+});
+
 function session(clientKind, capabilities = []) {
   return {
     userId: "00000000-0000-4000-8000-000000000001",

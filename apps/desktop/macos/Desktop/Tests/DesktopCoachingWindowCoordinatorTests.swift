@@ -9,6 +9,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       now: { Date(timeIntervalSince1970: 1_774_681_200) },
       makeUUID: { "ABCDEF12-3456-4789-ABCD-EF1234567890" }
@@ -33,6 +34,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: CoachingWindowLockFile(url: temporaryLockURL()),
       runtimeConnected: true,
       now: { Date(timeIntervalSince1970: 1_774_681_200) },
@@ -60,6 +62,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { "12121212-1212-4212-8212-121212121212" }
     )
@@ -93,6 +96,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: eligibility,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { "10101010-1010-4010-8010-101010101010" }
     )
@@ -116,6 +120,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: lockFile,
       runtimeConnected: true,
       makeUUID: { "14141414-1414-4414-8414-141414141414" }
@@ -155,6 +160,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: lockFile,
       runtimeConnected: true,
       makeUUID: { "15151515-1515-4515-8515-151515151515" }
@@ -189,6 +195,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: restoredEligibility,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: lockFile,
       runtimeConnected: true,
       makeUUID: { "17171717-1717-4717-8717-171717171717" }
@@ -238,6 +245,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: ineligible,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: lockFile,
       runtimeConnected: true,
       makeUUID: { "19191919-1919-4919-8919-191919191919" }
@@ -286,6 +294,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { "22222222-2222-4222-8222-222222222222" }
     )
@@ -329,6 +338,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { ids.removeFirst() }
     )
@@ -366,6 +376,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { ids.removeFirst() }
     )
@@ -399,6 +410,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { "67676767-6767-4767-8767-676767676767" }
     )
@@ -426,6 +438,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: lockFile,
       runtimeConnected: true,
       makeUUID: { "69696969-6969-4969-8969-696969696969" }
@@ -461,6 +474,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { ids.removeFirst() }
     )
@@ -508,6 +522,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
       let coordinator = DesktopCoachingWindowCoordinator(
         initialEligibility: .allGranted,
         effects: effects,
+        clientCapabilities: [.desktopCoachingV1],
         makeUUID: { "79797979-7979-4979-8979-797979797979" }
       )
       try coordinator.handle(.launch(.appLaunch))
@@ -545,6 +560,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: liveEligibility,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       eligibilityAttestation: { liveEligibility },
       makeUUID: { ids.removeFirst() }
     )
@@ -583,6 +599,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: false,
       makeUUID: { "99999999-9999-4999-8999-999999999999" }
     )
@@ -615,6 +632,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       lockFile: lockFile,
       runtimeConnected: true,
       makeUUID: { "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }
@@ -639,6 +657,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       makeUUID: { "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }
     )
     try coordinator.handle(.launch(.appLaunch))
@@ -665,6 +684,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       runtimeConnected: true,
       makeUUID: { ids.removeFirst() }
     )
@@ -695,6 +715,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       makeUUID: { "dddddddd-dddd-4ddd-8ddd-dddddddddddd" }
     )
     try coordinator.handle(.launch(.appLaunch))
@@ -718,6 +739,7 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
     let coordinator = DesktopCoachingWindowCoordinator(
       initialEligibility: .allGranted,
       effects: effects,
+      clientCapabilities: [.desktopCoachingV1],
       makeUUID: { "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }
     )
     try coordinator.handle(.launch(.appLaunch))

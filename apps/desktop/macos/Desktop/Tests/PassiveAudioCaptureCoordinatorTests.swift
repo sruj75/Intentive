@@ -172,6 +172,39 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
     XCTAssertEqual(unavailableSources, [.microphone])
   }
 
+  func testMicrophoneHealthDeadlineTracksTheLatestAudioBuffer() async {
+    let mic = StreamingAudioSourceSpy()
+    let system = StreamingAudioSourceSpy()
+    let coordinator = makeCoordinator(
+      mic: mic,
+      system: system,
+      pipeline: PassiveAudioPipelineSpy(),
+      sourceHealthTimeoutNanoseconds: 300_000_000
+    )
+    var unavailableSources: [PassiveAudioSource] = []
+    coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
+
+    coordinator.setUserEnabled(true)
+    await settle()
+    XCTAssertEqual(coordinator.state, .running(microphone: true, systemAudio: false))
+
+    await settle(nanoseconds: 100_000_000)
+    mic.emit(Data([1]))
+    await settle(nanoseconds: 250_000_000)
+
+    XCTAssertEqual(
+      coordinator.state,
+      .running(microphone: true, systemAudio: false),
+      "audio arriving near the original deadline must extend health from the latest buffer"
+    )
+
+    await settle(nanoseconds: 100_000_000)
+
+    XCTAssertFalse(mic.isRunning)
+    XCTAssertFalse(system.isRunning)
+    XCTAssertEqual(unavailableSources, [.microphone])
+  }
+
   func testSystemAudioHeartbeatExpiryAfterInitialAudioFailsClosed() async {
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy()

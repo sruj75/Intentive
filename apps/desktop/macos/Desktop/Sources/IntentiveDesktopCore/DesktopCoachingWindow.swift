@@ -40,6 +40,10 @@ public enum DesktopCoachingWindowInactiveReason: Equatable, Sendable {
   case sleeping
   case signedOut
   case quit
+  /// This build did not negotiate `desktop_coaching_v1`, so coaching is not
+  /// part of the product it ships. Distinct from `ineligible`, which means the
+  /// User can restore coaching by granting a permission.
+  case unsupportedBuild
 }
 
 public enum DesktopCoachingWindowState: Equatable, Sendable {
@@ -155,6 +159,7 @@ public final class DesktopCoachingWindowCoordinator {
 
   private var eligibility: DesktopCoachingEligibility
   private let effects: DesktopCoachingWindowEffects
+  private let coachingCapabilityAdvertised: Bool
   private let eligibilityAttestation: (() -> DesktopCoachingEligibility)?
   private let lockFile: CoachingWindowLockFile?
   private var runtimeConnected: Bool
@@ -164,9 +169,17 @@ public final class DesktopCoachingWindowCoordinator {
   private let now: () -> Date
   private let makeUUID: () -> String
 
+  /// - Parameter clientCapabilities: the capabilities this build advertises on
+  ///   `connect`. A Coaching Window is the thing `desktop_coaching_v1` buys, so
+  ///   callers must provide the actual connect configuration and a build
+  ///   without it must never open one. The Runtime rejects
+  ///   `coaching_window_started`, `coaching_window_presence`, and every
+  ///   window-stamped `perception_event` with `invalid_connect`, which would
+  ///   leave the durable outbox re-sending unacknowledged rows forever.
   public init(
     initialEligibility: DesktopCoachingEligibility,
     effects: DesktopCoachingWindowEffects,
+    clientCapabilities: [ClientCapability]?,
     eligibilityAttestation: (() -> DesktopCoachingEligibility)? = nil,
     lockFile: CoachingWindowLockFile? = nil,
     runtimeConnected: Bool = false,
@@ -175,6 +188,8 @@ public final class DesktopCoachingWindowCoordinator {
   ) {
     self.eligibility = initialEligibility
     self.effects = effects
+    self.coachingCapabilityAdvertised =
+      clientCapabilities?.contains(.desktopCoachingV1) ?? false
     self.eligibilityAttestation = eligibilityAttestation
     self.lockFile = lockFile
     self.runtimeConnected = runtimeConnected
@@ -205,6 +220,13 @@ public final class DesktopCoachingWindowCoordinator {
   }
 
   public func handle(_ input: DesktopCoachingWindowInput) throws {
+    // Fail closed at the boundary rather than at each transition: without the
+    // negotiated capability there is no input that may produce a window_id,
+    // a lifecycle event, or perception.
+    guard coachingCapabilityAdvertised else {
+      state = .inactive(.unsupportedBuild)
+      return
+    }
     switch input {
     case .launch(let reason):
       guard !didHandleLaunch else { return }
@@ -252,7 +274,7 @@ public final class DesktopCoachingWindowCoordinator {
         case .inactive(.awaitingLaunch), .inactive(.ineligible):
           state = .inactive(.ineligible)
         case .inactive(.sleeping), .inactive(.signedOut), .inactive(.quit),
-          .active, .locked, .paused:
+          .inactive(.unsupportedBuild), .active, .locked, .paused:
           break
         }
         return
@@ -263,7 +285,7 @@ public final class DesktopCoachingWindowCoordinator {
           try startEligibleWindow(requestedReason: eligibleStartReason)
         }
       case .inactive(.awaitingLaunch), .inactive(.sleeping), .inactive(.quit),
-        .active, .locked, .paused:
+        .inactive(.unsupportedBuild), .active, .locked, .paused:
         break
       }
     case .runtimeConnectionChanged(let connected):
