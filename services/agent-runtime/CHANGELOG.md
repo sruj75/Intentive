@@ -6,6 +6,10 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ### Changed
 
+- **Metadata-only perception ledger** — retired the unwired legacy
+  `SensoryBufferReader` over `runtime_events`; current detailed perception is
+  read only from the expiring `perception_records` projection, while the
+  immutable ledger retains ordering and dedupe metadata.
 - **Langfuse-only Procedure Floor** — removed the deploy-bundled prompt floor.
   Langfuse credentials and the explicit regional base URL are required boot
   configuration; startup verifies the `production`
@@ -44,8 +48,7 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   a `search_screen_context` DeepAgents tool for FTS over Screen Memory summaries.
   Desktop is now a chat-capable client kind for stream delivery. Tests:
   `test/per-user-channel.test.mjs`, `test/project-ingress.test.mjs`,
-  `test/sensory-buffer.integration.test.mjs`, and
-  `test/runtime-ingress-projection.integration.test.mjs`.
+  and `test/runtime-ingress-projection.integration.test.mjs`.
 - **v1 production deploy drain + Secret Manager boot fetch** ([Issue #50], [ADR-0032](docs/adr/0032-agent-runtime-gce-deploy-single-vm-tls-load-balancer-in-place-swap.md), [ADR-0033](docs/adr/0033-agent-runtime-internal-session-start-public-ingress-shared-secret.md)) —
   `main.ts` registers `SIGTERM`/`SIGINT` shutdown through `runtime/shutdown.ts`:
   Cron and Heartbeat schedulers stop, connected WebSockets close with `1001`,

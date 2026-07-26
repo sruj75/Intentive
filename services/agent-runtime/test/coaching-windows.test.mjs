@@ -70,9 +70,9 @@ test("opening orientation reuses a committed ready message before claiming pendi
   });
   assert.match(calls[0].text, /orientation_status\s*=\s*'ready'/i);
   assert.match(calls[0].text, /conversation_messages/i);
-  assert.match(calls[0].text, /message\.message_id\s*=\s*window\.orientation_message_id/i);
+  assert.match(calls[0].text, /message\.message_id\s*=\s*coaching_window\.orientation_message_id/i);
   assert.match(calls[0].text, /message\.author\s*=\s*'companion'/i);
-  assert.match(calls[0].text, /message\.window_id\s*=\s*window\.window_id/i);
+  assert.match(calls[0].text, /message\.window_id\s*=\s*coaching_window\.window_id/i);
   assert.match(calls[0].text, /message\.via_post_message_back\s*=\s*true/i);
 });
 

@@ -112,13 +112,13 @@ ALTER TABLE agent_runtime.coaching_windows
 -- Bind active-window precedence to Runtime arrival order, not retransmission
 -- order or a client clock. This also makes a partially applied pre-release
 -- schema fail closed if it somehow contains a window without its ledger marker.
-UPDATE agent_runtime.coaching_windows AS window
+UPDATE agent_runtime.coaching_windows AS coaching_window
 SET start_ingest_seq = event.ingest_seq
 FROM agent_runtime.runtime_events AS event
-WHERE window.start_ingest_seq IS NULL
-  AND event.user_id = window.user_id
+WHERE coaching_window.start_ingest_seq IS NULL
+  AND event.user_id = coaching_window.user_id
   AND event.kind = 'coaching_window_started'
-  AND event.dedup_key = window.window_id::text;
+  AND event.dedup_key = coaching_window.window_id::text;
 
 ALTER TABLE agent_runtime.coaching_windows
   ALTER COLUMN start_ingest_seq SET NOT NULL;

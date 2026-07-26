@@ -55,7 +55,7 @@ test("working context gathers profile and recent perception in parallel", async 
   });
 });
 
-test("working context omits recentPerception when no Sensory Buffer reader is injected", async () => {
+test("working context omits recentPerception when no recent-perception dependency is injected", async () => {
   const workingContext = createWorkingContext({
     readUserProfile: async () => "profile",
   });

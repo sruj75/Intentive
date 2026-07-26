@@ -62,7 +62,10 @@ test("a late duplicate cannot recreate an event removed by a later tombstone", (
     /tombstone\.kind\s*=\s*'perception_tombstone'[\s\S]*tombstone\.ingest_seq\s*>\s*incoming\.ingest_seq/i,
   );
   assert.match(statement, /tombstone\.payload\s*->>\s*'reason'\s*=\s*'clear_all'/i);
-  assert.match(statement, /tombstone\.payload\s*->\s*'event_refs'[\s\S]*jsonb_build_array/i);
+  assert.match(
+    statement,
+    /tombstone\.payload\s*->\s*'event_refs'[\s\S]*jsonb_build_array\(\?::text\)/i,
+  );
 });
 
 test("embedding candidates are read only when the current projection still matches the input", async () => {

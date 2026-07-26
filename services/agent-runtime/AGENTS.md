@@ -22,8 +22,7 @@ Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
 - `sessions` — the Per-User Channel: per-user serialization point for ordering,
   idempotency, transactional ingress, queue-serialized Conversation History
-  reads, **Interactive Turn** dispatch, and lifecycle/perception hooks. The
-  legacy **Sensory Buffer** remains for non-coaching trigger families.
+  reads, **Interactive Turn** dispatch, and lifecycle/perception hooks.
 - `perception` — expiring current Rewind projection and hybrid recall; detailed
   evidence lives here rather than in the immutable event ledger. Embedding
   enrichment runs outside the turn lane and compare-and-sets against the exact

@@ -44,6 +44,8 @@ test("Coaching migration keeps ingest column, backfill, and NOT NULL in the same
     path.join(serviceRoot, "migrations", "0013_desktop_coaching_windows.sql"),
     "utf8",
   );
+  assert.doesNotMatch(migration, /\bAS\s+window\b/i);
+  assert.match(migration, /\bAS\s+coaching_window\b/i);
   const statements = splitMigrationStatements(migration);
   const addIndex = statements.findIndex((statement) =>
     /ADD COLUMN IF NOT EXISTS ingest_seq bigint/i.test(statement),

@@ -237,7 +237,7 @@ test("runTurn delivers the persisted companion reply after a successful transact
   ]);
 });
 
-test("runTurn omits recentPerception when no Sensory Buffer reader is injected", async () => {
+test("runTurn omits recentPerception when no recent-perception dependency is injected", async () => {
   const adapterCalls = [];
   const runTurn = createTurnRunner({
     bootstrap: completedBootstrap(),

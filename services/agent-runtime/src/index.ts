@@ -104,13 +104,9 @@ export {
 } from "./domains/memory/repo/memory-backend.js";
 export {
   createPerceptionRecordsRepo,
-  embeddingText,
   toPerceptionRecord,
 } from "./domains/perception/repo/perception-records.js";
-export {
-  permittedEmbeddingText,
-  structuredScreenFields,
-} from "./domains/perception/repo/screen-signals.js";
+export { structuredScreenFields } from "./domains/perception/repo/screen-signals.js";
 export {
   createOpenRouterPerceptionEmbedder,
   nullPerceptionEmbedder,
@@ -193,8 +189,6 @@ export type {
 } from "./domains/runtime/types/turn.js";
 export { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 export type { EventLedger } from "./domains/sessions/repo/event-ledger.js";
-export { createSensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
-export type { SensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
 export {
   createAgentInstanceRepo,
   createInMemoryAgentInstanceRegistry,

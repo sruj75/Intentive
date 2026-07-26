@@ -2501,15 +2501,10 @@ private enum DesktopRuntimeConfiguration {
   }
 
   static var clientCapabilities: [ClientCapability]? {
-    let bundleID = Bundle.main.bundleIdentifier
-    let isPreview = bundleID == "com.heyintentive.desktop.preview"
-    let isAcceptance =
-      ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil
-    let explicitlyEnabled =
-      environment("INTENTIVE_DESKTOP_COACHING_V1") == "1"
-    return isPreview || isAcceptance || explicitlyEnabled
-      ? [.desktopCoachingV1]
-      : nil
+    DesktopClientCapabilityPolicy.clientCapabilities(
+      bundleID: Bundle.main.bundleIdentifier,
+      environment: ProcessInfo.processInfo.environment
+    )
   }
 
   static var deviceFingerprint: String {

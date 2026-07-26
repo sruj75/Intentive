@@ -94,21 +94,21 @@ export function createCoachingWindowsRepo(sql: Sql): CoachingWindowsRepo {
     async claimOpening(userId, windowId) {
       const ready = await sql<ReadyOpeningRow>`
         SELECT
-          window.user_id,
-          window.window_id,
-          window.orientation_message_id,
+          coaching_window.user_id,
+          coaching_window.window_id,
+          coaching_window.orientation_message_id,
           message.body
-        FROM agent_runtime.coaching_windows AS window
+        FROM agent_runtime.coaching_windows AS coaching_window
         JOIN agent_runtime.conversation_messages AS message
-          ON message.user_id = window.user_id
-          AND message.message_id = window.orientation_message_id
+          ON message.user_id = coaching_window.user_id
+          AND message.message_id = coaching_window.orientation_message_id
           AND message.author = 'companion'
-          AND message.window_id = window.window_id
+          AND message.window_id = coaching_window.window_id
           AND message.via_post_message_back = true
-        WHERE window.user_id = ${userId}
-          AND window.window_id = ${windowId}
-          AND window.ended_at IS NULL
-          AND window.orientation_status = 'ready'
+        WHERE coaching_window.user_id = ${userId}
+          AND coaching_window.window_id = ${windowId}
+          AND coaching_window.ended_at IS NULL
+          AND coaching_window.orientation_status = 'ready'
         LIMIT 1
       `;
       const readyRow = ready[0];

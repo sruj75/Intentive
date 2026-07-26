@@ -94,8 +94,8 @@ once per connection.
 : Trigger-aware system-prompt assembly from the pinned Procedure Floor +
 injected `USER.md` + optional `RECENT_PERCEPTION`. Coaching behavior lives in
 `AGENTS`; Monitoring Turns additionally receive `HEARTBEAT`. Coaching evidence is a fixed,
-window-scoped batch; other trigger families may still use the legacy latest
-Sensory Buffer projection.
+window-scoped batch; other trigger families currently omit perception from
+their assembled prompt.
 
 `src/domains/coaching/runtime/monitoring-coordinator.ts`
 : Sole Runtime coordinator for Coaching Window lifecycle, active Desktop socket
@@ -144,8 +144,8 @@ redaction re-emits authoritative even when they occur during model execution.
 
 `src/domains/runtime/service/working-context.ts`
 : Service-owned context assembler for what the model sees: Procedure Floor
-supplied by the caller plus `USER.md` and either caller-fixed coaching evidence
-or the legacy latest Sensory Buffer perception.
+supplied by the caller plus `USER.md` and optional caller-fixed, privacy-safe
+recent perception.
 
 `src/domains/runtime/service/turn.ts`
 : Service-owned **Turn Execution** spine (ADR-0031): resolve `floor()`, assemble working context, invoke DeepAgents, then in one transaction append the caller's trigger-specific rows plus exactly one `runtime_turns` anchor (ok or failed).
@@ -162,11 +162,6 @@ the evidence cursor only on success.
 
 `src/domains/runtime/repo/runtime-turns.ts`
 : Durable `runtime_turns` insert queries for observability/eval anchoring.
-
-`src/domains/sessions/repo/sensory-buffer.ts`
-: Legacy repo-owned **Sensory Buffer** read projection for non-coaching trigger
-families. Coaching Turns must use `coaching/repo/recent-evidence.ts` and never
-read detailed bodies from `runtime_events`.
 
 `src/domains/perception/repo/perception-records.ts`
 : Repo-owned searchable projection of `perception_event` rows for Screen Memory lookup (`perception_records`). Reconciliation invalidates an old vector atomically when embedding-relevant content changes; exact duplicates preserve it. Asynchronous embedding writes compare against the exact projected content and signals used to compute them.
@@ -204,7 +199,7 @@ This block is the _map_, not a build order. Per [ADR-0002](docs/adr/0002-agent-r
 Domain responsibilities:
 
 - `gateway`: WebSocket server, handshake-first connect flow, JWT verification, socket lifecycle, post-connect routing for `history_backfill_request`. Protocol-version compatibility is enforced at build time by the single shared `packages/protocol` import (monorepo "one protocol version" rule), **not** negotiated per connection; `client_version` on `connect` is informational, and the `protocol_unsupported` error code is reserved/unused in v1.
-- `sessions`: Agent Instance lookup and durable Bootstrap Lifecycle state, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, queue-serialized Conversation History reads, **Interactive Turn** dispatch, and coaching lifecycle/perception hooks), legacy **Sensory Buffer**, and connected-client presence. Exposes the `BoundSession`, `BootstrapLifecycle`, and `PerUserChannel` types as its public `types/` contract.
+- `sessions`: Agent Instance lookup and durable Bootstrap Lifecycle state, the **Per-User Channel** (per-`user_id` queueing, ordering, idempotency, transactional ingress, queue-serialized Conversation History reads, **Interactive Turn** dispatch, and coaching lifecycle/perception hooks), and connected-client presence. Exposes the `BoundSession`, `BootstrapLifecycle`, and `PerUserChannel` types as its public `types/` contract.
 - `perception`: expiring, current `perception_records` projection and
   `search_screen_context` tool. Detailed bodies live here, not in the immutable
   event ledger; redaction, tombstone, and expiry updates are authoritative.
@@ -411,7 +406,7 @@ Testing:
 - **Repo tier:** `#28` exercises real SQL on ephemeral Neon branches when `NEON_API_KEY` and `NEON_PROJECT_ID` are set (`test/sessions-repo.integration.test.mjs`, `test/helpers/neon-branch.mjs`); otherwise those tests skip.
 - **Integration tier:** use transport adapters where they prove real boundaries;
   existing suites cover Hono/WS ingress, snapshots/backfill, Interactive Turns,
-  Procedure Floor pinning, memory, legacy Sensory Buffer, perception projection,
+  Procedure Floor pinning, memory, perception projection,
   Cron, delivery, Post-Message-Back, heartbeat, queue arbitration, isolation, and
   restart. Coaching coverage additionally proves lifecycle idempotency, one
   active window, disconnect/lock gating, one visible orientation across retry,

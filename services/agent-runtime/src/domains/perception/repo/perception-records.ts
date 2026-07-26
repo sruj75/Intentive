@@ -1,6 +1,6 @@
 import type { PerceptionEvent } from "@intentive/protocol";
 
-import { permittedEmbeddingText, structuredScreenFields } from "./screen-signals.js";
+import { structuredScreenFields } from "./screen-signals.js";
 import type {
   PerceptionEmbeddingCandidate,
   PerceptionEmbedder,
@@ -83,7 +83,7 @@ export function createPerceptionRecordsRepo(
                 tombstone.payload->>'reason' = 'clear_all'
                 OR (
                   tombstone.payload->'event_refs'
-                    @> jsonb_build_array(${record.eventId})
+                    @> jsonb_build_array(${record.eventId}::text)
                 )
               )
           )
@@ -415,16 +415,6 @@ export function toPerceptionRecord(userId: string, event: PerceptionEvent): Perc
     expiresAt: event.expires_at,
     localRecordRef: event.local_record_ref,
   };
-}
-
-/**
- * The text Agent Runtime embeds for a record. Delegates to the permitted-text
- * derivation so a screen record embeds only its permitted fields (summary + app
- * identity + window title + OCR) and a redacted one embeds summary + app
- * identity only — secret text is structurally absent and never embedded.
- */
-export function embeddingText(event: PerceptionEvent): string {
-  return permittedEmbeddingText(event);
 }
 
 export function perceptionRecordEmbeddingText(record: PerceptionRecord): string {
