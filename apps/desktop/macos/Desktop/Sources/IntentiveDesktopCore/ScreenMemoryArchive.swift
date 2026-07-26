@@ -501,6 +501,14 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
     try store.enqueueSessionEndMarker(marker)
   }
 
+  public func enqueueCoachingWindowStarted(_ event: CoachingWindowStarted) throws {
+    try store.enqueueCoachingWindowStarted(event)
+  }
+
+  public func enqueueCoachingWindowEnded(_ event: CoachingWindowEnded) throws {
+    try store.enqueueCoachingWindowEnded(event)
+  }
+
   public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
     try store.pendingIngress(limit: limit)
   }

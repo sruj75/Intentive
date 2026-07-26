@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc --outDir dist",
+    "eval:coaching": "pnpm run build && node scripts/run-coaching-eval.mjs",
+    "langfuse:coaching-assets": "pnpm run build && node scripts/publish-coaching-assets.mjs",
     "migrate": "node scripts/apply-migrations.mjs",
     "start": "node dist/main.js",
     "test": "pnpm --filter \"@intentive/agent-runtime...\" run build && node --test",

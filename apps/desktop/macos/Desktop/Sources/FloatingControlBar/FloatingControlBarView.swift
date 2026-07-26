@@ -71,7 +71,22 @@ struct FloatingControlBarView: View {
       .padding(.horizontal, 16)
       .padding(.top, 12)
 
-      if state.showingAIResponse {
+      if FloatingControlBarManager.shared.isCoachingPaused {
+        AIResponseView(
+          isLoading: false,
+          currentMessage: state.currentAIMessage(
+            from: FloatingControlBarManager.shared.sharedFloatingProvider),
+          userInput: state.displayedQuery,
+          chatHistory: state.derivedChatHistory(
+            from: FloatingControlBarManager.shared.sharedFloatingProvider),
+          isReadOnly: true,
+          onEscape: onCloseAI,
+          onSendFollowUp: { _ in },
+          onResumeCoaching: {
+            FloatingControlBarManager.shared.resumeCoaching()
+          }
+        )
+      } else if state.showingAIResponse {
         AIResponseView(
           isLoading: state.isAILoading,
           currentMessage: state.currentAIMessage(
@@ -80,7 +95,8 @@ struct FloatingControlBarView: View {
           chatHistory: state.derivedChatHistory(
             from: FloatingControlBarManager.shared.sharedFloatingProvider),
           onEscape: onCloseAI,
-          onSendFollowUp: submit
+          onSendFollowUp: submit,
+          onResumeCoaching: {}
         )
       } else {
         AskAIInputView(

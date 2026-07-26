@@ -10,6 +10,28 @@ import { z } from "zod";
 const SentryModeSchema = z.enum(["errors-only", "errors-and-performance"]);
 const LangfuseModeSchema = z.enum(["callback", "otel"]);
 const AuthModeSchema = z.enum(["neon", "local-dev"]);
+const BooleanStringSchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
+const FounderUserIdsSchema = z
+  .string()
+  .default("")
+  .transform((value, context) => {
+    const ids = value
+      .split(",")
+      .map((candidate) => candidate.trim())
+      .filter(Boolean);
+    const parsed = z.array(z.string().uuid()).safeParse(ids);
+    if (!parsed.success) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "must be a comma-separated list of UUIDs",
+      });
+      return z.NEVER;
+    }
+    return [...new Set(parsed.data)];
+  });
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
@@ -28,14 +50,16 @@ const EnvSchema = z.object({
   OPENROUTER_API_KEY: z.string().min(1),
   OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
   RUNTIME_MODEL: z.string().min(1).default("nvidia/nemotron-3-ultra-550b-a55b:free"),
-  LANGFUSE_PUBLIC_KEY: z.string().min(1).optional(),
-  LANGFUSE_SECRET_KEY: z.string().min(1).optional(),
-  LANGFUSE_BASE_URL: z.string().url().optional(),
+  LANGFUSE_PUBLIC_KEY: z.string().min(1),
+  LANGFUSE_SECRET_KEY: z.string().min(1),
+  LANGFUSE_BASE_URL: z.string().url(),
   LANGFUSE_MODE: LangfuseModeSchema.default("callback"),
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_ENVIRONMENT: z.string().min(1).optional(),
   SENTRY_RELEASE: z.string().min(1).optional(),
   SENTRY_MODE: SentryModeSchema.default("errors-only"),
+  DESKTOP_COACHING_V1_ENABLED: BooleanStringSchema,
+  DESKTOP_COACHING_V1_FOUNDER_USER_IDS: FounderUserIdsSchema,
 });
 
 export interface AgentRuntimeConfig {
@@ -59,12 +83,16 @@ export interface AgentRuntimeConfig {
     readonly baseUrl: string;
     readonly model: string;
   };
+  readonly coaching: {
+    readonly enabled: boolean;
+    readonly founderUserIds: readonly string[];
+  };
   readonly langfuse: {
     readonly publicKey: string;
     readonly secretKey: string;
-    readonly baseUrl?: string;
+    readonly baseUrl: string;
     readonly mode: "callback" | "otel";
-  } | null;
+  };
   readonly sentry: {
     readonly dsn: string;
     readonly environment?: string;
@@ -99,7 +127,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
   if (e.INTENTIVE_AUTH_MODE === "local-dev" && !e.INTENTIVE_DEV_AUTH_SECRET) {
     throw new AgentRuntimeConfigError(["INTENTIVE_DEV_AUTH_SECRET"]);
   }
-
   return Object.freeze({
     port: e.PORT,
     publicWsUrl: e.PUBLIC_WS_URL,
@@ -126,15 +153,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentRuntimeCo
       baseUrl: e.OPENROUTER_BASE_URL,
       model: e.RUNTIME_MODEL,
     }),
-    langfuse:
-      e.LANGFUSE_PUBLIC_KEY && e.LANGFUSE_SECRET_KEY
-        ? Object.freeze({
-            publicKey: e.LANGFUSE_PUBLIC_KEY,
-            secretKey: e.LANGFUSE_SECRET_KEY,
-            baseUrl: e.LANGFUSE_BASE_URL,
-            mode: e.LANGFUSE_MODE,
-          })
-        : null,
+    coaching: Object.freeze({
+      enabled: e.DESKTOP_COACHING_V1_ENABLED,
+      founderUserIds: Object.freeze(e.DESKTOP_COACHING_V1_FOUNDER_USER_IDS),
+    }),
+    langfuse: Object.freeze({
+      publicKey: e.LANGFUSE_PUBLIC_KEY,
+      secretKey: e.LANGFUSE_SECRET_KEY,
+      baseUrl: e.LANGFUSE_BASE_URL,
+      mode: e.LANGFUSE_MODE,
+    }),
     sentry: e.SENTRY_DSN
       ? Object.freeze({
           dsn: e.SENTRY_DSN,

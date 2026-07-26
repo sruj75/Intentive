@@ -18,20 +18,67 @@ final class DesktopOnboardingTests: XCTestCase {
     XCTAssertFalse(state.isComplete)
   }
 
-  func testPermissionSkipsResumeAtFirstUnsatisfiedRetainedStep() {
+  func testPermissionDecisionsDoNotBypassMissingLiveGrants() {
     let progress = DesktopOnboardingProgress()
       .completing(.trust)
       .decidingScreenRecording(.deferred)
       .decidingMicrophone(.denied)
 
-    XCTAssertEqual(requirements(progress: progress, isAuthenticated: true).nextIncompleteStep, .accessibility)
+    XCTAssertEqual(requirements(progress: progress, isAuthenticated: true).nextIncompleteStep, .screenRecording)
   }
 
-  func testLiveScreenGrantControlsCaptureReadinessWithoutReopeningCompletedSetup() {
-    let progress = completedProgress(screen: .granted, microphone: .deferred)
-    XCTAssertTrue(requirements(progress: progress, isAuthenticated: true, screenGranted: true).captureReady)
-    XCTAssertFalse(requirements(progress: progress, isAuthenticated: true, screenGranted: false).captureReady)
-    XCTAssertTrue(requirements(progress: progress, isAuthenticated: true, screenGranted: false).isComplete)
+  func testCompletedSetupRequiresEveryLiveCoachingPermission() {
+    let progress = completedProgress(screen: .granted, microphone: .granted)
+    let complete = DesktopOnboardingRequirements(
+      progress: progress,
+      isAuthenticated: true,
+      screenRecordingPermissionGranted: true,
+      microphonePermissionGranted: true,
+      systemAudioPermissionGranted: true,
+      accessibilityPermissionGranted: true
+    )
+
+    XCTAssertTrue(complete.isComplete)
+    XCTAssertFalse(
+      DesktopOnboardingRequirements(
+        progress: progress,
+        isAuthenticated: true,
+        screenRecordingPermissionGranted: false,
+        microphonePermissionGranted: true,
+        systemAudioPermissionGranted: true,
+        accessibilityPermissionGranted: true
+      ).isComplete
+    )
+    XCTAssertFalse(
+      DesktopOnboardingRequirements(
+        progress: progress,
+        isAuthenticated: true,
+        screenRecordingPermissionGranted: true,
+        microphonePermissionGranted: false,
+        systemAudioPermissionGranted: true,
+        accessibilityPermissionGranted: true
+      ).isComplete
+    )
+    XCTAssertFalse(
+      DesktopOnboardingRequirements(
+        progress: progress,
+        isAuthenticated: true,
+        screenRecordingPermissionGranted: true,
+        microphonePermissionGranted: true,
+        systemAudioPermissionGranted: false,
+        accessibilityPermissionGranted: true
+      ).isComplete
+    )
+    XCTAssertFalse(
+      DesktopOnboardingRequirements(
+        progress: progress,
+        isAuthenticated: true,
+        screenRecordingPermissionGranted: true,
+        microphonePermissionGranted: true,
+        systemAudioPermissionGranted: true,
+        accessibilityPermissionGranted: false
+      ).isComplete
+    )
   }
 
   func testRelaunchPersistsSemanticProgress() throws {
@@ -45,17 +92,30 @@ final class DesktopOnboardingTests: XCTestCase {
     try store.save(progress)
     XCTAssertEqual(
       requirements(progress: store.load(), isAuthenticated: true).nextIncompleteStep,
-      .microphone
+      .screenRecording
     )
   }
 
-  func testCompletedLegacyUserMigratesWithoutSeeingSetupAgain() throws {
+  func testCompletedLegacyUserMustRestoreMissingLiveGrants() throws {
     let legacy = """
       {"completedSteps":["value_privacy","screen_recording","audio_consent","privacy_controls","text_chat_shortcut","ready"],"completed":true}
       """.data(using: .utf8)!
     let progress = try JSONDecoder().decode(DesktopOnboardingProgress.self, from: legacy)
-    XCTAssertTrue(requirements(progress: progress, isAuthenticated: true).isComplete)
-    XCTAssertNil(requirements(progress: progress, isAuthenticated: true).nextIncompleteStep)
+    XCTAssertFalse(requirements(progress: progress, isAuthenticated: true).isComplete)
+    XCTAssertEqual(
+      requirements(progress: progress, isAuthenticated: true).nextIncompleteStep,
+      .screenRecording
+    )
+    XCTAssertTrue(
+      requirements(
+        progress: progress,
+        isAuthenticated: true,
+        screenGranted: true,
+        microphoneGranted: true,
+        systemAudioGranted: true,
+        accessibilityGranted: true
+      ).isComplete
+    )
   }
 
   private func completedProgress(
@@ -75,14 +135,19 @@ final class DesktopOnboardingTests: XCTestCase {
     progress: DesktopOnboardingProgress = DesktopOnboardingProgress(),
     isAuthenticated: Bool = false,
     crossClientSetupComplete: Bool = true,
-    screenGranted: Bool = false
+    screenGranted: Bool = false,
+    microphoneGranted: Bool = false,
+    systemAudioGranted: Bool = false,
+    accessibilityGranted: Bool = false
   ) -> DesktopOnboardingRequirements {
     DesktopOnboardingRequirements(
       progress: progress,
       isAuthenticated: isAuthenticated,
       crossClientSetupComplete: crossClientSetupComplete,
       screenRecordingPermissionGranted: screenGranted,
-      microphonePermissionGranted: false
+      microphonePermissionGranted: microphoneGranted,
+      systemAudioPermissionGranted: systemAudioGranted,
+      accessibilityPermissionGranted: accessibilityGranted
     )
   }
 }

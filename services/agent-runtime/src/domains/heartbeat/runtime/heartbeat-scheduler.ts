@@ -25,6 +25,8 @@ export interface HeartbeatScheduler {
   stop(): void;
 }
 
+type ScheduledTimerSource = "repository" | "external";
+
 export function createHeartbeatScheduler(params: {
   readonly scheduleRepo: HeartbeatScheduleRepo;
   readonly enqueueHeartbeat: (userId: string) => boolean;
@@ -37,10 +39,12 @@ export function createHeartbeatScheduler(params: {
   const floorMs = params.floorMs ?? 60 * 60_000;
   const resyncIntervalMs = params.resyncIntervalMs ?? 30 * 60_000;
   const logger = params.logger ?? createNoopLogger();
+  const timerSources = new Map<string, ScheduledTimerSource>();
 
   const heap: SchedulerClock<string> = createSchedulerClock<string>({
     onDue: async (entries) => {
       for (const entry of entries) {
+        timerSources.delete(entry.key);
         params.enqueueHeartbeat(entry.value);
       }
     },
@@ -74,10 +78,18 @@ export function createHeartbeatScheduler(params: {
     const activeIds = new Set<string>();
     for (const user of users) {
       activeIds.add(user.userId);
+      // Coordinator-owned work (notably an Opening Orientation retry) shares
+      // this wake clock but is not represented by `listAll`. Never let a
+      // database reconciliation overwrite or delete that external timer.
+      if (timerSources.get(user.userId) === "external") {
+        continue;
+      }
+      timerSources.set(user.userId, "repository");
       heap.schedule(user.userId, new Date(user.lastActivityAt.getTime() + floorMs), user.userId);
     }
     for (const key of heap.keys()) {
-      if (!activeIds.has(key)) {
+      if (timerSources.get(key) === "repository" && !activeIds.has(key)) {
+        timerSources.delete(key);
         heap.cancel(key);
       }
     }
@@ -102,9 +114,11 @@ export function createHeartbeatScheduler(params: {
 
   return {
     schedule(userId, dueAt) {
+      timerSources.set(userId, "external");
       heap.schedule(userId, dueAt, userId);
     },
     cancel(userId) {
+      timerSources.delete(userId);
       heap.cancel(userId);
     },
     has(userId) {

@@ -126,9 +126,6 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
       HStack {
         Text("Intentive").font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
         Spacer()
-        if model.setupStep != .trust {
-          Button("Skip", action: model.skipCurrentSetupStep).buttonStyle(.plain).foregroundColor(OmiColors.textTertiary)
-        }
       }.padding(.horizontal, OmiSpacing.xxl).padding(.vertical, OmiSpacing.lg)
       Divider().background(OmiColors.backgroundTertiary)
       GeometryReader { geometry in
@@ -185,7 +182,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
         request: model.startScreenRecordingPermissionFlow
       )
     case .microphone:
-      permissionCard(icon: "mic.fill", title: "Microphone", detail: "Microphone access lets Intentive capture optional local audio context.", granted: model.microphoneGranted, request: model.requestMicrophone)
+      permissionCard(icon: "mic.fill", title: "Microphone", detail: "Microphone access lets Intentive understand local audio context while coaching is active.", granted: model.microphoneGranted, request: model.requestMicrophone)
     case .accessibility:
       permissionCard(icon: "accessibility", title: "Accessibility", detail: "Accessibility lets Intentive detect the active app and respond to your shortcut.", granted: model.accessibilityGranted, request: model.requestAccessibility)
     case .floatingBarShortcut:
@@ -200,7 +197,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
       VStack(spacing: OmiSpacing.xl) {
         Image(systemName: "text.bubble.fill").font(.system(size: 40)).foregroundColor(.white)
         Text("Try the real Floating Bar").font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
-        Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message, or skip if you're offline.").intentiveSetupDetail()
+        Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message before finishing setup.").intentiveSetupDetail()
         HStack {
           primary("Open Floating Bar", id: "setup-open-floating-bar", action: model.openFloatingBar)
           Button("Finish", action: model.completeCurrentSetupStep)
@@ -261,7 +258,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     switch model.setupStep {
     case .trust: ("Before we continue", "I’m going to ask for a few permissions.", "Intentive is private by design. These permissions help it understand your work and help in the right places.")
     case .screenRecording: ("Permission", "Let Intentive read your screen.", "Screen Recording lets Intentive see what you're working on.")
-    case .microphone: ("Permission", "Let Intentive hear optional context.", "Microphone access is used for local sensing, never to fill the composer.")
+    case .microphone: ("Permission", "Let Intentive hear work context.", "Microphone access is required for local sensing while Coaching is active, never to fill the composer.")
     case .accessibility: ("Permission", "Let Intentive work across your Mac.", "Accessibility identifies the active app and supports the global Floating Bar shortcut.")
     case .floatingBarShortcut: ("Shortcut", "Intentive is one shortcut away.", "Learn the shortcut you'll use to reach your Companion from anywhere.")
     case .floatingBarDemo: ("Try it", "Meet your Floating Bar.", "Open the real text-only conversation surface before finishing setup.")

@@ -22,6 +22,9 @@ test("redactAttrs keeps only allowlisted scalar metadata", () => {
       category: "resource_exhausted",
       retryable: false,
       attempts: 1,
+      count: 1,
+      cost_available: true,
+      cost_credits: 0.0042,
       body: "must not log",
       token: "secret",
       nested: { value: true },
@@ -35,6 +38,9 @@ test("redactAttrs keeps only allowlisted scalar metadata", () => {
       category: "resource_exhausted",
       retryable: false,
       attempts: 1,
+      count: 1,
+      cost_available: true,
+      cost_credits: 0.0042,
       model: null,
     },
   );
@@ -54,7 +60,7 @@ test("logger writes JSON-shaped records and forwards Sentry signals", () => {
   }).child({ user_id: "user_1", body: "dropped" });
 
   logger.info("gateway.connect", { status: "ok", client_kind: "mobile" });
-  const error = new TypeError("boom");
+  const error = new TypeError("private provider body: do not forward");
   logger.error("turn.failed", error, { trace_id: "trace_1", token: "dropped" });
 
   assert.deepEqual(records, [
@@ -84,10 +90,12 @@ test("logger writes JSON-shaped records and forwards Sentry signals", () => {
       data: { user_id: "user_1", status: "ok", client_kind: "mobile" },
     },
   ]);
-  assert.deepEqual(captures, [
-    {
-      error,
-      context: { tags: { user_id: "user_1", trace_id: "trace_1", error_type: "TypeError" } },
-    },
-  ]);
+  assert.equal(captures.length, 1);
+  assert.notEqual(captures[0].error, error);
+  assert.equal(captures[0].error.name, "TypeError");
+  assert.equal(captures[0].error.message, "Content-redacted application error");
+  assert.doesNotMatch(String(captures[0].error.stack), /private provider body/i);
+  assert.deepEqual(captures[0].context, {
+    tags: { user_id: "user_1", trace_id: "trace_1", error_type: "TypeError" },
+  });
 });

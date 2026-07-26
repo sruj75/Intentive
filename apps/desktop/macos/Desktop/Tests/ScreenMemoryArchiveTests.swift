@@ -890,7 +890,10 @@ final class ScreenMemoryArchiveTests: XCTestCase {
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(),
       screenMemory: InMemoryScreenMemoryStore(),
-      publisher: PerceptionPublisher(runtimeClient: DisconnectedRuntimeChatClient()),
+      publisher: PerceptionPublisher(
+        runtimeClient: DisconnectedRuntimeChatClient(),
+        windowIdProvider: desktopTestCoachingWindowIdProvider
+      ),
       archiveProvider: { archive }
     )
     let source = FixturePixelCaptureSource(

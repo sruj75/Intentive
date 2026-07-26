@@ -2,11 +2,17 @@ import Foundation
 
 public enum FloatingBarSubmissionError: Error, Equatable, LocalizedError {
   case emptyMessage
+  case coachingPaused
+  case coachingUnavailable
 
   public var errorDescription: String? {
     switch self {
     case .emptyMessage:
       return "Enter a message before sending."
+    case .coachingPaused:
+      return "Resume Coaching before sending a message."
+    case .coachingUnavailable:
+      return "Coaching is unavailable until required setup is complete."
     }
   }
 }
@@ -14,10 +20,25 @@ public enum FloatingBarSubmissionError: Error, Equatable, LocalizedError {
 public final class FloatingBarController {
   private let runtimeClient: RuntimeChatClient
   private let messageStore: MessageStore
+  private let isCoachingPausedProvider: () -> Bool
+  private let isCoachingAvailableProvider: () -> Bool
+  private let resumeCoachingAction: () -> Void
+  private let onSubmitted: () -> Void
 
-  public init(runtimeClient: RuntimeChatClient, messageStore: MessageStore) {
+  public init(
+    runtimeClient: RuntimeChatClient,
+    messageStore: MessageStore,
+    isCoachingPaused: @escaping () -> Bool = { false },
+    isCoachingAvailable: @escaping () -> Bool = { true },
+    resumeCoaching: @escaping () -> Void = {},
+    onSubmitted: @escaping () -> Void = {}
+  ) {
     self.runtimeClient = runtimeClient
     self.messageStore = messageStore
+    self.isCoachingPausedProvider = isCoachingPaused
+    self.isCoachingAvailableProvider = isCoachingAvailable
+    self.resumeCoachingAction = resumeCoaching
+    self.onSubmitted = onSubmitted
   }
 
   public var messages: [ChatMessage] {
@@ -28,13 +49,29 @@ public final class FloatingBarController {
     FloatingConversationSnapshot(messages: messageStore.messages)
   }
 
+  public var isCoachingPaused: Bool {
+    isCoachingPausedProvider()
+  }
+
+  public func resumeCoaching() {
+    resumeCoachingAction()
+  }
+
   @discardableResult
   public func submit(_ body: String) throws -> ChatMessage {
+    guard !isCoachingPaused else {
+      throw FloatingBarSubmissionError.coachingPaused
+    }
+    guard isCoachingAvailableProvider() else {
+      throw FloatingBarSubmissionError.coachingUnavailable
+    }
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
       throw FloatingBarSubmissionError.emptyMessage
     }
-    return try runtimeClient.sendUserMessage(trimmed)
+    let message = try runtimeClient.sendUserMessage(trimmed)
+    onSubmitted()
+    return message
   }
 }
 
@@ -118,26 +155,48 @@ public final class RecordingOverlaySink: DesktopOverlaySink {
 }
 
 public final class EffectRunner {
+  private static let rememberedPresentationLimit = 2_048
+
   private let overlay: DesktopOverlaySink
   private let runtimeClient: RuntimeChatClient
+  private let activeWindowId: () -> String?
+  private var presentedMessageIDs = Set<String>()
+  private var presentationOrder: [String] = []
 
   public init(
     overlay: DesktopOverlaySink,
-    runtimeClient: RuntimeChatClient
+    runtimeClient: RuntimeChatClient,
+    activeWindowId: @escaping () -> String? = { nil }
   ) {
     self.overlay = overlay
     self.runtimeClient = runtimeClient
+    self.activeWindowId = activeWindowId
   }
 
-  /// A Post-Message-Back companion message always surfaces in the one
-  /// conversation thread and is acknowledged. If the bar is already open the
-  /// message just appends to the visible thread; if it is closed the overlay
-  /// auto-opens. The user replies inline or ignores — there is no snooze,
-  /// mute, or separate dismiss.
-  public func handle(_ message: CompanionMessage) throws {
-    guard message.viaPostMessageBack else { return }
-    overlay.presentProactiveMessage(body: message.body)
+  /// A matching-window Post-Message-Back companion message surfaces in the one
+  /// conversation thread before Desktop reports presentation. Only Opening uses
+  /// that acknowledgement for its exactly-once-visible retry loop. An
+  /// intervention acknowledgement is presentation telemetry: it creates no
+  /// retry queue, and Session Snapshots never replay Floating Bar effects. A
+  /// stale or paused-window effect is ignored without acknowledgement; duplicate
+  /// live frames are acknowledged without revealing the effect twice.
+  @discardableResult
+  public func handle(_ message: CompanionMessage) throws -> Bool {
+    guard message.viaPostMessageBack else { return false }
+    guard let windowId = message.windowId, activeWindowId() == windowId else {
+      return false
+    }
+    let shouldPresent = presentedMessageIDs.insert(message.messageId).inserted
+    if shouldPresent {
+      overlay.presentProactiveMessage(body: message.body)
+      presentationOrder.append(message.messageId)
+      if presentationOrder.count > Self.rememberedPresentationLimit {
+        let expired = presentationOrder.removeFirst()
+        presentedMessageIDs.remove(expired)
+      }
+    }
     try runtimeClient.acknowledge(messageId: message.messageId)
+    return shouldPresent
   }
 }
 

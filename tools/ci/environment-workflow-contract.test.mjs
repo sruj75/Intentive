@@ -85,3 +85,24 @@ test("Preview means founder dogfooding against the real production system", asyn
   assert.doesNotMatch(preview, /isolated Control Plane/i);
   assert.doesNotMatch(preview, /preview database/i);
 });
+
+test("Agent Runtime deploy keeps Desktop coaching default-off and founder-scoped", async () => {
+  const workflow = await text(".github/workflows/agent-runtime-deploy.yml");
+  const envExample = await text("services/agent-runtime/.env.example");
+  const release = await text("services/agent-runtime/docs/RELEASE.md");
+
+  assert.match(
+    workflow,
+    /DESKTOP_COACHING_V1_ENABLED=\$\{\{ vars\.DESKTOP_COACHING_V1_ENABLED \|\| 'false' \}\}/,
+  );
+  assert.match(
+    workflow,
+    /DESKTOP_COACHING_V1_FOUNDER_USER_IDS=\$\{\{ vars\.DESKTOP_COACHING_V1_FOUNDER_USER_IDS \}\}/,
+  );
+  assert.match(envExample, /^DESKTOP_COACHING_V1_ENABLED=false$/m);
+  assert.match(envExample, /^DESKTOP_COACHING_V1_FOUNDER_USER_IDS=$/m);
+  assert.match(release, /schema-only\s+`migrations\/0013_desktop_coaching_windows\.sql`/i);
+  assert.match(release, /feature.*disabled/i);
+  assert.match(release, /founder\s+allowlist/i);
+  assert.match(release, /scrub-perception-ledger\.mjs/);
+});

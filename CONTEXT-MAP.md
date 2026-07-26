@@ -104,7 +104,7 @@ _Avoid_: Private Mode, snooze, automatic resume, disable each sensor
 ## Relationships
 
 - **Intentive** is composed of one **Control Plane**, one **Agent Runtime**, and replaceable **Clients** — currently the **Mobile Client** and **Desktop Client**.
-- In v1, **Work-Along Coaching** is delivered only through the **Desktop Client** during a **Desktop Coaching Window**. The Mobile Client may remain in the monorepo but is outside the v1 product and delivery path.
+- In v1, **Work-Along Coaching** is delivered only through the **Desktop Client** during a **Desktop Coaching Window**. Mobile coaching and Mobile delivery of coaching welcomes or interventions are outside this v1 path; the existing ordinary Mobile chat path remains unchanged.
 - Every v1 **Desktop Coaching Window** begins with an **Opening Orientation**. The User chooses the important outcome; the Companion provides **Executive-Function Scaffolding** before and during the work.
 - A **Desktop Coaching Window** may contain multiple **Important Work Blocks**, each grounded by a User-confirmed **Important Outcome**.
 - **Coaching Perception** gives the Companion the evidence a human coach would use while sitting alongside the work; the Agent Runtime turns that evidence into a revisable **Work-State Judgment**.
@@ -122,16 +122,28 @@ _Avoid_: Private Mode, snooze, automatic resume, disable each sensor
 - The **Control Plane** never sees an in-session message. It issues **Routing** and then steps out of the data path.
 - All **Clients** speak the same **Protocol** defined in `packages/protocol/`. The Agent Runtime distinguishes them only by the `client_kind` field on the `connect` handshake.
 - The **Mobile Client** primarily sends `user_message` events. The **Desktop Client** sends `perception_event`, `session_end_marker`, and floating-bar `user_message` events. Both share the same handshake, auth, idempotency, and reconnect semantics.
-- **Session Start** is the only Control Plane → Agent Runtime call in v1. It is synchronous, idempotent per User, and bundles Agent Instance creation with the Conversation Start Trigger.
+- **Session Start** is the only Control Plane → Agent Runtime call in v1. It is
+  synchronous and idempotently creates or loads the User's **Agent Instance**
+  before returning **Routing**. It is infrastructure-only and never invokes
+  DeepAgents; first-run personalization begins at an eligible Desktop
+  **Opening Orientation**.
 - The two **Internal API** directions each trust the caller via a **Directional Secret** (one secret guards calls to the Agent Runtime, a separate secret guards calls to the Control Plane) on a private network interface. User JWT auth is separate and used only on the public WebSocket.
-- **Conversation History** is server-truth. The Mobile Client renders the authoritative timeline streamed back on WebSocket reconnect; it stores nothing locally.
+- **Conversation History** is server-truth. For ordinary interactive chat, the Mobile Client renders the authoritative timeline streamed back on WebSocket reconnect and stores nothing locally. Window-bound welcomes and interventions are Desktop effects and are never replayed to Mobile.
 - **Screen Memory** on the Desktop Client is unrelated to chat history. It is local truth for screen records the device produced.
 - On the **Desktop Client**, **Routing State** (do we hold valid Routing from `GET /agent`?) and **Session State** (is the Protocol WebSocket up right now?) are independent — see [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md). UI sees only a plain connection mood; JWT and `ws_url` stay inside the Runtime Bridge seam.
-- **Push Notifications** in v1 originate exclusively from **Post-Message-Back**. Replies do not auto-push.
-- **Post-Message-Back** is invoked by the Agent Runtime, which then calls Control Plane's `POST /internal/notifications/push`. The Control Plane owns Expo Push Token storage and Expo Push Service delivery.
+- Outside Desktop coaching, **Push Notifications** originate exclusively from
+  ordinary **Post-Message-Back**. Replies do not auto-push. A Desktop
+  Coaching Window's welcome or intervention never uses push.
+- Ordinary **Post-Message-Back** may be invoked by the Agent Runtime, which
+  then calls Control Plane's `POST /internal/notifications/push`. The Control
+  Plane owns Expo Push Token storage and Expo Push Service delivery. Coaching
+  delivery is separately bound to the matching Desktop connection.
 - **Cron** and **Heartbeat** are triggers, not notifications. A trigger fires → agent code runs → agent may or may not decide to **Post-Message-Back**.
 - The Mobile Client requests notification permission **on first entry into chat**, framed around delivering Companion messages — not at app launch.
-- The **Mobile Client** and **Desktop Client** both join the one Companion conversation. Desktop chat is compact floating-bar chat, not a second conversation.
+- The **Mobile Client** and **Desktop Client** both join the one Companion
+  conversation for ordinary interactive chat. Desktop chat is compact
+  floating-bar chat, not a second conversation; window-bound coaching effects
+  remain Desktop-only.
 - **Pre-Chat Gates** are owned by the Control Plane. Mobile's v1 gate sequence: Identity Gate → Consent Primer → Sibling Client Invitation (skippable). Desktop's v1 gate sequence: Identity Gate → Consent Primer → Capture Permission Setup → Sibling Client Invitation (skippable). Identity Gate and Consent Primer states are shared across clients.
 
 ## Example dialogue

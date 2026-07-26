@@ -19,7 +19,7 @@ export interface GatewaySessionRegistry {
     readonly authSubject: string;
     readonly clientKind: ClientKind;
     readonly clientTz?: string;
-  }): Promise<Omit<BoundSession, "pinnedFloor"> | null>;
+  }): Promise<Omit<BoundSession, "pinnedFloor" | "capabilities"> | null>;
 }
 
 export interface ConnectHandlerResult {
@@ -70,7 +70,7 @@ export function createConnectHandler(deps: {
         };
       }
 
-      let session: Omit<BoundSession, "pinnedFloor"> | null;
+      let session: Omit<BoundSession, "pinnedFloor" | "capabilities"> | null;
       try {
         session = await deps.sessions.loadSessionByAuthSubject({
           authSubject,
@@ -110,7 +110,11 @@ export function createConnectHandler(deps: {
 
       try {
         const pinnedFloor = await deps.floorResolver.resolve("production");
-        const boundSession: BoundSession = { ...session, pinnedFloor };
+        const boundSession: BoundSession = {
+          ...session,
+          pinnedFloor,
+          capabilities: parsed.data.capabilities ?? [],
+        };
         logger.info("gateway.connect", {
           status: "accept",
           user_id: boundSession.userId,
@@ -120,7 +124,12 @@ export function createConnectHandler(deps: {
         return {
           response: {
             type: "hello_ok",
-            session_snapshot: await deps.conversation.readSnapshot(boundSession.userId),
+            session_snapshot: await deps.conversation.readSnapshot(
+              boundSession.userId,
+              undefined,
+              undefined,
+              boundSession.clientKind === "desktop" ? "desktop" : "ordinary",
+            ),
           },
           closeSocket: false,
           session: boundSession,

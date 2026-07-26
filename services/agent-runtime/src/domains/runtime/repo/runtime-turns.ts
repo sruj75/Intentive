@@ -11,13 +11,31 @@ export function createRuntimeTurnsRepo(sql: Sql): RuntimeTurnsRepo {
     recordQuery(record) {
       return sql<{ id: string }>`
         INSERT INTO agent_runtime.runtime_turns
-          (user_id, thread_id, trace_id, model, bundle_version, status, error)
+          (
+            user_id,
+            thread_id,
+            trace_id,
+            model,
+            bundle_version,
+            window_id,
+            trigger,
+            evidence_cursor_start,
+            evidence_cursor_end,
+            evidence_version,
+            status,
+            error
+          )
         VALUES (
           ${record.userId},
           ${record.threadId},
           ${record.traceId},
           ${record.model},
           ${record.bundleVersion},
+          ${record.windowId},
+          ${record.trigger},
+          ${record.evidenceCursorStart},
+          ${record.evidenceCursorEnd},
+          ${record.evidenceVersion},
           ${record.status},
           ${record.error}
         )

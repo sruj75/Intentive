@@ -41,4 +41,15 @@ Crash-recovery / replay of in-flight events is explicitly **out of scope**. When
 - The table stays small and stable: `runtime_events` rows are written once and never updated. Adding recovery/replay later is an additive change, not a rewrite of existing semantics.
 - The single-process assumption is now explicit. Moving the Runtime off a single resident process breaks per-user serialization until a cross-process queue replaces the in-memory one — the next engineer sees this here first.
 - Repo-tier tests run against **ephemeral Neon branches**, mirroring control-plane ADR-0003 (real SQL and the unique-constraint idempotency exercised on a disposable branch; service-tier ordering/isolation tested with fakes and a spy processor). #28 is the first Neon repo in the Runtime, so this test harness is stood up here.
-- `cron` and `heartbeat` kinds are represented in the kind enum but have no producer until Phases 8–9; `conversation_start` is likewise represented but its producer and fire-once dedupe semantics are deferred to Phase 5, when a consumer exists. Only the three client wire events (`user_message`, `perception_event`, `session_end_marker`) are wired through the ledger and queue in #28.
+- At the time of this decision, `cron`, `heartbeat`, and
+  `conversation_start` were represented without producers while only the three
+  client wire events (`user_message`, `perception_event`,
+  `session_end_marker`) were wired through the ledger and queue in #28.
+
+## Amendment — 2026-07-26
+
+The unused `conversation_start` trigger is removed by ADR-0036. Session Start is
+an infrastructure-only Agent Instance create/load and never calls DeepAgents.
+One-time personalization now uses the durable Bootstrap Lifecycle at the
+existing Opening Orientation and Interactive Turn seams, so it needs no
+synthetic ledger event or separate welcome.

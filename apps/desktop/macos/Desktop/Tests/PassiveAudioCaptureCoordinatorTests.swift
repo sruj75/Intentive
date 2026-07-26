@@ -84,14 +84,18 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
     XCTAssertEqual(coordinator.state, .running(microphone: true, systemAudio: true))
   }
 
-  func testSystemAudioFailureDegradesButMicrophoneContinues() async {
+  func testSystemAudioFailureStopsEveryAudioSourceAndReportsRequiredSourceUnavailable() async {
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy(startError: TestError.failed)
     let coordinator = makeCoordinator(mic: mic, system: system, pipeline: PassiveAudioPipelineSpy())
+    var unavailableSources: [PassiveAudioSource] = []
+    coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
     coordinator.setMeetingActive(true)
     coordinator.setUserEnabled(true)
     await settle()
-    XCTAssertTrue(mic.isRunning)
+    XCTAssertFalse(mic.isRunning)
+    XCTAssertFalse(system.isRunning)
+    XCTAssertEqual(unavailableSources, [.systemAudio])
     if case .degraded = coordinator.state {} else { XCTFail("expected degraded state") }
   }
 

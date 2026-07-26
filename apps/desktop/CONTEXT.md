@@ -32,7 +32,10 @@ _Avoid_: chat lab, agent pill, delegation bar
 
 - Raw frames, recordings, thumbnails, and audio do not leave the Mac in v1.
 - The Desktop Client may synchronize compact text and metadata records only; media sync requires a future explicit decision.
-- **Pause Coaching** is the User-owned whole-window boundary: it stops screen, microphone, and system-audio perception together until the User explicitly resumes. It does not replace the narrower per-source settings.
+- **Pause Coaching** is the User-owned whole-window boundary: it stops screen,
+  microphone, and system-audio perception together until the User explicitly
+  resumes. The normal v1 surface does not expose independent source-enable
+  switches; permission, exclusion, retention, and deletion controls remain.
 - Provider API keys never live on the Mac.
 - The Desktop Context Compiler emits evidence and candidate artifacts; the Agent Runtime decides whether to act.
 - Rewind is local truth for screen records. Conversation History is Runtime truth.

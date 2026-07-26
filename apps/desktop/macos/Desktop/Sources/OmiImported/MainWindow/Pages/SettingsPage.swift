@@ -61,23 +61,6 @@ private struct GeneralSettings<Model: IntentiveSettingsPresenting>: View {
 
   var body: some View {
     VStack(spacing: OmiSpacing.xxl) {
-      IntentiveSettingsCard(title: "Screen Capture", subtitle: "Record your screen to build your Rewind.", icon: "display") {
-        Toggle("", isOn: binding(\.screenCaptureEnabled))
-          .labelsHidden().toggleStyle(OmiToggleStyle())
-          .accessibilityIdentifier("general-screen-capture-toggle")
-      }
-      IntentiveSettingsCard(title: "Audio Recording", subtitle: "Record microphone audio for local context.", icon: "mic.fill") {
-        Toggle("", isOn: binding(\.audioRecordingEnabled))
-          .labelsHidden().toggleStyle(OmiToggleStyle())
-          .accessibilityIdentifier("general-audio-recording-toggle")
-      }
-      IntentiveSettingsCard(title: "System Audio", subtitle: "Choose when Intentive records audio from other apps.", icon: "speaker.wave.2.fill") {
-        Picker("", selection: binding(\.systemAudioMode)) {
-          ForEach(IntentiveSystemAudioMode.allCases) { Text($0.rawValue).tag($0) }
-        }
-        .labelsHidden().frame(width: 170)
-        .accessibilityIdentifier("general-system-audio-mode")
-      }
       IntentiveSettingsCard(
         title: "Notifications",
         subtitle: model.notificationsAuthorized ? "Notifications are enabled." : "Allow Intentive notifications in macOS.",

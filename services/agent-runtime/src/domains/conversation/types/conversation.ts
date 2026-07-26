@@ -12,9 +12,12 @@ export interface ConversationEntry {
   readonly author: "user" | "companion";
   readonly body: string;
   readonly viaPostMessageBack: boolean;
+  /** Stored internally for coaching output; intentionally omitted from snapshots. */
+  readonly windowId?: string;
 }
 
 export type ConversationQuery = Promise<unknown[]>;
+export type ConversationSnapshotAudience = "ordinary" | "desktop";
 
 /**
  * The Conversation History store. A deep, two-method interface: `append` writes
@@ -32,12 +35,23 @@ export interface ConversationRepo {
   append(entry: ConversationEntry): Promise<void>;
 
   /**
+   * Writes once, then returns the durable body for this identity. A retry with
+   * different generated wording receives the first committed body.
+   */
+  appendCanonical(entry: ConversationEntry): Promise<string>;
+
+  /**
    * The Session Snapshot projection, oldest-first. With no `before`, returns the
    * newest window; with `before` (a cursor from a prior snapshot) returns the
    * page strictly older than it. `before_cursor` is the `seq` of the oldest row
    * returned, and is non-null only when still-older history exists.
    */
-  readSnapshot(userId: string, before?: string, limit?: number): Promise<SessionSnapshot>;
+  readSnapshot(
+    userId: string,
+    before?: string,
+    limit?: number,
+    audience?: ConversationSnapshotAudience,
+  ): Promise<SessionSnapshot>;
 }
 
 /**

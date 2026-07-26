@@ -3,6 +3,7 @@ import type { Logger } from "@intentive/providers/telemetry";
 
 import type { ConversationRepo } from "../../conversation/types/conversation.js";
 import type { DeliveryPort } from "../../delivery/types/delivery.js";
+import type { BootstrapLifecycle } from "../../sessions/types/bootstrap.js";
 import type { RuntimeIngressEvent } from "../../sessions/types/event.js";
 import type { RuntimeTurnsRepo } from "../repo/runtime-turns.js";
 import type { TransactionalSql } from "../repo/sql.js";
@@ -15,6 +16,11 @@ interface TurnRunnerParams {
   readonly sql: Pick<TransactionalSql, "transaction">;
   readonly adapter: Pick<DeepAgentsAdapter, "invoke">;
   readonly conversation: Pick<ConversationRepo, "appendQuery">;
+  readonly bootstrap: Pick<BootstrapLifecycle, "prepareInteractive">;
+  readonly isBootstrapReplyEligible: (
+    session: BoundSession,
+    event: Extract<RuntimeIngressEvent, { type: "user_message" }>,
+  ) => Promise<boolean>;
   // Construction deps for the self-built spine; ignored when `turn` is injected.
   readonly runtimeTurns?: RuntimeTurnsRepo;
   readonly fallbackModel?: string;
@@ -38,16 +44,22 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
 
     const threadId = session.userId;
     const messageId = newMessageId();
+    const bootstrapReplyEligible = await params.isBootstrapReplyEligible(session, event);
+    const bootstrap = await params.bootstrap.prepareInteractive(
+      session.userId,
+      bootstrapReplyEligible,
+    );
     let replyToDeliver: string | null = null;
     await runExecution({
       userId: session.userId,
       threadId,
       body: event.body,
       trigger: "user_message",
+      ...(bootstrap.firstRun ? { firstRun: true } : {}),
       floor: () => Promise.resolve(session.pinnedFloor),
       onSuccess: (output) => {
         replyToDeliver = output.reply;
-        return [
+        const queries = [
           params.conversation.appendQuery({
             userId: session.userId,
             messageId,
@@ -56,16 +68,22 @@ export function createTurnRunner(params: TurnRunnerParams): TurnRunner {
             viaPostMessageBack: false,
           }),
         ];
+        const bootstrapTransition = bootstrap.transitionOnSuccessQuery();
+        if (bootstrapTransition) {
+          queries.push(bootstrapTransition);
+        }
+        return queries;
       },
       // ADR-0020 containment stays at the channel: rethrow so the failed turn is
       // contained per-trigger, not retried here.
       onFailure: () => ({ queries: [], rethrow: true }),
     });
     if (replyToDeliver !== null && params.deliveryPort) {
-      await params.deliveryPort.deliver(
-        { userId: session.userId, messageId, body: replyToDeliver },
-        "reply",
-      );
+      await params.deliveryPort.deliverReply({
+        userId: session.userId,
+        messageId,
+        body: replyToDeliver,
+      });
     }
   };
 }

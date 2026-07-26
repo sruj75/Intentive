@@ -16,6 +16,9 @@ const validEnv = {
   NEON_AUTH_ISSUER: "https://auth.example.com",
   NEON_AUTH_AUDIENCE: "intentive-runtime",
   OPENROUTER_API_KEY: "openrouter-secret",
+  LANGFUSE_PUBLIC_KEY: "pk-test",
+  LANGFUSE_SECRET_KEY: "sk-test",
+  LANGFUSE_BASE_URL: "https://us.cloud.langfuse.com",
 };
 
 test("loadConfig returns grouped Agent Runtime config for valid env", () => {
@@ -39,7 +42,13 @@ test("loadConfig returns grouped Agent Runtime config for valid env", () => {
       baseUrl: "https://openrouter.ai/api/v1",
       model: "nvidia/nemotron-3-ultra-550b-a55b:free",
     },
-    langfuse: null,
+    coaching: { enabled: false, founderUserIds: [] },
+    langfuse: {
+      publicKey: "pk-test",
+      secretKey: "sk-test",
+      baseUrl: "https://us.cloud.langfuse.com",
+      mode: "callback",
+    },
     sentry: null,
   });
 });
@@ -61,8 +70,50 @@ test("loadConfig applies Agent Runtime boot defaults", () => {
   assert.equal(config.neon.role, "agent_runtime_app");
   assert.equal(config.model.baseUrl, "https://openrouter.ai/api/v1");
   assert.equal(config.model.model, "nvidia/nemotron-3-ultra-550b-a55b:free");
-  assert.equal(config.langfuse, null);
+  assert.deepEqual(config.langfuse, {
+    publicKey: "pk-test",
+    secretKey: "sk-test",
+    baseUrl: "https://us.cloud.langfuse.com",
+    mode: "callback",
+  });
   assert.equal(config.sentry, null);
+  assert.deepEqual(config.coaching, { enabled: false, founderUserIds: [] });
+});
+
+test("loadConfig parses the default-off Desktop coaching flag and founder allowlist", () => {
+  const config = loadConfig({
+    ...validEnv,
+    DESKTOP_COACHING_V1_ENABLED: "true",
+    DESKTOP_COACHING_V1_FOUNDER_USER_IDS:
+      "00000000-0000-4000-8000-000000000001, 00000000-0000-4000-8000-000000000002",
+  });
+
+  assert.deepEqual(config.coaching, {
+    enabled: true,
+    founderUserIds: [
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+    ],
+  });
+});
+
+test("loadConfig rejects malformed coaching flags and founder identities", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        ...validEnv,
+        DESKTOP_COACHING_V1_ENABLED: "yes",
+        DESKTOP_COACHING_V1_FOUNDER_USER_IDS: "not-a-user-id",
+      }),
+    (error) => {
+      assert.equal(error instanceof AgentRuntimeConfigError, true);
+      assert.deepEqual(error.invalidKeys, [
+        "DESKTOP_COACHING_V1_ENABLED",
+        "DESKTOP_COACHING_V1_FOUNDER_USER_IDS",
+      ]);
+      return true;
+    },
+  );
 });
 
 test("loadConfig accepts model, Langfuse, and Sentry overrides", () => {
@@ -168,6 +219,9 @@ test("loadConfig names missing required Agent Runtime env keys", () => {
     NEON_DATABASE_URL: _databaseUrl,
     CONTROL_PLANE_INTERNAL_BASE_URL: _controlPlaneBaseUrl,
     OPENROUTER_API_KEY: _openRouterApiKey,
+    LANGFUSE_PUBLIC_KEY: _langfusePublicKey,
+    LANGFUSE_SECRET_KEY: _langfuseSecretKey,
+    LANGFUSE_BASE_URL: _langfuseBaseUrl,
     ...envWithoutRequiredKeys
   } = validEnv;
 
@@ -177,6 +231,9 @@ test("loadConfig names missing required Agent Runtime env keys", () => {
       assert.equal(error instanceof AgentRuntimeConfigError, true);
       assert.deepEqual(error.invalidKeys, [
         "CONTROL_PLANE_INTERNAL_BASE_URL",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
         "NEON_DATABASE_URL",
         "OPENROUTER_API_KEY",
       ]);

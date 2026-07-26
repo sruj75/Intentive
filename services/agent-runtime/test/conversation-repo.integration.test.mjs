@@ -113,6 +113,19 @@ test("append is write-once per (user, message_id)", { skip }, async () => {
   assert.equal(snapshot.messages[0].body, "original");
 });
 
+test("appendCanonical returns the first write's durable body on retry", { skip }, async () => {
+  const userId = randomUUID();
+
+  assert.equal(
+    await conversation.appendCanonical(userEntry(userId, "canonical", "original")),
+    "original",
+  );
+  assert.equal(
+    await conversation.appendCanonical(userEntry(userId, "canonical", "retried")),
+    "original",
+  );
+});
+
 test("append is author-agnostic and interleaves both sides by seq", { skip }, async () => {
   const userId = randomUUID();
 

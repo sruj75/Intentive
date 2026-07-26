@@ -46,25 +46,50 @@ apps/desktop/
 - Screen Memory stores local records and local embeddings. It does not store Conversation History.
 - Effect Runner behavior is deterministic local execution of an already-chosen Runtime output.
 - The Floating Bar is the only Desktop conversation surface and accepts text only.
-- Passive audio sensing is a local perception source, not a conversation-input path, and is on by default (consent- and privacy-gated: requires mic permission, honors its per-source enable switch and excluded apps; there is no global Private Mode — see ADR 0012). Its active microphone path uses Omi-derived Silero VAD through ONNX Runtime and FluidAudio/Parakeet transcription behind source-neutral Core seams.
+- Passive audio sensing is a local perception source, not a conversation-input
+  path. It starts only inside an eligible Desktop Coaching Window, requires the
+  relevant live permission, and honors excluded apps. The normal v1 surface has
+  one Pause/Resume control rather than independent source-enable switches (ADR
+  0012). Its active microphone path uses Omi-derived Silero VAD through ONNX
+  Runtime and FluidAudio/Parakeet transcription behind source-neutral Core
+  seams.
 - Product nudges are presented in-app for Post-Message-Back messages. Ordinary replies do not interrupt and no duplicate macOS banner is emitted.
 
 ## Core Modules
 
 - `ProtocolEvents.swift`: strict Codable forms for shared Protocol fixtures and outbound Desktop events.
+- `DesktopCoachingWindow.swift`: the sole owner of coaching eligibility,
+  lifecycle identity, crash recovery, durable start/end ordering, live presence
+  attestation, and atomic screen/microphone/system-audio start/stop.
 - `DesktopLaunchConfiguration.swift`: immutable production and deterministic launch policy plus the observable assembled surface/system-boundary contract consumed by the executable composition root.
-- `RuntimeBridge.swift`: desktop WebSocket adapter, generation guard, outbound FIFO, message reducer, delivery acknowledgements.
+- `RuntimeBridge.swift`: desktop WebSocket adapter, generation guard, outbound
+  FIFO, message reducer, and delivery acknowledgements. Window-bound
+  Post-Message-Back frames bypass receipt-time transcript projection and
+  acknowledgement so the MainActor lifecycle guard sees every retry.
 - `AuthControlPlane.swift`: native auth seam, dev auth provider, hosted auth callback boundary, typed Control Plane client.
 - `ScreenMemoryArchive.swift`: the signed-in per-user ingest/search/video-retrieval seam, OCR/dHash deduplication orchestration, finalized-chunk recovery, and outbound-safe content projection.
 - `ScreenMemory.swift`: versioned `intentive.db` persistence, local Screen Memory and ambient-audio records, FTS search, and the deferred local embedding seam.
 - `Rewind/Core/{VideoChunkEncoder,RewindStorage}.swift`: the surgically compiled Omi-derived HEVC/MP4 writer, staged publication, AVAssetReader sample extraction, and bounded still cache behind the source-neutral Core video boundary. Superseded Rewind database, service, and UI copies are absent from the package and source tree.
 - `DesktopLocalProfile.swift`: shared Intentive profile paths. The Desktop Client does not import Omi user data.
 - `ContextCompiler.swift`: deterministic screen and ambient audio analyzers plus `perception_event` publisher with the raw-frame egress guard.
-- `DesktopExperience.swift`: Runtime-truth floating conversation projection, capture coordination, passive-audio primitives, and deterministic in-app Post-Message-Back presentation. Omi's window/geometry/composer/response and Carbon shortcut mechanisms are preserved behind the text-only `FloatingBarController`; conversation is never persisted locally.
+- `DesktopExperience.swift`: Runtime-truth floating conversation projection,
+  capture coordination, passive-audio primitives, and deterministic in-app
+  Post-Message-Back presentation. The persistent effect runner acknowledges a
+  coaching delivery only after a matching-window presentation (or stable local
+  deduplication); stale-window effects remain absent and unacknowledged. Omi's
+  window/geometry/composer/response and Carbon shortcut mechanisms are preserved
+  behind the text-only `FloatingBarController`; conversation is never persisted
+  locally.
 - `OmiImported/`: the compiled `OmiTheme` and `IntentiveDesktopPresentation` targets. The theme remains byte-identical to pinned Omi commit `c55f2925eba6d98f0c1658535425f7405e5d5b9b`; the copied Settings and setup views are pruned to four destinations and six semantic setup steps. `IntentiveDesktopPresentationAdapter` is the only bridge from those views to `DesktopViewModel`, so Omi UI code never owns auth tokens, capture services, storage, Runtime, diagnostics, or Sparkle.
 - `DesktopUtilitySettings.swift` + `DesktopOnboarding.swift`: persisted four-tab preferences and semantic setup progress, including legacy migration. Sign-in is outside the six-step rail; unfinished cross-client gates remain Control-Plane-owned.
-- `ScreenMemoryCaptureResilience.swift`: the authoritative capture lifecycle state and sole user start/stop entry point, including display-change finalization, power cadence, sleep/lock recovery, and durable session termination.
-- `PassiveAudioCaptureCoordinator.swift`: desired-vs-actual microphone/system-audio reconciliation, meeting gating, generation guards, and synchronous cleanup when a source is disabled or its permission is revoked. Native adapters preserve Omi's CoreAudio IOProc/process-tap mechanisms.
+- `ScreenMemoryCaptureResilience.swift`: the screen-capture mechanism beneath
+  `DesktopCoachingWindowCoordinator`, including display-change finalization and
+  power cadence. It is not a second owner of coaching eligibility.
+- `PassiveAudioCaptureCoordinator.swift`: desired-vs-actual
+  microphone/system-audio reconciliation beneath the Coaching Window,
+  meeting gating, generation guards, and synchronous cleanup when the window
+  closes or permission is revoked. Native adapters preserve Omi's CoreAudio
+  IOProc/process-tap mechanisms.
 - `ScreenMemoryTimeline.swift` + the executable Screen Memory views: day/search/app-filter timeline, lazy local video frames, filmstrip/player, OCR cards, storage, and confirmation-aware deletion.
 - `DesktopAutomationBridge.swift` (debug acceptance builds only): loopback observation/fixture/fault control. External acceptance performs every user action through macOS Accessibility.
 

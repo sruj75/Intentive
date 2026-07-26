@@ -36,16 +36,28 @@ intervention. It is present only while the User is working from their Mac.
 - A durable **Desktop Coaching Window** is the shell-owned presence boundary. It
   is lifecycle truth, not an agent mode or work-state classifier.
 - Add shared Protocol events:
-  - `coaching_window_started { window_id, started_at }`
+  - `coaching_window_started { window_id, started_at, reason }`
   - `coaching_window_ended { window_id, ended_at, reason }`
+  - non-durable
+    `coaching_window_presence { window_id, state, changed_at }`
+- The Desktop Preview advertises the optional `desktop_coaching_v1` capability
+  during `connect`. Legacy Clients remain valid.
+- New Desktop-produced `perception_event` records carry `window_id`. The wire
+  field remains optional only so already-queued legacy events can be accepted
+  and acknowledged; legacy records are never injected into a Coaching Turn.
 - V1 permits one active Coaching Window per User. A newly accepted start closes
   any stale prior window. Concurrent multi-Mac coaching is deferred.
-- A window begins only after authentication, required onboarding, and capture
-  permissions are ready. Normal launch-at-login and wake from system sleep begin
-  a new window.
+- A window begins only after authentication, every onboarding step, and live
+  Screen Recording, Microphone, Accessibility, and separately exposed System
+  Audio authorization are ready. There is no reduced chat-only or partial-sensing
+  coaching path. Normal launch-at-login and wake from system sleep begin a new
+  window.
 - System sleep, Pause Coaching, sign-out, quit, or crash ends the window. Screen
   lock pauses screen and audio perception but preserves the window; unlock resumes
   quietly without another opening.
+- Pause is process-scoped rather than persisted. A later process launch begins a
+  fresh eligible window. Revoking any required grant ends the current window;
+  restoring the final missing grant begins another.
 - The existing `session_end_marker` remains the capture/archive durability fact.
   Coaching Window lifecycle is a distinct product-presence contract.
 
@@ -55,11 +67,24 @@ intervention. It is present only while the User is working from their Mac.
   authentication, reconnects, and Conversation History.
 - Proactive Monitoring Turns, Opening Orientation, and Post-Message-Back delivery
   are permitted only for the User's active Coaching Window.
-- A start event triggers exactly one Opening Orientation in the main Companion
-  thread. WebSocket reconnect, `hello_ok`, and foreground changes do not.
+- A start event triggers exactly one user-visible Opening Orientation in the main
+  Companion thread. Attempts may retry behind a stable message identity, but
+  WebSocket reconnect, `hello_ok`, foreground changes, and unlock do not create
+  another visible orientation.
+- Opening Orientation is complete only after the matching Desktop has passed its
+  final MainActor window check, projected the message into the live transcript,
+  presented (or deduplicated) the Floating Bar effect, and acknowledged the
+  stable message identity. Socket receipt alone is not an acknowledgement. The
+  first 120-second Monitoring floor begins from this server-recorded completion,
+  not the Client-reported window start time.
+- Proactive work requires both the durable active window and a live Desktop socket
+  attesting that the same window is active. Disconnect and lock fail closed
+  without durably ending the window. The Runtime revalidates both facts before a
+  proactive message is committed and again before delivery.
 - An end event cancels or invalidates pending best-effort monitoring work. A turn
-  that finishes after its window closes may be recorded but cannot proactively
-  present to the User.
+  that finishes after its window closes may retain a content-free failed Runtime
+  Turn anchor, but cannot commit a proactive Conversation row or present to the
+  User.
 - V1 has no capture-independent Heartbeat coaching, mobile push, offline coaching,
   or Cron-originated interruption. Existing generic machinery may remain dormant.
 - Desktop becomes the v1 chat-capable delivery kind. A proactive message streams
@@ -86,9 +111,21 @@ intervention. It is present only while the User is working from their Mac.
 - The Runtime receives privacy-filtered structured perception across recent work
   progression, including permitted app/window/OCR and filtered audio summaries.
   A single 24-word latest summary is not sufficient.
-- Recent perception is bounded by time, count, and prompt budget and advances with
-  the existing event ledger and turn timestamps. Detailed perception obeys expiry
-  and is not copied verbatim into long-term memory automatically.
+- Recent perception is bounded by time, count, and prompt budget. A fixed upper
+  cursor and the last successfully included ledger position prevent events that
+  arrive during model execution from being skipped. Ordering comes from the
+  ledger, while model-visible content is joined from the mutable perception
+  projection so expiry, tombstones, and redaction re-emits are authoritative.
+  Evidence identity binds the included cursor bounds to a digest of the exact
+  rendered current projection. The Runtime rerenders and compares that identity
+  before proactive commit and successful cursor advancement, so a redaction,
+  tombstone, or expiry during model work invalidates the stale result.
+  Detailed perception is not copied verbatim into long-term memory automatically.
+- New ledger rows keep only idempotency and ordering metadata after projection;
+  historical detailed perception payloads are scrubbed only by a guarded
+  post-deploy cleanup after the new projection reader is healthy. The cleanup
+  aborts unless every eligible ledger identity has a current projection; it is
+  not part of the additive pre-deploy schema migration.
 - While a Coaching Window is active, the system targets evaluating sustained
   drift or blockage within two minutes. V1 reuses Desktop's existing smart
   3-second-on-power / 9-second-on-battery local capture cadence and the Runtime's
@@ -100,8 +137,18 @@ intervention. It is present only while the User is working from their Mac.
 - One **Pause Coaching** action ends the window and synchronously stops screen,
   microphone, and system-audio perception.
 - Only an explicit User action can resume and begin another window.
-- Per-source permission, enable, exclusion, retention, and clear-all controls
-  remain independent.
+- The normal v1 surface does not expose independent source-enable switches.
+  Exclusions, retention, and clear-all remain available.
+
+### Standard tracing is an explicit Founder Preview tradeoff
+
+- Raw screenshots, video, microphone audio, and system audio never leave the Mac.
+- Sentry, PostHog, and structured logs remain content-redacted.
+- The privacy-filtered text rendered into a model prompt may appear in Langfuse
+  and at the model provider under their current retention defaults.
+- Perception expiry removes content from future Runtime retrieval. It does not
+  retroactively erase opaque checkpoints, prior model output, provider records,
+  or Langfuse traces.
 
 ## Consequences
 
@@ -141,6 +188,14 @@ intervention. It is present only while the User is working from their Mac.
   present the Floating Bar greeting even though it remains a menu-bar application.
 - Desktop ADR-0012: amended separately so Pause Coaching ends the whole window
   without restoring a persistent global Private Mode.
+
+### Founder Preview ship boundary
+
+V1 implementation reaches its first ship boundary when a Developer-ID-signed
+`Intentive Preview.app` is installed and usable against production services. A
+fixed number of dogfood days is not an implementation gate; behavioral learning
+begins from that installed build. Public notarized-DMG distribution remains a
+later Production gate.
 
 ## Related
 

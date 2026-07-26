@@ -115,6 +115,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
   public var crossClientSetupComplete: Bool
   public var screenRecordingPermissionGranted: Bool
   public var microphonePermissionGranted: Bool
+  public var systemAudioPermissionGranted: Bool
   public var accessibilityPermissionGranted: Bool
 
   public init(
@@ -123,7 +124,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
     crossClientSetupComplete: Bool = true,
     screenRecordingPermissionGranted: Bool,
     microphonePermissionGranted: Bool,
-    systemAudioPermissionGranted _: Bool = false,
+    systemAudioPermissionGranted: Bool = false,
     accessibilityPermissionGranted: Bool = false
   ) {
     self.progress = progress
@@ -131,6 +132,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
     self.crossClientSetupComplete = crossClientSetupComplete
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
     self.microphonePermissionGranted = microphonePermissionGranted
+    self.systemAudioPermissionGranted = systemAudioPermissionGranted
     self.accessibilityPermissionGranted = accessibilityPermissionGranted
   }
 
@@ -146,7 +148,19 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
   public var captureReady: Bool { isAuthenticated && screenRecordingPermissionGranted }
   public var textChatReady: Bool { isAuthenticated }
 
-  public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool { progress.isReviewed(step) }
+  public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool {
+    guard progress.isReviewed(step) else { return false }
+    switch step {
+    case .screenRecording:
+      return screenRecordingPermissionGranted && systemAudioPermissionGranted
+    case .microphone:
+      return microphonePermissionGranted
+    case .accessibility:
+      return accessibilityPermissionGranted
+    case .trust, .floatingBarShortcut, .floatingBarDemo:
+      return true
+    }
+  }
 
   public var isComplete: Bool {
     isAuthenticated && crossClientSetupComplete && progress.completed

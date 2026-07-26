@@ -5,8 +5,13 @@ import type {
   PerceptionArrivedSink,
   PerceptionProjectedSink,
 } from "../../sessions/types/event.js";
-import { embeddingText, toPerceptionRecord } from "../repo/perception-records.js";
-import type { PerceptionEmbedder, StorePerceptionEmbeddingInput } from "../types/perception.js";
+import { perceptionRecordEmbeddingText, toPerceptionRecord } from "../repo/perception-records.js";
+import type {
+  PerceptionEmbeddingCandidate,
+  PerceptionEmbedder,
+  PerceptionRecord,
+  StorePerceptionEmbeddingInput,
+} from "../types/perception.js";
 
 export interface PerceptionIngressHooks {
   readonly onPerceptionArrived: PerceptionArrivedSink;
@@ -15,6 +20,9 @@ export interface PerceptionIngressHooks {
 
 export function createPerceptionIngressHooks(deps: {
   readonly embedder: PerceptionEmbedder;
+  readonly loadEmbeddingCandidate: (
+    expectedRecord: PerceptionRecord,
+  ) => Promise<PerceptionEmbeddingCandidate | null>;
   readonly storeEmbedding: (input: StorePerceptionEmbeddingInput) => Promise<void>;
   readonly enqueueMonitoring: (userId: string) => boolean;
   readonly onEmbeddingError: (
@@ -43,14 +51,23 @@ async function enrichEmbedding(
   event: PerceptionEvent,
   deps: {
     readonly embedder: PerceptionEmbedder;
+    readonly loadEmbeddingCandidate: (
+      expectedRecord: PerceptionRecord,
+    ) => Promise<PerceptionEmbeddingCandidate | null>;
     readonly storeEmbedding: (input: StorePerceptionEmbeddingInput) => Promise<void>;
   },
 ): Promise<void> {
-  const vector = await deps.embedder.embed(embeddingText(event));
+  const expectedRecord = toPerceptionRecord(session.userId, event);
+  // Enrichment is deliberately out of the serialized ingress lane. Re-read the
+  // current projection before provider I/O so a late permitted retry after
+  // redaction, deletion, or expiry never sends stale text to the embedder.
+  const candidate = await deps.loadEmbeddingCandidate(expectedRecord);
+  if (!candidate) return;
+  const vector = await deps.embedder.embed(perceptionRecordEmbeddingText(candidate));
   if (!vector) return;
   await deps.storeEmbedding({
     modelId: deps.embedder.modelId,
     vector,
-    expectedRecord: toPerceptionRecord(session.userId, event),
+    expectedRecord: candidate,
   });
 }

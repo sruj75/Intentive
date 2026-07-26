@@ -76,8 +76,12 @@ Inside the visible VM, copy the shared `Intentive.app` to `/Applications`, then 
 
 1. Fresh onboarding explains local raw-media boundaries before asking for access.
 2. Screen Recording can be granted, denied, or deferred; capture starts only after a live grant and survives relaunch.
-3. Optional microphone/system-audio consent fails closed; neither source can fill the text composer.
-4. Screen Memory captures/searches a known screen; disabling a source's enable switch (or revoking its macOS permission) stops that source and finalizes the active chunk. There is no global Private Mode (ADR 0012).
+3. Required microphone/system-audio consent fails closed; neither source can fill the text composer.
+4. Rewind captures/searches a known screen; Pause Coaching stops every source
+   and finalizes active capture, while Resume Coaching creates a new window.
+   Revoking any required permission ends the window. The normal v1 surface has
+   no independent source-enable switches and no persistent global Private Mode
+   (ADR 0012).
 5. Retention/exclusion choices survive relaunch; clear-all removes local records/media and emits a tombstone.
 6. The Floating Bar remains text-only and ordinary replies do not re-present it.
 7. A PMB message presents the bar/edge glow, then acknowledges without a duplicate macOS notification.

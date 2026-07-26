@@ -526,6 +526,7 @@ public final class PerceptionPublisher {
   private let outbox: PerceptionEventOutbox?
   private let isRuntimeConnected: () -> Bool
   private let connectionGeneration: () -> Int
+  private let windowIdProvider: () -> String?
   private let now: () -> Date
 
   /// Items sent on the current connection but not yet acknowledged, keyed by
@@ -540,12 +541,14 @@ public final class PerceptionPublisher {
     outbox: PerceptionEventOutbox? = nil,
     isRuntimeConnected: @escaping () -> Bool = { true },
     connectionGeneration: @escaping () -> Int = { 0 },
+    windowIdProvider: @escaping () -> String? = { nil },
     now: @escaping () -> Date = Date.init
   ) {
     self.runtimeClient = runtimeClient
     self.outbox = outbox
     self.isRuntimeConnected = isRuntimeConnected
     self.connectionGeneration = connectionGeneration
+    self.windowIdProvider = windowIdProvider
     self.now = now
   }
 
@@ -554,8 +557,12 @@ public final class PerceptionPublisher {
     guard artifact.rawFrameBytes == nil else {
       throw ProtocolEventError.payloadContainsRawFrameBytes
     }
+    guard let windowId = windowIdProvider() else {
+      throw ProtocolEventError.coachingWindowRequired
+    }
     let event = PerceptionEvent(
       eventId: artifact.id,
+      windowId: windowId,
       capturedAt: artifact.capturedAt,
       periodStart: artifact.periodStart,
       periodEnd: artifact.periodEnd,
@@ -585,6 +592,21 @@ public final class PerceptionPublisher {
   public func publishSessionEnd(_ marker: SessionEndMarker) throws {
     try outbox?.enqueueSessionEndMarker(marker)
     trySend(.sessionEndMarker(marker))
+  }
+
+  public func publishWindowStarted(_ event: CoachingWindowStarted) throws {
+    try outbox?.enqueueCoachingWindowStarted(event)
+    trySend(.coachingWindowStarted(event))
+  }
+
+  public func publishWindowEnded(_ event: CoachingWindowEnded) throws {
+    try outbox?.enqueueCoachingWindowEnded(event)
+    trySend(.coachingWindowEnded(event))
+  }
+
+  public func publishWindowPresence(_ event: CoachingWindowPresence) throws {
+    guard isRuntimeConnected() else { return }
+    try runtimeClient.sendCoachingWindowPresence(event)
   }
 
   /// Delete an acknowledged item once the Runtime confirms its ledger+projection
@@ -649,6 +671,10 @@ public final class PerceptionPublisher {
       try runtimeClient.sendPerceptionTombstone(tombstone)
     case .sessionEndMarker(let marker):
       try runtimeClient.sendSessionEndMarker(marker)
+    case .coachingWindowStarted(let event):
+      try runtimeClient.sendCoachingWindowStarted(event)
+    case .coachingWindowEnded(let event):
+      try runtimeClient.sendCoachingWindowEnded(event)
     }
   }
 

@@ -11,8 +11,10 @@ The single source of truth for the **WebSocket** message contract between every 
 Defined in `src/index.ts`:
 
 - **Shared primitives** — `ClientKind` (`mobile | desktop | android`, Zod enum derived from `@intentive/domain-types` `CLIENT_KINDS`).
-- **Client → Runtime** (`clientToRuntimeEvent` discriminated union): `connect` (optional `client_tz` IANA timezone for Cron wall-clock resolution), `user_message`, `presence_update`, `delivery_ack`, `perception_event`, `session_end_marker`, `history_backfill_request`.
-- **Runtime → Client** (`runtimeToClientEvent` discriminated union): `hello_ok`, `companion_message`, `runtime_error`.
+- **Client capability advertisement** — `connect.capabilities` is optional for legacy clients and currently recognizes `desktop_coaching_v1`.
+- **Client → Runtime** (`clientToRuntimeEvent` discriminated union): `connect`, `user_message`, `presence_update`, `delivery_ack`, `perception_event`, `perception_tombstone`, `session_end_marker`, `history_backfill_request`, plus the Coaching Window lifecycle events `coaching_window_started`, `coaching_window_ended`, and non-durable `coaching_window_presence`.
+- **Runtime → Client** (`runtimeToClientEvent` discriminated union): `hello_ok`, `history_backfill_response`, `companion_message`, `runtime_ingress_ack`, `runtime_error`.
+- **Coaching Window correlation** — new Desktop `perception_event`, Floating Bar `user_message`, and live coaching `companion_message` values carry an optional UUID `window_id`; omission remains valid for legacy perception, Mobile messages, and ordinary chat delivery. Durable lifecycle acknowledgements use the lifecycle `window_id` as `ingress_id`, distinguished by `ingress_kind`.
 - **Runtime error envelope** — one typed error event shape with `code`, `message`, and optional `details`.
 - **Single-live shape policy** — no backward-compatible alias exports; only canonical schema names are exported.
 

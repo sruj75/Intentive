@@ -1,5 +1,9 @@
 # Shared Control Plane for Client Apps
 
+_Amended 2026-07-26 by Agent Runtime ADR-0036: the Control Plane no longer owns
+a conversation trigger. Session Start owns only Agent Instance create/load and
+Routing._
+
 Intentive uses one shared Control Plane for identity, onboarding continuity, Neon Postgres persistence, Routing issuance, and provisioning coordination across both the Mobile Client and the sibling Desktop Client. Clients use Control Plane-issued Routing (Agent Runtime URL + JWT), then connect directly to the Agent Runtime over the shared Protocol WebSocket while the Control Plane stays off the message data path.
 
 **Considered Options**
@@ -15,7 +19,9 @@ Intentive uses one shared Control Plane for identity, onboarding continuity, Neo
 - Skipping an initial sibling-client invitation ends that pre-chat gate without prohibiting a later contextual invitation or user-initiated setup.
 - Relationship consent is shared across clients, while device-specific permissions remain contextual to each client.
 - Entry into a pre-chat gate or Companion Chat is derived from Control Plane state so a client does not restart or bypass cross-client progress from local flags alone.
-- The Control Plane owns one Conversation Start Trigger across clients so first entry cannot produce duplicate runtime-generated onboarding openings.
+- The Control Plane owns idempotent Agent Instance routing across clients, while
+  the Agent Runtime starts user-visible work only from a real client interaction
+  or eligible Desktop Opening Orientation.
 - The initial Mobile Client skeleton may inject fixture entry decisions behind a Control Plane-shaped Entry Resolver; fixtures are development providers, not a local source of shared onboarding truth or Relationship Onboarding message content.
 - Client apps should share the same runtime contract and should not encode provisioning or Agent Runtime ownership locally.
 - The Control Plane becomes the deep module boundary for user identity, persistence, routing, and provisioning coordination.

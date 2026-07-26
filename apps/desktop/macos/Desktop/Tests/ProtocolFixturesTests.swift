@@ -41,6 +41,78 @@ final class ProtocolFixturesTests: XCTestCase {
     XCTAssertThrowsError(try ProtocolEventCodec.decodePerceptionEvent(badEmbedding))
   }
 
+  func testDecodesSharedCoachingWindowFixturesAndAdvertisesCapability() throws {
+    let fixtures = try repoRoot().appendingPathComponent("packages/protocol/test/fixtures")
+
+    let started = try ProtocolEventCodec.decodeCoachingWindowStarted(
+      Data(contentsOf: fixtures.appendingPathComponent("coaching-window-started.json"))
+    )
+    XCTAssertEqual(started.windowId, "11111111-1111-4111-8111-111111111111")
+    XCTAssertEqual(started.reason, .appLaunch)
+
+    let ended = try ProtocolEventCodec.decodeCoachingWindowEnded(
+      Data(contentsOf: fixtures.appendingPathComponent("coaching-window-ended.json"))
+    )
+    XCTAssertEqual(ended.windowId, started.windowId)
+    XCTAssertEqual(ended.reason, .pause)
+
+    let presence = try ProtocolEventCodec.decodeCoachingWindowPresence(
+      Data(contentsOf: fixtures.appendingPathComponent("coaching-window-presence.json"))
+    )
+    XCTAssertEqual(presence.windowId, started.windowId)
+    XCTAssertEqual(presence.state, .active)
+
+    let connect = ConnectEvent(
+      authToken: "runtime-token",
+      clientVersion: "desktop-preview",
+      clientTz: "Asia/Kolkata",
+      capabilities: [.desktopCoachingV1]
+    )
+    let encoded = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: ProtocolEventCodec.encode(connect)) as? [String: Any]
+    )
+    XCTAssertEqual(encoded["capabilities"] as? [String], ["desktop_coaching_v1"])
+  }
+
+  func testCoachingWindowFieldsRemainOptionalOnLegacyMessagesAndPerception() throws {
+    let fixtures = try repoRoot().appendingPathComponent("packages/protocol/test/fixtures")
+    let legacyPerception = try ProtocolEventCodec.decodePerceptionEvent(
+      Data(contentsOf: fixtures.appendingPathComponent("perception-event.json"))
+    )
+    XCTAssertNil(legacyPerception.windowId)
+
+    let legacyCompanion = try ProtocolEventCodec.decodeRuntimeToClientEvent(
+      Data(contentsOf: fixtures.appendingPathComponent("companion-message.json"))
+    )
+    guard case .companionMessage(let message) = legacyCompanion else {
+      return XCTFail("expected companion_message")
+    }
+    XCTAssertNil(message.windowId)
+  }
+
+  func testRejectsMalformedCoachingWindowUUIDTimestampAndLiteralType() {
+    let malformedUUID = Data(
+      """
+      {"type":"coaching_window_started","window_id":"not-a-uuid","started_at":"2026-07-26T08:00:00.000Z","reason":"app_launch"}
+      """.utf8
+    )
+    XCTAssertThrowsError(try ProtocolEventCodec.decodeCoachingWindowStarted(malformedUUID))
+
+    let malformedTimestamp = Data(
+      """
+      {"type":"coaching_window_ended","window_id":"11111111-1111-4111-8111-111111111111","ended_at":"yesterday","reason":"pause"}
+      """.utf8
+    )
+    XCTAssertThrowsError(try ProtocolEventCodec.decodeCoachingWindowEnded(malformedTimestamp))
+
+    let wrongLiteral = Data(
+      """
+      {"type":"perception_event","window_id":"11111111-1111-4111-8111-111111111111","state":"active","changed_at":"2026-07-26T08:00:00.000Z"}
+      """.utf8
+    )
+    XCTAssertThrowsError(try ProtocolEventCodec.decodeCoachingWindowPresence(wrongLiteral))
+  }
+
   private func repoRoot() throws -> URL {
     var cursor = URL(fileURLWithPath: #filePath)
     while cursor.path != "/" {

@@ -182,6 +182,14 @@ public enum TelemetryEventName: String, Codable, Equatable, Sendable {
   case settingChanged = "setting_changed"
   case diagnosticsExported = "diagnostics_exported"
   case diagnosticsCleared = "diagnostics_cleared"
+  case coachingWindowStarted = "coaching_window_started"
+  case coachingWindowEnded = "coaching_window_ended"
+  case coachingOrientationShown = "coaching_orientation_shown"
+  case coachingInterventionShown = "coaching_intervention_shown"
+  case coachingFirstReply = "coaching_first_reply"
+  case coachingReplySent = "coaching_reply_sent"
+  case coachingPaused = "coaching_paused"
+  case coachingResumed = "coaching_resumed"
 }
 
 public struct TelemetryEvent: Codable, Equatable, Sendable {

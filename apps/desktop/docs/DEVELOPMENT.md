@@ -67,14 +67,17 @@ does not prove that capture works.
 
 Acceptance requires the production `NativeScreenCaptureSource` to return a frame:
 
-1. authenticate, then toggle **Screen Capture** off and on in the real Settings UI;
+1. authenticate, complete every setup grant, then use **Resume Coaching** in the
+   real UI to begin a new Coaching Window;
 2. keep a unique marker visible in another app for a full capture cadence;
 3. require a new `screen_memory_records` row with the correct app/window and
    non-empty OCR;
 4. require a semantic embedding and a visible/searchable Rewind frame;
 5. require the exact event ID in Agent Runtime `runtime_events` and
-   `perception_records`;
+   `perception_records`, with the active `window_id`;
 6. require the desktop outbox to drain after `runtime_ingress_ack`.
+7. use **Pause Coaching**, then prove capture stops immediately and no new local
+   or Runtime perception record appears.
 
 Exact OCR text is not stable evidence (`O` and `0` can differ). Search stable words
 and bind the proof by event ID.
@@ -83,26 +86,29 @@ and bind the proof by event ID.
 
 Acceptance requires the production `NativeMicrophoneAudioCaptureService`:
 
-1. authenticate and enable Audio Recording (Screen Capture may remain off);
+1. authenticate, complete every required grant, and begin an eligible Coaching
+   Window; there is no microphone-only coaching state;
 2. deliver audible speech for longer than one four-second segment;
 3. require AVAudioEngine PCM, a positive Silero VAD decision, and a non-empty local
    Parakeet transcript;
 4. require `audio_memory_records` with retention metadata and a local embedding;
 5. require an Agent Runtime `ambient_audio_summary` with
-   `signals.audio_source=microphone`;
+   `signals.audio_source=microphone` and the active `window_id`;
 6. require the outbox to drain.
 
 Raw PCM is consumed and discarded. Silence must not create a transcript. Signing
-out or turning off Audio Recording must stop the physical sources; Screen Capture
-is independently controlled. The Parakeet actor must share one in-flight model
-load; multiple simultaneous downloads/loads are a bug.
+out, Pause Coaching, lock, sleep, or permission loss must stop the physical
+sources. Screen, microphone, and system audio are atomically authorized by the
+Coaching Window rather than independently enabled. The Parakeet actor must share
+one in-flight model load; multiple simultaneous downloads/loads are a bug.
 
 ### System audio
 
-System audio follows the user's `Never`, `Meetings Only`, or `Always` choice.
-Meeting-gated capture must remain off without an active meeting. Prove system audio
-separately from microphone VAD because system audio intentionally does not pass
-through the microphone voice gate.
+System audio runs only while a Coaching Window is eligible and active; the
+Founder Preview has no normal per-source or meeting-gated capture policy. Prove
+system audio separately from microphone VAD because system audio intentionally
+does not pass through the microphone voice gate. Pause, lock, sleep, sign-out,
+quit, and required-permission loss must stop it synchronously.
 
 ## Deterministic gates
 

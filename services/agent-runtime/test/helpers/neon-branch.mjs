@@ -7,6 +7,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { applyMigrationText } from "../../scripts/lib/migration-runner.mjs";
 
 const API_BASE = "https://console.neon.tech/api/v2";
 
@@ -68,7 +69,8 @@ export async function applySql(connectionUri, sqlText) {
 
 export async function applyMigrationFile(connectionUri, absPath) {
   const sqlText = await readFile(absPath, "utf8");
-  await applySql(connectionUri, sqlText);
+  const sql = await connect(connectionUri);
+  await applyMigrationText(sql, sqlText);
 }
 
 export async function connect(connectionUri) {

@@ -60,6 +60,7 @@ public final class PassiveAudioCaptureCoordinator {
     didSet { if oldValue != state { onStateChange?(state) } }
   }
   public var onStateChange: ((PassiveAudioCaptureState) -> Void)?
+  public var onRequiredSourceUnavailable: ((PassiveAudioSource) -> Void)?
 
   public init(
     microphone: any PassiveAudioStreamingSource,
@@ -128,6 +129,7 @@ public final class PassiveAudioCaptureCoordinator {
         guard current == generation else { return }
         stopSynchronously()
         state = .failed(error.localizedDescription)
+        onRequiredSourceUnavailable?(.microphone)
         return
       }
     }
@@ -146,7 +148,9 @@ public final class PassiveAudioCaptureCoordinator {
           }
         } catch {
           guard current == generation else { return }
+          stopSynchronously()
           state = .degraded("System audio unavailable: \(error.localizedDescription)")
+          onRequiredSourceUnavailable?(.systemAudio)
           return
         }
       }

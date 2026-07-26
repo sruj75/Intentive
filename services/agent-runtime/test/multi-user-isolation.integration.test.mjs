@@ -60,6 +60,13 @@ test(
     const userA = randomUUID();
     const userB = randomUUID();
     const runTurn = createTurnRunner({
+      bootstrap: {
+        prepareInteractive: async () => ({
+          firstRun: false,
+          transitionOnSuccessQuery: () => null,
+        }),
+      },
+      isBootstrapReplyEligible: async () => false,
       sql,
       adapter: {
         invoke: async (input) => ({

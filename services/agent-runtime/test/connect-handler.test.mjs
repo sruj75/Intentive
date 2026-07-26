@@ -20,7 +20,7 @@ function snapshotReader(snapshot = emptySnapshot) {
 
 test("connect handshake verifies the JWT and returns hello_ok with the User's reconnect Session Snapshot", async () => {
   let seenToken;
-  let seenUserId;
+  let seenReadArgs;
   const snapshot = {
     messages: [
       {
@@ -47,8 +47,8 @@ test("connect handshake verifies the JWT and returns hello_ok with the User's re
     },
     floorResolver: floorResolver(),
     conversation: {
-      readSnapshot: async (userId) => {
-        seenUserId = userId;
+      readSnapshot: async (...args) => {
+        seenReadArgs = args;
         return snapshot;
       },
     },
@@ -57,7 +57,12 @@ test("connect handshake verifies the JWT and returns hello_ok with the User's re
   const result = await handler.handle(validConnect);
 
   assert.equal(seenToken, "jwt_1");
-  assert.equal(seenUserId, "00000000-0000-4000-8000-000000000001");
+  assert.deepEqual(seenReadArgs, [
+    "00000000-0000-4000-8000-000000000001",
+    undefined,
+    undefined,
+    "ordinary",
+  ]);
   assert.equal(result.closeSocket, false);
   assert.deepEqual(result.response, {
     type: "hello_ok",
@@ -68,7 +73,41 @@ test("connect handshake verifies the JWT and returns hello_ok with the User's re
     clientKind: "mobile",
     agentInstanceId: "agent_instance_1",
     pinnedFloor: floor("floor_v1"),
+    capabilities: [],
   });
+});
+
+test("connect binds the optional Desktop coaching capability to the live session", async () => {
+  let seenReadArgs;
+  const handler = createConnectHandler({
+    sessions: sessionRegistry({
+      authSubject: "auth-sub-1",
+      userId: "00000000-0000-4000-8000-000000000001",
+      agentInstanceId: "agent_instance_1",
+    }),
+    verifier: { verify: async () => ({ user_id: "auth-sub-1" }) },
+    floorResolver: floorResolver(),
+    conversation: {
+      readSnapshot: async (...args) => {
+        seenReadArgs = args;
+        return emptySnapshot;
+      },
+    },
+  });
+
+  const result = await handler.handle({
+    ...validConnect,
+    client_kind: "desktop",
+    capabilities: ["desktop_coaching_v1"],
+  });
+
+  assert.deepEqual(result.session.capabilities, ["desktop_coaching_v1"]);
+  assert.deepEqual(seenReadArgs, [
+    "00000000-0000-4000-8000-000000000001",
+    undefined,
+    undefined,
+    "desktop",
+  ]);
 });
 
 test("connect handshake maps JWT verification failures to structured runtime errors", async () => {
@@ -264,6 +303,7 @@ test("connect resolves the WebSocket session from the verified auth subject, not
     clientKind: "mobile",
     agentInstanceId: "agent_instance_1",
     pinnedFloor: floor("floor_v1"),
+    capabilities: [],
   });
 });
 

@@ -2,8 +2,9 @@
 
 ## Status
 
-Product decisions are resolved and the plan is ready to implement. No product
-code has been changed as part of this planning pass.
+Product decisions are resolved and implementation is in progress. This document,
+the current request contract, and ADR-0006 are the implementation source of
+truth.
 
 ## Outcome
 
@@ -42,19 +43,87 @@ becomes a productivity score or promise of maximum working hours.
 System-wide rationale is recorded in
 [ADR-0006](../adr/0006-desktop-coaching-window-bounds-v1.md).
 
+## Founder Preview implementation amendment
+
+This amendment is canonical where older phase wording below differs.
+
+- The first ship boundary is a Developer-ID-signed `Intentive Preview.app`
+  installed against production services. There is no required dogfood-day count.
+- `connect` advertises optional capability `desktop_coaching_v1`.
+- The Protocol adds strict `coaching_window_started`,
+  `coaching_window_ended`, and non-durable `coaching_window_presence` events.
+  Lifecycle reasons and shapes are fixed by ADR-0006 and Protocol fixtures.
+- New Desktop perception always carries `window_id`; the field is wire-optional
+  only while legacy queued events drain. Windowless events are never Coaching
+  Perception.
+- `DesktopCoachingWindowCoordinator` is the single lifecycle module above screen
+  and passive-audio coordinators. Its observable states are inactive, active,
+  locked, and paused; it owns no Work-State Judgment.
+- Every onboarding step and live Screen Recording, Microphone, Accessibility,
+  and separately exposed System Audio grant is required. There is no optional
+  or degraded coaching path.
+- V1 exposes one Pause/Resume action instead of normal independent source-enable
+  switches. Pause is not persisted: relaunch begins a new eligible window.
+- Runtime proactivity requires a durable active window plus a connected Desktop
+  attesting the same active `window_id`. Lock and disconnect fail closed without
+  creating another orientation.
+- Opening Orientation guarantees one visible message per window through a stable
+  identity; model attempts may retry. Desktop acknowledges that identity only
+  after its final matching-window check and Floating Bar presentation or stable
+  deduplication. The first Monitoring floor is anchored to that server-recorded
+  completion.
+- Monitoring uses a 120-second minimum interval and trailing floor. Recent
+  perception is bounded to 32 events and 12,000 rendered characters, with a fixed
+  upper cursor and advancement only after a successful turn. Evidence version
+  binds the cursor interval to a digest of the exact rendered current projection;
+  redaction, tombstone, or expiry during model work invalidates proactive commit.
+- The event ledger supplies idempotency and ordering metadata but not retained
+  detailed perception. Current projection content is authoritative for expiry,
+  tombstone, and redaction.
+- Coaching Post-Message-Back routes only to the matching Desktop window. Ordinary
+  interactive routing remains unchanged.
+- Standard Tracing is accepted for Founder Preview: model-visible filtered text
+  may be retained by Langfuse and the model provider, while raw media remains
+  local and application telemetry stays content-redacted.
+
+## Founder Preview rollout order
+
+Production rollout is deliberately manual because Runtime deploys do not apply
+schema migrations:
+
+1. Disable the push-deploy gate and apply the additive, schema-only Coaching
+   Window migration. Validate constraints and legacy chat/perception ingress.
+2. Deploy the backward-compatible Runtime with `desktop_coaching_v1` disabled;
+   require HTTP 426, both load-balancer backends healthy, and legacy
+   session-start/chat/perception smoke.
+3. Enable the feature only for the founder account. Verify the production-labeled
+   `intentive-runtime-bundle` Procedure Floor prompt containing `SOUL`, `AGENTS`,
+   `BOOTSTRAP`, and `HEARTBEAT`, publish the behavioral dataset/eval, and verify one
+   synthetic lifecycle-to-intervention trace.
+4. After the new projection reader is healthy, run the separate guarded
+   perception-ledger cleanup. Its dry run and transaction preflight must prove
+   that every eligible historical identity has a current projection before any
+   detailed payload is scrubbed. This cleanup is never part of the pre-deploy
+   schema migration.
+5. Publish and install the Developer-ID-signed `Intentive Preview.app` against
+   production, then run lifecycle acceptance and the 60-minute M2 soak.
+
+Emergency rollback disables the Runtime feature first, then reinstalls the prior
+Preview or restores the prior Runtime image. The additive schema remains.
+
 ## Current capability audit
 
-| Needed capability | Current substrate | V1 gap |
-| --- | --- | --- |
-| Launch with the Mac | LaunchAgent and deterministic background-launch marker | Background launch stays headless and does not begin a coach welcome |
-| Screen perception | ScreenCaptureKit, local Vision OCR, Rewind archive, redaction, durable outbox | Agent prompt sees only the latest compact summary |
-| Audio perception | Local VAD/transcription pipeline, microphone/system-audio coordinators, permissions and toggles | Lifecycle is not owned by one Coaching Window |
-| Conversation | Runtime-owned Conversation History and text Floating Bar | Runtime delivery capability still centers Mobile |
-| Proactive judgment | Monitoring Turn, Per-User Channel, DeepAgents, Post-Message-Back | Heartbeat is 24/7; prompts are placeholders; no window gate |
-| Historical context | `perception_records`, FTS/vector search, retention metadata | Search returns summaries instead of useful matched perception |
-| Privacy exit | Per-source toggles, exclusions, retention, clear-all, quit | No single Pause Coaching action |
-| Coaching memory | DeepAgents checkpoint plus Per-User Memory | No explicit curated-memory policy or eval against verbatim perception copying |
-| Release proof | Desktop harness, Accessibility acceptance, signed bundle, Preview pipeline | No end-to-end coaching tracer or coach-quality evaluation |
+| Needed capability   | Current substrate                                                                               | V1 gap                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Launch with the Mac | LaunchAgent and deterministic background-launch marker                                          | Background launch stays headless and does not begin a coach welcome           |
+| Screen perception   | ScreenCaptureKit, local Vision OCR, Rewind archive, redaction, durable outbox                   | Agent prompt sees only the latest compact summary                             |
+| Audio perception    | Local VAD/transcription pipeline, microphone/system-audio coordinators, permissions and toggles | Lifecycle is not owned by one Coaching Window                                 |
+| Conversation        | Runtime-owned Conversation History and text Floating Bar                                        | Runtime delivery capability still centers Mobile                              |
+| Proactive judgment  | Monitoring Turn, Per-User Channel, DeepAgents, Post-Message-Back                                | Heartbeat is 24/7; prompts are placeholders; no window gate                   |
+| Historical context  | `perception_records`, FTS/vector search, retention metadata                                     | Search returns summaries instead of useful matched perception                 |
+| Privacy exit        | Per-source toggles, exclusions, retention, clear-all, quit                                      | No single Pause Coaching action                                               |
+| Coaching memory     | DeepAgents checkpoint plus Per-User Memory                                                      | No explicit curated-memory policy or eval against verbatim perception copying |
+| Release proof       | Desktop harness, Accessibility acceptance, signed bundle, Preview pipeline                      | No end-to-end coaching tracer or coach-quality evaluation                     |
 
 ## Scope cuts
 
@@ -159,7 +228,9 @@ that cannot be exercised through the Desktop.
 5. Present proactive interventions with Floating Bar + subtle edge glow only:
    no macOS notification, Dock bounce, or audio.
 6. Tie proactive delivery to `window_id`. A message finishing after its window
-   ended can be recorded in history but cannot interrupt a later window.
+   ended or lost active Desktop attestation cannot be committed to Conversation
+   History or interrupt a later window. A content-free failed Runtime Turn anchor
+   may still record the attempt.
 
 ### Proof
 
@@ -176,19 +247,27 @@ that cannot be exercised through the Desktop.
 1. Keep existing high-frequency local capture, OCR, Rewind, deduplication,
    redaction, and retention behavior.
 2. Replace `SensoryBufferReader.readLatest` with a bounded recent-progression
-   projection scoped to the active `window_id`. Use the existing event ledger
-   plus the latest turn timestamp rather than adding a watermark subsystem.
-3. Render chronological app/window changes, permitted OCR excerpts or deltas,
+   projection scoped to the active `window_id`. Fix an upper ordering cursor,
+   join it to current `perception_records`, and advance the durable window cursor
+   only after a successful turn.
+3. Bind each evidence version to the included cursor bounds and a SHA-256 digest
+   of the exact rendered current projection. Rerender it before proactive commit
+   and cursor advancement so mid-turn expiry, tombstones, or redaction re-emits
+   invalidate stale output.
+4. Render chronological app/window changes, permitted OCR excerpts or deltas,
    focus/activity summaries, and passive-audio summaries. Bound by time, event
    count, and total prompt characters.
-4. Use the full permitted `signals` payload; stop discarding it when assembling
+5. Use the full permitted `signals` payload; stop discarding it when assembling
    Runtime perception.
-5. Upgrade `search_screen_context` to return privacy-safe matched snippets and
+6. Upgrade `search_screen_context` to return privacy-safe matched snippets and
    metadata rather than summary-only rows.
-6. Ensure expiry and tombstones remove records from both recent injection and
+7. Ensure expiry and tombstones remove records from both recent injection and
    historical search. Secret-detected content remains structurally absent.
-7. Start and stop passive microphone/system-audio sensing with the Coaching
-   Window and preserve the user-facing per-source switch.
+8. Start and stop passive microphone/system-audio sensing with the Coaching
+   Window. Replace the normal source switches with the one Pause/Resume boundary.
+9. Store only dedupe/ordering metadata for new perception ledger rows. Scrub
+   historical detailed bodies only through the guarded post-deploy cleanup after
+   projection validation.
 
 ### Proof
 
@@ -204,7 +283,7 @@ that cannot be exercised through the Desktop.
 
 ### Work
 
-1. Replace fallback and Langfuse Procedure Floor placeholders with the resolved
+1. Replace the Langfuse Procedure Floor placeholders with the resolved
    product behavior:
    - Human Performance Coach Model;
    - Opening Orientation;
@@ -262,7 +341,8 @@ that cannot be exercised through the Desktop.
 
 ### Proof
 
-- Twelve simulated active hours stay within a declared turn/token budget.
+- A 60-minute representative active-window soak records turn/token cost without
+  making a speculative cost budget the Preview gate.
 - No monitoring call occurs before a start or after an end.
 - Burst perception collapses without losing chronological progression.
 - Sustained drift fixtures receive a judgment opportunity within two minutes.
@@ -305,10 +385,10 @@ Add one signed-in Accessibility-driven tracer:
 
 ### Founder Preview
 
-Publish the Desktop Preview identity and use it against production systems during
-real work for multiple days. Review Langfuse traces/evals and Sentry failures.
-Do not call V1 ready because a short scripted demo passes; require repeated proof
-that the Companion:
+Publish and install the Desktop Preview identity against production systems.
+Review the first live tracer in Langfuse and Sentry, then begin ordinary dogfood
+use. The implementation milestone is the installed, usable Preview rather than a
+fixed number of elapsed days. Continuing evidence should show that the Companion:
 
 - helps establish important work;
 - remains quiet during real flow;
@@ -335,11 +415,11 @@ runs on the real lifecycle, perception, and delivery tracer.
 
 ## Definition of V1 shipped
 
-V1 is shipped when a signed Desktop build, used on a real M2 MacBook Air against
-the production Runtime, reliably recreates the core Attention Copilot experience:
-the Companion arrives, orients, watches privacy-filtered live work, exercises
-human-like judgment about when to remain quiet or help, and leaves immediately
-when the User pauses or closes the coaching window.
+The Founder Preview implementation is shipped when a signed Desktop build is
+installed on a real M2 MacBook Air against the production Runtime and the live
+tracer proves that the Companion arrives, orients, watches privacy-filtered live
+work, exercises human-like judgment about when to remain quiet or help, and
+leaves immediately when the User pauses or closes the coaching window.
 
 It is not shipped merely because capture, OCR, chat, or an LLM response works in
 isolation.

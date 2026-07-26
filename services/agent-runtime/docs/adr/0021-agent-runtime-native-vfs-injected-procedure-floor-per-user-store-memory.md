@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted — refines ADR-0005; amends ADR-0012; renders the ADR-0004 overlay-merge inert in v1. Supersedes the "v1 Bundle Path Set is locked to six paths" and "VFS write policy" decisions in CONTEXT.md.
+Accepted — refines ADR-0005; amends ADR-0012; renders the ADR-0004 overlay-merge
+inert in v1. Supersedes the "v1 Bundle Path Set is locked to six paths" and
+"VFS write policy" decisions in CONTEXT.md. Amended 2026-07-26 for the
+coaching-specific floor and perception-memory boundary.
 
 ## Date
 
@@ -31,11 +34,26 @@ LangChain's own product stores these files in Postgres and exposes them to the a
 
    **Injection policy (two different rules over one store):** `USER.md` is the OpenClaw-style **user profile** — the shell **reads it and injects it every turn**, kept compact by instruction (not a shell cap). The `/memories/` folder is **DeepAgents-native**: the agent reads/writes it **on demand** via VFS tools; the **shell never auto-loads memory** (honoring the reference invariant "do not implement LTM in the shell — DeepAgents owns it"). OpenClaw's shell-side memory auto-load, distillation, and decay are **not** ported — that shape, if desired, is agent behavior driven by the procedure floor, not shell machinery. v1 retrieval is literal `grep`/`glob`/`read`; semantic search is deferred.
 
-3. **The procedure floor is injected, not routed into the VFS.** `SOUL.md`, `AGENTS.md`, `BOOTSTRAP.md`, `HEARTBEAT.md` are versioned product content composed into the per-turn system prompt by the trigger-aware prompt-assembly middleware. They are **not** files the agent can `ls`/`read`/`write`. Their immutability is therefore **structural** (the agent cannot write what it cannot see) — the ADR-0005 write-rejection guard is unnecessary and is dropped.
+3. **The procedure floor is injected, not routed into the VFS.** `SOUL.md`,
+   `AGENTS.md`, `BOOTSTRAP.md`, and `HEARTBEAT.md` are conceptual sections of
+   the Langfuse-managed procedure floor composed into the per-turn system prompt
+   by the trigger-aware prompt-assembly middleware. Human Performance Coach
+   behavior lives in `AGENTS.md`; Monitoring Turns additionally receive
+   `HEARTBEAT.md`. These documents are **not** files the
+   agent can `ls`/`read`/`write`. Their immutability is therefore **structural**
+   (the agent cannot write what it cannot see) — the ADR-0005 write-rejection
+   guard is unnecessary and is dropped.
 
 4. **No overlay-first merge in v1.** With the procedure floor injected (store-absent) and memory store-only (default-absent), no path ever has both a Bundle Default and a User Overlay. The overlay-merge contract (ADR-0004 §3) has no live read path in v1; the general merge engine stays deferred to the future self-personalization ADR (ADR-0005's deferral), to be built when the agent is allowed to augment its own procedure files.
 
 5. **Procedure-floor versioning is unchanged in shape; its store is resolved by ADR-0022.** The injected content is still versioned, pinned per WebSocket connection (the Pinned Bundle Version), and stamped on each `runtime_turns` row — only its _delivery_ (injected prompt content) differs from "a file in the VFS." **ADR-0022** resolves _where_ it is versioned: **Langfuse Prompt Management** (registry-first), not files-in-deploy and not a Neon bundle table.
+
+6. **Detailed Coaching Perception is not durable memory.** OCR, filtered audio
+   summaries, and other detailed evidence may enter only the active window's
+   bounded recent-perception injection and expiring perception projection. The
+   agent may durably remember abstracted preferences, recurring obstacles, and
+   interventions the User explicitly confirms as useful, but never copies
+   detailed evidence verbatim into `USER.md` or `/memories/`.
 
 ## Considered Options
 

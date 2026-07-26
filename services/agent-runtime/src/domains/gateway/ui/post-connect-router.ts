@@ -1,5 +1,11 @@
-import type { HistoryBackfillResponse, RuntimeError, RuntimeIngressAck } from "@intentive/protocol";
+import {
+  isRuntimeOwnedMessageId,
+  type HistoryBackfillResponse,
+  type RuntimeError,
+  type RuntimeIngressAck,
+} from "@intentive/protocol";
 
+import type { ConnectionRegistry } from "../../delivery/types/delivery.js";
 import type { PerUserChannel, RuntimeIngressEvent } from "../../sessions/types/event.js";
 import { isRuntimeIngressEvent } from "../../sessions/types/event.js";
 import { conversationHistoryUnavailableError } from "../service/history-unavailable.js";
@@ -10,6 +16,35 @@ const unsupportedPostConnectEvent: RuntimeError = {
   code: "invalid_connect",
   message: "Event type is not supported on an active connection.",
 };
+
+const coachingCapabilityRequired: RuntimeError = {
+  type: "runtime_error",
+  code: "invalid_connect",
+  message: "Desktop coaching events require the desktop_coaching_v1 capability.",
+};
+
+const windowBoundPerceptionCapabilityRequired: RuntimeError = {
+  type: "runtime_error",
+  code: "invalid_connect",
+  message: "Window-bound perception requires the desktop_coaching_v1 capability.",
+};
+
+const perceptionSourceMismatch: RuntimeError = {
+  type: "runtime_error",
+  code: "invalid_connect",
+  message: "Perception source_client must match the authenticated client.",
+};
+
+const runtimeOwnedMessageIdRejected: RuntimeError = {
+  type: "runtime_error",
+  code: "invalid_connect",
+  message: "User messages cannot use Runtime-owned message IDs.",
+};
+
+interface CoachingPresenceAdmission {
+  readonly accepted: boolean;
+  readonly afterApply?: () => Promise<void> | void;
+}
 
 /**
  * The single post-connect routing table. Every post-handshake event resolves to
@@ -28,7 +63,18 @@ const unsupportedPostConnectEvent: RuntimeError = {
  * - anything else is rejected with an explicit `runtime_error`; there is no
  *   silent no-op.
  */
-export function createPostConnectRouter(deps: { channel: PerUserChannel }): GatewayEventHandler {
+export function createPostConnectRouter(deps: {
+  channel: PerUserChannel;
+  coachingConnections?: Pick<ConnectionRegistry, "clearCoachingWindow">;
+  onCoachingPresence?: (
+    session: Parameters<GatewayEventHandler>[0],
+    event: Extract<Parameters<GatewayEventHandler>[1], { type: "coaching_window_presence" }>,
+  ) => Promise<CoachingPresenceAdmission | void> | CoachingPresenceAdmission | void;
+  onCoachingDeliveryAck?: (
+    session: Parameters<GatewayEventHandler>[0],
+    messageId: string,
+  ) => Promise<void> | void;
+}): GatewayEventHandler {
   return async (session, event, connection) => {
     if (event.type === "history_backfill_request") {
       try {
@@ -36,6 +82,7 @@ export function createPostConnectRouter(deps: { channel: PerUserChannel }): Gate
           session.userId,
           event.before_cursor,
           event.limit,
+          session.clientKind === "desktop" ? "desktop" : "ordinary",
         );
         const response: HistoryBackfillResponse = {
           type: "history_backfill_response",
@@ -48,6 +95,38 @@ export function createPostConnectRouter(deps: { channel: PerUserChannel }): Gate
     }
 
     if (isRuntimeIngressEvent(event)) {
+      if (event.type === "user_message" && isRuntimeOwnedMessageId(event.message_id)) {
+        return runtimeOwnedMessageIdRejected;
+      }
+      if (event.type === "perception_event" && event.source_client !== session.clientKind) {
+        return perceptionSourceMismatch;
+      }
+      if (
+        event.type === "perception_event" &&
+        event.window_id !== undefined &&
+        !supportsDesktopCoaching(session)
+      ) {
+        return windowBoundPerceptionCapabilityRequired;
+      }
+      if (
+        (event.type === "coaching_window_started" || event.type === "coaching_window_ended") &&
+        !supportsDesktopCoaching(session)
+      ) {
+        return coachingCapabilityRequired;
+      }
+      if (event.type === "coaching_window_ended") {
+        // Fail live proactive gating closed as soon as the end frame is parsed,
+        // even while its durable projection waits behind an in-flight turn.
+        if (deps.coachingConnections) {
+          deps.coachingConnections.clearCoachingWindow(
+            session.userId,
+            event.window_id,
+            event.ended_at,
+          );
+        } else {
+          connection?.clearCoachingPresence(event.window_id, event.ended_at);
+        }
+      }
       await deps.channel.accept(session, event);
       return ingressAckFor(event);
     }
@@ -57,12 +136,74 @@ export function createPostConnectRouter(deps: { channel: PerUserChannel }): Gate
       return undefined;
     }
 
+    if (event.type === "coaching_window_presence") {
+      if (!supportsDesktopCoaching(session)) {
+        return coachingCapabilityRequired;
+      }
+      if (event.state === "locked") {
+        // Privacy transitions apply before any asynchronous durable lookup and
+        // remain fail-closed even when the client clock moved backwards.
+        const applied =
+          connection?.setCoachingPresence(event.window_id, event.state, event.changed_at) ?? false;
+        if (!applied) {
+          return undefined;
+        }
+        const admission = await deps.onCoachingPresence?.(session, event);
+        if (admission && !admission.accepted) {
+          return undefined;
+        }
+        await admission?.afterApply?.();
+        return undefined;
+      }
+
+      // Active is privacy-relaxing. Durable/current-window admission must run
+      // before the socket can replace an already-valid live attestation.
+      if (!connection) {
+        return undefined;
+      }
+      const preflight = connection.prepareActiveCoachingPresence?.(
+        event.window_id,
+        event.changed_at,
+      );
+      if (preflight === null) {
+        return undefined;
+      }
+      const admission = await deps.onCoachingPresence?.(session, event);
+      if (admission && !admission.accepted) {
+        return undefined;
+      }
+      const applied = connection.setCoachingPresence(
+        event.window_id,
+        event.state,
+        event.changed_at,
+        preflight,
+      );
+      if (!applied) {
+        return undefined;
+      }
+      await admission?.afterApply?.();
+      return undefined;
+    }
+
     if (event.type === "delivery_ack") {
+      if (supportsDesktopCoaching(session) && isOpeningOrientationMessageId(event.message_id)) {
+        await deps.onCoachingDeliveryAck?.(session, event.message_id);
+      }
       return undefined;
     }
 
     return unsupportedPostConnectEvent;
   };
+}
+
+function isOpeningOrientationMessageId(messageId: string): boolean {
+  return /^opening:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    messageId,
+  );
+}
+
+function supportsDesktopCoaching(session: Parameters<GatewayEventHandler>[0]): boolean {
+  return session.clientKind === "desktop" && session.capabilities.includes("desktop_coaching_v1");
 }
 
 /**
@@ -90,6 +231,13 @@ function ingressAckFor(event: RuntimeIngressEvent): RuntimeIngressAck | undefine
         type: "runtime_ingress_ack",
         ingress_kind: "session_end_marker",
         ingress_id: event.marker_id,
+      };
+    case "coaching_window_started":
+    case "coaching_window_ended":
+      return {
+        type: "runtime_ingress_ack",
+        ingress_kind: event.type,
+        ingress_id: event.window_id,
       };
     default:
       return undefined;

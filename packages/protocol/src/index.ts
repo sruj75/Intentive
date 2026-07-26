@@ -15,6 +15,9 @@ import { z } from "zod";
 export const ClientKind = z.enum(CLIENT_KINDS);
 export type ClientKind = z.infer<typeof ClientKind>;
 
+export const clientCapability = z.enum(["desktop_coaching_v1"]);
+export type ClientCapability = z.infer<typeof clientCapability>;
+
 // ---------- Client -> Runtime ----------
 
 export const connect = z
@@ -27,16 +30,29 @@ export const connect = z
       .string()
       .refine(isValidIanaTimezone, "client_tz must be an IANA timezone")
       .optional(),
+    capabilities: z.array(clientCapability).optional(),
   })
   .strict();
 export type Connect = z.infer<typeof connect>;
 
+const runtimeOwnedMessageIdPrefixes = ["opening:", "intervention:"] as const;
+
+export function isRuntimeOwnedMessageId(messageId: string): boolean {
+  return runtimeOwnedMessageIdPrefixes.some((prefix) => messageId.startsWith(prefix));
+}
+
 export const user_message = z
   .object({
     type: z.literal("user_message"),
-    message_id: z.string(),
+    message_id: z
+      .string()
+      .refine(
+        (messageId) => !isRuntimeOwnedMessageId(messageId),
+        "User messages cannot use Runtime-owned message IDs.",
+      ),
     body: z.string(),
     sent_at: z.string().datetime(),
+    window_id: z.string().uuid().optional(),
   })
   .strict();
 export type UserMessage = z.infer<typeof user_message>;
@@ -121,6 +137,9 @@ const perceptionEventFields = z
     // Stable per-artifact UUID: the Runtime's dedup key and the value echoed back
     // in `runtime_ingress_ack.ingress_id`.
     event_id: z.string().uuid(),
+    // New Desktop Coaching evidence binds to its Coaching Window. Optional on
+    // the wire so already-queued legacy Perception Events still ingest and ack.
+    window_id: z.string().uuid().optional(),
     source_client: ClientKind,
     captured_at: z.string().datetime(),
     period_start: z.string().datetime(),
@@ -220,8 +239,8 @@ export const session_end_marker = z
     // marker it is preallocated in the session lock so an unclean prior session
     // finalizes to exactly one idempotent marker on next launch.
     marker_id: z.string().uuid(),
-    // The capture session this marker closes. A fresh capture allocates a new
-    // `session_id`; markers never span sessions.
+    // The local sensing interval this marker closes. A fresh sensor run
+    // allocates a new `session_id`; markers never span intervals.
     session_id: z.string().uuid(),
     ended_at: z.string().datetime(),
     reason: z.enum(["user_toggle", "quit", "crash"]),
@@ -243,6 +262,61 @@ export const history_backfill_request = z
   .strict();
 export type HistoryBackfillRequest = z.infer<typeof history_backfill_request>;
 
+export const coachingWindowStartReason = z.enum([
+  "app_launch",
+  "login_launch",
+  "sign_in",
+  "onboarding_completed",
+  "system_wake",
+  "user_resume",
+  "permission_restored",
+  "crash_recovery",
+]);
+export type CoachingWindowStartReason = z.infer<typeof coachingWindowStartReason>;
+
+export const coaching_window_started = z
+  .object({
+    type: z.literal("coaching_window_started"),
+    window_id: z.string().uuid(),
+    started_at: z.string().datetime(),
+    reason: coachingWindowStartReason,
+  })
+  .strict();
+export type CoachingWindowStarted = z.infer<typeof coaching_window_started>;
+
+export const coachingWindowEndReason = z.enum([
+  "pause",
+  "system_sleep",
+  "sign_out",
+  "quit",
+  "crash",
+  "permission_lost",
+]);
+export type CoachingWindowEndReason = z.infer<typeof coachingWindowEndReason>;
+
+export const coaching_window_ended = z
+  .object({
+    type: z.literal("coaching_window_ended"),
+    window_id: z.string().uuid(),
+    ended_at: z.string().datetime(),
+    reason: coachingWindowEndReason,
+  })
+  .strict();
+export type CoachingWindowEnded = z.infer<typeof coaching_window_ended>;
+
+export const coachingWindowPresenceState = z.enum(["active", "locked"]);
+export type CoachingWindowPresenceState = z.infer<typeof coachingWindowPresenceState>;
+
+export const coaching_window_presence = z
+  .object({
+    type: z.literal("coaching_window_presence"),
+    window_id: z.string().uuid(),
+    state: coachingWindowPresenceState,
+    changed_at: z.string().datetime(),
+  })
+  .strict();
+export type CoachingWindowPresence = z.infer<typeof coaching_window_presence>;
+
 export const clientToRuntimeEvent = z
   .discriminatedUnion("type", [
     connect,
@@ -253,6 +327,9 @@ export const clientToRuntimeEvent = z
     perception_tombstone,
     session_end_marker,
     history_backfill_request,
+    coaching_window_started,
+    coaching_window_ended,
+    coaching_window_presence,
   ])
   .superRefine((event, ctx) => {
     if (event.type === "perception_event") {
@@ -315,6 +392,9 @@ export const companion_message = z
   .object({
     type: z.literal("companion_message"),
     message_id: z.string(),
+    // Present only for live Opening Orientations and proactive Coaching Window
+    // interventions; ordinary replies and reconnect projections omit it.
+    window_id: z.string().uuid().optional(),
     body: z.string(),
     emitted_at: z.string().datetime(),
     via_post_message_back: z.boolean(),
@@ -334,6 +414,8 @@ export const runtimeIngressKind = z.enum([
   "perception_event",
   "perception_tombstone",
   "session_end_marker",
+  "coaching_window_started",
+  "coaching_window_ended",
 ]);
 export type RuntimeIngressKind = z.infer<typeof runtimeIngressKind>;
 
@@ -341,8 +423,9 @@ export const runtime_ingress_ack = z
   .object({
     type: z.literal("runtime_ingress_ack"),
     ingress_kind: runtimeIngressKind,
-    // The stable UUID of the acknowledged item: `event_id`, `tombstone_id`, or
-    // the session marker's `marker_id`.
+    // The stable UUID of the acknowledged item: `event_id`, `tombstone_id`,
+    // the session marker's `marker_id`, or a lifecycle event's `window_id`.
+    // Start/end share that UUID; `ingress_kind` keeps their identities distinct.
     ingress_id: z.string().uuid(),
   })
   .strict();

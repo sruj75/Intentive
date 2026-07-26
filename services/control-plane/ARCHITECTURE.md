@@ -122,7 +122,10 @@ Hard invariants:
 - Own the control-plane Neon schema with a Postgres role separate from the Agent Runtime's. No Client and no Runtime reads Control Plane tables directly.
 - Hold Expo Push Tokens and push delivery here. The Agent Runtime never calls Expo, APNs, or FCM directly.
 - Make every write endpoint that represents a one-time lifecycle transition idempotent.
-- Treat Session Start as the only Control Plane → Agent Runtime call that creates state: synchronous, idempotent per User, bundling Agent Instance creation with the Conversation Start Trigger.
+- Treat Session Start as the only Control Plane → Agent Runtime call that creates
+  state: synchronous, idempotent per User, and limited to Agent Instance
+  create/load plus Routing. It never invokes DeepAgents or owns first-run
+  personalization.
 - Compute the next Pre-Chat Gate from `client_kind` plus cross-client state in one model behind `GET /me` — not per-screen flags or per-gate endpoints.
 - Honor the Cross-Client vs Device-Local gate distinction: Identity Gate and Consent Primer are shared; Capture Permission Setup is device-local.
 - There is no `tenant_id`, org, workspace, per-user VM, per-user process, or per-user schema in v1. The User is the tenant.

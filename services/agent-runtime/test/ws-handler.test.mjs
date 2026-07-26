@@ -112,6 +112,7 @@ test("post-handshake client events are parsed and delegated without re-running c
               clientKind: "mobile",
               agentInstanceId: "agent_instance_1",
               pinnedFloor: floor("floor_v1"),
+              capabilities: [],
             });
             assert.deepEqual(seenEvent, { type: "presence_update", foreground: true });
             assert.equal(verifierCalls, 1);

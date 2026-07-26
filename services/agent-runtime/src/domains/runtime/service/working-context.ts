@@ -7,6 +7,11 @@ export interface WorkingContextInput {
   readonly body: string;
   readonly trigger: TurnTrigger;
   readonly floor: PinnedProcedureFloor;
+  readonly recentPerception?: string | null;
+  readonly windowId?: string;
+  readonly evidenceCursorStart?: number;
+  readonly evidenceCursorEnd?: number;
+  readonly evidenceVersion?: string;
   readonly firstRun?: boolean;
 }
 
@@ -17,9 +22,12 @@ export function createWorkingContext(deps: {
   readonly readRecentPerception?: (userId: string) => Promise<string | null>;
 }): WorkingContext {
   return async (input) => {
+    const hasFixedPerception = input.recentPerception !== undefined;
     const [userProfile, recentPerception] = await Promise.all([
       deps.readUserProfile(input.userId),
-      deps.readRecentPerception?.(input.userId),
+      hasFixedPerception
+        ? Promise.resolve(input.recentPerception)
+        : deps.readRecentPerception?.(input.userId),
     ]);
 
     return {
@@ -29,7 +37,15 @@ export function createWorkingContext(deps: {
       trigger: input.trigger,
       pinnedFloor: input.floor,
       userProfile,
-      ...(deps.readRecentPerception ? { recentPerception } : {}),
+      ...(hasFixedPerception || deps.readRecentPerception ? { recentPerception } : {}),
+      ...(input.windowId !== undefined ? { windowId: input.windowId } : {}),
+      ...(input.evidenceCursorStart !== undefined
+        ? { evidenceCursorStart: input.evidenceCursorStart }
+        : {}),
+      ...(input.evidenceCursorEnd !== undefined
+        ? { evidenceCursorEnd: input.evidenceCursorEnd }
+        : {}),
+      ...(input.evidenceVersion !== undefined ? { evidenceVersion: input.evidenceVersion } : {}),
       ...(input.firstRun !== undefined ? { firstRun: input.firstRun } : {}),
     };
   };

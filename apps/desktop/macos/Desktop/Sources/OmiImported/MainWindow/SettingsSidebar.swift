@@ -79,9 +79,6 @@ public struct IntentiveExcludedApplication: Identifiable, Hashable, Sendable {
 @MainActor
 public protocol IntentiveSettingsPresenting: ObservableObject {
   var selectedSettingsSection: IntentiveSettingsSection { get set }
-  var screenCaptureEnabled: Bool { get set }
-  var audioRecordingEnabled: Bool { get set }
-  var systemAudioMode: IntentiveSystemAudioMode { get set }
   var notificationsAuthorized: Bool { get }
   var launchAtLogin: Bool { get set }
   var floatingBarShortcut: String { get set }
@@ -132,9 +129,6 @@ struct SettingsSearchItem: Identifiable {
   let section: IntentiveSettingsSection
 
   static let all: [SettingsSearchItem] = [
-    .init(id: "general.capture", name: "Screen Capture", subtitle: "Record your screen locally", keywords: ["monitor", "recording"], section: .general),
-    .init(id: "general.audio", name: "Audio Recording", subtitle: "Capture microphone context", keywords: ["microphone", "recording"], section: .general),
-    .init(id: "general.system-audio", name: "System Audio", subtitle: "Choose when other apps are recorded", keywords: ["meetings", "speaker"], section: .general),
     .init(id: "general.notifications", name: "Notifications", subtitle: "macOS notification permission", keywords: ["alerts", "permission"], section: .general),
     .init(id: "general.shortcut", name: "Ask Intentive Shortcut", subtitle: "Show the Floating Bar", keywords: ["keyboard", "hotkey"], section: .general),
     .init(id: "rewind.storage", name: "Storage", subtitle: "Local Rewind storage", keywords: ["disk", "frames"], section: .rewind),

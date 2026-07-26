@@ -58,7 +58,9 @@ for the authoritative list. In summary:
   Writer + Compute Instance Admin (v1) + Service Account User).
 - **Variables**: `AGENT_RUNTIME_PUBLIC_WS_URL`, `CONTROL_PLANE_INTERNAL_BASE_URL`,
   `NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`, `NEON_AUTH_AUDIENCE`,
-  `AGENT_RUNTIME_SECRET_NAMES`, and `DEPLOY_ENABLED`.
+  `AGENT_RUNTIME_SECRET_NAMES`, `DEPLOY_ENABLED`,
+  `DESKTOP_COACHING_V1_ENABLED`, and
+  `DESKTOP_COACHING_V1_FOUNDER_USER_IDS`.
 - **GCP, one-time**: Artifact Registry repo, the `agent-runtime` VM on
   Container-Optimized OS, the global HTTPS load balancer (forwarding rule, proxy,
   URL map, managed cert, backends, health checks), DNS `A` record, and the
@@ -90,6 +92,112 @@ pre-user operation per [`../../../docs/PRODUCTION.md` § Agent Runtime First Dep
    git fetch origin main
    git rev-parse origin/main
    ```
+
+### Desktop Performance Coach rollout
+
+The Coaching Window schema is additive, but the Runtime deploy does not apply
+it automatically. Keep `DESKTOP_COACHING_V1_ENABLED=false` and the founder
+allowlist empty while staging this release:
+
+1. Temporarily keep push deployment gated. Apply the schema-only
+   `migrations/0013_desktop_coaching_windows.sql` through the documented atomic
+   `pnpm migrate` path. Do not execute its statements individually; if the
+   atomic runner is unavailable, quiesce Runtime ingress for the whole
+   migration.
+2. Deploy the backward-compatible Runtime with the feature disabled. Require
+   the public `426`, both healthy backends, legacy chat, and legacy perception
+   ingestion before proceeding.
+3. Publish and verify the `intentive-runtime-bundle` Procedure Floor prompt plus the coaching eval
+   dataset. Set `DESKTOP_COACHING_V1_FOUNDER_USER_IDS` to the founder account's
+   UUID, then set `DESKTOP_COACHING_V1_ENABLED=true` and redeploy.
+4. Trace one synthetic start → active attestation → orientation → qualifying
+   evidence → matching-window intervention. Coaching delivery must stay
+   Desktop-only and must not use Control Plane push.
+5. Only after the projection-backed image is healthy, run
+   `node scripts/scrub-perception-ledger.mjs` without arguments. Review the
+   dry-run counts, then run it with `--apply`; do not apply if it reports an
+   unsafe missing projection.
+
+Emergency rollback sets `DESKTOP_COACHING_V1_ENABLED=false` first. Reinstall the
+prior Preview or roll the Runtime image back only if disabling the feature is
+insufficient. The additive schema remains in place.
+
+## Publish the Desktop coaching assets
+
+The `intentive-runtime-bundle` Procedure Floor prompt lives only in Langfuse Prompt Management. The
+`desktop-performance-coach-v1` evaluation dataset has a separate explicit
+release gate. Prompt creation and `production` label promotion happen
+deliberately in Langfuse before this validation step; neither runs implicitly in
+CI or from the Runtime deploy.
+
+First create a local plan from the required prompt names and the checked-in
+nine-item dataset:
+
+```bash
+pnpm --filter @intentive/agent-runtime langfuse:coaching-assets -- \
+  --evidence ../../.context/release-evidence/langfuse-coaching-assets-plan.json
+```
+
+The command defaults to plan mode. It does not need credentials, makes no
+network request, and emits only prompt names, dataset counts, deterministic
+item IDs, and SHA-256 fingerprints—not prompt or perception content.
+
+Only after the compatible Runtime is deployed with Desktop coaching disabled
+and the behavior promotion is approved, expose the Langfuse project API key
+pair and its explicit regional host:
+
+```bash
+export LANGFUSE_PUBLIC_KEY="<project public key>"
+export LANGFUSE_SECRET_KEY="<project secret key>"
+export LANGFUSE_BASE_URL="https://<regional Langfuse host>"
+
+pnpm --filter @intentive/agent-runtime langfuse:coaching-assets -- \
+  --apply \
+  --evidence ../../.context/release-evidence/langfuse-coaching-assets-apply.json
+```
+
+Do not pass credentials as command-line arguments or commit the evidence file.
+`--apply` fails closed without all three settings and an evidence path. It never
+creates or updates prompts. It first requires the non-empty, production-labeled
+`intentive-runtime-bundle` text prompt from Langfuse, then compares deterministic
+dataset items before writing. Finally it reads that bundle prompt and all nine
+items back and fails unless they remain available. Rerun the same command: the
+evidence must report one verified prompt, one unchanged dataset, nine unchanged
+items, and `remote_mutation: false`.
+
+The current official `langfuse-cli` OpenAPI wrapper cannot encode arbitrary
+dataset-item `input` / `expectedOutput` objects. The release command therefore
+isolates those documented dataset Public API writes in
+`scripts/lib/langfuse-public-api.mjs`.
+Any failed apply writes a content-free failure record to the requested evidence
+path and can be retried safely.
+
+## Run the provider-live coaching behavior gate
+
+The deterministic transformer and scorer tests prove the harness, not current
+model behavior. The Founder Preview rollout remains blocked until the
+provider-live gate has been run deliberately against the selected OpenRouter
+model and all nine synthetic cases pass. This command does not access Neon,
+Langfuse, or user data, and it does not mutate a production service:
+
+```bash
+export OPENROUTER_API_KEY="<OpenRouter key>"
+export RUNTIME_MODEL="<explicit OpenRouter model id>"
+
+pnpm --filter @intentive/agent-runtime eval:coaching -- \
+  --live \
+  --evidence ../../.context/release-evidence/coaching-provider-live.json
+```
+
+`--live`, both environment variables, and the evidence path are mandatory.
+Opening Orientation is evaluated as a direct reply. Monitoring cases expose
+only the Runtime's internally bound `post_message_back { body }` tool; window
+and evidence identities never enter model arguments. The gate covers healthy
+silence, a single concise sustained-drift nudge, correction without
+defensiveness, no repeated unchanged-evidence nudge, memory hygiene, and
+adversarial OCR/audio prompt injection. Its JSON evidence contains case IDs,
+counts, limits, and pass/fail assertions only—never prompts, fixture text, model
+responses, tool bodies, or memory bodies.
 
 ---
 

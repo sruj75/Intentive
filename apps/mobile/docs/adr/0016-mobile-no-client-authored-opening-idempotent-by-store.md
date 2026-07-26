@@ -1,6 +1,11 @@
 # Mobile never authors the opening; first-opening idempotency is a store consequence
 
-Status: accepted
+Status: superseded by Agent Runtime ADR-0036
+
+Since 2026-07-26, Session Start has no conversation side effect. Mobile still
+never authors a hardcoded Companion welcome, but the User may send first and the
+Agent Runtime's Interactive Turn produces the first Companion message. The
+historical decision below is retained for context.
 
 The Companion's first message (the opening) is authored by the **Agent Runtime**
 when the **Conversation Start Trigger** fires inside Session Start (Control Plane

@@ -55,6 +55,13 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     #endif
   }
 
+  /// macOS permission changes are commonly made while System Settings is
+  /// frontmost. Reattest the full Coaching Window grant set whenever Intentive
+  /// becomes active, regardless of whether its setup surface is visible.
+  func applicationDidBecomeActive(_ notification: Notification) {
+    model?.refreshCoachingPermissionsFromSystem(allowRequiredAudioRetry: true)
+  }
+
   /// A Dock click or `open` on an already-running instance reopens the window.
   /// In the menu-bar-only (background) state there is no Dock icon, so this fires
   /// only after the app has been promoted to `.regular`; it re-fronts the window.
@@ -65,19 +72,20 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     return true
   }
 
-  /// Slice 07 — quit path. Omi's `OmiApp.applicationWillTerminate` flushes the
-  /// Rewind chunk then marks clean shutdown. The Intentive equivalent routes
-  /// through `DesktopViewModel.requestQuit()`, which finalizes the active
-  /// video chunk and emits `session_end_marker` (reason `.quit`) before the OS
-  /// terminates the process.
-  func applicationWillTerminate(_ notification: Notification) {
-    model?.requestQuit()
+  /// Refuse termination until the active Coaching Window has been durably
+  /// ended. Sensor shutdown happens before the enqueue attempt, so a transport
+  /// outage stays private while a local persistence failure remains visible
+  /// and retryable instead of silently losing the end boundary.
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard let model else { return .terminateNow }
+    return model.requestQuit() ? .terminateNow : .terminateCancel
   }
 
   /// Wires the menu to the app's shared view model once SwiftUI has created it,
   /// and finalizes the launch presentation now that onboarding state is known.
   func attach(model: DesktopViewModel) {
     self.model = model
+    model.configureCoachingLaunch(background: launchedInBackground)
     resolveLaunchPresentation()
   }
 
@@ -136,32 +144,30 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
   // MARK: - NSMenuDelegate
 
-  /// Rebuilds the menu against current model state each time the user opens it,
-  /// so the capture toggles show the right verb and disable when their
-  /// permission is missing.
+  /// Rebuilds the menu against current model state each time the user opens it.
+  /// Coaching has one privacy boundary: Pause/Resume atomically controls every
+  /// sensing source instead of exposing independent run-state toggles.
   func menuNeedsUpdate(_ menu: NSMenu) {
     menu.removeAllItems()
     guard let model else { return }
 
-    let captureItem = NSMenuItem()
-    captureItem.view = makeToggleItemView(
-      title: "Screen Capture",
-      iconName: "rectangle.dashed.badge.record",
-      isOn: model.captureState.isRunning,
-      enabled: model.screenRecordingPermissionGranted,
-      action: #selector(toggleCapture(_:))
+    let coachingTitle = model.coachingState == .paused ? "Resume Coaching" : "Pause Coaching"
+    let coachingItem = NSMenuItem(
+      title: coachingTitle,
+      action: #selector(toggleCoaching),
+      keyEquivalent: ""
     )
-    menu.addItem(captureItem)
-
-    let audioItem = NSMenuItem()
-    audioItem.view = makeToggleItemView(
-      title: "Audio Recording",
-      iconName: "mic.fill",
-      isOn: model.passiveAudioRunning,
-      enabled: model.microphonePermissionStatus.isGranted,
-      action: #selector(toggleAudio(_:))
+    coachingItem.target = self
+    coachingItem.setAccessibilityIdentifier(
+      model.coachingState == .paused ? "menu-resume-coaching" : "menu-pause-coaching"
     )
-    menu.addItem(audioItem)
+    switch model.coachingState {
+    case .active, .locked, .paused:
+      coachingItem.isEnabled = true
+    case .inactive:
+      coachingItem.isEnabled = false
+    }
+    menu.addItem(coachingItem)
 
     // The floating bar is the sole conversation surface. Besides the global
     // hotkey and a Post-Message-Back auto-presenting it, this is the click
@@ -218,13 +224,13 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
   // MARK: - Actions
 
-  @objc private func toggleCapture(_ sender: NSSwitch) {
+  @objc private func toggleCoaching() {
     guard let model else { return }
-    model.setCaptureEnabled(sender.state == .on)
-  }
-
-  @objc private func toggleAudio(_ sender: NSSwitch) {
-    model?.setAmbientAudioCaptureEnabled(sender.state == .on)
+    if model.coachingState == .paused {
+      model.resumeCoaching()
+    } else {
+      model.pauseCoaching()
+    }
   }
 
   @objc private func openApp() {
@@ -270,38 +276,7 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   }
 
   @objc private func quitApp() {
-    // `applicationWillTerminate` handles the durable stop; `terminate` triggers it.
+    // `applicationShouldTerminate` performs and verifies the durable stop.
     NSApplication.shared.terminate(nil)
-  }
-
-  private func makeToggleItemView(
-    title: String,
-    iconName: String,
-    isOn: Bool,
-    enabled: Bool,
-    action: Selector
-  ) -> NSView {
-    let view = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 36))
-    view.setAccessibilityIdentifier("menu-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
-    let icon = NSImageView(frame: NSRect(x: 16, y: 10, width: 16, height: 16))
-    icon.image = NSImage(systemSymbolName: iconName, accessibilityDescription: title)
-    icon.contentTintColor = .secondaryLabelColor
-    view.addSubview(icon)
-    let label = NSTextField(labelWithString: title)
-    label.frame = NSRect(x: 40, y: 10, width: 150, height: 16)
-    label.font = .systemFont(ofSize: 13)
-    view.addSubview(label)
-    let toggle = NSSwitch()
-    toggle.controlSize = .small
-    toggle.state = isOn ? .on : .off
-    toggle.isEnabled = enabled
-    toggle.target = self
-    toggle.action = action
-    toggle.sizeToFit()
-    toggle.frame.origin = NSPoint(x: 260 - toggle.frame.width - 16, y: (36 - toggle.frame.height) / 2)
-    toggle.autoresizingMask = [.minXMargin]
-    toggle.setAccessibilityIdentifier("menu-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))-switch")
-    view.addSubview(toggle)
-    return view
   }
 }

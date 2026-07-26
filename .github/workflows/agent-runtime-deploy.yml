@@ -22,6 +22,12 @@ name: agent-runtime-deploy
 #   NEON_AUTH_JWKS_URL
 #   NEON_AUTH_ISSUER
 #   NEON_AUTH_AUDIENCE
+#   LANGFUSE_BASE_URL                    — explicit regional Prompt Management
+#                                          host (US: https://us.cloud.langfuse.com).
+#   DESKTOP_COACHING_V1_ENABLED          — "false" until the backward-compatible
+#                                          Runtime is healthy, then "true".
+#   DESKTOP_COACHING_V1_FOUNDER_USER_IDS — comma-separated UUID allowlist;
+#                                          keep empty outside founder rollout.
 #   AGENT_RUNTIME_SECRET_NAMES  — space-separated Secret Manager allowlist.
 #                                 Entries can be ENV_VAR=secret-name aliases,
 #                                 typically:
@@ -124,6 +130,9 @@ jobs:
           NEON_AUTH_JWKS_URL=${{ vars.NEON_AUTH_JWKS_URL }}
           NEON_AUTH_ISSUER=${{ vars.NEON_AUTH_ISSUER }}
           NEON_AUTH_AUDIENCE=${{ vars.NEON_AUTH_AUDIENCE }}
+          LANGFUSE_BASE_URL=${{ vars.LANGFUSE_BASE_URL || 'https://us.cloud.langfuse.com' }}
+          DESKTOP_COACHING_V1_ENABLED=${{ vars.DESKTOP_COACHING_V1_ENABLED || 'false' }}
+          DESKTOP_COACHING_V1_FOUNDER_USER_IDS=${{ vars.DESKTOP_COACHING_V1_FOUNDER_USER_IDS }}
           SENTRY_ENVIRONMENT=production
           SENTRY_RELEASE=agent-runtime@${{ env.IMAGE_TAG }}
           EOF

@@ -9,7 +9,9 @@ The always-alive, multi-tenant service that runs **Companion** behavior. Built o
 - Hosts every user's **Agent Instance** (logical, shared compute, scoped by `user_id`)
 - Accepts WebSocket connections from clients (Mobile, Desktop, future Android) per **Protocol** schemas in `packages/protocol/`
 - Runs DeepAgents loops, executes tools, manages compaction, owns memory
-- Drives **Cron** and **Heartbeat** triggers; decides when to **Post-Message-Back**
+- Drives **Cron** and active-window **Heartbeat** triggers; decides when to **Post-Message-Back**
+- Projects Desktop Coaching Windows and admits Opening/Monitoring work only for
+  a matching connected, actively attested Desktop
 - Owns **Conversation History** (server-truth) and runtime memory in Neon
 - Exposes **Internal API** (`POST /internal/sessions/start`) to the Control Plane
 
@@ -18,22 +20,43 @@ The always-alive, multi-tenant service that runs **Companion** behavior. Built o
 Each lives under `src/domains/<name>/{types,config,repo,service,runtime,ui}/`:
 
 - `gateway` — WebSocket server, connect handshake, JWT verification, protocol enforcement
-- `sessions` — the Per-User Channel: per-user serialization point for ordering, message idempotency, transactional ingress, queue-serialized Conversation History reads, optional **Interactive Turn** dispatch (`runTurn` after ingress commit; turn failures contained per ADR-0020), **Sensory Buffer** read projection (`repo/sensory-buffer.ts` over `runtime_events`), `onPerceptionArrived` for newly inserted perception events, and `onPerceptionProjected` for every committed perception projection (#38, ADR-0023)
-- `perception` — searchable Screen Memory projection and hybrid recall; embedding enrichment runs outside the Per-User Channel turn lane, invalidates vectors when embedding-relevant content changes, and compare-and-sets completed vectors against the exact projected content that produced them
+- `sessions` — the Per-User Channel: per-user serialization point for ordering,
+  idempotency, transactional ingress, queue-serialized Conversation History
+  reads, **Interactive Turn** dispatch, and lifecycle/perception hooks. The
+  legacy **Sensory Buffer** remains for non-coaching trigger families.
+- `perception` — expiring current Rewind projection and hybrid recall; detailed
+  evidence lives here rather than in the immutable event ledger. Embedding
+  enrichment runs outside the turn lane and compare-and-sets against the exact
+  projected content.
+- `coaching` — default-off founder feature gate, durable Coaching Window
+  projection, fixed privacy-safe recent-evidence reader, committed Opening
+  Orientation, and the single `MonitoringCoordinator`
 - `conversation` — durable Conversation History transcript (`conversation_messages`), Session Snapshot projection (`readSnapshot`), history backfill reads (ADR-0008)
 - `protocol` — inbound/outbound event handling (every event type in `packages/protocol/`)
-- `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), shared **Turn Execution** spine (`service/turn.ts` + `service/working-context.ts`; ADR-0031 resolves `floor()` and appends exactly one `runtime_turns` anchor per turn), **Interactive Turn** runner (`service/turn-runner.ts`), **Monitoring Turn** builder (`service/monitoring-turn.ts`), durable **Runtime Turn** insert queries (`repo/runtime-turns.ts`, migration `0003_runtime_turns.sql`)
-- `delivery` — shared delivery port, process-local connection registry consumer, Control Plane push handoff, Post-Message-Back service/tool, and `deliveries` ledger (ADR-0028)
+- `runtime` — DeepAgents adapter (`repo/deep-agents-adapter.ts`), shared **Turn Execution** spine (`service/turn.ts` + `service/working-context.ts`; ADR-0031 resolves `floor()`, revalidates coaching commits, and appends exactly one `runtime_turns` anchor per turn), **Interactive Turn** runner, **Monitoring Turn** builder, and durable Runtime Turn metadata
+- `delivery` — shared delivery port, process-local connection registry consumer,
+  ordinary interactive routing, matching-window Desktop-only coaching routing,
+  Post-Message-Back service/tool, and `deliveries` ledger. Coaching never falls
+  back to Control Plane push.
 - `cron` — scheduled-trigger primitive: `/crons/` filesystem cards backed by `cron_jobs`, poll scheduler, Per-User Channel committed enqueue, and `cron_runs`
-- `heartbeat` — interval proactivity trigger: computed zero-state poll loop that enqueues best-effort **Monitoring Turns** (ADR-0027)
+- `heartbeat` — 120-second active-window trailing floor over
+  `coaching_windows`; enqueues best-effort **Monitoring Turns**
 - `memory` — DeepAgents-native Per-User Memory: `StoreBackend` over Neon plus the `/memories/` VFS route and injected `USER.md` profile
-- `bundles` — Procedure Floor resolution and prompt assembly: Langfuse Prompt Management when configured, deploy-bundled fallback otherwise; injects optional `RECENT_PERCEPTION` when present
+- `bundles` — Procedure Floor resolution and prompt assembly: the canonical
+  Langfuse `intentive-runtime-bundle` `production` prompt is required and
+  validated fail-closed; coaching behavior lives in `AGENTS`, Monitoring Turns
+  additionally receive `HEARTBEAT`, and callers may supply fixed
+  `RECENT_PERCEPTION`
 - `internal` — server-to-server API surface (Session Start)
 
 ## Stack & deploy
 
 - Node / TypeScript + LangChain DeepAgents
-- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; requires `OPENROUTER_API_KEY`, Control Plane outbound push settings, and internal Runtime ingress settings; optional Langfuse and Sentry keys (`LANGFUSE_MODE`, `SENTRY_MODE`); observability bootstrap via `@intentive/providers/observability` at `main.ts` only (ADR-0030); see [`.env.example`](.env.example) and `test/config-env.test.mjs`
+- Boot config: `src/config/env.ts` (`loadConfig`) — the only place that parses `process.env`; requires `OPENROUTER_API_KEY`, Langfuse keys plus explicit regional base URL, Control Plane outbound push settings, and internal Runtime ingress settings; Sentry remains optional (`LANGFUSE_MODE` and `SENTRY_MODE` select integrations); observability bootstrap via `@intentive/providers/observability` at `main.ts` only (ADR-0030); see [`.env.example`](.env.example) and `test/config-env.test.mjs`
+- Desktop coaching is default-off and additionally founder-scoped by
+  `DESKTOP_COACHING_V1_ENABLED` and
+  `DESKTOP_COACHING_V1_FOUNDER_USER_IDS`. Lifecycle projection remains
+  backward-compatible while disabled.
 - Domain folders are **lazy** (ADR-0002): add `src/domains/<name>/…` only when implementing that slice, not empty layer trees upfront
 - Deploys to **Google Compute Engine** VM (Container-Optimized OS), one always-alive process serving all users
 - Reads Neon Postgres via runtime-owned schema (separate role from Control Plane); SQL migrations live in `migrations/`
@@ -56,7 +79,10 @@ LangChain Deep Agents production guide (load before changing memory, backends, o
 
 Agent-authored scheduling only — no shell cron CRUD tools ([ADR-0026](docs/adr/0026-agent-runtime-cron-is-deepagents-native-filesystem-card.md)).
 
-**Procedure Floor mirror:** user-facing cron authoring guidance lives at [`docs/cron-authoring.md`](docs/cron-authoring.md) (#85); promote it into Langfuse `companion-agents` — the deploy bundled fallback does not load it automatically.
+**Procedure Floor source:** user-facing cron authoring guidance lives at
+[`docs/cron-authoring.md`](docs/cron-authoring.md) (#85); deliberately promote
+it into the `AGENTS.md` section of the Langfuse `intentive-runtime-bundle`
+production prompt. No deploy-owned prompt copy exists.
 
 **Create or edit a job:** the agent writes a markdown **cron card** under `/crons/<name>.md` via built-in filesystem tools. Frontmatter: `name`, `schedule` (`at` / `every` / `cron` + expression), optional per-job `tz`, `status` (`active` | `cancelled`), shell-computed `next_fire_at`. Body: the fire prompt. Minimum interval: **5 minutes** (`config/schedule.ts`).
 
@@ -70,9 +96,23 @@ Agent-authored scheduling only — no shell cron CRUD tools ([ADR-0026](docs/adr
 
 ## Heartbeat operations
 
-`createHeartbeatScheduler` is **event-driven** (ADR-0035): an in-memory min-heap holds each user's due instant (`last_activity + floorMs`, flat 60-min floor per ADR-0027), one `setTimeout` wakes at the earliest. The Turn Execution spine's `onTurnCommitted` hook reschedules a user after every committed turn (ok or failed), and new-user bootstrap schedules the first heartbeat; a coarse 30-min resync reloads all users as a safety net. There is still **no heartbeat table or `next_fire_at` state** — the heap is a rebuildable cache and Neon remains the source of truth. Due users enqueue a best-effort **Monitoring Turn** on the Per-User Channel; duplicate/busy best-effort wakes collapse to one pending turn.
+`createHeartbeatScheduler` is **event-driven** (ADR-0035): an in-memory
+min-heap holds the due instant for active, oriented Coaching Windows, one
+`setTimeout` wakes at the earliest, and a coarse resync reloads active rows as a
+safety net. The 120-second floor is measured from the window start or last
+successful Monitoring Turn. There is no heartbeat table; `coaching_windows` is
+the durable source of truth. Due users enter the Per-User Channel's collapsible
+best-effort lane, then the `MonitoringCoordinator` revalidates the feature gate,
+active row, and live Desktop attestation before reading evidence or invoking the
+model.
 
-Monitoring Turns are silent by default. The **Turn Execution** spine records the `runtime_turns` anchor (ADR-0031); user-visible proactive output happens only if DeepAgents calls `post_message_back`, which persists a `conversation_messages(via_post_message_back = true)` row before delivery.
+Monitoring Turns are silent by default. The coordinator fixes the upper
+evidence cursor, reads at most 32 current records / 12,000 rendered characters
+for one window, and advances only through the last included event after success.
+User-visible output happens only if DeepAgents calls the content-only
+`post_message_back`; the shell internally binds window/evidence identity,
+revalidates before commit and delivery, persists Conversation History, and
+routes only to the matching Desktop.
 
 ## Guardrails specific to this deployable
 
@@ -81,5 +121,11 @@ Monitoring Turns are silent by default. The **Turn Execution** spine records the
 - **`tenant_id` does not exist in v1** — scope state by `user_id` alone. The User is the tenant.
 - **Inbound event set is fixed** to what `packages/protocol/` defines. Unknown events rejected.
 - **Push notifications go through the Control Plane.** Do not call Expo, APNs, or FCM directly. Invoke **Post-Message-Back**, which calls CP's `/internal/notifications/push`.
+- **Coaching delivery never pushes.** Opening Orientation and proactive
+  interventions require a non-null matching `window_id` and a live active
+  Desktop attestation. Never route them to Mobile or Control Plane push.
+- **Ledger bodies are metadata-only.** Detailed OCR/audio evidence belongs in
+  expiring `perception_records`; new `runtime_events` perception entries retain
+  dedupe/ordering metadata only.
 - **Multi-Tenant = shared compute, per-user isolation.** No per-user VM, no per-user process.
 - **Always-alive.** Never deploy this to a stateless platform (Cloud Run, Lambda, etc.). Long-running state, agent loops, cron, and heartbeat require persistence in process.

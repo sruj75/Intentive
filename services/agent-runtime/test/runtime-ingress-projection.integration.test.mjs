@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -25,15 +26,6 @@ import {
 
 const skip = !hasNeonBranchCreds();
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../migrations");
-const sessionsMigration = path.join(migrationsDir, "0001_sessions.sql");
-const conversationMigration = path.join(migrationsDir, "0002_conversation.sql");
-const runtimeTurnsMigration = path.join(migrationsDir, "0003_runtime_turns.sql");
-const runtimeTurnsBundleVersionMigration = path.join(
-  migrationsDir,
-  "0004_runtime_turns_bundle_version.sql",
-);
-const perceptionRecordsMigration = path.join(migrationsDir, "0010_perception_records.sql");
-const perceptionExpiryMigration = path.join(migrationsDir, "0011_perception_expiry_tombstone.sql");
 
 let branchId;
 let sql;
@@ -47,12 +39,12 @@ before(async () => {
   const branch = await createBranch();
   branchId = branch.branchId;
   await applySql(branch.connectionUri, "CREATE SCHEMA IF NOT EXISTS agent_runtime;");
-  await applyMigrationFile(branch.connectionUri, sessionsMigration);
-  await applyMigrationFile(branch.connectionUri, conversationMigration);
-  await applyMigrationFile(branch.connectionUri, runtimeTurnsMigration);
-  await applyMigrationFile(branch.connectionUri, runtimeTurnsBundleVersionMigration);
-  await applyMigrationFile(branch.connectionUri, perceptionRecordsMigration);
-  await applyMigrationFile(branch.connectionUri, perceptionExpiryMigration);
+  const migrationFiles = (await readdir(migrationsDir))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  for (const file of migrationFiles) {
+    await applyMigrationFile(branch.connectionUri, path.join(migrationsDir, file));
+  }
   sql = await connect(branch.connectionUri);
   ledger = createEventLedger(sql);
   conversation = createConversationRepo(sql);
@@ -176,6 +168,8 @@ test(
     const session = boundSession(randomUUID());
     const adapterCalls = [];
     const runTurn = createTurnRunner({
+      bootstrap: completedBootstrap(),
+      isBootstrapReplyEligible: async () => false,
       sql,
       adapter: {
         invoke: async (input) => {
@@ -246,6 +240,8 @@ test(
   async () => {
     const session = boundSession(randomUUID());
     const runTurn = createTurnRunner({
+      bootstrap: completedBootstrap(),
+      isBootstrapReplyEligible: async () => false,
       sql,
       adapter: {
         invoke: async () => {
@@ -289,7 +285,7 @@ test(
         model: "test-model",
         bundle_version: null,
         status: "failed",
-        error: "model unavailable",
+        error: "Error",
       },
     ]);
   },
@@ -366,6 +362,15 @@ function perceptionEvent(eventId, summary) {
     confidence: 0.91,
     expires_at: "2099-06-09T00:00:00.000Z",
     local_record_ref: `screen-memory://${eventId}`,
+  };
+}
+
+function completedBootstrap() {
+  return {
+    prepareInteractive: async () => ({
+      firstRun: false,
+      transitionOnSuccessQuery: () => null,
+    }),
   };
 }
 

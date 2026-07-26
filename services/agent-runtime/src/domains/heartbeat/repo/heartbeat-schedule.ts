@@ -6,7 +6,7 @@ export interface HeartbeatDueUser {
 
 export interface HeartbeatUserCandidate {
   readonly userId: string;
-  /** The activity timestamp the floor is measured from (last turn, else instance creation). */
+  /** The floor anchor: last judgment, otherwise server-side orientation completion. */
   readonly lastActivityAt: Date;
 }
 
@@ -18,23 +18,23 @@ export interface HeartbeatScheduleRepo {
 
 interface HeartbeatDueRow {
   readonly user_id: string;
-  readonly last_turn_at: string | null;
-  readonly created_at: string;
+  readonly last_activity_at: string;
 }
 
 export function createHeartbeatScheduleRepo(sql: Sql): HeartbeatScheduleRepo {
   return {
     async selectDue({ now, floorMs, limit }) {
       const rows = await sql<HeartbeatDueRow>`
-        SELECT ai.user_id, rt.last_turn_at, ai.created_at
-        FROM agent_runtime.agent_instances ai
-        LEFT JOIN (
-          SELECT user_id, max(created_at) AS last_turn_at
-          FROM agent_runtime.runtime_turns
-          GROUP BY user_id
-        ) rt ON rt.user_id = ai.user_id
-        WHERE ${now}::timestamptz - COALESCE(rt.last_turn_at, ai.created_at) >= (${floorMs}::text || ' milliseconds')::interval
-        ORDER BY COALESCE(rt.last_turn_at, ai.created_at) ASC
+        SELECT
+          user_id,
+          COALESCE(last_monitoring_turn_at, orientation_completed_at) AS last_activity_at
+        FROM agent_runtime.coaching_windows
+        WHERE ended_at IS NULL
+          AND orientation_status = 'completed'
+          AND ${now}::timestamptz
+            - COALESCE(last_monitoring_turn_at, orientation_completed_at)
+            >= (${floorMs}::text || ' milliseconds')::interval
+        ORDER BY COALESCE(last_monitoring_turn_at, orientation_completed_at) ASC
         LIMIT ${limit}
       `;
       return rows.map((row) => ({ userId: row.user_id }));
@@ -42,18 +42,17 @@ export function createHeartbeatScheduleRepo(sql: Sql): HeartbeatScheduleRepo {
 
     async listAll() {
       const rows = await sql<HeartbeatDueRow>`
-        SELECT ai.user_id, rt.last_turn_at, ai.created_at
-        FROM agent_runtime.agent_instances ai
-        LEFT JOIN (
-          SELECT user_id, max(created_at) AS last_turn_at
-          FROM agent_runtime.runtime_turns
-          GROUP BY user_id
-        ) rt ON rt.user_id = ai.user_id
-        ORDER BY COALESCE(rt.last_turn_at, ai.created_at) ASC
+        SELECT
+          user_id,
+          COALESCE(last_monitoring_turn_at, orientation_completed_at) AS last_activity_at
+        FROM agent_runtime.coaching_windows
+        WHERE ended_at IS NULL
+          AND orientation_status = 'completed'
+        ORDER BY COALESCE(last_monitoring_turn_at, orientation_completed_at) ASC
       `;
       return rows.map((row) => ({
         userId: row.user_id,
-        lastActivityAt: new Date(row.last_turn_at ?? row.created_at),
+        lastActivityAt: new Date(row.last_activity_at),
       }));
     },
   };

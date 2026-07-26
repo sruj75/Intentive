@@ -6,13 +6,33 @@ final class RuntimeBridgeTests: XCTestCase {
   func testFloatingBarControllerSubmitsTrimmedMessageToSharedStore() throws {
     let store = MessageStore()
     let runtime = RecordingFloatingBarRuntimeClient(messageStore: store)
-    let controller = FloatingBarController(runtimeClient: runtime, messageStore: store)
+    let controller = FloatingBarController(
+      runtimeClient: runtime,
+      messageStore: store,
+      isCoachingAvailable: { true }
+    )
 
     let message = try controller.submit("  hello from floating bar  ")
 
     XCTAssertEqual(runtime.userMessages, ["hello from floating bar"])
     XCTAssertEqual(message.body, "hello from floating bar")
     XCTAssertEqual(controller.messages.map(\.body), ["hello from floating bar"])
+  }
+
+  func testUnavailableFloatingConversationRejectsChatOnlyComposition() {
+    let store = MessageStore()
+    let runtime = RecordingFloatingBarRuntimeClient(messageStore: store)
+    let controller = FloatingBarController(
+      runtimeClient: runtime,
+      messageStore: store,
+      isCoachingAvailable: { false }
+    )
+
+    XCTAssertThrowsError(try controller.submit("ordinary reply")) { error in
+      XCTAssertEqual(error as? FloatingBarSubmissionError, .coachingUnavailable)
+    }
+    XCTAssertTrue(runtime.userMessages.isEmpty)
+    XCTAssertTrue(controller.messages.isEmpty)
   }
 
   func testFloatingBarControllerRejectsEmptyDraft() {
@@ -25,6 +45,49 @@ final class RuntimeBridgeTests: XCTestCase {
     }
     XCTAssertTrue(runtime.userMessages.isEmpty)
     XCTAssertTrue(controller.messages.isEmpty)
+  }
+
+  func testFloatingBarControllerReportsOnlySuccessfulUserReplies() throws {
+    let store = MessageStore()
+    let runtime = RecordingFloatingBarRuntimeClient(messageStore: store)
+    var submittedCount = 0
+    let controller = FloatingBarController(
+      runtimeClient: runtime,
+      messageStore: store,
+      onSubmitted: { submittedCount += 1 }
+    )
+
+    XCTAssertThrowsError(try controller.submit("   "))
+    _ = try controller.submit("A real reply")
+
+    XCTAssertEqual(submittedCount, 1)
+  }
+
+  func testPausedFloatingConversationRemainsReadableButRequiresResumeBeforeSending() {
+    let store = MessageStore()
+    store.appendCompanion(
+      CompanionMessage(
+        messageId: "visible-history",
+        body: "The transcript remains readable.",
+        emittedAt: "2026-07-26T08:00:00.000Z"
+      )
+    )
+    let runtime = RecordingFloatingBarRuntimeClient(messageStore: store)
+    var resumed = false
+    let controller = FloatingBarController(
+      runtimeClient: runtime,
+      messageStore: store,
+      isCoachingPaused: { true },
+      resumeCoaching: { resumed = true }
+    )
+
+    XCTAssertEqual(controller.messages.map(\.body), ["The transcript remains readable."])
+    XCTAssertThrowsError(try controller.submit("send while paused")) { error in
+      XCTAssertEqual(error as? FloatingBarSubmissionError, .coachingPaused)
+    }
+    controller.resumeCoaching()
+    XCTAssertTrue(resumed)
+    XCTAssertTrue(runtime.userMessages.isEmpty)
   }
 
   func testFloatingConversationProjectsRuntimeHistoryForCloseAndReopen() {
@@ -87,6 +150,34 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertEqual(socket.sentTypes, ["connect", "user_message"])
   }
 
+  func testUserMessageCarriesTheActiveCoachingWindow() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(
+      socket: socket,
+      clientVersion: "test",
+      activeCoachingWindowId: { "11111111-1111-4111-8111-111111111111" }
+    )
+    try adapter.connect(
+      routing: RoutingInfo(
+        webSocketURL: URL(string: "wss://runtime.test")!,
+        runtimeJWT: "jwt"
+      )
+    )
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil))
+      )
+    )
+
+    _ = try adapter.sendUserMessage("My important outcome is the release.")
+
+    let userMessage = try XCTUnwrap(socket.sentObjects.last)
+    XCTAssertEqual(
+      userMessage["window_id"] as? String,
+      "11111111-1111-4111-8111-111111111111"
+    )
+  }
+
   func testHelloOkPreservesPendingLocalUserMessagesMissingFromServerWindow() throws {
     let store = MessageStore()
     let pending = UserMessage(
@@ -131,6 +222,23 @@ final class RuntimeBridgeTests: XCTestCase {
     XCTAssertEqual(connect["client_kind"] as? String, "desktop")
     XCTAssertEqual(connect["client_version"] as? String, "desktop-test")
     XCTAssertEqual(connect["client_tz"] as? String, "Asia/Kolkata")
+    XCTAssertNil(connect["capabilities"])
+  }
+
+  func testFounderPreviewConnectAdvertisesDesktopCoachingCapability() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(
+      socket: socket,
+      clientVersion: "desktop-preview",
+      clientCapabilities: [.desktopCoachingV1]
+    )
+
+    try adapter.connect(
+      routing: RoutingInfo(webSocketURL: URL(string: "wss://runtime.test")!, runtimeJWT: "runtime-jwt")
+    )
+
+    let connect = try XCTUnwrap(socket.sentObjects.first)
+    XCTAssertEqual(connect["capabilities"] as? [String], ["desktop_coaching_v1"])
   }
 
   func testGenerationGuardIgnoresStaleEvents() throws {
@@ -200,6 +308,7 @@ final class RuntimeBridgeTests: XCTestCase {
 
     let companion = CompanionMessage(
       messageId: "pmb-1",
+      windowId: "11111111-1111-4111-8111-111111111111",
       body: "runtime nudge",
       emittedAt: Date().protocolTimestamp,
       viaPostMessageBack: true
@@ -208,6 +317,144 @@ final class RuntimeBridgeTests: XCTestCase {
 
     XCTAssertEqual(received.map(\.messageId), ["pmb-1"])
     XCTAssertEqual(received.first?.viaPostMessageBack, true)
+    XCTAssertTrue(adapter.messageStore.messages.isEmpty)
+    XCTAssertFalse(socket.sentTypes.contains("delivery_ack"))
+  }
+
+  func testWindowBoundLiveCompanionDelegatesEveryAttemptWithoutReceiptAcknowledgement() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    var received: [CompanionMessage] = []
+    adapter.onCompanionMessage = { received.append($0) }
+    try adapter.connect(
+      routing: RoutingInfo(
+        webSocketURL: URL(string: "wss://runtime.test")!,
+        runtimeJWT: "jwt"
+      )
+    )
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil))
+      )
+    )
+    let companion = CompanionMessage(
+      messageId: "opening:dedupe-window",
+      windowId: "11111111-1111-4111-8111-111111111111",
+      body: "One visible opening",
+      emittedAt: Date().protocolTimestamp,
+      viaPostMessageBack: true
+    )
+
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(companion))
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(companion))
+
+    XCTAssertEqual(
+      received.map(\.messageId),
+      ["opening:dedupe-window", "opening:dedupe-window"]
+    )
+    XCTAssertTrue(adapter.messageStore.messages.isEmpty)
+    XCTAssertEqual(
+      socket.sentTypes.filter { $0 == "delivery_ack" }.count,
+      0
+    )
+  }
+
+  func testSnapshotCompanionDoesNotSuppressWindowBoundLiveEffectRetries() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    var received: [CompanionMessage] = []
+    adapter.onCompanionMessage = { received.append($0) }
+    try adapter.connect(
+      routing: RoutingInfo(
+        webSocketURL: URL(string: "wss://runtime.test")!,
+        runtimeJWT: "jwt"
+      )
+    )
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        HelloOk(
+          sessionSnapshot: SessionSnapshot(
+            messages: [
+              SessionMessage(
+                messageId: "opening:snapshot-window",
+                author: .companion,
+                body: "Already restored",
+                at: "2026-07-26T08:00:00.000Z",
+                viaPostMessageBack: true
+              )
+            ],
+            beforeCursor: nil
+          )
+        )
+      )
+    )
+    let retry = CompanionMessage(
+      messageId: "opening:snapshot-window",
+      windowId: "22222222-2222-4222-8222-222222222222",
+      body: "Already restored",
+      emittedAt: "2026-07-26T08:00:00.000Z",
+      viaPostMessageBack: true
+    )
+
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(retry))
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(retry))
+
+    XCTAssertEqual(
+      received.map(\.messageId),
+      ["opening:snapshot-window", "opening:snapshot-window"]
+    )
+    XCTAssertEqual(
+      adapter.messageStore.messages.map(\.id),
+      ["opening:snapshot-window"]
+    )
+    XCTAssertEqual(
+      socket.sentTypes.filter { $0 == "delivery_ack" }.count,
+      0
+    )
+  }
+
+  func testSnapshotOrdinaryReplyThenLiveDuplicateRemainsTranscriptDeduped() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    var received: [CompanionMessage] = []
+    adapter.onCompanionMessage = { received.append($0) }
+    try adapter.connect(
+      routing: RoutingInfo(
+        webSocketURL: URL(string: "wss://runtime.test")!,
+        runtimeJWT: "jwt"
+      )
+    )
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        HelloOk(
+          sessionSnapshot: SessionSnapshot(
+            messages: [
+              SessionMessage(
+                messageId: "ordinary-snapshot-reply",
+                author: .companion,
+                body: "Already restored",
+                at: "2026-07-26T08:00:00.000Z",
+                viaPostMessageBack: false
+              )
+            ],
+            beforeCursor: nil
+          )
+        )
+      )
+    )
+
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        CompanionMessage(
+          messageId: "ordinary-snapshot-reply",
+          body: "Already restored",
+          emittedAt: "2026-07-26T08:00:00.000Z"
+        )
+      )
+    )
+
+    XCTAssertTrue(received.isEmpty)
+    XCTAssertEqual(socket.sentTypes.filter { $0 == "delivery_ack" }.count, 1)
   }
 
   func testCompanionMessageAcknowledgesAfterLiveRenderSchedulingHandler() throws {
@@ -225,16 +472,66 @@ final class RuntimeBridgeTests: XCTestCase {
     try adapter.handleSocketEvent(
       ProtocolEventCodec.encode(
         CompanionMessage(
-          messageId: "pmb-render-order",
+          messageId: "ordinary-render-order",
           body: "Schedule me first",
-          emittedAt: Date().protocolTimestamp,
-          viaPostMessageBack: true
+          emittedAt: Date().protocolTimestamp
         )
       )
     )
 
     XCTAssertFalse(sentTypesObservedByHandler.contains("delivery_ack"))
     XCTAssertEqual(socket.sentTypes.last, "delivery_ack")
+  }
+
+  func testWindowBoundEffectAcknowledgesOnlyAfterMatchingWindowPresentation() throws {
+    let socket = FakeRuntimeSocket()
+    let adapter = RuntimeAdapter(socket: socket, clientVersion: "test")
+    let overlay = RecordingOverlaySink()
+    let windowId = "33333333-3333-4333-8333-333333333333"
+    var activeWindowId: String? = windowId
+    var pendingEffects: [CompanionMessage] = []
+    adapter.onCompanionMessage = { pendingEffects.append($0) }
+    let runner = EffectRunner(
+      overlay: overlay,
+      runtimeClient: adapter,
+      activeWindowId: { activeWindowId }
+    )
+    try adapter.connect(
+      routing: RoutingInfo(
+        webSocketURL: URL(string: "wss://runtime.test")!,
+        runtimeJWT: "jwt"
+      )
+    )
+    try adapter.handleSocketEvent(
+      ProtocolEventCodec.encode(
+        HelloOk(sessionSnapshot: SessionSnapshot(messages: [], beforeCursor: nil))
+      )
+    )
+    let companion = CompanionMessage(
+      messageId: "opening:window-race",
+      windowId: windowId,
+      body: "What important outcome should we protect?",
+      emittedAt: Date().protocolTimestamp,
+      viaPostMessageBack: true
+    )
+
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(companion))
+    activeWindowId = nil
+    XCTAssertFalse(try runner.handle(pendingEffects.removeFirst()))
+    XCTAssertTrue(overlay.proactiveMessages.isEmpty)
+    XCTAssertEqual(socket.sentTypes.filter { $0 == "delivery_ack" }.count, 0)
+
+    activeWindowId = windowId
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(companion))
+    XCTAssertTrue(try runner.handle(pendingEffects.removeFirst()))
+    try adapter.handleSocketEvent(ProtocolEventCodec.encode(companion))
+    XCTAssertFalse(try runner.handle(pendingEffects.removeFirst()))
+
+    XCTAssertEqual(
+      overlay.proactiveMessages,
+      ["What important outcome should we protect?"]
+    )
+    XCTAssertEqual(socket.sentTypes.filter { $0 == "delivery_ack" }.count, 2)
   }
 
   func testPresenceUpdateMatchesStrictProtocolShape() throws {

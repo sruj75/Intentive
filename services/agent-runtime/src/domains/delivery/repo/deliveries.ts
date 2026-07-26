@@ -6,10 +6,11 @@ export function createDeliveriesRepo(sql: Sql): DeliveriesRepo {
     recordQuery(record: DeliveryRecord) {
       return sql<{ id: string }>`
         INSERT INTO agent_runtime.deliveries
-          (user_id, message_id, path, client_kind, status, error, attempted_at)
+          (user_id, message_id, window_id, path, client_kind, status, error, attempted_at)
         VALUES (
           ${record.userId},
           ${record.messageId},
+          ${record.windowId},
           ${record.path},
           ${record.clientKind},
           ${record.status},

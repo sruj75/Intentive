@@ -1,11 +1,10 @@
-import type { FloorSource, PinnedProcedureFloor, ProcedureFloorDocument } from "../types/floor.js";
-
-const promptNames: Record<ProcedureFloorDocument, string> = {
-  SOUL: "companion-soul",
-  AGENTS: "companion-agents",
-  BOOTSTRAP: "companion-bootstrap",
-  HEARTBEAT: "companion-heartbeat",
-};
+import {
+  PROCEDURE_FLOOR_DOCUMENTS,
+  PROCEDURE_FLOOR_PROMPT_NAME,
+  type FloorSource,
+  type PinnedProcedureFloor,
+  type ProcedureFloorDocument,
+} from "../types/floor.js";
 
 interface LangfusePrompt {
   readonly name?: string;
@@ -28,22 +27,16 @@ export function createLangfuseFloorSource(params: {
 }): FloorSource {
   return {
     async fetch(label) {
-      const entries = await Promise.all(
-        Object.entries(promptNames).map(async ([document, name]) => {
-          const prompt = await params.client.getPrompt(name, undefined, { label, type: "text" });
-          return [document as ProcedureFloorDocument, prompt] as const;
-        }),
-      );
-
-      const documents = Object.fromEntries(
-        entries.map(([document, prompt]) => [document, promptText(prompt)]),
-      ) as PinnedProcedureFloor["documents"];
-      const langfusePrompts = entries.map(([, prompt]) => parsePromptHandle(prompt.toJSON()));
+      const prompt = await params.client.getPrompt(PROCEDURE_FLOOR_PROMPT_NAME, undefined, {
+        label,
+        type: "text",
+      });
+      const documents = parseProcedureFloorBundle(promptText(prompt));
 
       return {
-        version: resolvedVersion(entries),
+        version: String(prompt.version ?? "unknown"),
         documents,
-        langfusePrompts,
+        langfusePrompts: [parsePromptHandle(prompt.toJSON())],
       };
     },
   };
@@ -55,12 +48,33 @@ function promptText(prompt: LangfusePrompt): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? "");
 }
 
-function resolvedVersion(
-  entries: readonly (readonly [ProcedureFloorDocument, LangfusePrompt])[],
-): string {
-  return entries
-    .map(([document, prompt]) => `${document}:${String(prompt.version ?? "unknown")}`)
-    .join(",");
+export function parseProcedureFloorBundle(content: string): PinnedProcedureFloor["documents"] {
+  const marker = /^## File: (SOUL|AGENTS|BOOTSTRAP|HEARTBEAT)\.md\s*$/gm;
+  const matches = [...content.matchAll(marker)];
+  const documents = new Map<ProcedureFloorDocument, string>();
+
+  for (const [index, match] of matches.entries()) {
+    const document = match[1] as ProcedureFloorDocument;
+    if (documents.has(document)) {
+      throw new Error(`Langfuse Procedure Floor contains duplicate ${document}.md.`);
+    }
+    const bodyStart = (match.index ?? 0) + match[0].length;
+    const bodyEnd = matches[index + 1]?.index ?? content.length;
+    const body = content.slice(bodyStart, bodyEnd).trim();
+    if (!body) {
+      throw new Error(`Langfuse Procedure Floor contains an empty ${document}.md.`);
+    }
+    documents.set(document, body);
+  }
+
+  const missing = PROCEDURE_FLOOR_DOCUMENTS.filter((document) => !documents.has(document));
+  if (missing.length > 0) {
+    throw new Error(
+      `Langfuse Procedure Floor is missing required documents: ${missing.join(", ")}.`,
+    );
+  }
+
+  return Object.fromEntries(documents) as PinnedProcedureFloor["documents"];
 }
 
 function parsePromptHandle(handle: unknown): unknown {

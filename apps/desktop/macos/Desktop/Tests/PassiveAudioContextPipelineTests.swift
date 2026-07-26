@@ -33,7 +33,7 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     let store = InMemoryScreenMemoryStore()
     let coordinator = AmbientAudioCoordinator(
       audioMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
     let pipeline = PassiveAudioContextPipeline(
       coordinator: coordinator,

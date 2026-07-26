@@ -11,6 +11,7 @@ import {
 const PERMITTED = {
   type: "perception_event",
   event_id: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
+  window_id: "11111111-1111-4111-8111-111111111111",
   source_client: "desktop",
   captured_at: "2026-07-05T10:00:00.000Z",
   period_start: "2026-07-05T09:59:00.000Z",
@@ -59,6 +60,13 @@ test("a permitted screen record projects its full permitted field set", () => {
   assert.equal(record.windowTitle, "plan.md");
   assert.equal(record.ocrText, "Eight release blockers");
   assert.equal(record.contentRedacted, false);
+  assert.equal(record.windowId, "11111111-1111-4111-8111-111111111111");
+});
+
+test("legacy perception without a Coaching Window remains projectable but unscoped", () => {
+  const { window_id: _windowId, ...legacy } = PERMITTED;
+
+  assert.equal(toPerceptionRecord("user-1", legacy).windowId, null);
 });
 
 test("a redacted screen record withholds title, OCR, and never embeds secret text", () => {

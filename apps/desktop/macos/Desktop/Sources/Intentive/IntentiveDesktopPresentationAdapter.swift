@@ -61,34 +61,6 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
     }
   }
 
-  var screenCaptureEnabled: Bool {
-    get { model.compilerSettings.captureEnabled }
-    set { model.setCaptureEnabled(newValue) }
-  }
-
-  var audioRecordingEnabled: Bool {
-    get { model.compilerSettings.ambientAudioCaptureEnabled }
-    set { model.setAmbientAudioCaptureEnabled(newValue) }
-  }
-
-  var systemAudioMode: IntentiveSystemAudioMode {
-    get {
-      switch model.utilitySettings.systemAudioMode {
-      case .never: .never
-      case .onlyDuringMeetings: .meetings
-      case .always: .always
-      }
-    }
-    set {
-      let mode: SystemAudioCaptureMode = switch newValue {
-      case .never: .never
-      case .meetings: .onlyDuringMeetings
-      case .always: .always
-      }
-      model.setSystemAudioMode(mode)
-    }
-  }
-
   var notificationsAuthorized: Bool { notificationsAuthorizedState }
   var launchAtLogin: Bool {
     get { model.utilitySettings.launchAtLogin }
@@ -336,12 +308,14 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
   func refreshSetupPermissions() {
     model.refreshOnboardingPermissions()
     accessibilityGrantedState = AXIsProcessTrusted()
+    model.setAccessibilityPermissionGranted(accessibilityGrantedState)
   }
   func requestMicrophone() { Task { await model.requestMicrophonePermission() } }
   func openMicrophoneSettings() { model.openMicrophoneSettings() }
   func requestAccessibility() {
     let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
     accessibilityGrantedState = AXIsProcessTrustedWithOptions(options)
+    model.setAccessibilityPermissionGranted(accessibilityGrantedState)
   }
   func openAccessibilitySettings() {
     guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
