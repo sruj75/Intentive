@@ -771,7 +771,9 @@ public struct ProtocolEventCodec {
         type: type,
         allowed: Set(RuntimeIngressAck.CodingKeys.allCases.map(\.stringValue))
       )
-      return .runtimeIngressAck(try decoder.decode(RuntimeIngressAck.self, from: data))
+      let acknowledgement = try decoder.decode(RuntimeIngressAck.self, from: data)
+      try validateUUID(acknowledgement.ingressId, field: "ingress_id")
+      return .runtimeIngressAck(acknowledgement)
     case "runtime_error":
       try validateAllowedKeys(
         data: data,

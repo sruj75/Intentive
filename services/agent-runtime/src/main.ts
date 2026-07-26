@@ -345,9 +345,6 @@ const perceptionIngressHooks = createPerceptionIngressHooks({
   loadEmbeddingCandidate: (expectedRecord) =>
     retryTransientDb(() => perceptionRecords.readEmbeddingCandidate(expectedRecord)),
   storeEmbedding: (input) => retryTransientDb(() => perceptionRecords.storeEmbedding(input)),
-  // Monitoring is coordinated with the committed projection below so it keeps
-  // the exact window/event identity. Embedding remains an independent hook.
-  enqueueMonitoring: () => false,
   onEmbeddingError: (error, context) => {
     log.error("perception.embedding_failed", error, {
       user_id: context.userId,

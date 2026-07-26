@@ -23,6 +23,20 @@ All notable changes to the Desktop Client. Format follows [Keep a Changelog](htt
   enable switches with Pause/Resume Coaching while preserving macOS permission,
   exclusion, retention, and deletion controls.
 
+### Fixed
+
+- **Coaching Window identity and menu state** — newly minted window UUIDs use
+  PostgreSQL's lowercase canonical form, and the status menu preserves explicit
+  disabled states for inactive Coaching and unavailable updates.
+- **Foreground permission preparation and quiet login launch** — onboarding now
+  completes disposable direct-screen and System Audio authorization probes
+  before Coaching can start, enables Launch at Login by default, and migrates
+  the legacy sensing-process login item to an entitlement-free one-shot helper
+  under a fresh versioned ServiceManagement identity. The legacy Intentive-only
+  registration is retired after privacy shutdown without resetting unrelated
+  background items. Later login launches remain menu-bar-only until the user
+  explicitly opens Intentive.
+
 ## [0.1.1] - 2026-07-23
 
 First public stable Desktop release: a Developer ID signed, notarized, and stapled

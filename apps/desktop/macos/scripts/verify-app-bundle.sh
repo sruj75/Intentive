@@ -66,7 +66,10 @@ else
   POSTHOG_PROJECT_KEY="${INTENTIVE_POSTHOG_PROJECT_KEY:-phc_desktop_bundle_smoke}"
   POSTHOG_HOST="${INTENTIVE_POSTHOG_HOST:-https://us.i.posthog.com}"
 fi
-LAUNCH_AGENT_LABEL="${INTENTIVE_LAUNCH_AGENT_LABEL:-$BUNDLE_ID.login}"
+LAUNCH_AGENT_LABEL="${INTENTIVE_LAUNCH_AGENT_LABEL:-$BUNDLE_ID.login-launcher-v1}"
+LAUNCH_AGENT_PLIST_NAME="$BUNDLE_ID.login-launcher-v1.plist"
+LEGACY_LAUNCH_AGENT_LABEL="$BUNDLE_ID.login"
+LEGACY_LAUNCH_AGENT_PLIST_NAME="com.heyintentive.desktop.login.plist"
 # Silero VAD weights ship in the IntentiveDesktopNativeAdapters target bundle.
 NATIVE_ADAPTERS_BUNDLE_NAME="IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle"
 INTENTIVE_UI_BUNDLE_NAME="IntentiveDesktop_Intentive.bundle"
@@ -129,6 +132,7 @@ fi
 
 PLIST="$APP_BUNDLE/Contents/Info.plist"
 EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Intentive"
+LOGIN_LAUNCHER="$APP_BUNDLE/Contents/MacOS/IntentiveLoginLauncher"
 APP_ICON="$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 NATIVE_ADAPTERS_BUNDLE="$APP_BUNDLE/Contents/Resources/$NATIVE_ADAPTERS_BUNDLE_NAME"
 INTENTIVE_UI_BUNDLE="$APP_BUNDLE/Contents/Resources/$INTENTIVE_UI_BUNDLE_NAME"
@@ -136,10 +140,13 @@ MENU_BAR_ICON="$INTENTIVE_UI_BUNDLE/IntentiveMenuBarIcon.png"
 VAD_MODEL="$NATIVE_ADAPTERS_BUNDLE/silero_vad.onnx"
 SPARKLE_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 SENTRY_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sentry.framework"
-LAUNCH_AGENT_PLIST="$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist"
+LAUNCH_AGENT_PLIST="$APP_BUNDLE/Contents/Library/LaunchAgents/$LAUNCH_AGENT_PLIST_NAME"
+LEGACY_LAUNCH_AGENT_PLIST="$APP_BUNDLE/Contents/Library/LaunchAgents/$LEGACY_LAUNCH_AGENT_PLIST_NAME"
 
 [[ -f "$PLIST" ]] || fail "Info.plist missing"
 [[ -x "$EXECUTABLE" ]] || fail "executable missing or not executable: $EXECUTABLE"
+[[ -x "$LOGIN_LAUNCHER" ]] \
+  || fail "login launcher missing or not executable: $LOGIN_LAUNCHER"
 [[ -s "$APP_ICON" ]] || fail "AppIcon.icns missing or empty"
 [[ -d "$NATIVE_ADAPTERS_BUNDLE" ]] || fail "native adapters bundle missing: $NATIVE_ADAPTERS_BUNDLE"
 "$VAD_MODEL_VERIFIER" "$VAD_MODEL" >/dev/null \
@@ -148,8 +155,14 @@ LAUNCH_AGENT_PLIST="$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.d
 [[ -d "$SPARKLE_FRAMEWORK" ]] || fail "Sparkle.framework missing"
 [[ -d "$SENTRY_FRAMEWORK" ]] || fail "Sentry.framework missing"
 [[ -f "$LAUNCH_AGENT_PLIST" ]] || fail "bundled LaunchAgent plist missing"
+[[ -f "$LEGACY_LAUNCH_AGENT_PLIST" ]] \
+  || fail "targeted legacy LaunchAgent retirement plist missing"
 
 plutil -lint "$PLIST" >/dev/null
+plutil -lint "$LAUNCH_AGENT_PLIST" >/dev/null \
+  || fail "bundled LaunchAgent plist is invalid"
+plutil -lint "$LEGACY_LAUNCH_AGENT_PLIST" >/dev/null \
+  || fail "targeted legacy LaunchAgent retirement plist is invalid"
 
 assert_eq "CFBundleExecutable" "Intentive"
 assert_eq "CFBundleIdentifier" "$BUNDLE_ID"
@@ -164,6 +177,26 @@ assert_eq "CFBundleURLTypes:0:CFBundleURLSchemes:0" "$AUTH_CALLBACK_SCHEME"
   || fail "LaunchAgent Label does not match $LAUNCH_AGENT_LABEL"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :AssociatedBundleIdentifiers:0' "$LAUNCH_AGENT_PLIST")" == "$BUNDLE_ID" ]] \
   || fail "LaunchAgent bundle identity does not match $BUNDLE_ID"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :BundleProgram' "$LAUNCH_AGENT_PLIST")" == "Contents/MacOS/IntentiveLoginLauncher" ]] \
+  || fail "LaunchAgent must run the one-shot login launcher"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$LAUNCH_AGENT_PLIST")" == "Contents/MacOS/IntentiveLoginLauncher" ]] \
+  || fail "LaunchAgent ProgramArguments must invoke the one-shot login launcher"
+if /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" \
+  "$LAUNCH_AGENT_PLIST" >/dev/null 2>&1; then
+  fail "LaunchAgent must not pass arguments directly to the one-shot login launcher"
+fi
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$LAUNCH_AGENT_PLIST")" == "true" ]] \
+  || fail "LaunchAgent must run once when the user session loads"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :Label' "$LEGACY_LAUNCH_AGENT_PLIST")" == "$LEGACY_LAUNCH_AGENT_LABEL" ]] \
+  || fail "legacy retirement plist must target only $LEGACY_LAUNCH_AGENT_LABEL"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :AssociatedBundleIdentifiers:0' "$LEGACY_LAUNCH_AGENT_PLIST")" == "$BUNDLE_ID" ]] \
+  || fail "legacy retirement plist must remain associated with $BUNDLE_ID"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :BundleProgram' "$LEGACY_LAUNCH_AGENT_PLIST")" == "Contents/MacOS/IntentiveLoginLauncher" ]] \
+  || fail "legacy retirement plist must never restore the sensing executable"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$LEGACY_LAUNCH_AGENT_PLIST")" == "Contents/MacOS/IntentiveLoginLauncher" ]] \
+  || fail "legacy retirement plist must resolve the one-shot login launcher"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$LEGACY_LAUNCH_AGENT_PLIST")" == "false" ]] \
+  || fail "legacy retirement plist must be non-starting"
 assert_optional_plist "IntentiveControlPlaneURL" "$CONTROL_PLANE_URL"
 assert_optional_plist "IntentiveHostedAuthURL" "$HOSTED_AUTH_URL"
 assert_optional_plist "IntentiveAuthTokenExchangeURL" "$AUTH_TOKEN_EXCHANGE_URL"
@@ -205,6 +238,38 @@ assert_nonempty_plist "NSAudioCaptureUsageDescription"
 
 if plutil -p "$PLIST" | grep -Eq "com[.]omi|Omi|omi-computer"; then
   fail "Info.plist contains stale Omi identity"
+fi
+
+APP_SIGNING_DETAILS="$(codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1 || true)"
+APP_TEAM_ID="$(
+  printf '%s\n' "$APP_SIGNING_DETAILS" \
+    | awk -F= '/^TeamIdentifier=/{print $2; exit}'
+)"
+if [[ -n "$APP_TEAM_ID" && "$APP_TEAM_ID" != "not set" ]]; then
+  codesign --verify --strict --verbose=2 "$LOGIN_LAUNCHER" >/dev/null 2>&1 \
+    || fail "signed login launcher failed code-signature verification"
+
+  LOGIN_LAUNCHER_SIGNING_DETAILS="$(
+    codesign -dv --verbose=4 "$LOGIN_LAUNCHER" 2>&1 || true
+  )"
+  LOGIN_LAUNCHER_TEAM_ID="$(
+    printf '%s\n' "$LOGIN_LAUNCHER_SIGNING_DETAILS" \
+      | awk -F= '/^TeamIdentifier=/{print $2; exit}'
+  )"
+  [[ "$LOGIN_LAUNCHER_TEAM_ID" == "$APP_TEAM_ID" ]] \
+    || fail "login launcher TeamIdentifier does not match the containing app"
+  printf '%s\n' "$LOGIN_LAUNCHER_SIGNING_DETAILS" \
+    | grep -q '^Runtime Version=' \
+    || fail "signed login launcher is missing hardened runtime"
+
+  if ! LOGIN_LAUNCHER_ENTITLEMENTS="$(
+    codesign -d --entitlements :- "$LOGIN_LAUNCHER" 2>/dev/null
+  )"; then
+    fail "could not read signed login launcher entitlements"
+  fi
+  if printf '%s\n' "$LOGIN_LAUNCHER_ENTITLEMENTS" | grep -q '<key>'; then
+    fail "login launcher must not carry entitlements, including capture entitlements"
+  fi
 fi
 
 echo "Desktop bundle smoke passed: $APP_BUNDLE"

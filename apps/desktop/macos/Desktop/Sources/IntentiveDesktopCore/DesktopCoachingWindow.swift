@@ -56,6 +56,15 @@ public enum DesktopCoachingWindowState: Equatable, Sendable {
       return nil
     }
   }
+
+  /// The Coaching Window that may currently reveal proactive output.
+  ///
+  /// A locked window retains its durable identity so unlock can reattest the
+  /// same window, but it is not active delivery presence.
+  public var activeWindowId: String? {
+    guard case .active(let windowId) = self else { return nil }
+    return windowId
+  }
 }
 
 public enum DesktopCoachingWindowInput: Equatable, Sendable {
@@ -320,7 +329,10 @@ public final class DesktopCoachingWindowCoordinator {
     }
     guard state.windowId == nil else { return }
 
-    let windowId = makeUUID()
+    // PostgreSQL canonicalizes UUID text to lowercase. Keep the wire identity
+    // canonical from its source so live connection state and durable rows use
+    // byte-identical Coaching Window identifiers.
+    let windowId = makeUUID().lowercased()
     let startedAt = now().protocolTimestamp
     try effects.enqueueWindowStarted(
       CoachingWindowStarted(windowId: windowId, startedAt: startedAt, reason: reason)

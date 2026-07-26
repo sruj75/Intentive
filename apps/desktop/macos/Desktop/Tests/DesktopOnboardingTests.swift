@@ -3,10 +3,18 @@ import IntentiveDesktopCore
 import XCTest
 
 final class DesktopOnboardingTests: XCTestCase {
-  func testSignInIsOutsideSixStepRailAndRetainedOrderIsSemantic() {
+  func testSignInIsOutsideSevenStepRailAndRetainedOrderIsSemantic() {
     XCTAssertEqual(
       DesktopOnboardingStep.allCases,
-      [.trust, .screenRecording, .microphone, .accessibility, .floatingBarShortcut, .floatingBarDemo]
+      [
+        .trust,
+        .screenRecording,
+        .microphone,
+        .systemAudio,
+        .accessibility,
+        .floatingBarShortcut,
+        .floatingBarDemo,
+      ]
     )
     XCTAssertNil(requirements(isAuthenticated: false).nextIncompleteStep)
     XCTAssertEqual(requirements(isAuthenticated: true).nextIncompleteStep, .trust)
@@ -126,6 +134,7 @@ final class DesktopOnboardingTests: XCTestCase {
       .completing(.trust)
       .decidingScreenRecording(screen)
       .decidingMicrophone(microphone)
+      .decidingSystemAudio(.granted)
       .completing(.accessibility)
       .completing(.floatingBarShortcut)
       .completing(.floatingBarDemo)

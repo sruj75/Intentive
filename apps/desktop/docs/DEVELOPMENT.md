@@ -65,6 +65,13 @@ does not prove that capture works.
 
 ### Screen Recording
 
+macOS exposes ordinary Screen Recording through CoreGraphics, but presents its
+separate direct/private-picker ScreenCaptureKit consent only when capture is
+attempted. The visible onboarding screen step therefore requires both the
+ordinary grant and one successful, discarded `SCScreenshotManager` frame before
+it can continue. Generic activation, wake, unlock, reconnect, and login paths
+must never run that probe.
+
 Acceptance requires the production `NativeScreenCaptureSource` to return a frame:
 
 1. authenticate, complete every setup grant, then use **Resume Coaching** in the
@@ -104,11 +111,39 @@ one in-flight model load; multiple simultaneous downloads/loads are a bug.
 
 ### System audio
 
+Core Audio taps have no public preflight API. The visible onboarding System
+Audio step starts one disposable tap, waits for real PCM, physically tears the
+tap down, and only then persists the preparation result. A failed tap clears
+that result and returns to setup; background lifecycle reattestation never
+retries it.
+
 System audio runs only while a Coaching Window is eligible and active; the
 Founder Preview has no normal per-source or meeting-gated capture policy. Prove
 system audio separately from microphone VAD because system audio intentionally
 does not pass through the microphone voice gate. Pause, lock, sleep, sign-out,
 quit, and required-permission loss must stop it synchronously.
+
+### Launch at Login
+
+Launch at Login is on by default for new profiles, and finishing onboarding
+confirms the registration before setup is committed. Unversioned legacy
+preferences migrate to On because the old format did not distinguish its
+implicit Off default from a user choice; once the current preference version is
+persisted, an explicit Off remains Off. ServiceManagement owns a one-shot
+`IntentiveLoginLauncher`, not the sensing process: registration may bootstrap
+the helper immediately, but it exits while the foreground app is already
+running. On a real login it starts `Intentive --background`, which stays
+menu-bar-only while authentication restores. A completed local profile
+suppresses onboarding during that provisional authentication state. Opening
+Intentive from the status menu, Finder, or Spotlight promotes that same process
+to a regular Dock app and fronts Settings without replaying hosted
+authentication.
+
+The helper-backed item uses the fresh versioned label and plist name
+`<bundle-id>.login-launcher-v1`. A non-starting legacy plist remains in the
+bundle only so graceful quit can unregister the old `<bundle-id>.login` item
+after Coaching and every sensor have shut down. Do not use `sfltool resetbtm`;
+it resets unrelated apps' background items.
 
 ## Deterministic gates
 

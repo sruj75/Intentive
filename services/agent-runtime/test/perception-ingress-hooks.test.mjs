@@ -29,7 +29,6 @@ test("embedding enrichment cannot consume or delay the perception Monitoring Tur
   const embeddingGate = new Promise((resolve) => {
     releaseEmbedding = resolve;
   });
-  let channel;
   const hooks = createPerceptionIngressHooks({
     embedder: {
       modelId: "test-model",
@@ -48,24 +47,24 @@ test("embedding enrichment cannot consume or delay the perception Monitoring Tur
     storeEmbedding: async (input) => {
       seen.push(["stored", input]);
     },
-    enqueueMonitoring: (userId) => {
-      return channel.enqueueBestEffort(userId, () => {
-        seen.push(["monitoring", userId]);
-      });
-    },
     onEmbeddingError: (error) => {
       throw error;
     },
   });
   const event = perceptionEvent();
-  channel = createPerUserChannel({
+  const channel = createPerUserChannel({
     sql: { transaction: async () => [[{ id: "ledger_1" }]] },
     ledger: { recordQuery: () => Promise.resolve([{ id: "ledger_1" }]) },
     conversation: {
       readSnapshot: async () => ({ messages: [], before_cursor: null }),
     },
     project: () => [],
-    ...hooks,
+    onPerceptionProjected: hooks.onPerceptionProjected,
+    onPerceptionArrived: (seenSession) => {
+      channel.enqueueBestEffort(seenSession.userId, () => {
+        seen.push(["monitoring", seenSession.userId]);
+      });
+    },
   });
 
   await channel.accept(session, event);
@@ -96,7 +95,6 @@ test("a permitted retry that no longer matches a redacted projection never reach
       return null;
     },
     storeEmbedding: async () => assert.fail("stale input must not store an embedding"),
-    enqueueMonitoring: () => false,
     onEmbeddingError: (error) => {
       throw error;
     },
@@ -126,7 +124,6 @@ test("a duplicate whose projection was tombstoned never reaches the embedder", a
       return null;
     },
     storeEmbedding: async () => assert.fail("deleted input must not store an embedding"),
-    enqueueMonitoring: () => false,
     onEmbeddingError: (error) => {
       throw error;
     },
@@ -182,7 +179,6 @@ test("a structured redaction committed during provider I/O rejects the stale vec
       }
       storeFinished();
     },
-    enqueueMonitoring: () => false,
     onEmbeddingError: (error) => {
       embeddingError = error;
       storeFinished();

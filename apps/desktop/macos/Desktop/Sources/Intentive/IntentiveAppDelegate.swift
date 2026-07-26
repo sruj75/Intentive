@@ -1,4 +1,5 @@
 import AppKit
+import IntentiveDesktopCore
 import SwiftUI
 
 /// Owns the app's `NSStatusBar` menu.
@@ -19,10 +20,14 @@ import SwiftUI
 final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var statusItem: NSStatusItem?
   private weak var model: DesktopViewModel?
+  private var makePrimaryWindowContent: (@MainActor () -> AnyView)?
+  private var primaryWindowController: NSWindowController?
+  private var didPlacePrimaryWindowForFirstShow = false
 
   /// True when the app was auto-launched at login by the bundled LaunchAgent,
   /// which passes `--background` (see ADR 0011). Drives the menu-bar-only path.
   private var launchedInBackground = false
+  private var didFinishLaunching = false
   /// The menu-bar-app launch decision runs exactly once, either from the DEBUG
   /// acceptance carve-out below or when the view model attaches.
   private var didResolveLaunchPresentation = false
@@ -38,28 +43,15 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
     // onboarding state. `openApp()` and `applicationShouldHandleReopen` promote
     // on demand.
     NSApp.setActivationPolicy(.accessory)
-
-    #if DEBUG
-    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
-      // The AX driver expects a normal windowed app; force the window forward and
-      // pin the presentation decision so the later model attach does not re-hide it.
-      didResolveLaunchPresentation = true
-      NSApp.setActivationPolicy(.regular)
-      NSApp.activate(ignoringOtherApps: true)
-      Task { @MainActor in
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.forEach { $0.makeKeyAndOrderFront(nil) }
-      }
-    }
-    #endif
+    didFinishLaunching = true
+    resolveLaunchPresentation()
   }
 
   /// macOS permission changes are commonly made while System Settings is
   /// frontmost. Reattest the full Coaching Window grant set whenever Intentive
   /// becomes active, regardless of whether its setup surface is visible.
   func applicationDidBecomeActive(_ notification: Notification) {
-    model?.refreshCoachingPermissionsFromSystem(allowRequiredAudioRetry: true)
+    model?.refreshCoachingPermissionsFromSystem()
   }
 
   /// A Dock click or `open` on an already-running instance reopens the window.
@@ -83,9 +75,12 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
 
   /// Wires the menu to the app's shared view model once SwiftUI has created it,
   /// and finalizes the launch presentation now that onboarding state is known.
-  func attach(model: DesktopViewModel) {
+  func attach(
+    model: DesktopViewModel,
+    makePrimaryWindowContent: @escaping @MainActor () -> AnyView
+  ) {
     self.model = model
-    model.configureCoachingLaunch(background: launchedInBackground)
+    self.makePrimaryWindowContent = makePrimaryWindowContent
     resolveLaunchPresentation()
   }
 
@@ -96,12 +91,29 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   /// can front it again. Every other launch (first run / onboarding incomplete, or
   /// a user Finder/Dock launch) shows the window with a Dock icon.
   private func resolveLaunchPresentation() {
-    guard !didResolveLaunchPresentation, let model else { return }
+    guard didFinishLaunching, !didResolveLaunchPresentation, let model else { return }
     didResolveLaunchPresentation = true
-    let onboardingComplete = !model.showOnboarding
-    if launchedInBackground && onboardingComplete {
+    // Parse `--background` before the hosted view's launch task can reconcile
+    // the Coaching Window. Otherwise login launch durably records app_launch.
+    model.configureCoachingLaunch(background: launchedInBackground)
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
+      // The AX driver expects a normal windowed app. Resolve this only after
+      // both launch arguments and the eagerly supplied window factory exist.
+      presentPrimaryWindow()
+      return
+    }
+    #endif
+    let decision = DesktopLaunchPresentationPolicy.initialDecision(
+      launchedInBackground: launchedInBackground,
+      onboardingProgress: model.onboardingProgress
+    )
+    if decision == .menuBarOnly {
       NSApp.setActivationPolicy(.accessory)
-      NSApp.windows.forEach { $0.orderOut(nil) }
+      // Materialize the retained hosting window without showing it. Its SwiftUI
+      // launch task restores Runtime and Coaching while AX still sees zero
+      // standard windows and the Dock remains hidden.
+      ensurePrimaryWindow()?.orderOut(nil)
     } else {
       presentPrimaryWindow()
     }
@@ -112,8 +124,48 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
   /// window-showing launch paths.
   private func presentPrimaryWindow() {
     NSApp.setActivationPolicy(.regular)
+    guard let window = ensurePrimaryWindow() else { return }
     NSApp.activate(ignoringOtherApps: true)
-    NSApp.windows.forEach { $0.makeKeyAndOrderFront(nil) }
+    primaryWindowController?.showWindow(nil)
+    window.makeKeyAndOrderFront(nil)
+    placePrimaryWindowForFirstVisibleShowIfNeeded(window)
+  }
+
+  func showPrimaryWindow() {
+    presentPrimaryWindow()
+  }
+
+  private func ensurePrimaryWindow() -> NSWindow? {
+    if let window = primaryWindowController?.window {
+      return window
+    }
+    guard let makePrimaryWindowContent else { return nil }
+
+    let hostingController = NSHostingController(rootView: makePrimaryWindowContent())
+    let window = NSWindow(contentViewController: hostingController)
+    window.title = "Intentive"
+    window.identifier = NSUserInterfaceItemIdentifier("intentive-primary-window")
+    window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+    window.minSize = NSSize(width: 940, height: 620)
+    window.setContentSize(NSSize(width: 1120, height: 720))
+    window.tabbingMode = .disallowed
+    window.isReleasedWhenClosed = false
+    primaryWindowController = NSWindowController(window: window)
+    return window
+  }
+
+  private func placePrimaryWindowForFirstVisibleShowIfNeeded(_ window: NSWindow) {
+    guard !didPlacePrimaryWindowForFirstShow, let visibleFrame = NSScreen.main?.visibleFrame else {
+      return
+    }
+    window.setFrame(
+      DesktopPrimaryWindowPlacement.frameForFirstVisibleShow(
+        windowFrame: window.frame,
+        visibleFrame: visibleFrame
+      ),
+      display: false
+    )
+    didPlacePrimaryWindowForFirstShow = true
   }
 
   private func setUpStatusItem() {
@@ -124,13 +176,18 @@ final class IntentiveAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegat
       button.setAccessibilityIdentifier("menu-status-item")
     }
     let menu = NSMenu()
+    menu.autoenablesItems = false
     menu.delegate = self
     statusItem.menu = menu
     self.statusItem = statusItem
   }
 
   private func intentiveMenuBarImage() -> NSImage? {
-    guard let url = Bundle.module.url(forResource: "IntentiveMenuBarIcon", withExtension: "png"),
+    let resources =
+      DesktopBundleResourceResolver.packagedBundle(
+        named: "IntentiveDesktop_Intentive.bundle"
+      ) ?? Bundle.module
+    guard let url = resources.url(forResource: "IntentiveMenuBarIcon", withExtension: "png"),
       let image = NSImage(contentsOf: url)
     else {
       return nil

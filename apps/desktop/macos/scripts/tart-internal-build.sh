@@ -120,10 +120,24 @@ build_app() {
   signing_identity="${INTENTIVE_INTERNAL_SIGNING_IDENTITY:--}"
   if [[ "$signing_identity" == "-" ]]; then
     warn "Ad-hoc signing internal build. This is suitable for a fresh VM permission flow, not Gatekeeper/notarization validation."
-    codesign --force --deep --sign - "$app_bundle"
+    for framework in \
+      "$app_bundle/Contents/Frameworks/Sparkle.framework" \
+      "$app_bundle/Contents/Frameworks/Sentry.framework"; do
+      codesign --force --deep --sign - "$framework"
+    done
+    codesign --force --sign - \
+      "$app_bundle/Contents/MacOS/IntentiveLoginLauncher"
+    codesign --force --sign - "$app_bundle"
   else
     log "Signing internal build with '$signing_identity'..."
-    codesign --force --deep --options runtime --sign "$signing_identity" "$app_bundle"
+    for framework in \
+      "$app_bundle/Contents/Frameworks/Sparkle.framework" \
+      "$app_bundle/Contents/Frameworks/Sentry.framework"; do
+      codesign --force --deep --options runtime --sign "$signing_identity" "$framework"
+    done
+    codesign --force --options runtime --sign "$signing_identity" \
+      "$app_bundle/Contents/MacOS/IntentiveLoginLauncher"
+    codesign --force --options runtime --sign "$signing_identity" "$app_bundle"
   fi
   codesign --verify --deep --strict --verbose=2 "$app_bundle" >&2
   log "Verifying exact internal artifact $app_bundle..."

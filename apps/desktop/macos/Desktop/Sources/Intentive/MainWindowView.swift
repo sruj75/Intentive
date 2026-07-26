@@ -4,7 +4,6 @@ import IntentiveDesktopCore
 import IntentiveDesktopNativeAdapters
 import IntentiveDesktopNativeAssets
 import IntentiveDesktopPresentation
-import ServiceManagement
 import SwiftUI
 
 #if DEBUG
@@ -106,6 +105,7 @@ final class DesktopViewModel: ObservableObject {
   @Published var selected: DesktopSection = .general
   @Published var query = ""
   @Published var status: String
+  @Published var setupCompletionError: String?
   @Published var effectLog: [String] = []
   @Published var captureState: ScreenMemoryCaptureLifecycleState = .disabled
   var captureRunning: Bool { captureState.isRunning }
@@ -113,7 +113,9 @@ final class DesktopViewModel: ObservableObject {
   @Published var excludedAppsText: String
   @Published var privacySnapshot: ScreenMemoryPrivacySnapshot
   @Published var screenRecordingPermissionGranted: Bool
+  @Published var directScreenCapturePermissionGranted: Bool
   @Published var microphonePermissionStatus: DesktopMicrophonePermissionStatus
+  @Published var systemAudioPermissionGranted: Bool
   @Published var runtimeState: DesktopRuntimeSessionState = .signedOut
   @Published var onboardingProgress: DesktopOnboardingProgress
   @Published var onboardingRetentionPeriod: ScreenMemoryRetentionPeriod = .sevenDays
@@ -129,9 +131,14 @@ final class DesktopViewModel: ObservableObject {
   private let settingsStore: any ScreenMemorySettingsStore
   private let privacyPolicy: ScreenMemoryPrivacyPolicy
   private let permissionGateway: any ScreenRecordingPermissionGateway
+  private let directScreenCapturePermissionGateway:
+    any DesktopDirectScreenCapturePermissionGateway
   private let microphonePermissionGateway: any DesktopMicrophonePermissionGateway
+  private let systemAudioPermissionGateway: any DesktopSystemAudioPermissionGateway
+  private let captureAuthorizationCoordinator: DesktopCaptureAuthorizationCoordinator
   private let onboardingStore: any DesktopOnboardingProgressStore
   private let utilitySettingsCoordinator: DesktopUtilitySettingsCoordinator
+  private let launchAtLoginRegistrar: any DesktopLaunchAtLoginRegistering
   private var publicReleaseOperations: DesktopPublicReleaseOperations!
   #if DEBUG
   private var automationBridge: DesktopAutomationBridge?
@@ -157,6 +164,10 @@ final class DesktopViewModel: ObservableObject {
   private var coachingSettingsBeforePerception: CompilerSettings?
   private var coachingSystemAudioModeBeforePerception: SystemAudioCaptureMode?
   private var unavailableRequiredAudioSources = Set<PassiveAudioSource>()
+  private var directScreenCaptureProbeInFlight = false
+  private var systemAudioProbeInFlight = false
+  private var directScreenCaptureProbeTask: Task<Void, Never>?
+  private var systemAudioProbeTask: Task<Void, Never>?
   private var coachingStartedAtByWindow: [String: Date] = [:]
   private var lastCoachingPromptShownAt: Date?
   private var coachingWindowsWithFirstReply = Set<String>()
@@ -170,7 +181,7 @@ final class DesktopViewModel: ObservableObject {
   private lazy var runtimeEffectRunner = EffectRunner(
     overlay: FloatingBarOverlaySink(manager: floatingBarManager),
     runtimeClient: runtime,
-    activeWindowId: { [weak self] in self?.coachingState.windowId }
+    activeWindowId: { [weak self] in self?.coachingState.activeWindowId }
   )
   private lazy var runtimeSession = DesktopRuntimeSessionCoordinator(
     auth: DesktopRuntimeConfiguration.authProvider(),
@@ -178,7 +189,11 @@ final class DesktopViewModel: ObservableObject {
     device: ClientDeviceService(deviceId: DesktopRuntimeConfiguration.deviceFingerprint),
     runtime: runtime,
     initialAccountState: composition.authentication.accountState,
-    capturePermissionGranted: { [weak self] in self?.screenRecordingPermissionGranted ?? false }
+    capturePermissionGranted: { [weak self] in
+      guard let self else { return false }
+      return self.screenRecordingPermissionGranted
+        && self.directScreenCapturePermissionGranted
+    }
   )
   private lazy var floatingBarController = FloatingBarController(
     runtimeClient: runtime,
@@ -211,7 +226,11 @@ final class DesktopViewModel: ObservableObject {
       return AcceptanceScreenCaptureSource()
     }
     #endif
-    return NativeScreenCaptureSource()
+    return NativeScreenCaptureSource(
+      onAuthorizationFailure: { @MainActor [weak self] in
+        self?.handleDirectScreenCaptureAuthorizationFailure()
+      }
+    )
   }()
   private lazy var capture = CaptureCoordinator(
     compiler: compiler,
@@ -354,7 +373,11 @@ final class DesktopViewModel: ObservableObject {
       settingsProvider: { [weak self] in
         self?.compilerSettings ?? CompilerSettings(captureEnabled: false)
       },
-      permissionProvider: { [weak self] in self?.screenRecordingPermissionGranted ?? false },
+      permissionProvider: { [weak self] in
+        guard let self else { return false }
+        return self.screenRecordingPermissionGranted
+          && self.directScreenCapturePermissionGranted
+      },
       captureBoundaryEnabled: usesCaptureBoundary
     )
     controller.onStateChange = { [weak self] state in
@@ -577,36 +600,56 @@ final class DesktopViewModel: ObservableObject {
   }
 
   var onboardingRequirements: DesktopOnboardingRequirements {
+    makeOnboardingRequirements(progress: onboardingProgress)
+  }
+
+  private func makeOnboardingRequirements(
+    progress: DesktopOnboardingProgress
+  ) -> DesktopOnboardingRequirements {
     let gate = runtimeSession.accountState?.nextGate
     return DesktopOnboardingRequirements(
-      progress: onboardingProgress,
+      progress: progress,
       isAuthenticated: isOnboardingAuthenticated,
       crossClientSetupComplete: gate == nil || gate == .capturePermissionSetup,
-      screenRecordingPermissionGranted: screenRecordingPermissionGranted,
+      screenRecordingPermissionGranted: screenRecordingPermissionGranted
+        && directScreenCapturePermissionGranted,
       microphonePermissionGranted: microphonePermissionStatus.isGranted,
-      systemAudioPermissionGranted: screenRecordingPermissionGranted
-        && requiredAudioSourceIsAvailable(.systemAudio),
+      systemAudioPermissionGranted: requiredAudioSourceIsAvailable(.systemAudio),
       accessibilityPermissionGranted: accessibilityPermissionGranted
     )
   }
 
   private var coachingEligibility: DesktopCoachingEligibility {
     DesktopCoachingEligibility(
-      isAuthenticated: isOnboardingAuthenticated,
+      isAuthenticated: isOnboardingAuthenticated
+        && hasVerifiedDurableCoachingProfile,
       onboardingComplete: onboardingProgress.completed
         && DesktopOnboardingStep.allCases.allSatisfy(onboardingProgress.isReviewed),
-      screenRecordingGranted: screenRecordingPermissionGranted,
+      screenRecordingGranted: screenRecordingPermissionGranted
+        && directScreenCapturePermissionGranted,
       microphoneGranted: microphonePermissionStatus.isGranted
         && requiredAudioSourceIsAvailable(.microphone),
       accessibilityGranted: accessibilityPermissionGranted,
-      systemAudioGranted: screenRecordingPermissionGranted
-        && requiredAudioSourceIsAvailable(.systemAudio)
+      systemAudioGranted: requiredAudioSourceIsAvailable(.systemAudio)
     )
   }
 
   private var isOnboardingAuthenticated: Bool {
     if case .signedIn = composition.authentication { return true }
-    return runtimeSession.accountState != nil
+    if runtimeSession.accountState != nil { return true }
+    // A completed local profile with a successfully restored credential stays
+    // signed in for presentation while the Control Plane is unavailable. This
+    // keeps a login launch hidden without authorizing Coaching: eligibility
+    // separately requires a verified identity and mounted durable profile.
+    return onboardingProgress.completed
+      && runtimeSession.hasAuthenticatedCredential
+  }
+
+  private var hasVerifiedDurableCoachingProfile: Bool {
+    DesktopCoachingProfileReadiness.isReady(
+      verifiedUserID: runtimeSession.verifiedUserID,
+      mountedDurableProfileUserID: screenMemory.durableProfileUserID
+    )
   }
 
   init(
@@ -615,19 +658,34 @@ final class DesktopViewModel: ObservableObject {
     settingsStore: any ScreenMemorySettingsStore = UserDefaultsScreenMemorySettingsStore(),
     permissionGateway: any ScreenRecordingPermissionGateway =
       NativeScreenRecordingPermissionGateway(),
+    directScreenCapturePermissionGateway: any DesktopDirectScreenCapturePermissionGateway =
+      NativeDirectScreenCapturePermissionGateway(),
     microphonePermissionGateway: any DesktopMicrophonePermissionGateway =
       NativeMicrophonePermissionGateway(),
+    systemAudioPermissionGateway: any DesktopSystemAudioPermissionGateway =
+      NativeSystemAudioPermissionGateway(),
+    captureAuthorizationStore: any DesktopCaptureAuthorizationStore =
+      UserDefaultsDesktopCaptureAuthorizationStore(),
     onboardingStore: any DesktopOnboardingProgressStore =
       UserDefaultsDesktopOnboardingProgressStore(),
     utilitySettingsStore: any DesktopUtilitySettingsStore =
-      UserDefaultsDesktopUtilitySettingsStore()
+      UserDefaultsDesktopUtilitySettingsStore(),
+    launchAtLoginRegistrar: any DesktopLaunchAtLoginRegistering =
+      NativeDesktopLaunchAtLoginRegistrar()
   ) {
     self.launchConfiguration = launchConfiguration
     self.composition = composition
     self.settingsStore = settingsStore
     self.permissionGateway = permissionGateway
+    self.directScreenCapturePermissionGateway = directScreenCapturePermissionGateway
     self.microphonePermissionGateway = microphonePermissionGateway
+    self.systemAudioPermissionGateway = systemAudioPermissionGateway
+    let captureAuthorizationCoordinator = DesktopCaptureAuthorizationCoordinator(
+      store: captureAuthorizationStore
+    )
+    self.captureAuthorizationCoordinator = captureAuthorizationCoordinator
     self.onboardingStore = onboardingStore
+    self.launchAtLoginRegistrar = launchAtLoginRegistrar
     let utilitySettingsCoordinator = DesktopUtilitySettingsCoordinator(store: utilitySettingsStore)
     self.utilitySettingsCoordinator = utilitySettingsCoordinator
     let loadedUtilitySettings = utilitySettingsCoordinator.settings
@@ -650,6 +708,12 @@ final class DesktopViewModel: ObservableObject {
       usesCaptureBoundary && !isAcceptance
       ? microphonePermissionGateway.authorizationStatus()
       : Self.microphonePermissionStatus(from: composition.permissions.microphone)
+    let directScreenCapturePermissionGranted =
+      isAcceptance
+      || captureAuthorizationCoordinator.state.directScreenCaptureGranted
+    let systemAudioPermissionGranted =
+      isAcceptance
+      || captureAuthorizationCoordinator.state.systemAudioGranted
     let accessibilityPermissionGranted =
       isAcceptance ? true : AXIsProcessTrusted()
     settings.captureEnabled = loadedUtilitySettings.screenCaptureEnabled
@@ -660,7 +724,9 @@ final class DesktopViewModel: ObservableObject {
     )
     privacySnapshot = privacyPolicy.snapshot
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
+    self.directScreenCapturePermissionGranted = directScreenCapturePermissionGranted
     self.microphonePermissionStatus = microphonePermissionStatus
+    self.systemAudioPermissionGranted = systemAudioPermissionGranted
     self.accessibilityPermissionGranted = accessibilityPermissionGranted
     onboardingProgress = progress
     let launchUserID: String?
@@ -677,15 +743,16 @@ final class DesktopViewModel: ObservableObject {
       onboardingRetentionPeriod = retention
     }
     showOnboarding =
-      composition.setupSurface == .onboarding
-      && !DesktopOnboardingRequirements(
+      DesktopInitialOnboardingPresentationPolicy.shouldPresent(
+        setupSurface: composition.setupSurface,
         progress: progress,
         isAuthenticated: launchUserID != nil,
-        screenRecordingPermissionGranted: screenRecordingPermissionGranted,
+        screenRecordingPermissionGranted: screenRecordingPermissionGranted
+          && directScreenCapturePermissionGranted,
         microphonePermissionGranted: microphonePermissionStatus.isGranted,
-        systemAudioPermissionGranted: screenRecordingPermissionGranted,
+        systemAudioPermissionGranted: systemAudioPermissionGranted,
         accessibilityPermissionGranted: accessibilityPermissionGranted
-      ).isComplete
+      )
 
     let initialScreenMemory = Self.makeScreenMemoryStore(
       userID: launchUserID,
@@ -698,6 +765,7 @@ final class DesktopViewModel: ObservableObject {
     )
     screenMemoryProfileUserID = initialScreenMemoryProfileID
     status = initialScreenMemory.status
+    setupCompletionError = nil
     selected = DesktopSection(loadedUtilitySettings.selectedSection)
     configureRuntimeSocketCallbacks()
     floatingBarManager.configure(controller: floatingBarController)
@@ -1090,12 +1158,12 @@ final class DesktopViewModel: ObservableObject {
           case .systemSleep:
             try coachingWindow.handle(.systemSleep)
           case .systemWake:
-            refreshCoachingPermissionsFromSystem(allowRequiredAudioRetry: true)
+            refreshCoachingPermissionsFromSystem()
             try coachingWindow.handle(.systemWake)
           case .screenLock:
             try coachingWindow.handle(.screenLocked)
           case .screenUnlock:
-            refreshCoachingPermissionsFromSystem(allowRequiredAudioRetry: true)
+            refreshCoachingPermissionsFromSystem()
             try coachingWindow.handle(.screenUnlocked)
           case .displayChange:
             captureLifecycle?.receiveSystemEvent(.displayChange)
@@ -1154,24 +1222,40 @@ final class DesktopViewModel: ObservableObject {
   }
 
   /// Slice 07 — quit path. Finalizes the active video chunk and emits
-  /// `session_end_marker` with reason `.quit` before the app terminates.
+  /// `session_end_marker` with reason `.quit` before the app terminates, then
+  /// retires the old Intentive-only login registration. Retirement is last
+  /// because the legacy launchd job may own and terminate this process.
   /// Renovated from Omi's `RewindShutdownFlush` + `OmiApp.applicationWillTerminate`.
   @discardableResult
   func requestQuit() -> Bool {
+    cancelOnboardingCaptureProbes()
     do {
-      try coachingWindow.handle(.quit)
-      coachingState = coachingWindow.state
+      let retirementError = try DesktopLaunchAtLoginEnrollment.retireLegacyRegistration(
+        afterPrivacyShutdown: {
+          try coachingWindow.handle(.quit)
+          coachingState = coachingWindow.state
+          meetingObserver.stop()
+          captureState = captureLifecycle?.state ?? .disabled
+          publicReleaseOperations.shutdown()
+          #if DEBUG
+          automationBridge?.stop()
+          #endif
+        },
+        registrar: launchAtLoginRegistrar
+      )
+      if let retirementError {
+        NSLog(
+          "Intentive deferred targeted legacy login-item retirement: %@",
+          retirementError.localizedDescription
+        )
+      }
     } catch {
-      status = "Intentive could not durably end Coaching before quitting: \(error.localizedDescription)"
+      status =
+        "Intentive could not finish privacy shutdown before quitting: "
+        + error.localizedDescription
       objectWillChange.send()
       return false
     }
-    meetingObserver.stop()
-    captureState = captureLifecycle?.state ?? .disabled
-    publicReleaseOperations.shutdown()
-    #if DEBUG
-    automationBridge?.stop()
-    #endif
     return true
   }
 
@@ -1245,28 +1329,53 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func setLaunchAtLogin(_ enabled: Bool) {
+    _ = updateLaunchAtLogin(enabled)
+  }
+
+  func reconcileLaunchAtLoginRegistrationIfNeeded() {
+    guard composition.activeSystemBoundaries.contains(.capture) else { return }
+    do {
+      try DesktopLaunchAtLoginEnrollment.reconcileRegistrationIfNeeded(
+        settings: utilitySettings,
+        registrar: launchAtLoginRegistrar
+      )
+    } catch {
+      setupCompletionError = error.localizedDescription
+      status = "Launch at Login could not be refreshed: \(error.localizedDescription)"
+    }
+  }
+
+  func openLoginItemsSettings() {
+    guard
+      let url = URL(
+        string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+      )
+    else { return }
+    NSWorkspace.shared.open(url)
+  }
+
+  @discardableResult
+  private func updateLaunchAtLogin(_ enabled: Bool) -> Bool {
     guard composition.activeSystemBoundaries.contains(.capture) else {
       status = "Launch at login is unavailable in this deterministic launch"
-      return
+      return false
     }
-    // Login-at-login runs the app headless: the bundled LaunchAgent passes
-    // `--background` (which `SMAppService.mainApp` cannot do) so the delegate
-    // stays menu-bar-only. Only the registration mechanism changes; the
-    // `launchAtLogin` toggle contract is unchanged. See ADR 0011.
-    let loginAgent = SMAppService.agent(plistName: "com.heyintentive.desktop.login.plist")
     do {
-      if enabled {
-        try loginAgent.register()
-      } else {
-        try loginAgent.unregister()
+      utilitySettings = try DesktopLaunchAtLoginEnrollment.setEnabled(
+        enabled,
+        settings: utilitySettings,
+        registrar: launchAtLoginRegistrar
+      ) { [utilitySettingsCoordinator] updated in
+        try utilitySettingsCoordinator.update(updated)
       }
     } catch {
+      setupCompletionError = error.localizedDescription
       status = "Launch at login could not be changed: \(error.localizedDescription)"
-      return
+      return false
     }
-    utilitySettings.launchAtLogin = enabled
-    persistUtilitySettings()
+    setupCompletionError = nil
     status = enabled ? "Launch at login enabled" : "Launch at login disabled"
+    return true
   }
 
   func setAnalyticsEnabled(_ enabled: Bool) {
@@ -1396,22 +1505,52 @@ final class DesktopViewModel: ObservableObject {
   }
 
   func finishOnboardingLater() {
+    cancelOnboardingCaptureProbes()
     showOnboarding = false
     status = "Desktop setup can be resumed from Setup"
   }
 
   func finishOnboarding() {
-    guard onboardingRequirements.isComplete else {
-      status = "Every required setup step and live permission must be complete"
-      return
+    if composition.activeSystemBoundaries.contains(.capture) {
+      do {
+        let result = try DesktopOnboardingCompletion.finish(
+          progress: onboardingProgress,
+          requirements: { [unowned self] in
+            self.makeOnboardingRequirements(progress: $0)
+          },
+          settings: utilitySettings,
+          registrar: launchAtLoginRegistrar,
+          persistSettings: { [utilitySettingsCoordinator] in
+            try utilitySettingsCoordinator.update($0)
+          },
+          persistProgress: { [onboardingStore] in
+            try onboardingStore.save($0)
+          }
+        )
+        utilitySettings = result.settings
+        onboardingProgress = result.progress
+      } catch {
+        setupCompletionError = error.localizedDescription
+        status = "Desktop setup could not finish: \(error.localizedDescription)"
+        return
+      }
+    } else {
+      let candidate = onboardingProgress
+        .completing(.floatingBarDemo)
+        .completingOnboarding()
+      guard makeOnboardingRequirements(progress: candidate).isComplete else {
+        status = "Every required setup step and live permission must be complete"
+        return
+      }
+      do {
+        try onboardingStore.save(candidate)
+        onboardingProgress = candidate
+      } catch {
+        status = error.localizedDescription
+        return
+      }
     }
-    onboardingProgress = onboardingProgress.completingOnboarding()
-    do {
-      try onboardingStore.save(onboardingProgress)
-    } catch {
-      status = error.localizedDescription
-      return
-    }
+    setupCompletionError = nil
     showOnboarding = false
     status = "Desktop setup complete"
     reconcileCoachingEligibility(startReason: .onboardingCompleted)
@@ -1429,6 +1568,7 @@ final class DesktopViewModel: ObservableObject {
 
   /// Menu-bar action: clear onboarding progress and reopen the setup flow.
   func resetOnboarding() {
+    cancelOnboardingCaptureProbes()
     onboardingProgress = DesktopOnboardingProgress()
     do {
       try onboardingStore.save(onboardingProgress)
@@ -1443,6 +1583,7 @@ final class DesktopViewModel: ObservableObject {
 
   /// Menu-bar action: disconnect the Runtime Bridge and sign out locally.
   func signOut() {
+    cancelOnboardingCaptureProbes()
     do {
       try coachingWindow.handle(.signOut)
       coachingState = coachingWindow.state
@@ -1462,6 +1603,44 @@ final class DesktopViewModel: ObservableObject {
 
   func requestOnboardingScreenRecordingPermission() {
     requestScreenRecordingPermission()
+    guard screenRecordingPermissionGranted else {
+      openScreenRecordingSettings()
+      return
+    }
+
+    guard !directScreenCaptureProbeInFlight else { return }
+    directScreenCaptureProbeInFlight = true
+    status = "Confirming direct screen capture with macOS..."
+    directScreenCaptureProbeTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer {
+        directScreenCaptureProbeInFlight = false
+        directScreenCaptureProbeTask = nil
+      }
+      let granted = await directScreenCapturePermissionGateway.requestAccess()
+      guard !Task.isCancelled else { return }
+      do {
+        if granted {
+          try captureAuthorizationCoordinator.confirm(.directScreenCapture)
+        } else {
+          try captureAuthorizationCoordinator.invalidate(.directScreenCapture)
+        }
+        directScreenCapturePermissionGranted = granted
+      } catch {
+        directScreenCapturePermissionGranted = false
+        status = "Direct screen capture confirmation could not be saved: \(error.localizedDescription)"
+        reconcileCoachingEligibility(startReason: .permissionRestored)
+        return
+      }
+      status =
+        granted
+        ? "Screen capture permissions granted"
+        : "Direct screen capture permission required"
+      if !granted {
+        openScreenRecordingSettings()
+      }
+      reconcileCoachingEligibility(startReason: .permissionRestored)
+    }
   }
 
   func openOnboardingScreenRecordingSettings() {
@@ -1476,6 +1655,11 @@ final class DesktopViewModel: ObservableObject {
   func decideAudio(_ decision: DesktopPermissionDecision) {
     onboardingProgress = onboardingProgress.decidingAudio(decision)
     if decision != .granted { setAmbientAudioCaptureEnabled(false) }
+    persistOnboardingProgress()
+  }
+
+  func decideSystemAudio(_ decision: DesktopPermissionDecision) {
+    onboardingProgress = onboardingProgress.decidingSystemAudio(decision)
     persistOnboardingProgress()
   }
 
@@ -1495,6 +1679,10 @@ final class DesktopViewModel: ObservableObject {
       ? "Microphone permission granted"
       : "Microphone permission required"
     decideAudio(microphonePermissionStatus.isGranted ? .granted : .denied)
+    if !microphonePermissionStatus.isGranted {
+      microphonePermissionGateway.openMicrophoneSettings()
+      status = "Microphone permission required; opened System Settings"
+    }
     reconcileCoachingEligibility(startReason: .permissionRestored)
   }
 
@@ -1503,18 +1691,74 @@ final class DesktopViewModel: ObservableObject {
     status = "Opened Microphone settings"
   }
 
+  func requestSystemAudioPermission() {
+    guard !systemAudioProbeInFlight else { return }
+    systemAudioProbeInFlight = true
+    status = "Confirming System Audio with macOS..."
+    systemAudioProbeTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer {
+        systemAudioProbeInFlight = false
+        systemAudioProbeTask = nil
+      }
+      let granted = await systemAudioPermissionGateway.requestAccess()
+      guard !Task.isCancelled else { return }
+      do {
+        if granted {
+          try captureAuthorizationCoordinator.confirm(.systemAudio)
+          unavailableRequiredAudioSources.remove(.systemAudio)
+        } else {
+          try captureAuthorizationCoordinator.invalidate(.systemAudio)
+          unavailableRequiredAudioSources.insert(.systemAudio)
+        }
+        systemAudioPermissionGranted = granted
+      } catch {
+        systemAudioPermissionGranted = false
+        unavailableRequiredAudioSources.insert(.systemAudio)
+        status = "System Audio confirmation could not be saved: \(error.localizedDescription)"
+        reconcileCoachingEligibility(startReason: .permissionRestored)
+        return
+      }
+      status =
+        granted
+        ? "System Audio permission granted"
+        : "System Audio permission required"
+      if !granted {
+        systemAudioPermissionGateway.openSystemAudioSettings()
+        status = "System Audio permission required; opened System Settings"
+      }
+      reconcileCoachingEligibility(startReason: .permissionRestored)
+    }
+  }
+
+  func openSystemAudioSettings() {
+    systemAudioPermissionGateway.openSystemAudioSettings()
+    status = "Opened System Audio settings"
+  }
+
+  private func cancelOnboardingCaptureProbes() {
+    directScreenCaptureProbeTask?.cancel()
+    directScreenCaptureProbeTask = nil
+    directScreenCaptureProbeInFlight = false
+    systemAudioProbeTask?.cancel()
+    systemAudioProbeTask = nil
+    systemAudioProbeInFlight = false
+  }
+
   func refreshOnboardingPermissions() {
     #if DEBUG
     if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
       screenRecordingPermissionGranted = composition.permissions.screenRecording == .granted
+      directScreenCapturePermissionGranted = true
       microphonePermissionStatus = Self.microphonePermissionStatus(
         from: composition.permissions.microphone)
+      systemAudioPermissionGranted = true
       accessibilityPermissionGranted = true
       reconcileCoachingEligibility(startReason: .permissionRestored)
       return
     }
     #endif
-    _ = reattestCoachingEligibilityFromSystem(allowRequiredAudioRetry: true)
+    _ = reattestCoachingEligibilityFromSystem()
   }
 
   func setAccessibilityPermissionGranted(_ granted: Bool) {
@@ -1546,29 +1790,29 @@ final class DesktopViewModel: ObservableObject {
     #if DEBUG
     if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
       screenRecordingPermissionGranted = composition.permissions.screenRecording == .granted
+      directScreenCapturePermissionGranted = true
       microphonePermissionStatus = Self.microphonePermissionStatus(
         from: composition.permissions.microphone)
+      systemAudioPermissionGranted = true
       accessibilityPermissionGranted = true
       reconcileCoachingEligibility(startReason: .permissionRestored)
       return
     }
     #endif
-    _ = reattestCoachingEligibilityFromSystem(allowRequiredAudioRetry: true)
+    _ = reattestCoachingEligibilityFromSystem()
   }
 
   /// Reattests every required macOS grant for the process-wide Coaching Window,
   /// independent of whether setup is currently visible. App activation and
   /// permission-shaped sensor failures feed this path so an external TCC
   /// revocation reaches the coordinator before any source can keep sensing.
-  func refreshCoachingPermissionsFromSystem(allowRequiredAudioRetry: Bool = false) {
+  func refreshCoachingPermissionsFromSystem() {
     #if DEBUG
     if ProcessInfo.processInfo.environment["INTENTIVE_ACCEPTANCE_PROFILE_ROOT"] != nil {
       return
     }
     #endif
-    _ = reattestCoachingEligibilityFromSystem(
-      allowRequiredAudioRetry: allowRequiredAudioRetry
-    )
+    _ = reattestCoachingEligibilityFromSystem()
   }
 
   /// Reads every permission API that macOS exposes synchronously. This is the
@@ -1581,7 +1825,14 @@ final class DesktopViewModel: ObservableObject {
     }
     #endif
     screenRecordingPermissionGranted = permissionGateway.hasScreenRecordingPermission()
+    if !screenRecordingPermissionGranted {
+      directScreenCapturePermissionGranted = false
+      try? captureAuthorizationCoordinator.invalidate(.directScreenCapture)
+    }
     microphonePermissionStatus = microphonePermissionGateway.authorizationStatus()
+    if microphonePermissionStatus.isGranted {
+      unavailableRequiredAudioSources.remove(.microphone)
+    }
     accessibilityPermissionGranted = AXIsProcessTrusted()
     return coachingEligibility
   }
@@ -1589,17 +1840,12 @@ final class DesktopViewModel: ObservableObject {
   /// Used both by app activation and by every active screen-capture cadence.
   /// A false result means the same tick that observed a revoked grant has
   /// already synchronously stopped all Coaching Window perception.
-  private func reattestCoachingEligibilityFromSystem(
-    allowRequiredAudioRetry: Bool = false
-  ) -> Bool {
+  private func reattestCoachingEligibilityFromSystem() -> Bool {
     do {
-      if allowRequiredAudioRetry {
-        // Core Audio taps expose authorization only by attempting capture. A
-        // return from System Settings, wake, or unlock permits one fresh
-        // attempt; ordinary cadence and failure callbacks cannot erase the
-        // prior failed attestation and accidentally restart sensing.
-        unavailableRequiredAudioSources.removeAll()
-      }
+      // The first-use capture authorizations have no public preflight. Only
+      // their explicit foreground onboarding probes may restore them. Generic
+      // activation/wake/unlock reattestation must never retry a failed tap and
+      // surface a consent prompt after setup.
       return try coachingWindow.reattestEligibility()
     } catch {
       status = "Coaching permission attestation failed: \(error.localizedDescription)"
@@ -1608,11 +1854,27 @@ final class DesktopViewModel: ObservableObject {
   }
 
   private func requiredAudioSourceIsAvailable(_ source: PassiveAudioSource) -> Bool {
-    !unavailableRequiredAudioSources.contains(source)
+    switch source {
+    case .microphone:
+      return !unavailableRequiredAudioSources.contains(.microphone)
+    case .systemAudio:
+      return systemAudioPermissionGranted
+        && !unavailableRequiredAudioSources.contains(.systemAudio)
+    }
   }
 
   private func handleRequiredAudioSourceUnavailable(_ source: PassiveAudioSource) {
     unavailableRequiredAudioSources.insert(source)
+    if source == .systemAudio {
+      systemAudioPermissionGranted = false
+      try? captureAuthorizationCoordinator.invalidate(.systemAudio)
+    }
+    reconcileCoachingEligibility(startReason: .permissionRestored)
+  }
+
+  private func handleDirectScreenCaptureAuthorizationFailure() {
+    directScreenCapturePermissionGranted = false
+    try? captureAuthorizationCoordinator.invalidate(.directScreenCapture)
     reconcileCoachingEligibility(startReason: .permissionRestored)
   }
 
@@ -2159,8 +2421,9 @@ final class DesktopViewModel: ObservableObject {
   func requestScreenRecordingPermission() {
     let requested = permissionGateway.requestScreenRecordingPermission()
     screenRecordingPermissionGranted = requested || permissionGateway.hasScreenRecordingPermission()
-    if screenRecordingPermissionGranted {
-      unavailableRequiredAudioSources.remove(.systemAudio)
+    if !screenRecordingPermissionGranted {
+      directScreenCapturePermissionGranted = false
+      try? captureAuthorizationCoordinator.invalidate(.directScreenCapture)
     }
     status =
       screenRecordingPermissionGranted
@@ -2177,6 +2440,10 @@ final class DesktopViewModel: ObservableObject {
   func refreshScreenRecordingPermission() {
     let granted = permissionGateway.hasScreenRecordingPermission()
     screenRecordingPermissionGranted = granted
+    if !granted {
+      directScreenCapturePermissionGranted = false
+      try? captureAuthorizationCoordinator.invalidate(.directScreenCapture)
+    }
     if !granted, captureLoop.state.isRunning {
       captureLifecycle?.reconcile()
     }
@@ -2235,7 +2502,7 @@ final class DesktopViewModel: ObservableObject {
     // surfaces. A Post-Message-Back reply additionally fires a local effect.
     guard message.viaPostMessageBack,
       let windowId = message.windowId,
-      coachingState.windowId == windowId
+      coachingState.activeWindowId == windowId
     else { return }
     // RuntimeAdapter deliberately defers window-bound transcript projection
     // until this final MainActor lifecycle check. A stale message therefore
@@ -2325,7 +2592,7 @@ final class DesktopViewModel: ObservableObject {
     let runner = EffectRunner(
       overlay: FloatingBarOverlaySink(manager: floatingBarManager),
       runtimeClient: runtimeClient,
-      activeWindowId: { [weak self] in self?.coachingState.windowId }
+      activeWindowId: { [weak self] in self?.coachingState.activeWindowId }
     )
     deliverEffect(message, runner: runner, statusMessage: statusMessage)
   }
@@ -2353,6 +2620,7 @@ final class DesktopViewModel: ObservableObject {
 
   private func applyRuntimeState(_ state: DesktopRuntimeSessionState) {
     runtimeState = state
+    reconcileOnboardingVisibilityAfterRuntimeChange()
     let storageStatus = reconfigureScreenMemoryForAuthenticatedUserIfNeeded()
     let flushStatus = flushQueuedPerceptionEventsIfConnected(state)
     try? coachingWindow.handle(.runtimeConnectionChanged(state == .connected))
@@ -2362,6 +2630,11 @@ final class DesktopViewModel: ObservableObject {
       .compactMap { $0 }
       .joined(separator: " · ")
     objectWillChange.send()
+  }
+
+  private func reconcileOnboardingVisibilityAfterRuntimeChange() {
+    guard onboardingProgress.completed else { return }
+    showOnboarding = !onboardingRequirements.isComplete
   }
 
   private func perceptionCaptureStatus(eventCount: Int) -> String {
@@ -2608,6 +2881,7 @@ struct MainWindowView: View {
       }
     }
     .task {
+      model.reconcileLaunchAtLoginRegistrationIfNeeded()
       await model.restoreRuntimeSessionIfNeeded()
       await model.performCaptureLaunchReconciliation()
     }

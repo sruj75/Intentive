@@ -338,6 +338,12 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
     store as? ScreenMemoryArchive
   }
 
+  /// The verified owner of the currently mounted durable Screen Memory and
+  /// ingress outbox. In-memory fallback storage deliberately exposes no owner.
+  public var durableProfileUserID: String? {
+    activeArchive?.userID
+  }
+
   public func replace(with store: ScreenMemoryStore, profileID: String) {
     if profileID == self.profileID {
       carryPendingPerceptionEvents(to: store)

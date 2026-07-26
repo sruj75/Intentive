@@ -38,6 +38,31 @@ final class DesktopUtilitySettingsTests: XCTestCase {
     XCTAssertTrue(DesktopUtilitySettings().passiveAudioEnabled)
   }
 
+  func testLaunchAtLoginDefaultsToTrueForNewProfiles() {
+    XCTAssertTrue(DesktopUtilitySettings().launchAtLogin)
+  }
+
+  func testLegacyImplicitLaunchAtLoginOffMigratesToTheNewDefault() throws {
+    let legacy = Data(#"{"launchAtLogin":false}"#.utf8)
+
+    let settings = try JSONDecoder().decode(DesktopUtilitySettings.self, from: legacy)
+
+    XCTAssertTrue(settings.launchAtLogin)
+  }
+
+  func testExplicitLaunchAtLoginOffSurvivesCurrentPersistence() throws {
+    let settings = DesktopUtilitySettings(launchAtLogin: false)
+
+    let encoded = try JSONEncoder().encode(settings)
+    let decoded = try JSONDecoder().decode(DesktopUtilitySettings.self, from: encoded)
+
+    XCTAssertFalse(decoded.launchAtLogin)
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    XCTAssertEqual(object["launchAtLoginPreferenceVersion"] as? Int, 1)
+  }
+
   func testProductAnalyticsRequiresExplicitOptInForNewProfiles() {
     XCTAssertFalse(DesktopUtilitySettings().analyticsEnabled)
   }

@@ -92,6 +92,15 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(first.search("anonymous", limit: 10).first?.record.id, "first")
   }
 
+  func testInMemoryFallbackDoesNotExposeDurableProfileIdentity() {
+    let store = SwitchableScreenMemoryStore(
+      InMemoryScreenMemoryStore(),
+      profileID: "verified-user"
+    )
+
+    XCTAssertNil(store.durableProfileUserID)
+  }
+
   func testSwitchableScreenMemoryStoreKeepsPendingIngressOwnedByPreviousProfile() throws {
     let first = InMemoryScreenMemoryStore()
     let second = InMemoryScreenMemoryStore()

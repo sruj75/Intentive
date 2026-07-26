@@ -5,16 +5,8 @@ import XCTest
 
 @MainActor
 final class ScreenRecordingOnboardingPresentationTests: XCTestCase {
-  func testStartingScreenRecordingPermissionFlowRequestsBeforeOpeningSettings() {
+  func testStartingScreenRecordingPermissionFlowDelegatesTheWholeFlowToTheModel() {
     let model = SetupPresentationSpy()
-
-    model.startScreenRecordingPermissionFlow()
-
-    XCTAssertEqual(model.screenRecordingEvents, [.request, .openSettings])
-  }
-
-  func testGrantedScreenRecordingRequestDoesNotOpenSettings() {
-    let model = SetupPresentationSpy(grantsScreenRecordingWhenRequested: true)
 
     model.startScreenRecordingPermissionFlow()
 
@@ -29,6 +21,21 @@ final class ScreenRecordingOnboardingPresentationTests: XCTestCase {
     XCTAssertEqual(model.permissionRefreshCount, 1)
     XCTAssertTrue(model.screenRecordingEvents.isEmpty)
   }
+
+  func testLaunchAtLoginApprovalErrorOffersLoginItemsSettingsRecovery() {
+    let model = SetupPresentationSpy()
+    model.setupCompletionError =
+      "Launch at Login needs approval in System Settings > General > Login Items."
+
+    XCTAssertTrue(model.launchAtLoginApprovalRecoveryAvailable)
+  }
+
+  func testUnrelatedSetupErrorDoesNotOfferLoginItemsSettingsRecovery() {
+    let model = SetupPresentationSpy()
+    model.setupCompletionError = "Every required permission must be complete."
+
+    XCTAssertFalse(model.launchAtLoginApprovalRecoveryAvailable)
+  }
 }
 
 @MainActor
@@ -39,14 +46,10 @@ private final class SetupPresentationSpy: @preconcurrency IntentiveSetupPresenti
   }
 
   let objectWillChange = ObservableObjectPublisher()
-  private let grantsScreenRecordingWhenRequested: Bool
   var screenRecordingEvents: [ScreenRecordingEvent] = []
   var permissionRefreshCount = 0
   var screenRecordingGranted = false
-
-  init(grantsScreenRecordingWhenRequested: Bool = false) {
-    self.grantsScreenRecordingWhenRequested = grantsScreenRecordingWhenRequested
-  }
+  var setupCompletionError: String?
 
   var isAuthenticated: Bool { true }
   var crossClientSetupComplete: Bool { true }
@@ -54,22 +57,24 @@ private final class SetupPresentationSpy: @preconcurrency IntentiveSetupPresenti
   var authenticationError: String? { nil }
   var setupStep: IntentiveSetupStep { .screenRecording }
   var microphoneGranted: Bool { false }
+  var systemAudioGranted: Bool { false }
   var accessibilityGranted: Bool { false }
   var shortcutLabel: String { "⌘ ⇧ Space" }
 
   func signIn() {}
   func cancelSignIn() {}
   func completeCurrentSetupStep() {}
-  func skipCurrentSetupStep() {}
   func requestScreenRecording() {
     screenRecordingEvents.append(.request)
-    screenRecordingGranted = grantsScreenRecordingWhenRequested
   }
   func openScreenRecordingSettings() { screenRecordingEvents.append(.openSettings) }
   func refreshSetupPermissions() { permissionRefreshCount += 1 }
   func requestMicrophone() {}
   func openMicrophoneSettings() {}
+  func requestSystemAudio() {}
+  func openSystemAudioSettings() {}
   func requestAccessibility() {}
   func openAccessibilitySettings() {}
+  func openLoginItemsSettings() {}
   func openFloatingBar() {}
 }

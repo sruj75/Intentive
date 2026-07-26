@@ -309,7 +309,7 @@ PY
 # Management. At least one system surface must resolve the bundled agent label.
 GUEST_UID="$(tart exec "$VM_NAME" id -u)"
 tart exec "$VM_NAME" launchctl print \
-  "gui/$GUEST_UID/com.heyintentive.desktop.login" \
+  "gui/$GUEST_UID/com.heyintentive.desktop.login-launcher-v1" \
   >"$EVIDENCE_DIR/launchagent-registration.txt" 2>&1 || true
 tart exec "$VM_NAME" sfltool dumpbtm \
   >"$EVIDENCE_DIR/background-items.txt" 2>&1 || true
@@ -317,7 +317,7 @@ python3 - "$EVIDENCE_DIR/launchagent-registration.txt" \
   "$EVIDENCE_DIR/background-items.txt" <<'PY'
 import pathlib, sys
 evidence = "\n".join(pathlib.Path(path).read_text() for path in sys.argv[1:3])
-if "com.heyintentive.desktop.login" not in evidence:
+if "com.heyintentive.desktop.login-launcher-v1" not in evidence:
     raise SystemExit("guest system state has no LaunchAgent/BTM registration evidence")
 PY
 

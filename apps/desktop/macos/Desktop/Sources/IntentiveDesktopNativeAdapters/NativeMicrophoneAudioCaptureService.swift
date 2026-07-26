@@ -30,6 +30,7 @@ public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
   PassiveAudioStreamingSource
 {
   private let queue = DispatchQueue(label: "com.intentive.passive-audio.microphone")
+  private let queueKey = DispatchSpecificKey<UInt8>()
   private let lock = NSLock()
   private var deviceID = kAudioObjectUnknown
   private var ioProcID: AudioDeviceIOProcID?
@@ -38,26 +39,54 @@ public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
   private var targetFormat: AVAudioFormat?
   private var handler: (@Sendable (Data) -> Void)?
   private var running = false
+  private var starting = false
+  private var generation: UInt64 = 0
 
-  public init() {}
+  public init() {
+    queue.setSpecific(key: queueKey, value: 1)
+  }
 
   public var isRunning: Bool { lock.withLock { running } }
 
   public func start(onPCM16k: @escaping @Sendable (Data) -> Void) async throws {
     let status = AVCaptureDevice.authorizationStatus(for: .audio)
     guard status == .authorized else { throw NativeMicrophoneAudioCaptureError.microphonePermissionDenied }
-    if isRunning { return }
-    try await withCheckedThrowingContinuation { continuation in
-      queue.async { [weak self] in
-        guard let self else { continuation.resume(); return }
-        do { try self.startOnQueue(handler: onPCM16k); continuation.resume() }
-        catch { continuation.resume(throwing: error) }
+    let startGeneration: UInt64? = lock.withLock {
+      guard !running, !starting else { return nil }
+      generation &+= 1
+      starting = true
+      return generation
+    }
+    guard let startGeneration else { return }
+    do {
+      try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<Void, Error>) in
+        queue.async { [weak self] in
+          guard let self else {
+            continuation.resume(throwing: CancellationError())
+            return
+          }
+          do {
+            try self.startOnQueue(handler: onPCM16k, generation: startGeneration)
+            continuation.resume()
+          } catch {
+            continuation.resume(throwing: error)
+          }
+        }
       }
+    } catch {
+      lock.withLock {
+        guard generation == startGeneration else { return }
+        starting = false
+      }
+      throw error
     }
   }
 
   public func stop() {
     let snapshot: (AudioObjectID, AudioDeviceIOProcID?) = lock.withLock {
+      generation &+= 1
+      starting = false
       let result = (deviceID, ioProcID)
       deviceID = kAudioObjectUnknown
       ioProcID = nil
@@ -68,17 +97,41 @@ public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
       running = false
       return result
     }
-    queue.async {
-      if let proc = snapshot.1, snapshot.0 != kAudioObjectUnknown {
-        AudioDeviceStop(snapshot.0, proc)
-        AudioDeviceDestroyIOProcID(snapshot.0, proc)
+    performOnQueueSynchronously {
+      Self.stopAndDestroy(deviceID: snapshot.0, ioProcID: snapshot.1)
+    }
+  }
+
+  public func clearPendingBuffers() {
+    performOnQueueSynchronously {
+      lock.withLock {
+        converter?.reset()
       }
     }
   }
 
-  public func clearPendingBuffers() { converter?.reset() }
+  private func performOnQueueSynchronously(_ operation: () -> Void) {
+    if DispatchQueue.getSpecific(key: queueKey) != nil {
+      operation()
+    } else {
+      queue.sync(execute: operation)
+    }
+  }
 
-  private func startOnQueue(handler: @escaping @Sendable (Data) -> Void) throws {
+  private static func stopAndDestroy(
+    deviceID: AudioObjectID,
+    ioProcID: AudioDeviceIOProcID?
+  ) {
+    if let ioProcID, deviceID != kAudioObjectUnknown {
+      AudioDeviceStop(deviceID, ioProcID)
+      AudioDeviceDestroyIOProcID(deviceID, ioProcID)
+    }
+  }
+
+  private func startOnQueue(
+    handler: @escaping @Sendable (Data) -> Void,
+    generation startGeneration: UInt64
+  ) throws {
     var inputDevice = kAudioObjectUnknown
     var size = UInt32(MemoryLayout<AudioObjectID>.size)
     var address = AudioObjectPropertyAddress(
@@ -117,7 +170,8 @@ public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
       AudioDeviceDestroyIOProcID(inputDevice, proc)
       throw NativeMicrophoneAudioCaptureError.deviceStartFailed(startStatus)
     }
-    lock.withLock {
+    let accepted = lock.withLock {
+      guard generation == startGeneration, starting else { return false }
       deviceID = inputDevice
       ioProcID = proc
       self.converter = converter
@@ -125,14 +179,22 @@ public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
       targetFormat = destination
       self.handler = handler
       running = true
+      starting = false
+      return true
+    }
+    guard accepted else {
+      Self.stopAndDestroy(deviceID: inputDevice, ioProcID: proc)
+      throw CancellationError()
     }
   }
 
   private func handle(_ input: UnsafePointer<AudioBufferList>?) {
     guard let input else { return }
-    let snapshot = lock.withLock { (running, inputFormat, converter, targetFormat, handler) }
-    guard snapshot.0, let source = snapshot.1, let converter = snapshot.2,
-      let target = snapshot.3, let handler = snapshot.4 else { return }
+    let snapshot = lock.withLock {
+      (generation, running, inputFormat, converter, targetFormat, handler)
+    }
+    guard snapshot.1, let source = snapshot.2, let converter = snapshot.3,
+      let target = snapshot.4, let handler = snapshot.5 else { return }
     let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
     guard let first = buffers.first, first.mDataByteSize > 0 else { return }
     let bytesPerFrame = max(1, Int(source.streamDescription.pointee.mBytesPerFrame))
@@ -146,7 +208,11 @@ public final class NativeMicrophoneAudioCaptureService: @unchecked Sendable,
       memcpy(dst, src, min(Int(destination.mDataByteSize), Int(buffers[index].mDataByteSize)))
     }
     if let data = try? Self.pcm16kMonoData(from: sourceBuffer, converter: converter, targetFormat: target),
-      !data.isEmpty { handler(data) }
+      !data.isEmpty,
+      lock.withLock({ running && generation == snapshot.0 })
+    {
+      handler(data)
+    }
   }
 
   public static func pcm16kMonoData(

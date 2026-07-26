@@ -68,13 +68,32 @@ public actor OmiVideoArchiveStorage: ScreenMemoryVideoArchiving {
     imageData: Data,
     capturedAt: Date
   ) async throws -> ScreenMemoryVideoWriteOutcome {
+    try await appendFrame(
+      imageData: imageData,
+      capturedAt: capturedAt,
+      commitCapture: { operation in
+        try operation()
+        return true
+      }
+    )
+  }
+
+  public func appendFrame(
+    imageData: Data,
+    capturedAt: Date,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws -> ScreenMemoryVideoWriteOutcome {
     guard
       let image = NSImage(data: imageData),
       let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     else {
       throw OmiScreenMemoryVideoArchiveError.invalidImage
     }
-    return try await encoder.addFrame(image: cgImage, timestamp: capturedAt)
+    return try await encoder.addFrame(
+      image: cgImage,
+      timestamp: capturedAt,
+      commitCapture: commitCapture
+    )
   }
 
   public func activeChunkID() async -> ScreenMemoryVideoChunkID? {

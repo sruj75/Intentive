@@ -113,6 +113,44 @@ final class ProtocolFixturesTests: XCTestCase {
     XCTAssertThrowsError(try ProtocolEventCodec.decodeCoachingWindowPresence(wrongLiteral))
   }
 
+  func testRuntimeIngressAckMatchesStrictTypeScriptBoundary() throws {
+    let valid = Data(
+      """
+      {"type":"runtime_ingress_ack","ingress_kind":"coaching_window_started","ingress_id":"11111111-1111-4111-8111-111111111111"}
+      """.utf8
+    )
+    XCTAssertEqual(
+      try ProtocolEventCodec.decodeRuntimeToClientEvent(valid),
+      .runtimeIngressAck(
+        RuntimeIngressAck(
+          ingressKind: .coachingWindowStarted,
+          ingressId: "11111111-1111-4111-8111-111111111111"
+        )
+      )
+    )
+
+    let malformedUUID = Data(
+      """
+      {"type":"runtime_ingress_ack","ingress_kind":"perception_event","ingress_id":"not-a-uuid"}
+      """.utf8
+    )
+    XCTAssertThrowsError(try ProtocolEventCodec.decodeRuntimeToClientEvent(malformedUUID))
+
+    let malformedKind = Data(
+      """
+      {"type":"runtime_ingress_ack","ingress_kind":"unknown","ingress_id":"11111111-1111-4111-8111-111111111111"}
+      """.utf8
+    )
+    XCTAssertThrowsError(try ProtocolEventCodec.decodeRuntimeToClientEvent(malformedKind))
+
+    let extraKey = Data(
+      """
+      {"type":"runtime_ingress_ack","ingress_kind":"perception_event","ingress_id":"11111111-1111-4111-8111-111111111111","window_id":"11111111-1111-4111-8111-111111111111"}
+      """.utf8
+    )
+    XCTAssertThrowsError(try ProtocolEventCodec.decodeRuntimeToClientEvent(extraKey))
+  }
+
   private func repoRoot() throws -> URL {
     var cursor = URL(fileURLWithPath: #filePath)
     while cursor.path != "/" {

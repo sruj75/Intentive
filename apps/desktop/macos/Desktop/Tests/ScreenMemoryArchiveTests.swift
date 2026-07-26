@@ -918,6 +918,169 @@ final class ScreenMemoryArchiveTests: XCTestCase {
     )
   }
 
+  @MainActor
+  func testStoppingCaptureDuringOCRPreventsLateScreenPersistenceAndPublish() async throws {
+    let profile = try ScreenMemoryProfile(userID: "stopped-user", rootURL: temporaryDirectory())
+    let analyzer = SuspendedScreenMemoryImageAnalyzer(
+      result: ScreenMemoryImageAnalysis(
+        perceptualHash: 0xCAFE,
+        ocr: ScreenMemoryOCRResult(fullText: "late private screen", blocks: [])
+      )
+    )
+    let archive = try ScreenMemoryArchive(profile: profile, imageAnalyzer: analyzer)
+    let runtime = RecordingRuntimeClient()
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: InMemoryScreenMemoryStore(),
+        publisher: PerceptionPublisher(
+          runtimeClient: runtime,
+          windowIdProvider: desktopTestCoachingWindowIdProvider
+        ),
+        archiveProvider: { archive }
+      ),
+      source: FixturePixelCaptureSource(
+        frame: CapturedFrame(
+          id: "late-screen",
+          capturedAt: "2026-07-15T09:33:00.000Z",
+          appBundleID: "com.apple.Safari",
+          appName: "Safari",
+          windowTitle: "Private work",
+          ocrText: "",
+          rawFrameBytes: Data([10, 11, 12])
+        )
+      ),
+      intervalSeconds: 3_600
+    )
+    var terminalEvent: ScreenMemoryCaptureLoopEvent?
+    XCTAssertTrue(loop.start { terminalEvent = $0 })
+    await analyzer.waitUntilRecognitionStarted()
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      analyzer.completeRecognition()
+    }
+
+    loop.stop()
+    while terminalEvent == nil {
+      await Task.yield()
+    }
+
+    XCTAssertTrue(archive.search("late private screen", limit: 10).isEmpty)
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+  }
+
+  @MainActor
+  func testStopWaitsForSuspendedFrameCaptureAndLeavesNoEvidence() async throws {
+    let profile = try ScreenMemoryProfile(userID: "suspended-capture-user", rootURL: temporaryDirectory())
+    let videoArchive = SuspendedCaptureCommitVideoArchive(suspendsBeforeCommit: false)
+    let archive = try ScreenMemoryArchive(
+      profile: profile,
+      imageAnalyzer: FixtureScreenMemoryImageAnalyzer(
+        result: ScreenMemoryImageAnalysis(
+          perceptualHash: 0xABCD,
+          ocr: ScreenMemoryOCRResult(fullText: "must never persist", blocks: [])
+        )
+      ),
+      videoArchive: videoArchive
+    )
+    let runtime = RecordingRuntimeClient()
+    let source = SuspendedDesktopCaptureSource(
+      frame: CapturedFrame(
+        id: "suspended-frame",
+        capturedAt: "2026-07-15T09:34:00.000Z",
+        appBundleID: "com.apple.Safari",
+        appName: "Safari",
+        windowTitle: "Private work",
+        ocrText: "",
+        rawFrameBytes: Data([13, 14, 15])
+      )
+    )
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: InMemoryScreenMemoryStore(),
+        publisher: PerceptionPublisher(
+          runtimeClient: runtime,
+          windowIdProvider: desktopTestCoachingWindowIdProvider
+        ),
+        archiveProvider: { archive }
+      ),
+      source: source,
+      intervalSeconds: 3_600
+    )
+    XCTAssertTrue(loop.start())
+    await source.waitUntilCaptureStarted()
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      source.completeCapture()
+    }
+
+    loop.stop()
+    let captureWasPendingWhenStopReturned = source.hasPendingCapture
+    while source.hasPendingCapture {
+      await Task.yield()
+    }
+
+    XCTAssertFalse(captureWasPendingWhenStopReturned)
+    XCTAssertEqual(videoArchive.sampleCount, 0)
+    XCTAssertTrue(archive.search("must never persist", limit: 10).isEmpty)
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+  }
+
+  @MainActor
+  func testStopWaitsForSuspendedVideoCommitAndRejectsTheRawSample() async throws {
+    let profile = try ScreenMemoryProfile(userID: "suspended-video-user", rootURL: temporaryDirectory())
+    let videoArchive = SuspendedCaptureCommitVideoArchive(suspendsBeforeCommit: true)
+    let archive = try ScreenMemoryArchive(
+      profile: profile,
+      imageAnalyzer: FixtureScreenMemoryImageAnalyzer(
+        result: ScreenMemoryImageAnalysis(
+          perceptualHash: 0xBCDE,
+          ocr: ScreenMemoryOCRResult(fullText: "late video evidence", blocks: [])
+        )
+      ),
+      videoArchive: videoArchive
+    )
+    let runtime = RecordingRuntimeClient()
+    let loop = ScreenMemoryCaptureLoop(
+      coordinator: CaptureCoordinator(
+        compiler: ContextCompiler(),
+        screenMemory: InMemoryScreenMemoryStore(),
+        publisher: PerceptionPublisher(
+          runtimeClient: runtime,
+          windowIdProvider: desktopTestCoachingWindowIdProvider
+        ),
+        archiveProvider: { archive }
+      ),
+      source: FixturePixelCaptureSource(
+        frame: CapturedFrame(
+          id: "suspended-video-frame",
+          capturedAt: "2026-07-15T09:35:00.000Z",
+          appBundleID: "com.apple.Safari",
+          appName: "Safari",
+          windowTitle: "Private video work",
+          ocrText: "",
+          rawFrameBytes: Data([16, 17, 18])
+        )
+      ),
+      intervalSeconds: 3_600
+    )
+    XCTAssertTrue(loop.start())
+    await videoArchive.waitUntilAppendStarted()
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      videoArchive.completeAppend()
+    }
+
+    loop.stop()
+    let appendWasPendingWhenStopReturned = videoArchive.hasPendingAppend
+    while videoArchive.hasPendingAppend {
+      await Task.yield()
+    }
+
+    XCTAssertFalse(appendWasPendingWhenStopReturned)
+    XCTAssertEqual(videoArchive.sampleCount, 0)
+    XCTAssertTrue(archive.search("late video evidence", limit: 10).isEmpty)
+    XCTAssertTrue(runtime.perceptionEvents.isEmpty)
+  }
+
   private func temporaryDirectory() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("ScreenMemoryArchiveTests-\(UUID().uuidString)", isDirectory: true)
@@ -1005,6 +1168,177 @@ final class ScreenMemoryArchiveTests: XCTestCase {
     ]
     XCTAssertEqual(channels.max(by: { $0.value < $1.value })?.key, expected, file: file, line: line)
   }
+}
+
+private final class SuspendedScreenMemoryImageAnalyzer: @unchecked Sendable,
+  ScreenMemoryImageAnalyzing
+{
+  private let result: ScreenMemoryImageAnalysis
+  private let lock = NSLock()
+  private var recognitionContinuation: CheckedContinuation<ScreenMemoryOCRResult, Never>?
+  private var recognitionStarted = false
+
+  init(result: ScreenMemoryImageAnalysis) {
+    self.result = result
+  }
+
+  func perceptualHash(imageData: Data) throws -> UInt64 {
+    result.perceptualHash
+  }
+
+  func recognizeText(imageData: Data) async throws -> ScreenMemoryOCRResult {
+    lock.withLock { recognitionStarted = true }
+    let ocr = await withCheckedContinuation { continuation in
+      lock.withLock { recognitionContinuation = continuation }
+    }
+    return ocr
+  }
+
+  func waitUntilRecognitionStarted() async {
+    while !lock.withLock({ recognitionStarted }) {
+      await Task.yield()
+    }
+  }
+
+  func completeRecognition() {
+    let continuation = lock.withLock {
+      let pending = recognitionContinuation
+      recognitionContinuation = nil
+      return pending
+    }
+    continuation?.resume(returning: result.ocr)
+  }
+}
+
+private final class SuspendedDesktopCaptureSource: @unchecked Sendable, DesktopCaptureSource {
+  private let frame: CapturedFrame
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<CapturedFrame, Never>?
+  private var started = false
+
+  init(frame: CapturedFrame) {
+    self.frame = frame
+  }
+
+  var hasPendingCapture: Bool {
+    lock.withLock { continuation != nil }
+  }
+
+  func captureFrame() async throws -> CapturedFrame {
+    lock.withLock { started = true }
+    return await withCheckedContinuation { continuation in
+      lock.withLock { self.continuation = continuation }
+    }
+  }
+
+  func waitUntilCaptureStarted() async {
+    while !lock.withLock({ started }) {
+      await Task.yield()
+    }
+  }
+
+  func completeCapture() {
+    let pending = lock.withLock {
+      let result = continuation
+      continuation = nil
+      return result
+    }
+    pending?.resume(returning: frame)
+  }
+}
+
+private final class SuspendedCaptureCommitVideoArchive: @unchecked Sendable,
+  ScreenMemoryVideoArchiving
+{
+  private let suspendsBeforeCommit: Bool
+  private let lock = NSLock()
+  private let chunkID = ScreenMemoryVideoChunkID(UUID())
+  private var appendContinuation: CheckedContinuation<Void, Never>?
+  private var appendStarted = false
+  private var storedSampleCount = 0
+
+  init(suspendsBeforeCommit: Bool) {
+    self.suspendsBeforeCommit = suspendsBeforeCommit
+  }
+
+  var hasPendingAppend: Bool {
+    lock.withLock { appendContinuation != nil }
+  }
+
+  var sampleCount: Int {
+    lock.withLock { storedSampleCount }
+  }
+
+  func appendFrame(
+    imageData: Data,
+    capturedAt: Date
+  ) async throws -> ScreenMemoryVideoWriteOutcome {
+    try await appendFrame(
+      imageData: imageData,
+      capturedAt: capturedAt,
+      commitCapture: { operation in
+        try operation()
+        return true
+      }
+    )
+  }
+
+  func appendFrame(
+    imageData _: Data,
+    capturedAt _: Date,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws -> ScreenMemoryVideoWriteOutcome {
+    lock.withLock { appendStarted = true }
+    if suspendsBeforeCommit {
+      await withCheckedContinuation { continuation in
+        lock.withLock { appendContinuation = continuation }
+      }
+    }
+    let committed = try commitCapture {
+      lock.withLock { storedSampleCount += 1 }
+    }
+    guard committed else { throw CancellationError() }
+    return .accepted(
+      location: ScreenMemoryVideoFrameLocation(chunkID: chunkID, sampleOrdinal: 0),
+      finalizedChunks: []
+    )
+  }
+
+  func waitUntilAppendStarted() async {
+    while !lock.withLock({ appendStarted }) {
+      await Task.yield()
+    }
+  }
+
+  func completeAppend() {
+    let pending = lock.withLock {
+      let result = appendContinuation
+      appendContinuation = nil
+      return result
+    }
+    pending?.resume()
+  }
+
+  func activeChunkID() async -> ScreenMemoryVideoChunkID? {
+    sampleCount > 0 ? chunkID : nil
+  }
+
+  func finalizeActiveChunk() async throws -> ScreenMemoryVideoChunkFinalization? {
+    nil
+  }
+
+  func loadFrame(at location: ScreenMemoryVideoFrameLocation) async throws -> Data {
+    Data()
+  }
+
+  func recoveryState(
+    for chunkID: ScreenMemoryVideoChunkID,
+    expectedSampleCount: Int
+  ) async -> ScreenMemoryVideoChunkRecoveryState {
+    .missingOrInvalid
+  }
+
+  func discardChunk(_ chunkID: ScreenMemoryVideoChunkID) async {}
 }
 
 private enum FixtureDominantColor: Hashable {

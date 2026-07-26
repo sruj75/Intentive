@@ -160,10 +160,18 @@ public enum ScreenMemoryVideoChunkRecoveryState: Equatable, Sendable {
   case missingOrInvalid
 }
 
+public typealias ScreenMemoryCaptureCommit =
+  @Sendable (_ operation: () throws -> Void) throws -> Bool
+
 /// Source-neutral native-video boundary owned by Screen Memory. Implementations
 /// keep AVFoundation types and filesystem locations on the native side.
 public protocol ScreenMemoryVideoArchiving: Sendable {
   func appendFrame(imageData: Data, capturedAt: Date) async throws -> ScreenMemoryVideoWriteOutcome
+  func appendFrame(
+    imageData: Data,
+    capturedAt: Date,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws -> ScreenMemoryVideoWriteOutcome
   func activeChunkID() async -> ScreenMemoryVideoChunkID?
   func finalizeActiveChunk() async throws -> ScreenMemoryVideoChunkFinalization?
   func loadFrame(at location: ScreenMemoryVideoFrameLocation) async throws -> Data
@@ -177,6 +185,17 @@ public protocol ScreenMemoryVideoArchiving: Sendable {
 }
 
 public extension ScreenMemoryVideoArchiving {
+  func appendFrame(
+    imageData: Data,
+    capturedAt: Date,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws -> ScreenMemoryVideoWriteOutcome {
+    guard try commitCapture({}) else { throw CancellationError() }
+    let outcome = try await appendFrame(imageData: imageData, capturedAt: capturedAt)
+    guard try commitCapture({}) else { throw CancellationError() }
+    return outcome
+  }
+
   func deleteChunk(_ chunkID: ScreenMemoryVideoChunkID) async throws {
     await discardChunk(chunkID)
   }
@@ -325,7 +344,26 @@ public final class ScreenMemoryArchive: ScreenMemoryStore, AudioMemoryStore, Per
   }
 
   public func ingest(_ input: ScreenMemoryCaptureInput) async throws -> ScreenMemoryIngestOutcome {
-    try await ingestCoordinator.ingest(input)
+    try await ingestCoordinator.ingest(
+      input,
+      isCaptureCurrent: { true },
+      commitCapture: { operation in
+        try operation()
+        return true
+      }
+    )
+  }
+
+  func ingest(
+    _ input: ScreenMemoryCaptureInput,
+    isCaptureCurrent: @escaping @Sendable () -> Bool,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws -> ScreenMemoryIngestOutcome {
+    try await ingestCoordinator.ingest(
+      input,
+      isCaptureCurrent: isCaptureCurrent,
+      commitCapture: commitCapture
+    )
   }
 
   public func finalizeActiveVideoChunk() async throws {
@@ -631,8 +669,14 @@ private actor ScreenMemoryIngestCoordinator {
     self.latestStoredRecordID = latestStoredRecordID
   }
 
-  func ingest(_ input: ScreenMemoryCaptureInput) async throws -> ScreenMemoryIngestOutcome {
+  func ingest(
+    _ input: ScreenMemoryCaptureInput,
+    isCaptureCurrent: @escaping @Sendable () -> Bool,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws -> ScreenMemoryIngestOutcome {
+    guard isCaptureCurrent() else { throw CancellationError() }
     _ = try await prepareArchive()
+    guard isCaptureCurrent() else { throw CancellationError() }
     guard input.userID == profileUserID else {
       throw ScreenMemoryArchiveError.profileMismatch
     }
@@ -648,6 +692,7 @@ private actor ScreenMemoryIngestCoordinator {
     }
 
     let ocr = try await imageAnalyzer.recognizeText(imageData: input.imageData)
+    guard isCaptureCurrent() else { throw CancellationError() }
     let recordID = ScreenMemoryRecordID(idFactory())
     let hasSecret = secretDetector.containsSecret(ocr.fullText)
       || secretDetector.containsSecret(input.windowTitle)
@@ -689,7 +734,12 @@ private actor ScreenMemoryIngestCoordinator {
         sensitivityLabel: hasSecret ? .secretDetected : .normal,
         embedding: embedding
       )
-    let videoWrite = try await appendVideoFrameIfConfigured(input)
+    guard isCaptureCurrent() else { throw CancellationError() }
+    let videoWrite = try await appendVideoFrameIfConfigured(
+      input,
+      commitCapture: commitCapture
+    )
+    guard isCaptureCurrent() else { throw CancellationError() }
     try store.addRecord(record, videoWrite: videoWrite, semanticVector: semanticVector)
     await scheduleStaleFinalizationIfNeeded()
     latestStoredRecordID = recordID
@@ -943,13 +993,18 @@ private actor ScreenMemoryIngestCoordinator {
   }
 
   private func appendVideoFrameIfConfigured(
-    _ input: ScreenMemoryCaptureInput
+    _ input: ScreenMemoryCaptureInput,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
   ) async throws -> ScreenMemoryVideoWriteOutcome? {
     guard let videoArchive else { return nil }
     guard let capturedAt = Self.captureDate(input.capturedAt) else {
       throw ScreenMemoryArchiveError.invalidCaptureTimestamp
     }
-    return try await videoArchive.appendFrame(imageData: input.imageData, capturedAt: capturedAt)
+    return try await videoArchive.appendFrame(
+      imageData: input.imageData,
+      capturedAt: capturedAt,
+      commitCapture: commitCapture
+    )
   }
 
   private func scheduleStaleFinalizationIfNeeded() async {

@@ -51,6 +51,58 @@ test("Desktop Preview has a dedicated publish and install path", async () => {
   assert.match(runtimeSource, /CFBundleURLTypes/);
 });
 
+test("Desktop distribution signs the login launcher inside-out without capture entitlements", async () => {
+  const releaseWorkflow = await text(".github/workflows/desktop-release.yml");
+  const previewPublisher = await text("apps/desktop/macos/scripts/publish-preview.sh");
+  const n1Driver = await text("apps/desktop/macos/scripts/stage2/sparkle-n1-update-driver.sh");
+  const tartBuilder = await text("apps/desktop/macos/scripts/tart-internal-build.sh");
+  const bundleVerifier = await text("apps/desktop/macos/scripts/verify-app-bundle.sh");
+
+  for (const source of [releaseWorkflow, previewPublisher, n1Driver]) {
+    assert.match(source, /Contents\/MacOS\/IntentiveLoginLauncher/);
+    assert.doesNotMatch(
+      source,
+      /codesign --force --options runtime --timestamp --deep \\\n\s+--entitlements/,
+    );
+    assert.match(source, /codesign --force --options runtime --timestamp \\\n\s+--entitlements/);
+    assert.match(source, /codesign --verify --deep --strict/);
+  }
+
+  assert.match(tartBuilder, /Contents\/MacOS\/IntentiveLoginLauncher/);
+  assert.doesNotMatch(tartBuilder, /codesign --force --deep[^\n]*"\$app_bundle"\s*$/m);
+  assert.match(tartBuilder, /codesign --verify --deep --strict/);
+
+  assert.match(bundleVerifier, /ProgramArguments:0/);
+  assert.match(bundleVerifier, /RunAtLoad/);
+  assert.match(bundleVerifier, /TeamIdentifier/);
+  assert.match(bundleVerifier, /Runtime Version/);
+  assert.match(bundleVerifier, /login launcher must not carry entitlements/i);
+});
+
+test("Desktop login launch uses a fresh service identity and retires only its legacy item", async () => {
+  const bundleBuilder = await text("apps/desktop/macos/scripts/build-app-bundle.sh");
+  const bundleVerifier = await text("apps/desktop/macos/scripts/verify-app-bundle.sh");
+  const previewPublisher = await text("apps/desktop/macos/scripts/publish-preview.sh");
+  const nativeRegistrar = await text(
+    "apps/desktop/macos/Desktop/Sources/Intentive/DesktopPermissionAdapters.swift",
+  );
+  const loginLauncher = await text(
+    "apps/desktop/macos/Desktop/Sources/IntentiveLoginLauncher/IntentiveLoginLauncher.swift",
+  );
+
+  for (const source of [bundleBuilder, bundleVerifier]) {
+    assert.match(source, /login-launcher-v1[.]plist/);
+    assert.match(source, /com[.]heyintentive[.]desktop[.]login[.]plist/);
+  }
+  assert.match(previewPublisher, /com[.]heyintentive[.]desktop[.]preview[.]login-launcher-v1/);
+  assert.match(nativeRegistrar, /retireLegacyRegistration/);
+  assert.doesNotMatch(loginLauncher, /--refresh-login-registration/);
+  assert.doesNotMatch(
+    [bundleBuilder, bundleVerifier, previewPublisher, nativeRegistrar, loginLauncher].join("\n"),
+    /(?:^|\n)\s*sfltool\s+resetbtm/m,
+  );
+});
+
 test("clean Tart first-launch validation remains a Development workflow", async () => {
   const tartSource = await text("apps/desktop/macos/scripts/tart-internal-build.sh");
   const development = await text("docs/DEVELOPMENT.md");

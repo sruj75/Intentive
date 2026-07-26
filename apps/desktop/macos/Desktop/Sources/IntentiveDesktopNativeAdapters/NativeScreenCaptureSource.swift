@@ -39,27 +39,23 @@ public struct NativeScreenRecordingPermissionGateway: ScreenRecordingPermissionG
   }
 
   public func openScreenRecordingSettings() {
-    guard
-      let url = URL(
-        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-      )
-    else {
-      return
-    }
-    NSWorkspace.shared.open(url)
+    NSWorkspace.shared.open(DesktopSystemSettingsDestination.screenRecording.url)
   }
 }
 
 public final class NativeScreenCaptureSource: DesktopWindowContextSource {
   private let now: @Sendable () -> Date
   private let idFactory: @Sendable () -> String
+  private let onAuthorizationFailure: @Sendable () async -> Void
 
   public init(
     now: @escaping @Sendable () -> Date = { Date() },
-    idFactory: @escaping @Sendable () -> String = { UUID().uuidString }
+    idFactory: @escaping @Sendable () -> String = { UUID().uuidString },
+    onAuthorizationFailure: @escaping @Sendable () async -> Void = {}
   ) {
     self.now = now
     self.idFactory = idFactory
+    self.onAuthorizationFailure = onAuthorizationFailure
   }
 
   public static func hasScreenRecordingPermission() -> Bool {
@@ -193,6 +189,16 @@ public final class NativeScreenCaptureSource: DesktopWindowContextSource {
     } catch let error as NativeScreenCaptureError {
       throw error
     } catch {
+      let captureError = error as NSError
+      if captureError.domain == SCStreamErrorDomain,
+        captureError.code == -3801 // SCStreamErrorUserDeclined
+      {
+        // Do not keep the capture operation alive while its MainActor owner
+        // performs permission recovery. Coaching stop synchronously waits for
+        // capture quiescence, so awaiting that callback could deadlock stop.
+        Task { await onAuthorizationFailure() }
+        throw NativeScreenCaptureError.permissionDenied
+      }
       throw NativeScreenCaptureError.captureFailed(error.localizedDescription)
     }
   }

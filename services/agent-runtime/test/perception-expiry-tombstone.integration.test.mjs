@@ -234,7 +234,6 @@ test(
         await repo.storeEmbedding(input);
         storeFinished();
       },
-      enqueueMonitoring: () => false,
       onEmbeddingError: (error) => {
         embeddingError = error;
         storeFinished();

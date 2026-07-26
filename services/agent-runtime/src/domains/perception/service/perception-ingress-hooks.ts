@@ -1,10 +1,6 @@
 import type { PerceptionEvent } from "@intentive/protocol";
 
-import type {
-  BoundSession,
-  PerceptionArrivedSink,
-  PerceptionProjectedSink,
-} from "../../sessions/types/event.js";
+import type { BoundSession, PerceptionProjectedSink } from "../../sessions/types/event.js";
 import { perceptionRecordEmbeddingText, toPerceptionRecord } from "../repo/perception-records.js";
 import type {
   PerceptionEmbeddingCandidate,
@@ -14,7 +10,6 @@ import type {
 } from "../types/perception.js";
 
 export interface PerceptionIngressHooks {
-  readonly onPerceptionArrived: PerceptionArrivedSink;
   readonly onPerceptionProjected: PerceptionProjectedSink;
 }
 
@@ -24,17 +19,12 @@ export function createPerceptionIngressHooks(deps: {
     expectedRecord: PerceptionRecord,
   ) => Promise<PerceptionEmbeddingCandidate | null>;
   readonly storeEmbedding: (input: StorePerceptionEmbeddingInput) => Promise<void>;
-  readonly enqueueMonitoring: (userId: string) => boolean;
   readonly onEmbeddingError: (
     error: unknown,
     context: { readonly userId: string; readonly eventId: string },
   ) => void;
 }): PerceptionIngressHooks {
   return {
-    onPerceptionArrived(session) {
-      deps.enqueueMonitoring(session.userId);
-    },
-
     onPerceptionProjected(session, event) {
       void enrichEmbedding(session, event, deps).catch((error: unknown) => {
         deps.onEmbeddingError(error, {

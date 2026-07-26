@@ -4,6 +4,30 @@ import XCTest
 
 @MainActor
 final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
+  func testWindowIdentifiersAreCanonicalLowercaseAcrossLifecycleEffects() throws {
+    let effects = RecordingCoachingWindowEffects()
+    let coordinator = DesktopCoachingWindowCoordinator(
+      initialEligibility: .allGranted,
+      effects: effects,
+      runtimeConnected: true,
+      now: { Date(timeIntervalSince1970: 1_774_681_200) },
+      makeUUID: { "ABCDEF12-3456-4789-ABCD-EF1234567890" }
+    )
+
+    try coordinator.handle(.launch(.appLaunch))
+
+    let canonicalWindowId = "abcdef12-3456-4789-abcd-ef1234567890"
+    XCTAssertEqual(coordinator.state, .active(windowId: canonicalWindowId))
+    XCTAssertEqual(
+      effects.actions,
+      [
+        "enqueue-start:\(canonicalWindowId):app_launch",
+        "start-perception:\(canonicalWindowId)",
+        "presence:\(canonicalWindowId):active",
+      ]
+    )
+  }
+
   func testEligibleLaunchQueuesWindowBeforeStartingPerception() throws {
     let effects = RecordingCoachingWindowEffects()
     let coordinator = DesktopCoachingWindowCoordinator(
@@ -57,6 +81,26 @@ final class DesktopCoachingWindowCoordinatorTests: XCTestCase {
         "presence:12121212-1212-4212-8212-121212121212:active",
       ]
     )
+  }
+
+  func testUnverifiedCredentialWithoutDurableProfileCannotStartLifecycleOrSensors() throws {
+    let effects = RecordingCoachingWindowEffects()
+    var eligibility = DesktopCoachingEligibility.allGranted
+    eligibility.isAuthenticated = DesktopCoachingProfileReadiness.isReady(
+      verifiedUserID: nil,
+      mountedDurableProfileUserID: nil
+    )
+    let coordinator = DesktopCoachingWindowCoordinator(
+      initialEligibility: eligibility,
+      effects: effects,
+      runtimeConnected: true,
+      makeUUID: { "10101010-1010-4010-8010-101010101010" }
+    )
+
+    try coordinator.handle(.launch(.loginLaunch))
+
+    XCTAssertEqual(coordinator.state, .inactive(.ineligible))
+    XCTAssertEqual(effects.actions, [])
   }
 
   func testRestoreBeforeLaunchPreservesStaleLockUntilCrashRecoveryClosesIt() throws {

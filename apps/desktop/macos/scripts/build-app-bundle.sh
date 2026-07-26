@@ -12,7 +12,10 @@ BUNDLE_ID="${INTENTIVE_BUNDLE_ID:-com.heyintentive.desktop}"
 APP_VERSION="${INTENTIVE_APP_VERSION:-0.1.0}"
 APP_BUILD="${INTENTIVE_APP_BUILD:-1}"
 AUTH_CALLBACK_SCHEME="${INTENTIVE_AUTH_CALLBACK_SCHEME:-intentive-desktop}"
-LAUNCH_AGENT_LABEL="${INTENTIVE_LAUNCH_AGENT_LABEL:-$BUNDLE_ID.login}"
+LAUNCH_AGENT_LABEL="${INTENTIVE_LAUNCH_AGENT_LABEL:-$BUNDLE_ID.login-launcher-v1}"
+LAUNCH_AGENT_PLIST_NAME="$BUNDLE_ID.login-launcher-v1.plist"
+LEGACY_LAUNCH_AGENT_LABEL="$BUNDLE_ID.login"
+LEGACY_LAUNCH_AGENT_PLIST_NAME="com.heyintentive.desktop.login.plist"
 CONTROL_PLANE_URL="${INTENTIVE_CONTROL_PLANE_URL:-}"
 HOSTED_AUTH_URL="${INTENTIVE_HOSTED_AUTH_URL:-}"
 AUTH_TOKEN_EXCHANGE_URL="${INTENTIVE_AUTH_TOKEN_EXCHANGE_URL:-}"
@@ -60,6 +63,7 @@ APP_VERSION_XML="$(xml_escape "$APP_VERSION")"
 APP_BUILD_XML="$(xml_escape "$APP_BUILD")"
 AUTH_CALLBACK_SCHEME_XML="$(xml_escape "$AUTH_CALLBACK_SCHEME")"
 LAUNCH_AGENT_LABEL_XML="$(xml_escape "$LAUNCH_AGENT_LABEL")"
+LEGACY_LAUNCH_AGENT_LABEL_XML="$(xml_escape "$LEGACY_LAUNCH_AGENT_LABEL")"
 CONTROL_PLANE_URL_XML="$(xml_escape "$CONTROL_PLANE_URL")"
 HOSTED_AUTH_URL_XML="$(xml_escape "$HOSTED_AUTH_URL")"
 AUTH_TOKEN_EXCHANGE_URL_XML="$(xml_escape "$AUTH_TOKEN_EXCHANGE_URL")"
@@ -78,6 +82,8 @@ INTENTIVE_UI_BUNDLE_SOURCE="$BUILD_DIR/$INTENTIVE_UI_BUNDLE_NAME"
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Frameworks"
 cp "$BUILD_DIR/Intentive" "$APP_BUNDLE/Contents/MacOS/Intentive"
+cp "$BUILD_DIR/IntentiveLoginLauncher" \
+  "$APP_BUNDLE/Contents/MacOS/IntentiveLoginLauncher"
 # SwiftPM links binary frameworks with an @rpath install name but its standalone
 # executable does not know the conventional app-bundle Frameworks directory.
 # Add that bundle-relative lookup before signing so assembled debug and release
@@ -104,6 +110,9 @@ if [[ ! -d "$NATIVE_ADAPTERS_BUNDLE_SOURCE" ]]; then
   echo "Missing native adapters bundle: $NATIVE_ADAPTERS_BUNDLE_SOURCE" >&2
   exit 1
 fi
+# Signed macOS bundles must keep resources under Contents/Resources. Shipped
+# code resolves this path before using SwiftPM's build-tree Bundle.module
+# fallback, so the artifact remains portable to a clean machine.
 cp -R "$NATIVE_ADAPTERS_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$NATIVE_ADAPTERS_BUNDLE_NAME"
 if [[ ! -d "$INTENTIVE_UI_BUNDLE_SOURCE" ]]; then
   echo "Missing Intentive UI resources bundle: $INTENTIVE_UI_BUNDLE_SOURCE" >&2
@@ -111,13 +120,14 @@ if [[ ! -d "$INTENTIVE_UI_BUNDLE_SOURCE" ]]; then
 fi
 cp -R "$INTENTIVE_UI_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/$INTENTIVE_UI_BUNDLE_NAME"
 
-# Bundled LaunchAgent for launch-at-login (ADR 0011). Registered on demand via
-# `SMAppService.agent(plistName:)`; `BundleProgram` keeps the executable path
-# bundle-relative so it survives moves, and `--background` marks the login launch
-# so the app stays menu-bar-only. Bundled unconditionally; it is inert until the
-# user enables launch-at-login.
+# Bundled LaunchAgent for launch-at-login (ADR 0011). The versioned label and
+# plist filename intentionally create a fresh Background Task Management
+# identity instead of reusing a stale launch constraint from an older Preview.
+# `BundleProgram` keeps the one-shot launcher's path bundle-relative so it
+# survives moves. The helper starts the main app with `--background` only when
+# no Intentive instance is already running.
 mkdir -p "$APP_BUNDLE/Contents/Library/LaunchAgents"
-cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist" <<PLIST
+cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/$LAUNCH_AGENT_PLIST_NAME" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -125,11 +135,10 @@ cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.
   <key>Label</key>
   <string>$LAUNCH_AGENT_LABEL_XML</string>
   <key>BundleProgram</key>
-  <string>Contents/MacOS/Intentive</string>
+  <string>Contents/MacOS/IntentiveLoginLauncher</string>
   <key>ProgramArguments</key>
   <array>
-    <string>Contents/MacOS/Intentive</string>
-    <string>--background</string>
+    <string>Contents/MacOS/IntentiveLoginLauncher</string>
   </array>
   <key>AssociatedBundleIdentifiers</key>
   <array>
@@ -140,7 +149,37 @@ cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.
 </dict>
 </plist>
 PLIST
-plutil -lint "$APP_BUNDLE/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist" >/dev/null
+plutil -lint "$APP_BUNDLE/Contents/Library/LaunchAgents/$LAUNCH_AGENT_PLIST_NAME" >/dev/null
+
+# Keep a non-starting plist for the old label so the app can ask
+# `SMAppService` to unregister exactly that stale Intentive item after its
+# Coaching Window has shut down. It is never registered by current code and
+# avoids the destructive `sfltool resetbtm` workaround.
+cat > "$APP_BUNDLE/Contents/Library/LaunchAgents/$LEGACY_LAUNCH_AGENT_PLIST_NAME" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$LEGACY_LAUNCH_AGENT_LABEL_XML</string>
+  <key>BundleProgram</key>
+  <string>Contents/MacOS/IntentiveLoginLauncher</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>Contents/MacOS/IntentiveLoginLauncher</string>
+  </array>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>$BUNDLE_ID_XML</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
+PLIST
+plutil -lint \
+  "$APP_BUNDLE/Contents/Library/LaunchAgents/$LEGACY_LAUNCH_AGENT_PLIST_NAME" \
+  >/dev/null
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

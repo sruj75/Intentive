@@ -83,7 +83,7 @@ and launch-at-login registration are tied to application identity.
 | App              | `Intentive Preview.app`                  |
 | Bundle ID        | `com.heyintentive.desktop.preview`       |
 | Auth callback    | `intentive-desktop-preview`              |
-| LaunchAgent      | `com.heyintentive.desktop.preview.login` |
+| LaunchAgent      | `com.heyintentive.desktop.preview.login-launcher-v1` |
 | Installation     | `/Applications/Intentive Preview.app`    |
 | Updates          | Sparkle ZIP from a GitHub pre-release    |
 | Signing          | Developer ID                             |

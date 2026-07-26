@@ -18,6 +18,7 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
   public var privateCloudSyncEnabled: Bool
   public var floatingBarShortcut: String
   public var launchAtLogin: Bool
+  private var launchAtLoginPreferenceVersion: Int
   public var analyticsEnabled: Bool
   private var analyticsConsentVersion: Int
   public var automaticallyChecksForUpdates: Bool
@@ -33,7 +34,7 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
     storeRecordings: Bool = true,
     privateCloudSyncEnabled: Bool = false,
     floatingBarShortcut: String = "command+shift+return",
-    launchAtLogin: Bool = false,
+    launchAtLogin: Bool = true,
     analyticsEnabled: Bool = false,
     automaticallyChecksForUpdates: Bool = true,
     automaticallyDownloadsUpdates: Bool = false,
@@ -52,6 +53,7 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
       ? "command+shift+return"
       : floatingBarShortcut
     self.launchAtLogin = launchAtLogin
+    launchAtLoginPreferenceVersion = Self.currentLaunchAtLoginPreferenceVersion
     self.analyticsEnabled = analyticsEnabled
     analyticsConsentVersion = Self.currentAnalyticsConsentVersion
     self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
@@ -60,12 +62,14 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
   }
 
   public static let allowedRetentionDays = [3, 7, 14, 30]
+  private static let currentLaunchAtLoginPreferenceVersion = 1
   private static let currentAnalyticsConsentVersion = 1
 
   private enum CodingKeys: String, CodingKey {
     case retentionDays, screenCaptureEnabled, passiveAudioEnabled, systemAudioMode
     case notificationsEnabled, storeRecordings, privateCloudSyncEnabled
-    case floatingBarShortcut, launchAtLogin, analyticsEnabled, analyticsConsentVersion
+    case floatingBarShortcut, launchAtLogin, launchAtLoginPreferenceVersion
+    case analyticsEnabled, analyticsConsentVersion
     case automaticallyChecksForUpdates, automaticallyDownloadsUpdates, selectedSection
   }
 
@@ -82,6 +86,9 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
     let hasCurrentAnalyticsConsent =
       try values.decodeIfPresent(Int.self, forKey: .analyticsConsentVersion)
       == Self.currentAnalyticsConsentVersion
+    let hasCurrentLaunchAtLoginPreference =
+      try values.decodeIfPresent(Int.self, forKey: .launchAtLoginPreferenceVersion)
+      == Self.currentLaunchAtLoginPreferenceVersion
     self.init(
       retentionDays: try values.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7,
       screenCaptureEnabled: try values.decodeIfPresent(Bool.self, forKey: .screenCaptureEnabled) ?? true,
@@ -93,7 +100,9 @@ public struct DesktopUtilitySettings: Codable, Equatable, Sendable {
       privateCloudSyncEnabled: false,
       floatingBarShortcut: try values.decodeIfPresent(String.self, forKey: .floatingBarShortcut)
         ?? "command+shift+return",
-      launchAtLogin: try values.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false,
+      launchAtLogin: hasCurrentLaunchAtLoginPreference
+        ? (try values.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true)
+        : true,
       analyticsEnabled: hasCurrentAnalyticsConsent
         ? (try values.decodeIfPresent(Bool.self, forKey: .analyticsEnabled) ?? false)
         : false,
