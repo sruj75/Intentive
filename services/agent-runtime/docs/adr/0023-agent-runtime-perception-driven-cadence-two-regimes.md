@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted
+Accepted for perception-triggered Monitoring Turns and burst collapse. Amended
+for v1 by monorepo ADR-0006 (2026-07-26): there is no idle/away coaching regime,
+and recent perception is a bounded chronological sequence rather than one latest
+summary.
 
 ## Date
 

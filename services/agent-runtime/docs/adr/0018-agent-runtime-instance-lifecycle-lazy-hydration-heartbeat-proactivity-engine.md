@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted for Runtime lifecycle. The connection-independent Heartbeat product
+behavior is superseded for v1 by monorepo ADR-0006 (2026-07-26): proactive
+coaching is gated by an active Desktop Coaching Window.
 
 ## Date
 

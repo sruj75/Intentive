@@ -4,7 +4,9 @@
 
 Accepted. Confirmed on **Option A** (bundled LaunchAgent with a `--background` marker) and
 implemented. This is the lifecycle change called out in the Desktop UX Renovation plan as
-"the one phase worth a design confirmation."
+"the one phase worth a design confirmation." Amended for v1 by monorepo ADR-0006
+(2026-07-26): a background login launch remains a menu-bar application but begins
+a Desktop Coaching Window and may reveal the non-focus-stealing Floating Bar welcome.
 
 ## Context
 

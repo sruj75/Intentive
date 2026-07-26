@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted. Supersedes the Private Mode clauses of ADR 0010 and the Private Mode
-references in `ARCHITECTURE.md`, `PRIVACY.md`, and `RELEASE.md`.
+Accepted. Amended 2026-07-26 with the **Pause Coaching** whole-window action.
+Supersedes the Private Mode clauses of ADR 0010 and the Private Mode references
+in `ARCHITECTURE.md`, `PRIVACY.md`, and `RELEASE.md`.
 
 ## Context
 
@@ -26,9 +27,8 @@ public release rather than as gaps to close.
 
 ## Decision
 
-- **No global Private Mode.** There is no single switch that pauses all sensing.
-  Capture and audio are governed by the controls that already exist and that a
-  user can reason about individually:
+- **No persistent global Private Mode.** Capture and audio retain controls that
+  a user can reason about individually:
   - macOS permission grants (Screen Recording, Microphone, System Audio), which
     fail closed when absent;
   - explicit per-source enable switches (Screen Memory capture, passive audio);
@@ -40,16 +40,35 @@ public release rather than as gaps to close.
   is no separate dismiss or snooze control, and no duplicate macOS banner is
   emitted for an ordinary reply.
 
+### Amendment — 2026-07-26: Pause Coaching ends the Coaching Window
+
+The Desktop-only v1 product now has an explicit **Desktop Coaching Window**:
+the Companion is present while the laptop and Desktop Client are active, then
+steps out when that window ends. The User needs the same immediate authority
+they would have with a human coach: one action that says "stop watching and
+listening now."
+
+- Add one **Pause Coaching** action that ends the current Desktop Coaching Window
+  and synchronously stops screen, microphone, and system-audio perception.
+- Only an explicit User action may resume coaching and begin another window.
+- This does **not** restore the old persistent global `PrivateMode` setting and
+  does not replace the existing per-source permissions, enable switches,
+  exclusions, retention controls, or clear-all.
+- Post-Message-Back remains reply-or-ignore; Pause Coaching governs Companion
+  presence and perception, not individual message dismissal.
+
 ## Consequences
 
 - Stopping sensing means turning off the relevant source (or revoking its macOS
-  permission), not toggling a mode. Documentation that described a global Private
-  Mode is corrected to describe these per-source controls.
+  permission), ending the Desktop Coaching Window with **Pause Coaching**, or
+  stopping the Desktop Client. Documentation must distinguish the ephemeral
+  whole-window action from a persistent global Private Mode.
 - ADR 0010's safety-gate list ("still pauses in Private Mode") is superseded on
   that clause only; the rest of ADR 0010 (passive audio on by default, consent-
   gated, no raw-audio retention, system audio `.onlyDuringMeetings`) stands.
-- Acceptance and the clean-TCC Tart checklist assert per-source enable/disable,
-  exclusion, retention, and clear-all behavior instead of a Private Mode step,
-  and assert PMB reply-or-ignore with no dismiss/snooze affordance.
+- Acceptance and the clean-TCC Tart checklist assert Pause Coaching stops every
+  active perception source, explicit resume begins a new Coaching Window,
+  per-source enable/disable, exclusion, retention, and clear-all still work,
+  and PMB remains reply-or-ignore with no dismiss/snooze affordance.
 - No user migration is required: there are no existing users, and no persisted
   Private Mode state to reconcile.

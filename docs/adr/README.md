@@ -27,6 +27,7 @@ When a context-specific ADR references a system-wide one, it is written as **mon
 | 0003 | Single live protocol shape v1                        | accepted |
 | 0004 | Shared boundary-decode package (@intentive/boundary) | accepted |
 | 0005 | Perception Event protocol evolution                  | accepted |
+| 0006 | Desktop Coaching Window bounds the v1 product        | accepted |
 
 ## Context indexes
 
@@ -109,17 +110,17 @@ Local index: [`services/agent-runtime/docs/adr/README.md`](../../services/agent-
 | 0015 | Monitoring Turn — one mechanism, two triggers                               | accepted                                                         |
 | 0016 | Per-User Channel is the single run-loop; trigger arbitration                | accepted; amended 2026-06-16 by 0029 (cron main-thread flip)     |
 | 0017 | v1 Cron runs in main session; isolated cron deferred                        | accepted; amended 2026-06-16 by 0029 (ephemeral stopgap retired) |
-| 0018 | Agent Instance lifecycle — lazy hydration, idle eviction, scheduler         | accepted; refined 2026-06-16 by 0027 (heartbeat zero-state)      |
+| 0018 | Agent Instance lifecycle — lazy hydration, idle eviction, scheduler         | accepted; Heartbeat behavior amended by monorepo 0006            |
 | 0019 | v1 has no skills and no subagents                                           | accepted                                                         |
 | 0020 | Ingress ack decoupled from turn success; failures contained                 | accepted                                                         |
 | 0021 | Native VFS: injected Procedure Floor + Per-User StoreBackend memory         | accepted                                                         |
 | 0022 | Procedure Floor in Langfuse Prompt Management (registry-first)              | accepted                                                         |
-| 0023 | Perception-driven cadence — two regimes over one Sensory Buffer             | accepted                                                         |
+| 0023 | Perception-driven cadence — two regimes over one Sensory Buffer             | accepted; active-window/recent-sequence amendment by monorepo 0006 |
 | 0024 | Cron scheduler is a poll loop, not a timer wheel                            | accepted; amended 2026-06-16 by 0029 (main-thread fire path)     |
 | 0025 | User timezone is device-reported and persisted per-user                     | accepted                                                         |
 | 0026 | Cron is a DeepAgents-native filesystem card — no bespoke cron tools         | accepted; amended 2026-06-16 by issue #39                        |
-| 0027 | Heartbeat run-loop — flat floor, zero stored state, agent quiet-hours       | accepted                                                         |
-| 0028 | Post-Message-Back delivery — shared port, foreground fork, ledger           | accepted                                                         |
+| 0027 | Heartbeat run-loop — flat floor, zero stored state, agent quiet-hours       | superseded for v1 by monorepo 0006                               |
+| 0028 | Post-Message-Back delivery — shared port, foreground fork, ledger           | accepted; Desktop-only delivery amended by monorepo 0006         |
 | 0029 | Cron rejoins Per-User Channel — main-thread committed trigger class         | accepted (retires 0017 ephemeral exception)                      |
 | 0030 | v1 production readiness — off-the-shelf observability, not a custom program | accepted (scopes #42)                                            |
 | 0031 | Turn Execution spine owns the Runtime Turn anchor and floor resolution      | accepted (deepens turn.ts; cron now emits runtime_turns)         |
