@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 @testable import IntentiveDesktopCore
 import XCTest
@@ -108,17 +109,22 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
       pipeline: PassiveAudioPipelineSpy(),
       sourceHealthTimeoutNanoseconds: 100_000_000
     )
+    var observedStates: [PassiveAudioCaptureState] = []
+    coordinator.onStateChange = { observedStates.append($0) }
     var unavailableSources: [PassiveAudioSource] = []
     coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
 
     coordinator.setUserEnabled(true)
-    await settle()
-    XCTAssertEqual(coordinator.state, .starting)
-    await settle(nanoseconds: 110_000_000)
+    let failedClosed = await waitUntil { !unavailableSources.isEmpty }
+    XCTAssertTrue(failedClosed, "microphone health timeout never fired")
 
     XCTAssertFalse(mic.isRunning)
     XCTAssertFalse(system.isRunning)
     XCTAssertEqual(unavailableSources, [.microphone])
+    XCTAssertFalse(
+      observedStates.contains { $0.isRecording },
+      "a source that never delivered audio must never be published as recording"
+    )
     if case .failed = coordinator.state {} else { XCTFail("expected failed state") }
   }
 
@@ -129,80 +135,112 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
       mic: mic,
       system: system,
       pipeline: PassiveAudioPipelineSpy(),
-      sourceHealthTimeoutNanoseconds: 200_000_000
+      sourceHealthTimeoutNanoseconds: 400_000_000
     )
+    var observedStates: [PassiveAudioCaptureState] = []
+    coordinator.onStateChange = { observedStates.append($0) }
     var unavailableSources: [PassiveAudioSource] = []
     coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
 
     coordinator.setMeetingActive(true)
     coordinator.setUserEnabled(true)
-    await settle(nanoseconds: 40_000_000)
-    XCTAssertEqual(coordinator.state, .starting)
-    mic.emit(Data([1]))
-    await settle(nanoseconds: 100_000_000)
-    mic.emit(Data([1]))
-    await settle(nanoseconds: 90_000_000)
+    let failedClosed = await waitUntil(heartbeat: { mic.emit(Data([1])) }) {
+      !unavailableSources.isEmpty
+    }
+    XCTAssertTrue(failedClosed, "system audio health timeout never fired")
 
     XCTAssertFalse(mic.isRunning)
     XCTAssertFalse(system.isRunning)
     XCTAssertFalse(coordinator.state.isRecording)
     XCTAssertEqual(unavailableSources, [.systemAudio])
+    XCTAssertFalse(
+      observedStates.contains { $0.isRecording },
+      "a healthy microphone must not publish recording while system audio is required but silent"
+    )
   }
 
   func testMicrophoneHeartbeatExpiryAfterInitialAudioFailsClosed() async {
+    let timeoutNanoseconds: UInt64 = 200_000_000
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy()
     let coordinator = makeCoordinator(
       mic: mic,
       system: system,
       pipeline: PassiveAudioPipelineSpy(),
-      sourceHealthTimeoutNanoseconds: 40_000_000
+      sourceHealthTimeoutNanoseconds: timeoutNanoseconds
     )
+    var observedStates: [PassiveAudioCaptureState] = []
+    coordinator.onStateChange = { observedStates.append($0) }
     var unavailableSources: [PassiveAudioSource] = []
-    coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
+    var failedAtNanoseconds: UInt64?
+    coordinator.onRequiredSourceUnavailable = {
+      unavailableSources.append($0)
+      failedAtNanoseconds = failedAtNanoseconds ?? DispatchTime.now().uptimeNanoseconds
+    }
 
+    let enabledAtNanoseconds = DispatchTime.now().uptimeNanoseconds
     coordinator.setUserEnabled(true)
-    await settle()
-    XCTAssertEqual(coordinator.state, .running(microphone: true, systemAudio: false))
+    let failedClosed = await waitUntil { !unavailableSources.isEmpty }
+    XCTAssertTrue(failedClosed, "microphone health timeout never fired")
 
-    await settle(nanoseconds: 50_000_000)
-
+    XCTAssertTrue(
+      observedStates.contains(.running(microphone: true, systemAudio: false)),
+      "the startup buffer must publish a running state before the heartbeat expires"
+    )
     XCTAssertFalse(mic.isRunning)
     XCTAssertFalse(system.isRunning)
     XCTAssertEqual(unavailableSources, [.microphone])
+    guard let failedAtNanoseconds else { return XCTFail("fail-closed instant was not recorded") }
+    XCTAssertGreaterThanOrEqual(
+      failedAtNanoseconds &- enabledAtNanoseconds,
+      timeoutNanoseconds,
+      "fail-closed must wait out the full heartbeat timeout"
+    )
   }
 
   func testMicrophoneHealthDeadlineTracksTheLatestAudioBuffer() async {
+    let timeoutNanoseconds: UInt64 = 300_000_000
     let mic = StreamingAudioSourceSpy()
     let system = StreamingAudioSourceSpy()
     let coordinator = makeCoordinator(
       mic: mic,
       system: system,
       pipeline: PassiveAudioPipelineSpy(),
-      sourceHealthTimeoutNanoseconds: 300_000_000
+      sourceHealthTimeoutNanoseconds: timeoutNanoseconds
     )
     var unavailableSources: [PassiveAudioSource] = []
-    coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
+    var failedAtNanoseconds: UInt64?
+    coordinator.onRequiredSourceUnavailable = {
+      unavailableSources.append($0)
+      failedAtNanoseconds = failedAtNanoseconds ?? DispatchTime.now().uptimeNanoseconds
+    }
 
+    let armedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
     coordinator.setUserEnabled(true)
-    await settle()
-    XCTAssertEqual(coordinator.state, .running(microphone: true, systemAudio: false))
+    // Keep audio arriving past the halfway point of the deadline armed at
+    // start, so a deadline still anchored to the first buffer would fire
+    // meaningfully sooner than one timeout after the last buffer below.
+    let heldHealthy = await waitUntil(heartbeat: { mic.emit(Data([1])) }) {
+      coordinator.state == .running(microphone: true, systemAudio: false)
+        && DispatchTime.now().uptimeNanoseconds &- armedAtNanoseconds >= timeoutNanoseconds / 2
+    }
+    XCTAssertTrue(heldHealthy, "microphone never reported healthy")
+    XCTAssertTrue(unavailableSources.isEmpty, "a source delivering audio must stay healthy")
 
-    await settle(nanoseconds: 100_000_000)
+    let lastAudioAtNanoseconds = DispatchTime.now().uptimeNanoseconds
     mic.emit(Data([1]))
-    await settle(nanoseconds: 250_000_000)
-
-    XCTAssertEqual(
-      coordinator.state,
-      .running(microphone: true, systemAudio: false),
-      "audio arriving near the original deadline must extend health from the latest buffer"
-    )
-
-    await settle(nanoseconds: 100_000_000)
+    let failedClosed = await waitUntil { !unavailableSources.isEmpty }
+    XCTAssertTrue(failedClosed, "microphone health timeout never fired after audio stopped")
 
     XCTAssertFalse(mic.isRunning)
     XCTAssertFalse(system.isRunning)
     XCTAssertEqual(unavailableSources, [.microphone])
+    guard let failedAtNanoseconds else { return XCTFail("fail-closed instant was not recorded") }
+    XCTAssertGreaterThanOrEqual(
+      failedAtNanoseconds &- lastAudioAtNanoseconds,
+      timeoutNanoseconds,
+      "audio arriving near the original deadline must extend health from the latest buffer"
+    )
   }
 
   func testSystemAudioHeartbeatExpiryAfterInitialAudioFailsClosed() async {
@@ -212,20 +250,24 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
       mic: mic,
       system: system,
       pipeline: PassiveAudioPipelineSpy(),
-      sourceHealthTimeoutNanoseconds: 200_000_000
+      sourceHealthTimeoutNanoseconds: 400_000_000
     )
+    var observedStates: [PassiveAudioCaptureState] = []
+    coordinator.onStateChange = { observedStates.append($0) }
     var unavailableSources: [PassiveAudioSource] = []
     coordinator.onRequiredSourceUnavailable = { unavailableSources.append($0) }
 
     coordinator.setMeetingActive(true)
     coordinator.setUserEnabled(true)
-    await settle(nanoseconds: 20_000_000)
-    XCTAssertEqual(coordinator.state, .running(microphone: true, systemAudio: true))
+    let failedClosed = await waitUntil(heartbeat: { mic.emit(Data([1])) }) {
+      !unavailableSources.isEmpty
+    }
+    XCTAssertTrue(failedClosed, "system audio health timeout never fired")
 
-    await settle(nanoseconds: 100_000_000)
-    mic.emit(Data([1]))
-    await settle(nanoseconds: 100_000_000)
-
+    XCTAssertTrue(
+      observedStates.contains(.running(microphone: true, systemAudio: true)),
+      "both startup buffers must publish a running state before system audio expires"
+    )
     XCTAssertFalse(mic.isRunning)
     XCTAssertFalse(system.isRunning)
     XCTAssertFalse(coordinator.state.isRecording)
@@ -339,6 +381,28 @@ final class PassiveAudioCaptureCoordinatorTests: XCTestCase {
   private func settle(nanoseconds: UInt64 = 20_000_000) async {
     await Task.yield()
     try? await Task.sleep(nanoseconds: nanoseconds)
+  }
+
+  /// Polls until `condition` holds, optionally delivering `heartbeat` audio on
+  /// every poll to hold a source healthy while a different one runs its
+  /// deadline down.
+  ///
+  /// Source health is wall-clock driven, so these tests wait for the observable
+  /// outcome and assert lower bounds on elapsed time rather than sampling state
+  /// at a fixed instant: a loaded CI runner stretches every sleep, which would
+  /// otherwise fail a correct coordinator.
+  private func waitUntil(
+    ceilingNanoseconds: UInt64 = 10_000_000_000,
+    heartbeat: (() -> Void)? = nil,
+    _ condition: () -> Bool
+  ) async -> Bool {
+    let deadline = DispatchTime.now().uptimeNanoseconds &+ ceilingNanoseconds
+    while true {
+      heartbeat?()
+      if condition() { return true }
+      guard DispatchTime.now().uptimeNanoseconds < deadline else { return false }
+      await settle(nanoseconds: 5_000_000)
+    }
   }
 }
 
