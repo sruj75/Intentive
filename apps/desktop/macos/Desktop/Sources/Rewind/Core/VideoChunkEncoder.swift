@@ -58,7 +58,15 @@ actor VideoChunkEncoder {
     try fileManager.createDirectory(at: videosDirectory, withIntermediateDirectories: true)
   }
 
-  func addFrame(image: CGImage, timestamp: Date) async throws -> ScreenMemoryVideoWriteOutcome {
+  func addFrame(
+    image: CGImage,
+    timestamp: Date,
+    commitCapture: @escaping ScreenMemoryCaptureCommit = { operation in
+      try operation()
+      return true
+    }
+  ) async throws -> ScreenMemoryVideoWriteOutcome {
+    guard try commitCapture({}) else { throw CancellationError() }
     var finalized: [ScreenMemoryVideoChunkFinalization] = []
     let newFrameSize = CGSize(width: image.width, height: image.height)
 
@@ -118,7 +126,11 @@ actor VideoChunkEncoder {
     )
 
     do {
-      try await writeFrame(image: image, sampleOrdinal: frameOffsetInChunk)
+      try await writeFrame(
+        image: image,
+        sampleOrdinal: frameOffsetInChunk,
+        commitCapture: commitCapture
+      )
       frameTimestamps.append(timestamp)
       frameOffsetInChunk += 1
       consecutiveWriteFailures = 0
@@ -219,7 +231,11 @@ actor VideoChunkEncoder {
     pixelBufferAdaptor = adaptor
   }
 
-  private func writeFrame(image: CGImage, sampleOrdinal: Int) async throws {
+  private func writeFrame(
+    image: CGImage,
+    sampleOrdinal: Int,
+    commitCapture: @escaping ScreenMemoryCaptureCommit
+  ) async throws {
     guard
       let input = writerInput,
       let adaptor = pixelBufferAdaptor,
@@ -240,11 +256,14 @@ actor VideoChunkEncoder {
       seconds: Double(sampleOrdinal) / configuration.frameRate,
       preferredTimescale: 600
     )
-    guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
-      throw OmiScreenMemoryVideoArchiveError.writerFailed(
-        assetWriter?.error?.localizedDescription ?? "Failed to append HEVC frame"
-      )
+    let committed = try commitCapture {
+      guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
+        throw OmiScreenMemoryVideoArchiveError.writerFailed(
+          self.assetWriter?.error?.localizedDescription ?? "Failed to append HEVC frame"
+        )
+      }
     }
+    guard committed else { throw CancellationError() }
     writerNotReadyCount = 0
   }
 

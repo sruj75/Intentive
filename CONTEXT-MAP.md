@@ -41,9 +41,79 @@ _Avoid_: macOS app, mobile app, the agent, the backend
 The product-facing concept of the proactive agent the user talks to. What the user thinks they are interacting with.
 _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the product), bot
 
+**Knowledge Athlete**:
+A person who deliberately trains and sustains attention so their chosen important work keeps moving at a high standard.
+_Avoid_: knowledge worker, productivity user, hustle worker
+
+**Important Work Yield**:
+Meaningful progress on a user-declared important outcome per intentional work hour. It describes whether working time moved the chosen outcome, not how many hours or tasks the User accumulated. The Companion reasons about it naturally from the live work and conversation, asking the User when meaning is ambiguous; it is not a mandatory per-block score or closeout ritual.
+_Avoid_: productivity score, hours worked, task volume, mandatory closeout
+
+**Important Outcome**:
+The User-chosen result that would meaningfully move their important work: an artifact advanced, a decision made, a problem resolved, or another concrete change they care about. It gives the Companion a baseline for coaching without reducing the work to an app or task label.
+_Avoid_: active app, task title, agent-assigned goal, activity category
+
+**Important Work Block**:
+A period within a **Desktop Coaching Window** organized around one User-confirmed **Important Outcome**. A Coaching Window may contain many blocks; when the User intentionally changes outcomes, the Companion reorients with them and confirms the new baseline before judging progress against it.
+_Avoid_: Pomodoro, login session, capture session, uninterrupted task
+
+**Focus Endurance**:
+The User's ability to preserve or recover high-quality attention across a longer intentional work period. It supports Important Work Yield without treating maximum working time as the goal.
+_Avoid_: twelve-hour flow, always-on productivity, maximum screen time
+
+**Work-Along Coaching**:
+The Companion stays present while the User performs real important work: helping choose the right thread, clarifying the next meaningful move, noticing possible resistance or drift as it appears, and helping the User return to effective progress. Coaching happens in the work itself, not only as advice before or reflection afterward.
+_Avoid_: productivity chatbot, passive screen monitoring, task manager, surveillance
+
+**Human Performance Coach Model**:
+The governing behavioral reference for Intentive: translate what a skilled human performance coach does while sitting alongside live work into adaptive Companion behavior. The Companion observes, waits, asks, scaffolds, challenges, and intervenes as the moment warrants; it does not turn those behaviors into rigid workflows or engagement mechanics. Software-specific privacy, perception, and safety boundaries still apply.
+_Avoid_: productivity enforcement, chatbot engagement loop, scripted coaching funnel, human impersonation
+
+**Coaching Perception**:
+The contextual evidence a human performance coach would have while sitting alongside live work: the outcome the User chose, what visible work is changing, where attention appears to shift or stall, and what the User says or is heard saying about their experience. In v1, raw screenshots and audio stay on the Mac while the Agent Runtime receives a privacy-filtered structured sequence rich enough to understand recent work progression. After explicit microphone permission, passive audio sensing runs only during the **Desktop Coaching Window** and contributes filtered transcript summaries; it is perception, not voice conversation. Camera-based facial or body evidence is deferred.
+_Avoid_: activity surveillance, exhaustive screen log, mind reading, cloud screenshot stream, voice chat, facial-state detection in v1
+
+**Coaching Memory**:
+The durable, curated understanding the Companion carries across Coaching Windows: useful patterns, preferences, recurring obstacles, effective interventions, and user-corrected context. Detailed screen, OCR, and audio-derived work content remains perception governed by its retention policy and is never copied verbatim into long-term memory automatically.
+_Avoid_: permanent activity archive, raw perception memory, immutable user profile, verbatim work transcript
+
+**Least Necessary Intervention**:
+When the Companion judges that help may be useful, it begins with the smallest non-assumptive interruption likely to restore awareness or progress. In v1 it reveals the Floating Bar without stealing keyboard focus, uses no macOS notification, and starts with one short message. It expands into deeper **Executive-Function Scaffolding** only when the User engages or the situation warrants it; an ignored intervention does not become a repeated nag.
+_Avoid_: long unsolicited coaching, accusatory drift alert, forced recovery flow, notification spam, focus stealing
+
+**Quiet Presence**:
+The Companion's natural behavior while the User's important work appears to be moving: attentive without interrupting. It speaks when the User asks, an agreed checkpoint arrives, or a **Work-State Judgment** indicates that progress may be breaking down and an intervention could help. This is coaching judgment baked into the Companion, not a UI mode or explicit runtime state.
+_Avoid_: quiet mode, coaching state machine, constant check-ins, engagement bait, notification cadence, silence as disengagement
+
+**Executive-Function Scaffolding**:
+The Companion augments the capacities a Knowledge Athlete needs to direct real work: activating, focusing, sustaining effort, regulating emotion, using working memory, and monitoring action. It externalizes structure, asks useful questions, and helps break an ambition into executable moves without taking ownership of the User's decisions.
+_Avoid_: choosing for the User, cognitive replacement, ADHD treatment, task assignment
+
+**Opening Orientation**:
+The human coaching conversation at the beginning of every **Desktop Coaching Window**. The Companion welcomes the User, helps surface what matters now, scaffolds their thinking, and offers to break down an ambition or task until the User can declare the important outcome they choose to move. It is a conversation, not a task-entry form or forced planning ritual.
+_Avoid_: task form, productivity questionnaire, agent-assigned goal, mandatory planning wizard
+
+**Desktop Coaching Window**:
+The v1 boundary of **Work-Along Coaching**: it begins when the User opens and works from their laptop with the Desktop Client active, and ends when the laptop closes, sleeps, the Desktop Client stops, or the User chooses **Pause Coaching**. Screen lock temporarily pauses perception but does not begin another window on unlock. Every real window receives exactly one **Opening Orientation**; transport reconnects never create another. While the window is active, v1 targets noticing sustained drift or blockage within two minutes. The Desktop Client's text-only Floating Bar is the only v1 coaching surface; there is no spoken Companion, mobile chat, mobile delivery, or cross-device coaching in the v1 product path. This is a product-presence boundary, not a claim that server infrastructure starts and stops with the laptop.
+_Avoid_: 24/7 coaching, all-day heartbeat, offline monitoring, background productivity surveillance, cross-device coaching, voice coach
+
+**Pause Coaching**:
+The one immediate User action that asks the Companion to step out. It ends the current **Desktop Coaching Window** and stops all screen and audio perception together until the User explicitly resumes. It is an ephemeral coaching boundary, not a persistent privacy mode or a collection of per-source settings.
+_Avoid_: Private Mode, snooze, automatic resume, disable each sensor
+
 ## Relationships
 
 - **Intentive** is composed of one **Control Plane**, one **Agent Runtime**, and replaceable **Clients** — currently the **Mobile Client** and **Desktop Client**.
+- In v1, **Work-Along Coaching** is delivered only through the **Desktop Client** during a **Desktop Coaching Window**. Mobile coaching and Mobile delivery of coaching welcomes or interventions are outside this v1 path; the existing ordinary Mobile chat path remains unchanged.
+- Every v1 **Desktop Coaching Window** begins with an **Opening Orientation**. The User chooses the important outcome; the Companion provides **Executive-Function Scaffolding** before and during the work.
+- A **Desktop Coaching Window** may contain multiple **Important Work Blocks**, each grounded by a User-confirmed **Important Outcome**.
+- **Coaching Perception** gives the Companion the evidence a human coach would use while sitting alongside the work; the Agent Runtime turns that evidence into a revisable **Work-State Judgment**.
+- With explicit permission, v1 passive microphone sensing starts and stops with the **Desktop Coaching Window**. Raw audio remains local; only privacy-filtered transcript summaries may contribute to **Coaching Perception**.
+- Detailed **Coaching Perception** expires under its retention policy; the Companion carries only curated **Coaching Memory** across days.
+- **Pause Coaching** immediately ends the current **Desktop Coaching Window** and all Coaching Perception; only the User can begin another window.
+- The **Human Performance Coach Model** governs Companion behavior. A proactive interruption follows **Least Necessary Intervention** and deepens only through contextual judgment, not a fixed script.
+- **Opening Orientation**, **Quiet Presence**, and intervention are context-sensitive behaviors of one Companion, not user-visible modes or a shell-owned state machine.
+- During active work, the Companion maintains **Quiet Presence** until the User asks, an agreed checkpoint arrives, or a **Work-State Judgment** supports intervening.
 - The **Agent Runtime** is the deployed shape of the **Companion**. The **Companion** is what users perceive; the **Agent Runtime** is what runs.
 - The **Agent Runtime** is built on **DeepAgents** but is not synonymous with it.
 - The **Agent Runtime** is **Multi-Tenant**: one process, many users, per-user **Agent Instances**.
@@ -52,16 +122,28 @@ _Avoid_: Execution Companion, chatbot, assistant, agent (as a noun for the produ
 - The **Control Plane** never sees an in-session message. It issues **Routing** and then steps out of the data path.
 - All **Clients** speak the same **Protocol** defined in `packages/protocol/`. The Agent Runtime distinguishes them only by the `client_kind` field on the `connect` handshake.
 - The **Mobile Client** primarily sends `user_message` events. The **Desktop Client** sends `perception_event`, `session_end_marker`, and floating-bar `user_message` events. Both share the same handshake, auth, idempotency, and reconnect semantics.
-- **Session Start** is the only Control Plane → Agent Runtime call in v1. It is synchronous, idempotent per User, and bundles Agent Instance creation with the Conversation Start Trigger.
+- **Session Start** is the only Control Plane → Agent Runtime call in v1. It is
+  synchronous and idempotently creates or loads the User's **Agent Instance**
+  before returning **Routing**. It is infrastructure-only and never invokes
+  DeepAgents; first-run personalization begins at an eligible Desktop
+  **Opening Orientation**.
 - The two **Internal API** directions each trust the caller via a **Directional Secret** (one secret guards calls to the Agent Runtime, a separate secret guards calls to the Control Plane) on a private network interface. User JWT auth is separate and used only on the public WebSocket.
-- **Conversation History** is server-truth. The Mobile Client renders the authoritative timeline streamed back on WebSocket reconnect; it stores nothing locally.
+- **Conversation History** is server-truth. For ordinary interactive chat, the Mobile Client renders the authoritative timeline streamed back on WebSocket reconnect and stores nothing locally. Window-bound welcomes and interventions are Desktop effects and are never replayed to Mobile.
 - **Screen Memory** on the Desktop Client is unrelated to chat history. It is local truth for screen records the device produced.
 - On the **Desktop Client**, **Routing State** (do we hold valid Routing from `GET /agent`?) and **Session State** (is the Protocol WebSocket up right now?) are independent — see [`apps/desktop/CONTEXT.md`](apps/desktop/CONTEXT.md). UI sees only a plain connection mood; JWT and `ws_url` stay inside the Runtime Bridge seam.
-- **Push Notifications** in v1 originate exclusively from **Post-Message-Back**. Replies do not auto-push.
-- **Post-Message-Back** is invoked by the Agent Runtime, which then calls Control Plane's `POST /internal/notifications/push`. The Control Plane owns Expo Push Token storage and Expo Push Service delivery.
+- Outside Desktop coaching, **Push Notifications** originate exclusively from
+  ordinary **Post-Message-Back**. Replies do not auto-push. A Desktop
+  Coaching Window's welcome or intervention never uses push.
+- Ordinary **Post-Message-Back** may be invoked by the Agent Runtime, which
+  then calls Control Plane's `POST /internal/notifications/push`. The Control
+  Plane owns Expo Push Token storage and Expo Push Service delivery. Coaching
+  delivery is separately bound to the matching Desktop connection.
 - **Cron** and **Heartbeat** are triggers, not notifications. A trigger fires → agent code runs → agent may or may not decide to **Post-Message-Back**.
 - The Mobile Client requests notification permission **on first entry into chat**, framed around delivering Companion messages — not at app launch.
-- The **Mobile Client** and **Desktop Client** both join the one Companion conversation. Desktop chat is compact floating-bar chat, not a second conversation.
+- The **Mobile Client** and **Desktop Client** both join the one Companion
+  conversation for ordinary interactive chat. Desktop chat is compact
+  floating-bar chat, not a second conversation; window-bound coaching effects
+  remain Desktop-only.
 - **Pre-Chat Gates** are owned by the Control Plane. Mobile's v1 gate sequence: Identity Gate → Consent Primer → Sibling Client Invitation (skippable). Desktop's v1 gate sequence: Identity Gate → Consent Primer → Capture Permission Setup → Sibling Client Invitation (skippable). Identity Gate and Consent Primer states are shared across clients.
 
 ## Example dialogue

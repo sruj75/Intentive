@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted for the shared delivery port, persist-first behavior, and unified
+ledger. Amended for v1 by monorepo ADR-0006 (2026-07-26): Desktop is the only
+chat-capable client and proactive delivery has no mobile-push fallback.
 
 ## Date
 

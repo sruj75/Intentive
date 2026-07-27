@@ -6,8 +6,10 @@ struct AIResponseView: View {
   var currentMessage: ChatMessage?
   var userInput: String
   var chatHistory: [FloatingChatExchange]
+  var isReadOnly: Bool = false
   var onEscape: () -> Void
   var onSendFollowUp: (String) -> Void
+  var onResumeCoaching: () -> Void
 
   @State private var followUpText = ""
   @State private var hasMarkedText = false
@@ -30,7 +32,22 @@ struct AIResponseView: View {
       }
       .frame(maxHeight: 240)
 
-      HStack(spacing: 8) {
+      if isReadOnly {
+        Button(action: onResumeCoaching) {
+          Label("Resume Coaching", systemImage: "play.fill")
+            .scaledFont(size: 13, weight: .semibold)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.white)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(IntentiveColors.purplePrimary)
+        )
+        .accessibilityIdentifier("floating-resume-coaching")
+      } else {
+        HStack(spacing: 8) {
         // The follow-up composer is the same real `NSTextView`-backed editor as
         // AskAIInputView, not a plain SwiftUI `TextField`. A plain `TextField`
         // does not relay an AX-driven `kAXValueAttribute` write back into its
@@ -78,13 +95,14 @@ struct AIResponseView: View {
         .disabled(!canSend)
         .buttonStyle(.plain)
         .accessibilityIdentifier("floating-composer-send")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(0.06))
+        )
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-      .background(
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .fill(Color.white.opacity(0.06))
-      )
     }
     .padding(16)
     .onExitCommand(perform: onEscape)

@@ -30,6 +30,56 @@ test("bootstrap initializes Sentry errors-only with OpenTelemetry skipped", () =
   assert.equal(initCalls[0].dsn, "https://public@example.ingest.sentry.io/1");
   assert.equal(initCalls[0].environment, "staging");
   assert.equal(initCalls[0].release, "agent-runtime@sha");
+  assert.equal(initCalls[0].sendDefaultPii, false);
+  const scrubbed = initCalls[0].beforeSend({
+    message: "private model response",
+    request: { data: "private request body", headers: { authorization: "secret" } },
+    extra: { prompt: "private prompt" },
+    contexts: { model: { response: "private output" } },
+    user: { email: "founder@example.com" },
+    breadcrumbs: [
+      { category: "http", message: "private URL", data: { body: "private" } },
+      {
+        category: "agent-runtime",
+        level: "info",
+        message: "coaching.monitoring_turn",
+        data: { status: "ok", body: "drop me" },
+      },
+    ],
+    exception: {
+      values: [
+        {
+          type: "ProviderError",
+          value: "private provider response",
+          stacktrace: {
+            frames: [
+              {
+                filename: "runtime.js",
+                function: "run",
+                lineno: 10,
+                vars: { body: "private" },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(scrubbed.message, undefined);
+  assert.equal(scrubbed.request, undefined);
+  assert.equal(scrubbed.extra, undefined);
+  assert.equal(scrubbed.contexts, undefined);
+  assert.equal(scrubbed.user, undefined);
+  assert.deepEqual(scrubbed.breadcrumbs, [
+    {
+      category: "agent-runtime",
+      level: "info",
+      message: "coaching.monitoring_turn",
+      data: { status: "ok" },
+    },
+  ]);
+  assert.equal(scrubbed.exception.values[0].value, "Content-redacted application error");
+  assert.equal(scrubbed.exception.values[0].stacktrace.frames[0].vars, undefined);
   assert.equal(observability.createCallbackHandler(), null);
 });
 

@@ -466,6 +466,23 @@ public final class ScreenMemoryCaptureLifecycleController {
     }
   }
 
+  /// Immediate, non-finalizing stop used by the Coaching Window privacy
+  /// boundary. It invalidates every delayed restart before stopping the source;
+  /// the coordinator separately finalizes and durably ends sessions when the
+  /// window itself ends. A lock uses this stop without ending the session.
+  public func suspendForCoachingBoundary() {
+    startGeneration += 1
+    wakeSettleTask?.cancel()
+    wakeSettleTask = nil
+    displayChangeTask?.cancel()
+    displayChangeTask = nil
+    userEnabled = false
+    wasAutoPaused = false
+    pausedReason = .userToggle
+    loop.stop()
+    state = .disabled
+  }
+
   /// Reconcile desired policy, permission, privacy, and the actual source.
   public func reconcile() {
     guard captureBoundaryEnabled else {
@@ -655,7 +672,7 @@ public final class ScreenMemoryCaptureLifecycleController {
   /// file, reconciles the archive + outbox, and auto-starts capture when the
   /// persisted `captureEnabled` is still `true` and the capture boundary is
   /// active. Idempotent per process; subsequent calls are no-ops.
-  public func performLaunchReconciliation() async {
+  public func performLaunchReconciliation(autoStart: Bool = true) async {
     guard captureBoundaryEnabled else { return }
     guard !didPerformLaunchReconciliation else { return }
     didPerformLaunchReconciliation = true
@@ -701,7 +718,8 @@ public final class ScreenMemoryCaptureLifecycleController {
       launchReconciliationDroppedExpiredOutboxRows = (try? outboxDrain.dropExpiredPendingPerceptionEvents()) ?? 0
     }
 
-    guard settings().captureEnabled,
+    guard autoStart,
+          settings().captureEnabled,
           permissionProvider()
     else { return }
     userEnabled = true

@@ -92,6 +92,15 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     XCTAssertEqual(first.search("anonymous", limit: 10).first?.record.id, "first")
   }
 
+  func testInMemoryFallbackDoesNotExposeDurableProfileIdentity() {
+    let store = SwitchableScreenMemoryStore(
+      InMemoryScreenMemoryStore(),
+      profileID: "verified-user"
+    )
+
+    XCTAssertNil(store.durableProfileUserID)
+  }
+
   func testSwitchableScreenMemoryStoreKeepsPendingIngressOwnedByPreviousProfile() throws {
     let first = InMemoryScreenMemoryStore()
     let second = InMemoryScreenMemoryStore()
@@ -394,7 +403,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
 
   func testPerceptionPublisherRejectsRawFrameBytes() throws {
     let runtime = RecordingRuntimeClient()
-    let publisher = PerceptionPublisher(runtimeClient: runtime)
+    let publisher = PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     let artifact = CompiledPerceptionArtifact(
       id: "bad",
       artifactType: .searchableScreenRecord,
@@ -422,7 +431,8 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let publisher = PerceptionPublisher(
       runtimeClient: runtime,
       outbox: outbox,
-      isRuntimeConnected: { connected }
+      isRuntimeConnected: { connected },
+      windowIdProvider: desktopTestCoachingWindowIdProvider
     )
     let artifact = screenArtifact(id: "queued")
 
@@ -511,7 +521,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let store = InMemoryScreenMemoryStore()
     let coordinator = AmbientAudioCoordinator(
       audioMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
 
     let event = try coordinator.accept(
@@ -534,7 +544,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let store = InMemoryScreenMemoryStore()
     let coordinator = AmbientAudioCoordinator(
       audioMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
 
     let event = try coordinator.accept(
@@ -589,7 +599,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let store = InMemoryScreenMemoryStore()
     let coordinator = AmbientAudioCoordinator(
       audioMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
     var nowCallCount = 0
     let loop = AmbientAudioCaptureLoop(
@@ -621,7 +631,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(),
       screenMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
 
     let events = try coordinator.accept(
@@ -645,7 +655,8 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let publisher = PerceptionPublisher(
       runtimeClient: runtime,
       outbox: store,
-      isRuntimeConnected: { false }
+      isRuntimeConnected: { false },
+      windowIdProvider: desktopTestCoachingWindowIdProvider
     )
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(),
@@ -675,7 +686,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(),
       screenMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
 
     _ = try coordinator.accept(
@@ -699,7 +710,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(),
       screenMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
     let fullOCR = ((0..<35).map { "word\($0)" } + ["tail-local-only-token"]).joined(separator: " ")
 
@@ -727,7 +738,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(),
       screenMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
     let source = FixedDesktopCaptureSource(
       frame: CapturedFrame(
@@ -754,7 +765,7 @@ final class ScreenMemoryCompilerTests: XCTestCase {
     let coordinator = CaptureCoordinator(
       compiler: ContextCompiler(settings: CompilerSettings(excludedApps: ["1Password"])),
       screenMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
     let source = ContextAwareCountingDesktopCaptureSource(
       context: DesktopWindowContext(appName: "1Password", windowTitle: "Vault"),
@@ -815,7 +826,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: FixedDesktopCaptureSource(
         frame: CapturedFrame(
@@ -854,7 +865,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source
     )
@@ -877,7 +888,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: FixedDesktopCaptureSource(
         frame: CapturedFrame(
@@ -916,7 +927,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(settings: CompilerSettings(captureEnabled: false)),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       settingsProvider: { CompilerSettings(captureEnabled: false) }
@@ -948,7 +959,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       permissionProvider: { false }
@@ -982,7 +993,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(settings: settings),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       settingsProvider: { settings }
@@ -1017,7 +1028,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       now: { now }
@@ -1054,7 +1065,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: InMemoryScreenMemoryStore(),
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       now: { Date(timeIntervalSince1970: 3) }
@@ -1088,7 +1099,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       now: { now }
@@ -1126,7 +1137,7 @@ final class ScreenMemoryCaptureLoopTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: source,
       now: { now }

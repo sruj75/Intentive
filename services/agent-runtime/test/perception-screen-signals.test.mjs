@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  embeddingText,
-  permittedEmbeddingText,
-  structuredScreenFields,
-  toPerceptionRecord,
-} from "../dist/index.js";
+import { structuredScreenFields, toPerceptionRecord } from "../dist/index.js";
 
 const PERMITTED = {
   type: "perception_event",
   event_id: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
+  window_id: "11111111-1111-4111-8111-111111111111",
   source_client: "desktop",
   captured_at: "2026-07-05T10:00:00.000Z",
   period_start: "2026-07-05T09:59:00.000Z",
@@ -59,9 +55,16 @@ test("a permitted screen record projects its full permitted field set", () => {
   assert.equal(record.windowTitle, "plan.md");
   assert.equal(record.ocrText, "Eight release blockers");
   assert.equal(record.contentRedacted, false);
+  assert.equal(record.windowId, "11111111-1111-4111-8111-111111111111");
 });
 
-test("a redacted screen record withholds title, OCR, and never embeds secret text", () => {
+test("legacy perception without a Coaching Window remains projectable but unscoped", () => {
+  const { window_id: _windowId, ...legacy } = PERMITTED;
+
+  assert.equal(toPerceptionRecord("user-1", legacy).windowId, null);
+});
+
+test("a redacted screen record withholds title and OCR", () => {
   const fields = structuredScreenFields(REDACTED);
   assert.deepEqual(fields, {
     bundleId: "com.apple.keychainaccess",
@@ -70,24 +73,9 @@ test("a redacted screen record withholds title, OCR, and never embeds secret tex
     ocrText: null,
     contentRedacted: true,
   });
-
-  const embedded = permittedEmbeddingText(REDACTED);
-  // Summary + app identity only — no title or OCR (there is none to leak).
-  assert.match(embedded, /Secret content detected/);
-  assert.match(embedded, /Keychain Access/);
-  assert.doesNotMatch(embedded, /plan\.md/);
-  assert.doesNotMatch(embedded, /Eight release blockers/);
 });
 
-test("permitted embedding text includes title and OCR for a permitted record", () => {
-  const embedded = embeddingText(PERMITTED);
-  assert.match(embedded, /Reviewing the renovation plan/);
-  assert.match(embedded, /Code/);
-  assert.match(embedded, /plan\.md/);
-  assert.match(embedded, /Eight release blockers/);
-});
-
-test("non-screen artifacts leave the structured columns null and flatten string signals", () => {
+test("non-screen artifacts leave the structured columns null", () => {
   const audio = {
     ...PERMITTED,
     artifact_type: "ambient_audio_summary",
@@ -102,9 +90,4 @@ test("non-screen artifacts leave the structured columns null and flatten string 
     ocrText: null,
     contentRedacted: false,
   });
-
-  const embedded = permittedEmbeddingText(audio);
-  assert.match(embedded, /Nearby speech discussed the launch/);
-  // Flattened string signal values are still embedded for non-screen artifacts.
-  assert.match(embedded, /microphone/);
 });

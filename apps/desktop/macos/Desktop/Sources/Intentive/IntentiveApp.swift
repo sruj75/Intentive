@@ -42,20 +42,39 @@ struct IntentiveApp: App {
     let configuration = DesktopLaunchConfiguration.production(profileRoot: applicationSupportRoot)
     #endif
     let composition = DesktopApplicationAssembler.assemble(configuration: configuration)
+    let model = DesktopViewModel(
+      launchConfiguration: configuration,
+      composition: composition
+    )
     self.composition = composition
-    _model = StateObject(
-      wrappedValue: DesktopViewModel(
-        launchConfiguration: configuration,
-        composition: composition
-      )
+    _model = StateObject(wrappedValue: model)
+    appDelegate.attach(
+      model: model,
+      makePrimaryWindowContent: {
+        AnyView(
+          MainWindowView(model: model, composition: composition)
+            .frame(minWidth: 940, minHeight: 620)
+        )
+      }
     )
   }
 
   var body: some Scene {
-    WindowGroup {
-      MainWindowView(model: model, composition: composition)
-        .frame(minWidth: 940, minHeight: 620)
-        .onAppear { appDelegate.attach(model: model) }
+    // The Settings surface is owned by one retained NSWindowController in the
+    // app delegate. A SwiftUI Window scene is intentionally not used here:
+    // menu-bar-only login launch does not instantiate hidden scene content, so
+    // a reopen action captured from that content is unavailable exactly when
+    // Finder, Spotlight, or `open -a` needs to create the first window.
+    Settings {
+      EmptyView()
+    }
+    .commands {
+      CommandGroup(replacing: .appSettings) {
+        Button("Open Intentive…") {
+          appDelegate.showPrimaryWindow()
+        }
+        .keyboardShortcut(",", modifiers: .command)
+      }
     }
   }
 }

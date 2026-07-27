@@ -84,6 +84,32 @@ test("heartbeat scheduler resync cancels users that left the instance set", asyn
   assert.deepEqual(enqueued, ["kept"]);
 });
 
+test("heartbeat scheduler preserves an external Opening retry scheduled while resync is loading", async () => {
+  const enqueued = [];
+  const reload = deferred();
+  const scheduler = createHeartbeatScheduler({
+    scheduleRepo: {
+      selectDue: async () => [],
+      listAll: async () => reload.promise,
+    },
+    enqueueHeartbeat: (userId) => {
+      enqueued.push(userId);
+      return true;
+    },
+    floorMs: FLOOR_MS,
+    clock: () => new Date(T0),
+  });
+
+  const resync = scheduler.resync();
+  scheduler.schedule("opening_user", new Date(T0 - 1));
+  reload.resolve([]);
+  await resync;
+
+  assert.equal(scheduler.has("opening_user"), true);
+  await scheduler.tick();
+  assert.deepEqual(enqueued, ["opening_user"]);
+});
+
 test("heartbeat scheduler escalates consecutive resync failures warn→error and resets on success", async () => {
   const warnings = [];
   const errors = [];

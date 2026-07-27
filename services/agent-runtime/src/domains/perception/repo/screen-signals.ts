@@ -57,27 +57,3 @@ export function structuredScreenFields(event: PerceptionEvent): StructuredScreen
     contentRedacted: false,
   };
 }
-
-/**
- * The permitted text Agent Runtime embeds for a record: summary plus app identity,
- * window title, and OCR for a permitted screen record; summary plus app identity
- * for a redacted one; summary plus flattened string signals for every other
- * artifact type. Secret text is structurally absent, so it is never embedded.
- */
-export function permittedEmbeddingText(event: PerceptionEvent): string {
-  if (event.artifact_type === "searchable_screen_record") {
-    const fields = structuredScreenFields(event);
-    return joinText([event.summary, fields.appName, fields.windowTitle, fields.ocrText]);
-  }
-  const signalText = Object.values(event.signals).filter(
-    (value): value is string => typeof value === "string",
-  );
-  return joinText([event.summary, ...signalText]);
-}
-
-function joinText(parts: (string | null | undefined)[]): string {
-  return parts
-    .filter((part): part is string => typeof part === "string" && part.length > 0)
-    .join("\n")
-    .trim();
-}

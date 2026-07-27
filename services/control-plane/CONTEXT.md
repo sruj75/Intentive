@@ -31,12 +31,8 @@ The one-time relationship-consent screen explaining memory, follow-ups, and user
 An optional client-offered prompt to install the other client (Mobile invites to install Desktop, and vice versa). **Cross-Client Gate** for _skip_ state — skipping on either client records "skipped for now" and removes it from active gate flow on both. Re-offered later only when a contextual reason appears.
 
 **Session Start**:
-The single, synchronous, idempotent internal call from Control Plane → Agent Runtime when a user first enters chat. One call (`POST /internal/sessions/start`) creates the **Agent Instance** if missing and fires the **Conversation Start Trigger**, returning routing info (`agent_instance_id`, `ws_url`).
-_Avoid_: Agent Instance Creation + Conversation Start Trigger as separate calls, async provisioning
-
-**Conversation Start Trigger**:
-The one-time, idempotent-per-User signal that tells the Agent Runtime to begin the first conversation. Fires as part of **Session Start**, not as a separate call.
-_Avoid_: standalone endpoint, client-issued trigger, repeated triggers across reconnects
+The single, synchronous, idempotent internal call from Control Plane → Agent Runtime when a user first enters chat. One call (`POST /internal/sessions/start`) creates or loads the **Agent Instance** and returns routing info (`agent_instance_id`, `ws_url`). It does not invoke DeepAgents or produce a user-visible message; the Agent Runtime owns its separate, durable first-run lifecycle at a real client surface.
+_Avoid_: conversation side effect, model wake, async provisioning
 
 **Agent Instance Registry**:
 The Control Plane's own record that a User has provisioned an **Agent Instance** — one row per `user_id`, written idempotently the first time **Session Start** succeeds. It exists so `GET /me` can answer `has_agent_instance` cheaply and independently of Agent Runtime availability; the Control Plane never phones the Runtime to answer `/me`. The Agent Runtime owns the authoritative instance and its lifecycle; this registry is the Control Plane's local denormalized copy of "this User has ever provisioned."

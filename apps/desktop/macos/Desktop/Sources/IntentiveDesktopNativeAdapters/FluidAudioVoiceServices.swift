@@ -26,7 +26,11 @@ final class SileroVADModel {
     private let stateSize = 2 * 1 * 128  // 256
 
     init?() {
-      guard let modelPath = Bundle.module.path(forResource: "silero_vad", ofType: "onnx") else {
+      let resources =
+        DesktopBundleResourceResolver.packagedBundle(
+          named: "IntentiveDesktop_IntentiveDesktopNativeAdapters.bundle"
+        ) ?? Bundle.module
+      guard let modelPath = resources.path(forResource: "silero_vad", ofType: "onnx") else {
         voiceLog.error("SileroVADModel: silero_vad.onnx not found in bundle")
         return nil
       }

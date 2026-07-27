@@ -6,6 +6,16 @@ All notable changes to the shared `packages/` kernel. Format follows [Keep a Cha
 
 ### Added
 
+- **`@intentive/protocol` — Desktop Coaching Window contract** —
+  `connect` may advertise the `desktop_coaching_v1` capability; strict
+  `coaching_window_started`, `coaching_window_ended`, and non-durable
+  `coaching_window_presence` events establish lifecycle and live presence.
+  New Desktop Perception Events, Floating Bar user messages, and live Companion
+  messages may carry a `window_id`, while omitted capability/window fields
+  preserve legacy clients and ordinary Mobile messages.
+  Durable start/end acknowledgements reuse `window_id` under distinct ingress
+  kinds. Tests: extended `protocol/test/contract.test.mjs` and
+  `protocol/test/parse.test.mjs`.
 - **`@intentive/providers` — observability bootstrap + structured telemetry** ([Issue #42]) —
   `@intentive/providers/observability` owns Sentry init (`skipOpenTelemetrySetup: true`),
   Langfuse callback handler factory, and redacted structured logging via `createLogger`.

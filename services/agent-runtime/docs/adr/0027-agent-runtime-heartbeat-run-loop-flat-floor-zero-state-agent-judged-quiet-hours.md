@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded for v1 by monorepo ADR-0006 (2026-07-26). Heartbeat is gated by an
+active Desktop Coaching Window; the flat forever/offline floor is not in the v1
+product path.
 
 ## Date
 

@@ -1,7 +1,7 @@
 import type { Breadcrumb, NodeOptions } from "@sentry/node";
 import * as Sentry from "@sentry/node";
 
-import type { LogAttrs, SentrySink } from "../telemetry.js";
+import { redactAttrs, type LogAttrs, type SentrySink } from "../telemetry.js";
 import type { SentryConfig } from "./types.js";
 
 export interface SentryModule {
@@ -30,7 +30,54 @@ export function createSentrySink(
     dsn: config.dsn,
     environment: config.environment,
     release: config.release,
+    sendDefaultPii: false,
     skipOpenTelemetrySetup: true,
+    beforeBreadcrumb(breadcrumb) {
+      if (breadcrumb.category !== "agent-runtime") {
+        return null;
+      }
+      return {
+        category: "agent-runtime",
+        level: breadcrumb.level,
+        message: breadcrumb.message,
+        data: redactAttrs(breadcrumb.data),
+      };
+    },
+    beforeSend(event) {
+      const scrubbed = { ...event };
+      delete scrubbed.message;
+      delete scrubbed.request;
+      delete scrubbed.extra;
+      delete scrubbed.contexts;
+      delete scrubbed.user;
+      delete scrubbed.transaction;
+      scrubbed.breadcrumbs = event.breadcrumbs
+        ?.filter((breadcrumb) => breadcrumb.category === "agent-runtime")
+        .map((breadcrumb) => ({
+          category: "agent-runtime",
+          level: breadcrumb.level,
+          message: breadcrumb.message,
+          data: redactAttrs(breadcrumb.data),
+        }));
+      scrubbed.exception = event.exception
+        ? {
+            values: event.exception.values?.map((value) => ({
+              type: value.type,
+              value: "Content-redacted application error",
+              stacktrace: value.stacktrace
+                ? {
+                    frames: value.stacktrace.frames?.map((frame) => {
+                      const safeFrame = { ...frame };
+                      delete safeFrame.vars;
+                      return safeFrame;
+                    }),
+                  }
+                : undefined,
+            })),
+          }
+        : undefined;
+      return scrubbed;
+    },
   });
 
   return {

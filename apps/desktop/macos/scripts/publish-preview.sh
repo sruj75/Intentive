@@ -9,7 +9,7 @@ PREVIEW_TAG="${INTENTIVE_PREVIEW_RELEASE_TAG:-desktop-preview}"
 APP_NAME="Intentive Preview"
 BUNDLE_ID="com.heyintentive.desktop.preview"
 AUTH_CALLBACK_SCHEME="intentive-desktop-preview"
-LAUNCH_AGENT_LABEL="com.heyintentive.desktop.preview.login"
+LAUNCH_AGENT_LABEL="com.heyintentive.desktop.preview.login-launcher-v1"
 SIGNING_IDENTITY="${INTENTIVE_PREVIEW_SIGNING_IDENTITY:-Developer ID Application: Srujan Gowda (24D6NXS6H7)}"
 CONTROL_PLANE_URL="${INTENTIVE_CONTROL_PLANE_URL:-}"
 HOSTED_AUTH_URL="${INTENTIVE_HOSTED_AUTH_URL:-}"
@@ -96,7 +96,10 @@ for framework in \
   codesign --force --options runtime --timestamp --deep \
     --sign "$SIGNING_IDENTITY" "$framework"
 done
-codesign --force --options runtime --timestamp --deep \
+codesign --force --options runtime --timestamp \
+  --sign "$SIGNING_IDENTITY" \
+  "$APP_BUNDLE/Contents/MacOS/IntentiveLoginLauncher"
+codesign --force --options runtime --timestamp \
   --entitlements "$MACOS_DIR/Desktop/Intentive-Release.entitlements" \
   --sign "$SIGNING_IDENTITY" \
   "$APP_BUNDLE"

@@ -181,7 +181,10 @@ for framework in \
   "$BASELINE_APP/Contents/Frameworks/Sentry.framework"; do
   codesign --force --options runtime --timestamp --deep --sign "$SIGNING_IDENTITY" "$framework"
 done
-codesign --force --options runtime --timestamp --deep \
+codesign --force --options runtime --timestamp \
+  --sign "$SIGNING_IDENTITY" \
+  "$BASELINE_APP/Contents/MacOS/IntentiveLoginLauncher"
+codesign --force --options runtime --timestamp \
   --entitlements "$REPO_ROOT/apps/desktop/macos/Desktop/Intentive-Release.entitlements" \
   --sign "$SIGNING_IDENTITY" "$BASELINE_APP"
 codesign --verify --deep --strict --verbose=2 "$BASELINE_APP"

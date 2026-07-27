@@ -4,6 +4,39 @@ All notable changes to the Desktop Client. Format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop Coaching Window** — one deep coordinator now owns eligibility,
+  durable start/end ordering, crash recovery, lock presence, sleep/wake,
+  Pause/Resume, permission loss/restoration, sign-out, quit, and atomic
+  screen/microphone/system-audio lifecycle. Preview builds advertise
+  `desktop_coaching_v1`; every newly compiled perception record carries the
+  active `window_id`.
+- **Window-bound coaching presentation** — Opening Orientations and proactive
+  interventions reveal the existing nonactivating Floating Bar only when their
+  `window_id` matches the current active window. Pause makes the transcript
+  read-only and replaces composition with Resume Coaching.
+
+### Changed
+
+- **One normal privacy boundary** — the Preview replaces independent source
+  enable switches with Pause/Resume Coaching while preserving macOS permission,
+  exclusion, retention, and deletion controls.
+
+### Fixed
+
+- **Coaching Window identity and menu state** — newly minted window UUIDs use
+  PostgreSQL's lowercase canonical form, and the status menu preserves explicit
+  disabled states for inactive Coaching and unavailable updates.
+- **Foreground permission preparation and quiet login launch** — onboarding now
+  completes disposable direct-screen and System Audio authorization probes
+  before Coaching can start, enables Launch at Login by default, and migrates
+  the legacy sensing-process login item to an entitlement-free one-shot helper
+  under a fresh versioned ServiceManagement identity. The legacy Intentive-only
+  registration is retired after privacy shutdown without resetting unrelated
+  background items. Later login launches remain menu-bar-only until the user
+  explicitly opens Intentive.
+
 ## [0.1.1] - 2026-07-23
 
 First public stable Desktop release: a Developer ID signed, notarized, and stapled

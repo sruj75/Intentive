@@ -15,7 +15,9 @@ Key boundary decisions established by this ADR (full vocabulary in CONTEXT.md):
 - **One Agent Runtime** — multi-tenant, shared compute, per-user logical Agent Instance. No per-user VM. No `tenant_id` — the User is the tenant.
 - **One Protocol** — `packages/protocol/` is the single source of truth for the WebSocket message contract. Every client (Mobile, Desktop, future Android) imports it. The Agent Runtime imports it. Client unification lives in the protocol layer, not in network topology.
 - **Control Plane sits beside the data path, never on it.** It issues Routing (URL + JWT) and steps out.
-- **Single internal call CP→Runtime:** `POST /internal/sessions/start` — synchronous, idempotent per User, bundles Agent Instance creation with the Conversation Start Trigger. Shared-secret auth on a private interface.
+- **Single internal call CP→Runtime:** `POST /internal/sessions/start` —
+  synchronous, idempotent per User, and limited to Agent Instance create/load
+  plus Routing. Shared-secret auth on the Runtime's `/internal` ingress.
 - **Conversation History is server-truth.** No on-device cache in the Mobile Client until measured latency requires one.
 - **Post-Message-Back is the only notification trigger.** Replies do not auto-push. The Control Plane owns push delivery and device push tokens (Expo Push Service in v1; see [`services/control-plane/docs/adr/0006-expo-push-service-for-v1-notifications.md`](../../services/control-plane/docs/adr/0006-expo-push-service-for-v1-notifications.md)).
 - **Pre-Chat Gates** are Control-Plane-owned, with two kinds: Cross-Client (Identity, Consent, Sibling Invitation skip) and Device-Local (Capture Permission Setup).
@@ -28,6 +30,13 @@ Key boundary decisions established by this ADR (full vocabulary in CONTEXT.md):
 - All ADRs from the four origin repos are retained in this directory, renumbered globally, prefixed with their origin deployable. See [README.md](README.md) for the mapping and supersedence status.
 - Several origin ADRs are **superseded** by this decision (snapshot HTTPS-webhook delivery; on-device chat persistence; per-deployable Pre-Chat Gate ownership). They remain in this directory for history; the superseded status is captured both in their frontmatter and in the README index.
 - Future decisions are recorded as new ADRs in this directory, numbered sequentially from the highest existing number.
+
+## Amendment — 2026-07-26
+
+Agent Runtime ADR-0036 removes the unimplemented Conversation Start Trigger.
+Session Start remains the single state-creating Control Plane → Runtime call but
+has no model or conversation side effect. One-time personalization begins at
+Desktop Opening Orientation, where an eligible user-visible surface exists.
 
 ## Considered alternatives
 

@@ -7,12 +7,15 @@ import type { EventLedger } from "../repo/event-ledger.js";
 import type { SqlQuery, TransactionalSql } from "../repo/sql.js";
 import type {
   BoundSession,
+  CoachingWindowLifecycleSink,
   LedgerRecord,
   PerUserChannel,
   PerceptionArrivedSink,
   PerceptionProjectedSink,
   RuntimeIngressEvent,
+  UserMessageCommittedSink,
 } from "../types/event.js";
+import { isCoachingWindowLifecycleEvent } from "../types/event.js";
 import { createUserQueue } from "./user-queue.js";
 
 /**
@@ -23,11 +26,12 @@ import { createUserQueue } from "./user-queue.js";
  *
  * `accept` commits the `runtime_events` arrival marker and every durable
  * projection in one Neon array transaction (ADR-0009): either all rows commit or
- * none do, and redelivery stays safe because the inserts are `ON CONFLICT DO
- * NOTHING`. The `sessions` → `conversation` projection is still injected as
- * `project`, so this module never imports the `conversation` repo — the
- * decoupling ADR-0009 protects is preserved while ordering, transaction, and
- * reads become co-located.
+ * none do. The ledger suppresses duplicate identities; each injected projection
+ * owns its stronger reconciliation policy (for example, Perception redaction
+ * and later tombstones are monotonic across redelivery). The `sessions` →
+ * `conversation` projection is still injected as `project`, so this module
+ * never imports the `conversation` repo — the decoupling ADR-0009 protects is
+ * preserved while ordering, transaction, and reads become co-located.
  */
 export function createPerUserChannel(deps: {
   sql: TransactionalSql;
@@ -37,6 +41,8 @@ export function createPerUserChannel(deps: {
   runTurn?: TurnRunner;
   onPerceptionArrived?: PerceptionArrivedSink;
   onPerceptionProjected?: PerceptionProjectedSink;
+  onCoachingWindowLifecycle?: CoachingWindowLifecycleSink;
+  onUserMessageCommitted?: UserMessageCommittedSink;
   onTurnError?: (error: unknown, context: { userId: string; messageId: string }) => void;
   logger?: Logger;
 }): PerUserChannel {
@@ -58,6 +64,12 @@ export function createPerUserChannel(deps: {
         }
         if (inserted && isPerceptionEvent(event)) {
           deps.onPerceptionArrived?.(session, event);
+        }
+        if (inserted && isCoachingWindowLifecycleEvent(event)) {
+          deps.onCoachingWindowLifecycle?.(session, event);
+        }
+        if (inserted && event.type === "user_message") {
+          deps.onUserMessageCommitted?.(session, event);
         }
         if (event.type === "user_message" && deps.runTurn && inserted) {
           try {
@@ -81,8 +93,10 @@ export function createPerUserChannel(deps: {
       });
     },
 
-    readSnapshot(userId, before, limit) {
-      return queue.submit(userId, () => deps.conversation.readSnapshot(userId, before, limit));
+    readSnapshot(userId, before, limit, audience) {
+      return queue.submit(userId, () =>
+        deps.conversation.readSnapshot(userId, before, limit, audience),
+      );
     },
 
     enqueueCommitted(userId, run) {
@@ -150,6 +164,9 @@ function dedupKeyFor(event: RuntimeIngressEvent): string {
       return event.event_id;
     case "perception_tombstone":
       return event.tombstone_id;
+    case "coaching_window_started":
+    case "coaching_window_ended":
+      return event.window_id;
     case "session_end_marker":
       // The marker's stable UUID is its dedup key, so a redelivered marker
       // commits idempotently and is acknowledged the same way.

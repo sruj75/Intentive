@@ -99,6 +99,7 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
       const callbacks = callbackHandler ? [callbackHandler] : undefined;
       let result: unknown;
       try {
+        const invocationConfig = buildRuntimeInvocationConfig(input);
         result = await agent.invoke(
           {
             messages: [
@@ -109,18 +110,9 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
             ],
           },
           {
-            configurable: {
-              thread_id: input.threadId,
-              user_id: input.userId,
-              trigger: input.trigger,
-            },
+            configurable: invocationConfig.configurable,
             callbacks,
-            metadata: {
-              langfusePrompt: firstPromptHandle(input.pinnedFloor.langfusePrompts),
-              langfuseUserId: input.userId,
-              langfuseSessionId: input.threadId,
-              bundle_version: input.pinnedFloor.version,
-            },
+            metadata: invocationConfig.metadata,
           },
         );
       } catch (error) {
@@ -149,7 +141,7 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
 
       const traceId = callbackHandler?.getTraceId?.() ?? null;
 
-      const usage = extractUsage(result);
+      const usage = extractModelUsage(result);
       logger.info("model.invoked", {
         user_id: input.userId,
         thread_id: input.threadId,
@@ -167,6 +159,37 @@ export function createDeepAgentsAdapter(params: DeepAgentsAdapterParams): DeepAg
         model: params.modelName,
         bundleVersion: input.pinnedFloor.version,
       };
+    },
+  };
+}
+
+export function buildRuntimeInvocationConfig(input: RuntimeTurnInput): {
+  readonly configurable: Record<string, string | number>;
+  readonly metadata: Record<string, unknown>;
+} {
+  const coachingBounds = {
+    ...(input.windowId === undefined ? {} : { window_id: input.windowId }),
+    ...(input.evidenceVersion === undefined ? {} : { evidence_version: input.evidenceVersion }),
+    ...(input.evidenceCursorStart === undefined
+      ? {}
+      : { evidence_cursor_start: input.evidenceCursorStart }),
+    ...(input.evidenceCursorEnd === undefined
+      ? {}
+      : { evidence_cursor_end: input.evidenceCursorEnd }),
+  };
+  return {
+    configurable: {
+      thread_id: input.threadId,
+      user_id: input.userId,
+      trigger: input.trigger,
+      ...coachingBounds,
+    },
+    metadata: {
+      langfusePrompt: firstPromptHandle(input.pinnedFloor.langfusePrompts),
+      langfuseUserId: input.userId,
+      langfuseSessionId: input.threadId,
+      bundle_version: input.pinnedFloor.version,
+      ...coachingBounds,
     },
   };
 }
@@ -231,21 +254,52 @@ function extractReply(result: unknown): string {
     : JSON.stringify(lastAiMessage.content);
 }
 
-function extractUsage(result: unknown): { token_input?: number; token_output?: number } {
+export interface ModelUsageTelemetry {
+  readonly token_input?: number;
+  readonly token_output?: number;
+  readonly cost_available: boolean;
+  readonly cost_credits?: number;
+}
+
+export function extractModelUsage(result: unknown): ModelUsageTelemetry {
   const messages = Array.isArray((result as { messages?: unknown }).messages)
     ? (result as { messages: unknown[] }).messages
     : [];
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const usage = (messages[i] as { usage_metadata?: unknown }).usage_metadata;
-    if (!usage || typeof usage !== "object") {
+    const message = messages[i];
+    if (!isRecord(message)) {
       continue;
     }
-    const inputTokens = (usage as { input_tokens?: unknown }).input_tokens;
-    const outputTokens = (usage as { output_tokens?: unknown }).output_tokens;
+    const usage = isRecord(message.usage_metadata) ? message.usage_metadata : null;
+    const providerCost = providerCostCredits(message);
+    if (!usage && providerCost === null) {
+      continue;
+    }
+    const inputTokens = usage?.input_tokens;
+    const outputTokens = usage?.output_tokens;
     return {
       ...(typeof inputTokens === "number" ? { token_input: inputTokens } : {}),
       ...(typeof outputTokens === "number" ? { token_output: outputTokens } : {}),
+      cost_available: providerCost !== null,
+      ...(providerCost === null ? {} : { cost_credits: providerCost }),
     };
   }
-  return {};
+  return { cost_available: false };
+}
+
+function providerCostCredits(message: Record<string, unknown>): number | null {
+  const usageMetadata = isRecord(message.usage_metadata) ? message.usage_metadata : null;
+  const responseMetadata = isRecord(message.response_metadata) ? message.response_metadata : null;
+  const responseUsage = isRecord(responseMetadata?.usage) ? responseMetadata.usage : null;
+  const candidates = [usageMetadata?.cost, responseUsage?.cost, responseMetadata?.cost];
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

@@ -31,6 +31,38 @@ test("connect accepts optional client timezone and keeps strict unknown-key beha
   assert.equal(result.success, true);
 });
 
+test("connect advertises the optional Desktop Coaching capability without breaking legacy clients", () => {
+  const legacy = protocol.connect.safeParse({
+    type: "connect",
+    auth_token: "jwt",
+    client_kind: "desktop",
+    client_version: "1.0.0",
+  });
+  assert.equal(legacy.success, true);
+
+  const coachingPreview = protocol.clientToRuntimeEvent.safeParse({
+    type: "connect",
+    auth_token: "jwt",
+    client_kind: "desktop",
+    client_version: "1.0.0-preview.1",
+    capabilities: ["desktop_coaching_v1"],
+  });
+  assert.equal(coachingPreview.success, true);
+  assert.deepEqual(coachingPreview.data.capabilities, ["desktop_coaching_v1"]);
+});
+
+test("connect rejects unrecognized capability names", () => {
+  const result = protocol.connect.safeParse({
+    type: "connect",
+    auth_token: "jwt",
+    client_kind: "desktop",
+    client_version: "1.0.0",
+    capabilities: ["desktop_coaching_v2"],
+  });
+
+  assert.equal(result.success, false);
+});
+
 test("connect rejects malformed client timezone values", () => {
   const result = protocol.connect.safeParse({
     type: "connect",
@@ -158,6 +190,101 @@ test("history_backfill_request is a member of clientToRuntimeEvent", () => {
   assert.equal(result.success, true);
 });
 
+test("coaching_window_started accepts every approved reason through the inbound boundary", () => {
+  const reasons = [
+    "app_launch",
+    "login_launch",
+    "sign_in",
+    "onboarding_completed",
+    "system_wake",
+    "user_resume",
+    "permission_restored",
+    "crash_recovery",
+  ];
+
+  for (const reason of reasons) {
+    const result = protocol.clientToRuntimeEvent.safeParse({
+      type: "coaching_window_started",
+      window_id: "11111111-1111-4111-8111-111111111111",
+      started_at: "2026-07-26T08:00:00.000Z",
+      reason,
+    });
+    assert.equal(result.success, true, `start reason ${reason} should be accepted`);
+  }
+});
+
+test("coaching_window_ended accepts every approved reason through the inbound boundary", () => {
+  const reasons = ["pause", "system_sleep", "sign_out", "quit", "crash", "permission_lost"];
+
+  for (const reason of reasons) {
+    const result = protocol.clientToRuntimeEvent.safeParse({
+      type: "coaching_window_ended",
+      window_id: "11111111-1111-4111-8111-111111111111",
+      ended_at: "2026-07-26T09:00:00.000Z",
+      reason,
+    });
+    assert.equal(result.success, true, `end reason ${reason} should be accepted`);
+  }
+});
+
+test("coaching_window_presence attests active and locked state through the inbound boundary", () => {
+  for (const state of ["active", "locked"]) {
+    const result = protocol.clientToRuntimeEvent.safeParse({
+      type: "coaching_window_presence",
+      window_id: "11111111-1111-4111-8111-111111111111",
+      state,
+      changed_at: "2026-07-26T08:30:00.000Z",
+    });
+    assert.equal(result.success, true, `presence state ${state} should be accepted`);
+  }
+});
+
+test("committed Coaching Window fixtures validate through the inbound boundary", () => {
+  for (const fixtureName of [
+    "coaching-window-started.json",
+    "coaching-window-ended.json",
+    "coaching-window-presence.json",
+  ]) {
+    const result = protocol.clientToRuntimeEvent.safeParse(readJsonFixture(fixtureName));
+    assert.equal(result.success, true, `${fixtureName} should validate`);
+  }
+});
+
+test("Coaching Window events reject malformed fields, unknown reasons, and extra identity keys", () => {
+  const invalidStartReason = protocol.coaching_window_started.safeParse({
+    type: "coaching_window_started",
+    window_id: "11111111-1111-4111-8111-111111111111",
+    started_at: "2026-07-26T08:00:00.000Z",
+    reason: "reconnect",
+  });
+  assert.equal(invalidStartReason.success, false);
+
+  const invalidEndTimestamp = protocol.coaching_window_ended.safeParse({
+    type: "coaching_window_ended",
+    window_id: "11111111-1111-4111-8111-111111111111",
+    ended_at: "yesterday",
+    reason: "pause",
+  });
+  assert.equal(invalidEndTimestamp.success, false);
+
+  const invalidPresenceState = protocol.coaching_window_presence.safeParse({
+    type: "coaching_window_presence",
+    window_id: "not-a-uuid",
+    state: "inactive",
+    changed_at: "2026-07-26T08:30:00.000Z",
+  });
+  assert.equal(invalidPresenceState.success, false);
+
+  const speculativeEventId = protocol.coaching_window_started.safeParse({
+    type: "coaching_window_started",
+    window_id: "11111111-1111-4111-8111-111111111111",
+    event_id: "22222222-2222-4222-8222-222222222222",
+    started_at: "2026-07-26T08:00:00.000Z",
+    reason: "app_launch",
+  });
+  assert.equal(speculativeEventId.success, false);
+});
+
 test("perception_event validates the committed wire fixture", () => {
   const fixture = readJsonFixture("perception-event.json");
   const result = protocol.clientToRuntimeEvent.safeParse(fixture);
@@ -165,6 +292,16 @@ test("perception_event validates the committed wire fixture", () => {
   assert.equal(result.success, true);
   assert.equal(result.data.type, "perception_event");
   assert.equal(result.data.artifact_type, "searchable_screen_record");
+});
+
+test("perception_event optionally binds new Desktop evidence to a Coaching Window", () => {
+  const result = protocol.clientToRuntimeEvent.safeParse({
+    ...readJsonFixture("perception-event.json"),
+    window_id: "11111111-1111-4111-8111-111111111111",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.window_id, "11111111-1111-4111-8111-111111111111");
 });
 
 test("perception_event accepts ambient audio summaries", () => {
@@ -305,6 +442,52 @@ test("runtime->client fixtures validate against the outbound union", () => {
   );
 });
 
+test("companion_message optionally binds live coaching delivery to a Coaching Window", () => {
+  const result = protocol.runtimeToClientEvent.safeParse({
+    ...readJsonFixture("companion-message.json"),
+    window_id: "11111111-1111-4111-8111-111111111111",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.window_id, "11111111-1111-4111-8111-111111111111");
+});
+
+test("optional Coaching Window bindings still require UUIDs", () => {
+  const userMessage = protocol.user_message.safeParse({
+    type: "user_message",
+    message_id: "m1",
+    body: "hello",
+    sent_at: new Date().toISOString(),
+    window_id: "window-1",
+  });
+  assert.equal(userMessage.success, false);
+
+  const perception = protocol.perception_event.safeParse({
+    ...readJsonFixture("perception-event.json"),
+    window_id: "window-1",
+  });
+  assert.equal(perception.success, false);
+
+  const companion = protocol.companion_message.safeParse({
+    ...readJsonFixture("companion-message.json"),
+    window_id: "window-1",
+  });
+  assert.equal(companion.success, false);
+});
+
+test("Desktop user_message may bind the active Coaching Window", () => {
+  const result = protocol.user_message.safeParse({
+    type: "user_message",
+    message_id: "m1",
+    body: "My important outcome is the release.",
+    sent_at: new Date().toISOString(),
+    window_id: "11111111-1111-4111-8111-111111111111",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.window_id, "11111111-1111-4111-8111-111111111111");
+});
+
 test("wire event objects are strict", () => {
   const result = protocol.user_message.safeParse({
     type: "user_message",
@@ -315,6 +498,32 @@ test("wire event objects are strict", () => {
   });
 
   assert.equal(result.success, false);
+});
+
+test("user_message cannot claim Runtime-owned proactive message identities", () => {
+  for (const messageId of [
+    "opening:11111111-1111-4111-8111-111111111111",
+    "intervention:11111111-1111-4111-8111-111111111111:42",
+  ]) {
+    const result = protocol.user_message.safeParse({
+      type: "user_message",
+      message_id: messageId,
+      body: "user-authored collision",
+      sent_at: new Date().toISOString(),
+    });
+
+    assert.equal(result.success, false, `${messageId} must remain Runtime-owned`);
+  }
+
+  assert.equal(
+    protocol.user_message.safeParse({
+      type: "user_message",
+      message_id: "user:11111111-1111-4111-8111-111111111111",
+      body: "ordinary user message",
+      sent_at: new Date().toISOString(),
+    }).success,
+    true,
+  );
 });
 
 test("legacy alias exports are removed", () => {
@@ -434,7 +643,13 @@ test("runtime_ingress_ack validates the committed fixture and is an outbound eve
   assert.equal(result.data.type, "runtime_ingress_ack");
   assert.equal(result.data.ingress_kind, "perception_event");
 
-  for (const kind of ["perception_event", "perception_tombstone", "session_end_marker"]) {
+  for (const kind of [
+    "perception_event",
+    "perception_tombstone",
+    "session_end_marker",
+    "coaching_window_started",
+    "coaching_window_ended",
+  ]) {
     const ack = protocol.runtime_ingress_ack.safeParse({
       type: "runtime_ingress_ack",
       ingress_kind: kind,
@@ -458,6 +673,13 @@ test("runtime_ingress_ack rejects non-UUID ids, unknown kinds, and extra keys", 
     ingress_id: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
   });
   assert.equal(badKind.success, false);
+
+  const nonDurablePresence = protocol.runtime_ingress_ack.safeParse({
+    type: "runtime_ingress_ack",
+    ingress_kind: "coaching_window_presence",
+    ingress_id: "0b8c6d2e-1f4a-4c3b-9a7d-2e5f6a7b8c9d",
+  });
+  assert.equal(nonDurablePresence.success, false);
 
   const extraKey = protocol.runtime_ingress_ack.safeParse({
     ...readJsonFixture("runtime-ingress-ack.json"),

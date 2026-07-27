@@ -1,11 +1,12 @@
 import Foundation
 
-/// Semantic identifiers for the six retained Omi setup pages. Sign-in is a
+/// Semantic identifiers for the retained Omi setup pages. Sign-in is a
 /// separate launch gate and is intentionally outside the progress rail.
 public enum DesktopOnboardingStep: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
   case trust
   case screenRecording = "screen_recording"
   case microphone
+  case systemAudio = "system_audio"
   case accessibility
   case floatingBarShortcut = "floating_bar_shortcut"
   case floatingBarDemo = "floating_bar_demo"
@@ -25,17 +26,20 @@ public struct DesktopOnboardingProgress: Codable, Equatable, Sendable {
   public private(set) var completedSteps: Set<DesktopOnboardingStep>
   public private(set) var screenRecordingDecision: DesktopPermissionDecision?
   public private(set) var microphoneDecision: DesktopPermissionDecision?
+  public private(set) var systemAudioDecision: DesktopPermissionDecision?
   public private(set) var completed: Bool
 
   public init(
     completedSteps: Set<DesktopOnboardingStep> = [],
     screenRecordingDecision: DesktopPermissionDecision? = nil,
     microphoneDecision: DesktopPermissionDecision? = nil,
+    systemAudioDecision: DesktopPermissionDecision? = nil,
     completed: Bool = false
   ) {
     self.completedSteps = completed ? Set(DesktopOnboardingStep.allCases) : completedSteps
     self.screenRecordingDecision = screenRecordingDecision
     self.microphoneDecision = microphoneDecision
+    self.systemAudioDecision = systemAudioDecision
     self.completed = completed
   }
 
@@ -62,6 +66,13 @@ public struct DesktopOnboardingProgress: Codable, Equatable, Sendable {
     return copy
   }
 
+  public func decidingSystemAudio(_ decision: DesktopPermissionDecision) -> DesktopOnboardingProgress {
+    var copy = self
+    copy.systemAudioDecision = decision
+    copy.completedSteps.insert(.systemAudio)
+    return copy
+  }
+
   /// Compatibility with the pre-renovation caller until the executable adapter is replaced.
   public func decidingAudio(_ decision: DesktopPermissionDecision) -> DesktopOnboardingProgress {
     decidingMicrophone(decision)
@@ -72,12 +83,14 @@ public struct DesktopOnboardingProgress: Codable, Equatable, Sendable {
       completedSteps: Set(DesktopOnboardingStep.allCases),
       screenRecordingDecision: screenRecordingDecision,
       microphoneDecision: microphoneDecision,
+      systemAudioDecision: systemAudioDecision,
       completed: true
     )
   }
 
   private enum CodingKeys: String, CodingKey {
-    case completedSteps, screenRecordingDecision, microphoneDecision, audioDecision, completed
+    case completedSteps, screenRecordingDecision, microphoneDecision, systemAudioDecision
+    case audioDecision, completed
   }
 
   public init(from decoder: Decoder) throws {
@@ -96,6 +109,8 @@ public struct DesktopOnboardingProgress: Codable, Equatable, Sendable {
       microphoneDecision: try values.decodeIfPresent(
         DesktopPermissionDecision.self, forKey: .microphoneDecision)
         ?? values.decodeIfPresent(DesktopPermissionDecision.self, forKey: .audioDecision),
+      systemAudioDecision: try values.decodeIfPresent(
+        DesktopPermissionDecision.self, forKey: .systemAudioDecision),
       completed: isCompleted
     )
   }
@@ -105,6 +120,7 @@ public struct DesktopOnboardingProgress: Codable, Equatable, Sendable {
     try values.encode(completedSteps.map(\.rawValue), forKey: .completedSteps)
     try values.encodeIfPresent(screenRecordingDecision, forKey: .screenRecordingDecision)
     try values.encodeIfPresent(microphoneDecision, forKey: .microphoneDecision)
+    try values.encodeIfPresent(systemAudioDecision, forKey: .systemAudioDecision)
     try values.encode(completed, forKey: .completed)
   }
 }
@@ -115,6 +131,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
   public var crossClientSetupComplete: Bool
   public var screenRecordingPermissionGranted: Bool
   public var microphonePermissionGranted: Bool
+  public var systemAudioPermissionGranted: Bool
   public var accessibilityPermissionGranted: Bool
 
   public init(
@@ -123,7 +140,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
     crossClientSetupComplete: Bool = true,
     screenRecordingPermissionGranted: Bool,
     microphonePermissionGranted: Bool,
-    systemAudioPermissionGranted _: Bool = false,
+    systemAudioPermissionGranted: Bool = false,
     accessibilityPermissionGranted: Bool = false
   ) {
     self.progress = progress
@@ -131,6 +148,7 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
     self.crossClientSetupComplete = crossClientSetupComplete
     self.screenRecordingPermissionGranted = screenRecordingPermissionGranted
     self.microphonePermissionGranted = microphonePermissionGranted
+    self.systemAudioPermissionGranted = systemAudioPermissionGranted
     self.accessibilityPermissionGranted = accessibilityPermissionGranted
   }
 
@@ -146,7 +164,21 @@ public struct DesktopOnboardingRequirements: Equatable, Sendable {
   public var captureReady: Bool { isAuthenticated && screenRecordingPermissionGranted }
   public var textChatReady: Bool { isAuthenticated }
 
-  public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool { progress.isReviewed(step) }
+  public func isSatisfied(_ step: DesktopOnboardingStep) -> Bool {
+    guard progress.isReviewed(step) else { return false }
+    switch step {
+    case .screenRecording:
+      return screenRecordingPermissionGranted
+    case .microphone:
+      return microphonePermissionGranted
+    case .systemAudio:
+      return systemAudioPermissionGranted
+    case .accessibility:
+      return accessibilityPermissionGranted
+    case .trust, .floatingBarShortcut, .floatingBarDemo:
+      return true
+    }
+  }
 
   public var isComplete: Bool {
     isAuthenticated && crossClientSetupComplete && progress.completed

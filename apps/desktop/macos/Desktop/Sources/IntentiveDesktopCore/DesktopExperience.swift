@@ -2,11 +2,17 @@ import Foundation
 
 public enum FloatingBarSubmissionError: Error, Equatable, LocalizedError {
   case emptyMessage
+  case coachingPaused
+  case coachingUnavailable
 
   public var errorDescription: String? {
     switch self {
     case .emptyMessage:
       return "Enter a message before sending."
+    case .coachingPaused:
+      return "Resume Coaching before sending a message."
+    case .coachingUnavailable:
+      return "Coaching is unavailable until required setup is complete."
     }
   }
 }
@@ -14,10 +20,25 @@ public enum FloatingBarSubmissionError: Error, Equatable, LocalizedError {
 public final class FloatingBarController {
   private let runtimeClient: RuntimeChatClient
   private let messageStore: MessageStore
+  private let isCoachingPausedProvider: () -> Bool
+  private let isCoachingAvailableProvider: () -> Bool
+  private let resumeCoachingAction: () -> Void
+  private let onSubmitted: () -> Void
 
-  public init(runtimeClient: RuntimeChatClient, messageStore: MessageStore) {
+  public init(
+    runtimeClient: RuntimeChatClient,
+    messageStore: MessageStore,
+    isCoachingPaused: @escaping () -> Bool = { false },
+    isCoachingAvailable: @escaping () -> Bool = { true },
+    resumeCoaching: @escaping () -> Void = {},
+    onSubmitted: @escaping () -> Void = {}
+  ) {
     self.runtimeClient = runtimeClient
     self.messageStore = messageStore
+    self.isCoachingPausedProvider = isCoachingPaused
+    self.isCoachingAvailableProvider = isCoachingAvailable
+    self.resumeCoachingAction = resumeCoaching
+    self.onSubmitted = onSubmitted
   }
 
   public var messages: [ChatMessage] {
@@ -28,13 +49,29 @@ public final class FloatingBarController {
     FloatingConversationSnapshot(messages: messageStore.messages)
   }
 
+  public var isCoachingPaused: Bool {
+    isCoachingPausedProvider()
+  }
+
+  public func resumeCoaching() {
+    resumeCoachingAction()
+  }
+
   @discardableResult
   public func submit(_ body: String) throws -> ChatMessage {
+    guard !isCoachingPaused else {
+      throw FloatingBarSubmissionError.coachingPaused
+    }
+    guard isCoachingAvailableProvider() else {
+      throw FloatingBarSubmissionError.coachingUnavailable
+    }
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
       throw FloatingBarSubmissionError.emptyMessage
     }
-    return try runtimeClient.sendUserMessage(trimmed)
+    let message = try runtimeClient.sendUserMessage(trimmed)
+    onSubmitted()
+    return message
   }
 }
 
@@ -118,35 +155,117 @@ public final class RecordingOverlaySink: DesktopOverlaySink {
 }
 
 public final class EffectRunner {
+  private static let rememberedPresentationLimit = 2_048
+
   private let overlay: DesktopOverlaySink
   private let runtimeClient: RuntimeChatClient
+  private let activeWindowId: () -> String?
+  private var presentedMessageIDs = Set<String>()
+  private var presentationOrder: [String] = []
 
   public init(
     overlay: DesktopOverlaySink,
-    runtimeClient: RuntimeChatClient
+    runtimeClient: RuntimeChatClient,
+    activeWindowId: @escaping () -> String? = { nil }
   ) {
     self.overlay = overlay
     self.runtimeClient = runtimeClient
+    self.activeWindowId = activeWindowId
   }
 
-  /// A Post-Message-Back companion message always surfaces in the one
-  /// conversation thread and is acknowledged. If the bar is already open the
-  /// message just appends to the visible thread; if it is closed the overlay
-  /// auto-opens. The user replies inline or ignores — there is no snooze,
-  /// mute, or separate dismiss.
-  public func handle(_ message: CompanionMessage) throws {
-    guard message.viaPostMessageBack else { return }
-    overlay.presentProactiveMessage(body: message.body)
+  /// A matching-window Post-Message-Back companion message surfaces in the one
+  /// conversation thread before Desktop reports presentation. Only Opening uses
+  /// that acknowledgement for its exactly-once-visible retry loop. An
+  /// intervention acknowledgement is presentation telemetry: it creates no
+  /// retry queue, and Session Snapshots never replay Floating Bar effects. A
+  /// stale, locked, or paused-window effect is ignored without acknowledgement;
+  /// duplicate live frames are acknowledged without revealing the effect twice.
+  @discardableResult
+  public func handle(_ message: CompanionMessage) throws -> Bool {
+    guard message.viaPostMessageBack else { return false }
+    guard let windowId = message.windowId, activeWindowId() == windowId else {
+      return false
+    }
+    let shouldPresent = presentedMessageIDs.insert(message.messageId).inserted
+    if shouldPresent {
+      overlay.presentProactiveMessage(body: message.body)
+      presentationOrder.append(message.messageId)
+      if presentationOrder.count > Self.rememberedPresentationLimit {
+        let expired = presentationOrder.removeFirst()
+        presentedMessageIDs.remove(expired)
+      }
+    }
     try runtimeClient.acknowledge(messageId: message.messageId)
+    return shouldPresent
+  }
+}
+
+final class EvidenceCaptureGeneration: @unchecked Sendable {
+  private let condition = NSCondition()
+  private var value = 0
+  private var activeCaptureCount = 0
+
+  func beginCapture() -> Int {
+    condition.lock()
+    defer { condition.unlock() }
+    activeCaptureCount += 1
+    return value
+  }
+
+  func endCapture() {
+    condition.lock()
+    activeCaptureCount -= 1
+    if activeCaptureCount == 0 {
+      condition.broadcast()
+    }
+    condition.unlock()
+  }
+
+  func invalidateAndWaitForQuiescence() {
+    condition.lock()
+    value &+= 1
+    while activeCaptureCount > 0 {
+      condition.wait()
+    }
+    condition.unlock()
+  }
+
+  func isCurrent(_ candidate: Int) -> Bool {
+    condition.lock()
+    defer { condition.unlock() }
+    return value == candidate
+  }
+
+  func commitIfCurrent(
+    _ candidate: Int,
+    operation: () throws -> Void
+  ) rethrows -> Bool {
+    condition.lock()
+    defer { condition.unlock() }
+    guard value == candidate else { return false }
+    try operation()
+    return true
   }
 }
 
 public final class CaptureCoordinator {
+  private struct CaptureOperation: @unchecked Sendable {
+    let coordinator: CaptureCoordinator
+    let source: DesktopCaptureSource
+    let generation: Int
+
+    func run() async throws -> [PerceptionEvent] {
+      defer { coordinator.captureGeneration.endCapture() }
+      return try await coordinator.performCapture(from: source, generation: generation)
+    }
+  }
+
   private let compiler: ContextCompiler
   private let screenMemory: ScreenMemoryStore
   private let publisher: PerceptionPublisher
   private let archiveProvider: () -> ScreenMemoryArchive?
   private let privacyPolicy: ScreenMemoryPrivacyPolicy?
+  private let captureGeneration = EvidenceCaptureGeneration()
 
   public init(
     compiler: ContextCompiler,
@@ -201,7 +320,32 @@ public final class CaptureCoordinator {
     compiler.update(settings: settings)
   }
 
+  public func invalidateInFlightCaptures() {
+    captureGeneration.invalidateAndWaitForQuiescence()
+  }
+
   public func captureOnce(from source: DesktopCaptureSource) async throws -> [PerceptionEvent] {
+    let generation = captureGeneration.beginCapture()
+    let operation = CaptureOperation(
+      coordinator: self,
+      source: source,
+      generation: generation
+    )
+    let task = Task.detached(priority: .userInitiated) {
+      try await operation.run()
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  private func performCapture(
+    from source: DesktopCaptureSource,
+    generation: Int
+  ) async throws -> [PerceptionEvent] {
+    try Task.checkCancellation()
     if let contextSource = source as? DesktopWindowContextSource {
       let context = try contextSource.activeWindowContext()
       guard compiler.currentSettings.captureEnabled,
@@ -212,10 +356,15 @@ public final class CaptureCoordinator {
       }
     }
     let frame = try await source.captureFrame()
+    try ensureCaptureIsCurrent(generation)
     guard privacyPolicy?.allows(appBundleID: frame.appBundleID, appName: frame.appName) ?? true else {
       return []
     }
     if let imageData = frame.rawFrameBytes, let archive = archiveProvider() {
+      let captureGeneration = captureGeneration
+      let commitCapture: ScreenMemoryCaptureCommit = { operation in
+        try captureGeneration.commitIfCurrent(generation, operation: operation)
+      }
       let outcome = try await archive.ingest(
         ScreenMemoryCaptureInput(
           userID: archive.userID,
@@ -224,8 +373,13 @@ public final class CaptureCoordinator {
           appBundleID: frame.appBundleID,
           appName: frame.appName,
           windowTitle: frame.windowTitle
-        )
+        ),
+        isCaptureCurrent: {
+          !Task.isCancelled && captureGeneration.isCurrent(generation)
+        },
+        commitCapture: commitCapture
       )
+      try ensureCaptureIsCurrent(generation)
       switch outcome {
       case .duplicate:
         return []
@@ -247,7 +401,14 @@ public final class CaptureCoordinator {
     if frame.rawFrameBytes != nil, frame.ocrText.isEmpty {
       return []
     }
+    try ensureCaptureIsCurrent(generation)
     return try accept(frame: frame.withoutRawFrameBytes())
+  }
+
+  private func ensureCaptureIsCurrent(_ generation: Int) throws {
+    guard !Task.isCancelled, captureGeneration.isCurrent(generation) else {
+      throw CancellationError()
+    }
   }
 }
 
@@ -506,6 +667,7 @@ public final class ScreenMemoryCaptureLoop {
   public func stop() {
     task?.cancel()
     task = nil
+    coordinator.invalidateInFlightCaptures()
     state.isRunning = false
     // A new user/session start must take an immediate first frame even when it
     // resumes on the same window before the normal steady-state cadence elapses.
@@ -554,6 +716,9 @@ public final class ScreenMemoryCaptureLoop {
 
     do {
       let events = try await coordinator.captureOnce(from: source)
+      guard !Task.isCancelled else {
+        return .skipped("capture stopped")
+      }
       guard !events.isEmpty else {
         return recordSkip("current app skipped")
       }
@@ -566,6 +731,8 @@ public final class ScreenMemoryCaptureLoop {
         cadenceGate.recordCapture(of: windowContext, at: captureStartedAt)
       }
       return .captured(eventCount: events.count)
+    } catch is CancellationError {
+      return .skipped("capture stopped")
     } catch {
       return recordFailure(error.localizedDescription)
     }
@@ -694,6 +861,7 @@ public final class AmbientAudioCaptureLoop {
       guard let self else { return }
       while !Task.isCancelled {
         let event = await self.captureTick()
+        guard !Task.isCancelled else { break }
         onEvent?(event)
         do {
           try await Task.sleep(nanoseconds: self.intervalNanoseconds)
@@ -725,11 +893,20 @@ public final class AmbientAudioCaptureLoop {
     let pcm16k: Data
     do {
       pcm16k = try await audioCapture.captureSegment()
+      guard !Task.isCancelled else {
+        return .skipped("capture stopped")
+      }
+    } catch is CancellationError {
+      return .skipped("capture stopped")
     } catch {
       return recordFailure(error.localizedDescription)
     }
 
-    switch await pipeline.ingest(pcm16k: pcm16k, source: .microphone) {
+    let outcome = await pipeline.ingest(pcm16k: pcm16k, source: .microphone)
+    guard !Task.isCancelled else {
+      return .skipped("capture stopped")
+    }
+    switch outcome {
     case .captured(_, let eventPublished):
       state.capturedSegmentCount += 1
       state.publishedEventCount += eventPublished ? 1 : 0

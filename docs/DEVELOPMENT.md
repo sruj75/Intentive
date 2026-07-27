@@ -233,14 +233,17 @@ truth.
 
 Do not accept the onboarding word `Granted` as proof. A valid live proof is:
 
-1. Press the real **Screen Capture** toggle off and on in Settings.
+1. Authenticate, complete every required setup grant, then use
+   **Resume Coaching** in the real UI to begin a new Coaching Window.
 2. Keep a unique marker visible in another app for at least one capture cadence.
 3. Require a new `screen_memory_records` row with that app/window and Vision OCR.
 4. Require a non-empty local semantic embedding and a searchable Rewind result.
 5. Require the same event ID in Runtime `runtime_events` as `perception_event`.
 6. Require a Runtime `perception_records` projection with
-   `artifact_type=searchable_screen_record`.
+   `artifact_type=searchable_screen_record` and the active `window_id`.
 7. Require the local Runtime outbox to drain after the acknowledgement.
+8. Use **Pause Coaching**, then prove every sensor stops immediately and no new
+   local or Runtime perception record appears.
 
 OCR is probabilistic; assert stable words and event identity rather than exact
 character equality.
@@ -249,7 +252,8 @@ character equality.
 
 Again, the permission label is only the precondition. A valid live proof is:
 
-1. Enable Audio Recording while authenticated; Screen Capture may remain off.
+1. Authenticate, complete every required grant, and begin an eligible Coaching
+   Window; there is no microphone-only or chat-only coaching state.
 2. Feed audible speech through the real microphone input for more than one
    four-second segment.
 3. Require the AVAudioEngine source to deliver PCM and Silero VAD to accept speech.
@@ -257,17 +261,19 @@ Again, the permission label is only the precondition. A valid live proof is:
 5. Require `audio_memory_records` to contain the transcript, retention metadata,
    and a local embedding. Raw PCM must not be retained.
 6. Require Runtime to store an `ambient_audio_summary` whose
-   `signals.audio_source` is `microphone`.
+   `signals.audio_source` is `microphone` and whose `window_id` matches the
+   active Coaching Window.
 7. Require the outbox to drain.
 
-Silence must create no transcript. Signing out or disabling audio must stop
-physical microphone capture; Screen Capture is independently controlled. A test
-fixture may verify policy branches, but it cannot replace the native-source proof
-above.
+Silence must create no transcript. Pause, lock, sleep, sign-out, quit, or
+required permission loss must synchronously stop screen, microphone, and
+system-audio sensing together. A test fixture may verify policy branches, but it
+cannot replace the native-source proof above.
 
 For first-run permission behavior, run only a disposable Tart clone:
 
 ```bash
+TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:status
 TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:run
 TART_HOME=/Volumes/T9/Tart pnpm --dir apps/desktop internal:close
 ```

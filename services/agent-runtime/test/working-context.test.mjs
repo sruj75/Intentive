@@ -55,7 +55,7 @@ test("working context gathers profile and recent perception in parallel", async 
   });
 });
 
-test("working context omits recentPerception when no Sensory Buffer reader is injected", async () => {
+test("working context omits recentPerception when no recent-perception dependency is injected", async () => {
   const workingContext = createWorkingContext({
     readUserProfile: async () => "profile",
   });
@@ -69,6 +69,37 @@ test("working context omits recentPerception when no Sensory Buffer reader is in
   });
 
   assert.equal(Object.hasOwn(assembled, "recentPerception"), false);
+});
+
+test("a Coaching Turn uses its fixed evidence batch instead of the legacy latest reader", async () => {
+  let legacyReads = 0;
+  const workingContext = createWorkingContext({
+    readUserProfile: async () => "profile",
+    readRecentPerception: async () => {
+      legacyReads += 1;
+      return "wrong latest item";
+    },
+  });
+
+  const assembled = await workingContext({
+    userId: "user_1",
+    threadId: "user_1",
+    body: "monitor",
+    trigger: "perception_event",
+    floor: floor("floor_v1"),
+    recentPerception: "fixed oldest-unconsumed batch",
+    windowId: "11111111-1111-4111-8111-111111111111",
+    evidenceCursorStart: 4,
+    evidenceCursorEnd: 7,
+    evidenceVersion: "evidence_v7",
+  });
+
+  assert.equal(legacyReads, 0);
+  assert.equal(assembled.recentPerception, "fixed oldest-unconsumed batch");
+  assert.equal(assembled.windowId, "11111111-1111-4111-8111-111111111111");
+  assert.equal(assembled.evidenceCursorStart, 4);
+  assert.equal(assembled.evidenceCursorEnd, 7);
+  assert.equal(assembled.evidenceVersion, "evidence_v7");
 });
 
 async function waitFor(predicate) {

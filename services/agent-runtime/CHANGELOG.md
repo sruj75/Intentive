@@ -4,8 +4,43 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+
+- **Metadata-only perception ledger** — retired the unwired legacy
+  `SensoryBufferReader` over `runtime_events`; current detailed perception is
+  read only from the expiring `perception_records` projection, while the
+  immutable ledger retains ordering and dedupe metadata.
+- **Langfuse-only Procedure Floor** — removed the deploy-bundled prompt floor.
+  Langfuse credentials and the explicit regional base URL are required boot
+  configuration; startup verifies the `production`
+  `intentive-runtime-bundle`, and prompt fetch or bundle-validation failures
+  propagate instead of silently changing Companion behavior.
+
 ### Added
 
+- **Durable Agent Instance bootstrap lifecycle** ([ADR-0036](docs/adr/0036-agent-instance-bootstrap-lifecycle-at-opening-orientation.md)) —
+  Session Start remains model-free; the first eligible Opening Orientation
+  atomically starts one-time personalization and the first successful
+  Interactive Turn atomically completes it. Migration `0014` stores
+  `pending → in_progress → completed` on the Agent Instance so close, reconnect,
+  failure, and Runtime restart cannot lose or duplicate lifecycle truth.
+  Completion requires a `desktop_coaching_v1` message correlated to the matching
+  live and durably active Coaching Window; Mobile and post-close messages remain
+  ordinary Interactive Turns.
+- **Desktop Performance Coach Founder Preview** ([monorepo
+  ADR-0006](../../docs/adr/0006-desktop-coaching-window-bounds-v1.md)) —
+  additive Coaching Window projection and idempotent lifecycle ingress;
+  default-off founder-scoped feature gate; connected Desktop presence
+  attestation; one stable Opening Orientation; a single 120-second
+  `MonitoringCoordinator`; oldest-unconsumed, fixed-cursor evidence reads capped
+  at 32 events / 12,000 characters; successful cursor advancement; stale-window
+  commit/delivery guards; Desktop-only proactive routing; Human Performance
+  Coach behavior in `AGENTS` and `HEARTBEAT`; and dry-run-first Langfuse
+  prompt/dataset publishing. Migration
+  `0013` is schema-only; the guarded historical ledger scrub is a separate
+  post-deploy command. Tests cover lifecycle, feature gating, evidence,
+  orientation, delivery, prompt assembly, metadata-only ledger writes, and scrub
+  safety.
 - **Perception Event ingestion, searchable projection, and Desktop reachability** ([ADR-0034](docs/adr/0034-agent-runtime-perception-store-and-search-tool.md)) —
   Runtime ingress now accepts `perception_event` instead of `context_snapshot`,
   dedupes by `event_id`, projects accepted events into
@@ -13,8 +48,7 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   a `search_screen_context` DeepAgents tool for FTS over Screen Memory summaries.
   Desktop is now a chat-capable client kind for stream delivery. Tests:
   `test/per-user-channel.test.mjs`, `test/project-ingress.test.mjs`,
-  `test/sensory-buffer.integration.test.mjs`, and
-  `test/runtime-ingress-projection.integration.test.mjs`.
+  and `test/runtime-ingress-projection.integration.test.mjs`.
 - **v1 production deploy drain + Secret Manager boot fetch** ([Issue #50], [ADR-0032](docs/adr/0032-agent-runtime-gce-deploy-single-vm-tls-load-balancer-in-place-swap.md), [ADR-0033](docs/adr/0033-agent-runtime-internal-session-start-public-ingress-shared-secret.md)) —
   `main.ts` registers `SIGTERM`/`SIGINT` shutdown through `runtime/shutdown.ts`:
   Cron and Heartbeat schedulers stop, connected WebSockets close with `1001`,
@@ -76,8 +110,8 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   events. Tests: `test/sensory-buffer.integration.test.mjs`, plus extended
   prompt, turn-runner, adapter, and channel coverage.
 - **Procedure Floor, native Per-User Memory, and `bundle_version`** ([Issue #37]) —
-  `bundles/` domain slice for deploy-bundled fallback prompts, Langfuse Prompt
-  Management source, fallback resolver, and trigger-aware prompt assembly;
+  `bundles/` domain slice for the Langfuse Prompt Management source,
+  fail-closed resolver, and trigger-aware prompt assembly;
   `memory/` domain slice for DeepAgents `CompositeBackend` / `StoreBackend`
   wiring and `USER.md` profile reads. Connect pins the Procedure Floor once at
   `hello_ok`; `BoundSession` carries it; `runTurn` injects `USER.md`; the
@@ -85,7 +119,7 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   Langfuse callback metadata, and returns `bundleVersion`. Migration
   `migrations/0004_runtime_turns_bundle_version.sql` adds nullable
   `runtime_turns.bundle_version`, now written on successful turns. Tests:
-  `test/bundled-fallback.test.mjs`, `test/assemble-system-prompt.test.mjs`,
+  `test/assemble-system-prompt.test.mjs`,
   `test/procedure-floor-resolver.test.mjs`, `test/langfuse-floor-source.test.mjs`,
   `test/memory-backend.test.mjs`, plus extended connect/turn/runtime coverage.
 - **DeepAgents Interactive Turn** ([Issue #36]) — `runtime/` domain slice:
@@ -186,8 +220,8 @@ All notable changes to the Agent Runtime service. Format follows [Keep a Changel
   public `Turn` / `TurnExecution` types for composition and tests.
 - **`src/config/env.ts` and `loadConfig`** ([Issue #36]) — required
   `OPENROUTER_API_KEY`; defaults for `OPENROUTER_BASE_URL` and `RUNTIME_MODEL`;
-  optional paired `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (with optional
-  `LANGFUSE_BASE_URL`) exposed as `config.langfuse` when both keys are set.
+  required `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and
+  `LANGFUSE_BASE_URL` exposed as `config.langfuse`.
   Tests: extended `test/config-env.test.mjs`.
 - **`src/index.ts`** ([Issue #36]) — exports runtime adapter/turn-runner factories
   and turn types for tests and composition roots.

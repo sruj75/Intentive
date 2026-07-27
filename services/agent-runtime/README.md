@@ -31,9 +31,10 @@ Configuration is validated at boot through `loadConfig` in `src/config/env.ts` (
 env keys: `PUBLIC_WS_URL`, `INTERNAL_SECRET_FROM_CONTROL_PLANE`,
 `CONTROL_PLANE_INTERNAL_BASE_URL`, `INTERNAL_SECRET_TO_CONTROL_PLANE`,
 `NEON_DATABASE_URL`, `NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`,
-`NEON_AUTH_AUDIENCE`, `OPENROUTER_API_KEY`; defaults for `PORT`, `INTERNAL_PORT`,
-`NEON_DATABASE_ROLE`, `OPENROUTER_BASE_URL`, and `RUNTIME_MODEL`; optional paired
-`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` with optional `LANGFUSE_BASE_URL`).
+`NEON_AUTH_AUDIENCE`, `OPENROUTER_API_KEY`, `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY`, and the explicit regional `LANGFUSE_BASE_URL`; defaults
+for `PORT`, `INTERNAL_PORT`, `NEON_DATABASE_ROLE`, `OPENROUTER_BASE_URL`, and
+`RUNTIME_MODEL`).
 Copy [`.env.example`](.env.example) to `.env` for local boot. Domains must not
 re-parse `process.env`.
 
@@ -65,13 +66,13 @@ All configuration is read at the one config seam (`src/config/env.ts`). Password
 | `OPENROUTER_API_KEY`                                          | ✅ vault | OpenRouter key for the Companion model                                     |
 | `INTERNAL_SECRET_FROM_CONTROL_PLANE`                          | ✅ vault | Guards inbound `POST /internal/sessions/start` (CP → Runtime)              |
 | `INTERNAL_SECRET_TO_CONTROL_PLANE`                            | ✅ vault | Guards outbound push handoff (Runtime → CP `/internal/notifications/push`) |
-| `LANGFUSE_SECRET_KEY`                                         | ✅ vault | Langfuse secret key (optional; paired with public key)                     |
+| `LANGFUSE_SECRET_KEY`                                         | ✅ vault | Required Langfuse secret key for the Procedure Floor                       |
 | `SENTRY_DSN`                                                  | ✅ vault | Sentry project DSN for error/health capture                                |
 | `PUBLIC_WS_URL`                                               | env      | Public `wss://` URL clients connect to (the load-balancer hostname)        |
 | `CONTROL_PLANE_INTERNAL_BASE_URL`                             | env      | Base URL for the Runtime → Control Plane push call                         |
 | `NEON_AUTH_JWKS_URL` / `_ISSUER` / `_AUDIENCE`                | env      | Neon Auth JWT verification (same project as the Control Plane)             |
 | `OPENROUTER_BASE_URL` / `RUNTIME_MODEL`                       | env      | Model endpoint + model id (defaults in `env.ts`)                           |
-| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_BASE_URL` / `LANGFUSE_MODE` | env      | Langfuse behavior/eval layer (optional)                                    |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_BASE_URL` / `LANGFUSE_MODE` | env      | Required Langfuse Procedure Floor source and tracing configuration         |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` / `SENTRY_MODE`       | env      | Sentry environment, deploy SHA, mode (`errors-only` default)               |
 | `PORT` / `INTERNAL_PORT`                                      | env      | Public WS port (8080) and internal API port (8081)                         |
 

@@ -7,7 +7,7 @@ How Intentive's four deployables and shared packages connect to the journeys use
 | Deployable         | Path                      | What the user experiences                                                         | Where it runs                       |
 | ------------------ | ------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
 | **Mobile Client**  | `apps/mobile/`            | Sign-in, Pre-Chat Gates, **Companion Chat**, push notifications, Account Surface  | iOS (Expo) → TestFlight / App Store |
-| **Desktop Client** | `apps/desktop/`           | Capture, Screen Memory, optional passive audio, text-only Floating Bar, PMB effects | macOS SwiftPM → signed `.dmg`     |
+| **Desktop Client** | `apps/desktop/`           | Desktop Coaching Window, required local perception, text-only Floating Bar, PMB effects | macOS SwiftPM → signed Founder Preview app |
 | **Control Plane**  | `services/control-plane/` | Invisible authority: identity, gate state, device registry, Routing, push fan-out | Cloud Run (`us-west1`)              |
 | **Agent Runtime**  | `services/agent-runtime/` | The **Companion**: chat, memory, proactive follow-ups, context from Mac           | GCE VM (`runtime.heyintentive.com`) |
 
@@ -31,7 +31,8 @@ How Intentive's four deployables and shared packages connect to the journeys use
               │                         │                            │
         ┌─────▼─────┐            ┌──────▼──────┐              (future)
         │  Mobile   │            │   Desktop   │              Android
-        │  (chat)   │            │  (capture)  │
+        │  (dormant │            │  (coaching) │
+        │  in v1)   │            │             │
         └───────────┘            └─────────────┘
 ```
 
@@ -45,11 +46,11 @@ How Intentive's four deployables and shared packages connect to the journeys use
 | --- | --------------------------------------------------------------------------------- | ------------------------------------- |
 | 1   | [Cold launch → first chat (Mobile)](#1-cold-launch-first-chat-mobile)             | Mobile, Control Plane, Agent Runtime  |
 | 2   | [Returning Mobile user](#2-returning-mobile-user)                                 | Mobile, Control Plane, Agent Runtime  |
-| 3   | [Cold launch → capture (Desktop)](#3-cold-launch-capture-desktop)                 | Desktop, Control Plane, Agent Runtime |
+| 3   | [Cold launch → Coaching Window (Desktop)](#3-cold-launch-coaching-window-desktop) | Desktop, Control Plane, Agent Runtime |
 | 4   | [Cross-client: iPhone first, Mac second](#4-cross-client-iphone-first-mac-second) | All four                              |
-| 5   | [Send a chat message](#5-send-a-chat-message)                                     | Mobile, Agent Runtime                 |
-| 6   | [Mac context reaches the Companion](#6-mac-context-reaches-the-companion)         | Desktop, Agent Runtime                |
-| 7   | [Proactive Companion + push](#7-proactive-companion-push)                         | Agent Runtime, Control Plane, Mobile  |
+| 5   | [Send a coaching message](#5-send-a-coaching-message)                             | Desktop, Agent Runtime                |
+| 6   | [Coaching Perception reaches the Companion](#6-coaching-perception-reaches-the-companion) | Desktop, Agent Runtime          |
+| 7   | [Least Necessary Intervention](#7-least-necessary-intervention)                   | Desktop, Agent Runtime                |
 | 8   | [Account recovery & sibling setup](#8-account-recovery-sibling-setup)             | Mobile, Control Plane                 |
 
 ---
@@ -92,9 +93,10 @@ sequenceDiagram
   RT-->>CP: agent_instance_id, ws_url
   CP-->>M: ws_url, runtime_jwt, agent_instance_id
   M->>RT: WSS connect + Protocol handshake
-  RT-->>M: hello_ok (reconnect snapshot + Conversation Start Trigger)
-  RT-->>M: companion_message (opening)
-  U->>M: Sees Companion's first message
+  RT-->>M: hello_ok (reconnect snapshot)
+  U->>M: Sends the first message
+  M->>RT: user_message
+  RT-->>M: companion_message (Interactive Turn reply)
 ```
 
 ### Gate sequence
@@ -128,7 +130,7 @@ sequenceDiagram
 | Device + push token     | `notifications/` → `POST /devices/register` (around first chat entry; no re-prompt once decided)                                 | `devices/ui/post-device-register.ts` → `control_plane.devices`                        | —                                                                                |
 | Routing                 | `chat/service/routing-client.ts` → `GET /agent`                                                                                  | `routing/ui/get-agent.ts` → `agents.ensureAgentInstance` → Session Start              | `internal/` receives `POST /internal/sessions/start`                             |
 | Chat surface            | `src/entrypoints/chat-entry.tsx` → `CompanionChat` + Runtime Adapter                                                             | —                                                                                     | `gateway/` handshake, `sessions/` per-user queue                                 |
-| Opening message         | Runtime Adapter merges `hello_ok` snapshot                                                                                       | —                                                                                     | Session Start bundles **Conversation Start Trigger**; `runtime/` runs first turn |
+| Opening message         | Runtime Adapter merges `hello_ok` snapshot; first message is user-authored                                                       | —                                                                                     | Session Start is model-free; the first `user_message` starts an Interactive Turn |
 
 **Wire contracts:** `packages/api-contract/` (`GetMeResponse`, `PostConsentRequest`, `GetAgentResponse`); `packages/protocol/` (`connect`, `hello_ok`, `companion_message`, `user_message`).
 
@@ -158,9 +160,12 @@ Launch → GET /me → next_gate: null → route to (chat)/
 
 ---
 
-## 3. Cold launch → capture (Desktop)
+## 3. Cold launch → Coaching Window (Desktop)
 
-**User story:** Installs the Mac app, signs in, decides required Screen Recording and optional passive-audio access, then accumulates private searchable Screen Memory while the menu bar reflects live capture state.
+**User story:** Installs the Desktop Client, signs in, completes every onboarding
+step and required local grant, then receives one Opening Orientation while
+screen, microphone, and system-audio perception run only inside the Desktop
+Coaching Window.
 
 ### Flow
 
@@ -181,20 +186,26 @@ sequenceDiagram
     CP-->>D: next_gate (consent / sibling / capture_permission_setup)
     U->>D: Complete gates + Capture Permission Setup wizard
   end
-  D->>D: Local readiness check (live Screen Recording grant; optional audio fails closed)
+  D->>D: Require live Screen Recording, Microphone, Accessibility, and System Audio grants
   D->>CP: GET /agent
   CP->>RT: POST /internal/sessions/start
-  D->>RT: WSS connect (client_kind: desktop)
+  D->>RT: WSS connect (desktop_coaching_v1 capability)
+  D->>RT: coaching_window_started
+  D->>RT: coaching_window_presence (active)
+  RT-->>D: companion_message (one Opening Orientation, window_id)
+  Note over RT: If bootstrap is unfinished, include BOOTSTRAP and mark it in progress
   loop Context-change gated cadence
     D->>SM: Write local screen record
     SM->>CC: OCR + metadata
     CC->>CC: Compact + redact + label sensitivity
-    CC->>RT: perception_event (Protocol)
+    CC->>RT: perception_event (window_id, Protocol)
   end
   U->>D: Send text from the Floating Bar
-  D->>RT: user_message
-  U->>D: Stop capture
-  D->>RT: session_end_marker
+  D->>RT: user_message (window_id)
+  Note over RT: Matching active-window bootstrap response atomically marks it complete
+  U->>D: Pause Coaching
+  D->>D: Stop screen + microphone + system audio synchronously
+  D->>RT: coaching_window_ended (pause)
 ```
 
 ### Gate sequence (Desktop)
@@ -209,14 +220,17 @@ Same Control Plane sequencer; Desktop additionally requires **Capture Permission
 | Permission wizard | Capture Permission Setup                      | `GET /me` with device signal headers         | —                                                               |
 | Gate reads        | Control Plane client after login              | Same `identity` + `gates` composer as Mobile | —                                                               |
 | Routing + WSS     | Runtime Bridge                                | `GET /agent`                                 | `gateway/`                                                      |
-| Capture lifecycle | Desktop Capture Layer                         | —                                            | —                                                               |
+| Coaching lifecycle | Desktop Coaching Window coordinator          | —                                            | `coaching_windows` projection                                   |
 | Local persistence | Screen Memory                                 | —                                            | —                                                               |
-| Context delivery  | Desktop Context Compiler → `perception_event` | —                                            | `sessions/` ledger → `perception_records` → Sensory Buffer/tool |
+| Context delivery  | Desktop Context Compiler → window-scoped `perception_event` | —                                  | metadata ledger → `perception_records` → recent perception/tool |
 | Text conversation | Floating Bar → `user_message`                 | —                                            | Conversation History + Interactive Turn                         |
 | Effect Runner     | Floating Bar + edge glow on PMB               | —                                            | Post-Message-Back delivery                                      |
-| Session end       | Capture stop emits `session_end_marker`       | —                                            | `sessions/` event ledger                                        |
+| Pause/Resume      | Read-only transcript + one Resume action      | —                                            | Window end/new start; pending proactivity invalidated            |
 
-**Desktop joins the one conversation.** Text-only Floating Bar chat sends `user_message`; Screen Memory and passive-audio summaries send `perception_event` and stay out of Conversation History. Raw media remains local.
+**Desktop joins the one conversation.** Text-only Floating Bar chat sends
+`user_message`; screen and passive-audio summaries send window-scoped
+`perception_event` records and stay out of Conversation History. Raw media
+remains local. Lock pauses perception while preserving the window; sleep ends it.
 
 ---
 
@@ -246,25 +260,26 @@ Same Control Plane sequencer; Desktop additionally requires **Capture Permission
 
 ---
 
-## 5. Send a chat message
+## 5. Send a coaching message
 
-**User story:** Types in Liquid Glass composer; sees streaming reply; failed sends can retry with same idempotency key.
+**User story:** Types in the Floating Bar during an active Coaching Window and
+receives an ordinary reply in the same Runtime-owned Conversation History.
 
 ### Flow
 
 ```text
-User types → Runtime Adapter sends user_message (message_id, idempotency_key)
+User types in Floating Bar → Runtime Bridge sends user_message
            → Agent Runtime: gateway → sessions (per-user queue) → runtime (Interactive Turn)
            → DeepAgents turn → companion_message chunks → delivery port (live stream)
-           → Mobile Message Store merges stream + Delivery Status
+           → Desktop conversation projection merges the persisted stream
 ```
 
 ### Code map
 
 | Layer           | Path                                                                                     |
 | --------------- | ---------------------------------------------------------------------------------------- |
-| Composer UI     | `apps/mobile/src/domains/chat/ui/companion-chat.tsx`                                     |
-| Protocol client | `apps/mobile/src/domains/chat/runtime/runtime-adapter.ts`                                |
+| Composer UI     | Desktop Floating Bar                                                                    |
+| Protocol client | Desktop Runtime Bridge                                                                  |
 | Wire schema     | `packages/protocol/` (`user_message`, `companion_message`, `delivery_ack`)               |
 | Ingress         | `services/agent-runtime/src/domains/gateway/`                                            |
 | Ordering        | `services/agent-runtime/src/domains/sessions/` (transactional ingress, idempotency keys) |
@@ -276,22 +291,25 @@ User types → Runtime Adapter sends user_message (message_id, idempotency_key)
 
 ---
 
-## 6. Mac context reaches the Companion
+## 6. Coaching Perception reaches the Companion
 
-**User story:** While user works on Mac, Companion periodically "sees" summarized activity; when capture stops, Companion knows the session ended.
+**User story:** While the Coaching Window is active, the Companion receives a
+bounded chronological progression of privacy-filtered work evidence. Pause,
+lock, disconnect, and end fail closed for proactive coaching.
 
 ### Flow
 
 ```text
 Desktop Capture Layer → Screen Memory insert (local truth)
                       → Desktop Context Compiler
-                      → perception_event on WSS
-                      → Runtime event ledger + perception_records
-                      → Sensory Buffer / search_screen_context
+                      → perception_event(window_id) on WSS
+                      → metadata-only Runtime ledger + perception_records
+                      → privacy-safe recent progression / search_screen_context
                       → optional Monitoring Turn (silent unless Post-Message-Back)
 ```
 
-Stop capture → `session_end_marker` → Sensory Buffer updated → agent can reason about liveness.
+`session_end_marker` remains capture/archive durability. Coaching presence comes
+only from explicit window lifecycle plus live connection-scoped presence.
 
 ### Code map
 
@@ -301,57 +319,57 @@ Stop capture → `session_end_marker` → Sensory Buffer updated → agent can r
 | Compile             | Desktop Context Compiler | —                                                                                                       |
 | Protocol emit       | Runtime Bridge           | `gateway/` → `sessions/`                                                                                |
 | Persist event       | —                        | `runtime_events` ledger + `perception_records`                                                          |
-| Latest context read | —                        | `sessions/repo/sensory-buffer.ts`                                                                       |
+| Recent context read | —                        | window-scoped privacy-safe reader over ledger ordering + current projection                            |
 | Search older screen | —                        | `perception/service/search-screen-context.ts`                                                           |
 | Agent use           | —                        | `runtime/service/monitoring-turn.ts`, `bundles/service/assemble-system-prompt.ts` (`RECENT_PERCEPTION`) |
 
 ---
 
-## 7. Proactive Companion + push
+## 7. Least Necessary Intervention
 
-**User story:** Cron or Heartbeat fires while user is away; agent decides a message is worth sending; user gets a push notification (not for ordinary inline replies).
+**User story:** While an active Coaching Window has a matching live Desktop
+presence, a Monitoring Turn may decide that one brief intervention would help.
+The Floating Bar appears without stealing focus. Outside that boundary, nothing
+proactively reaches the User.
 
 ### Flow
 
 ```mermaid
 sequenceDiagram
   participant RT as Agent Runtime
-  participant CP as Control Plane
-  participant Expo as Expo Push Service
-  participant M as Mobile Client
+  participant D as Desktop Client
 
-  Note over RT: Cron poll or Heartbeat due scan
-  RT->>RT: Enqueue trigger → Monitoring Turn
-  RT->>RT: Agent chooses Post-Message-Back
+  D->>RT: active window + live presence + window-scoped perception
+  Note over RT: perception trigger or 120-second active-window floor
+  RT->>RT: Collapse to one Monitoring Turn over new evidence
+  RT->>RT: Companion stays silent or chooses Post-Message-Back
   RT->>RT: Persist conversation_messages (via_post_message_back=true)
-  alt user foreground + WSS up
-    RT->>M: companion_message (live stream)
-  else user offline / background
-    RT->>CP: POST /internal/notifications/push
-    CP->>Expo: fan-out to device tokens
-    Expo->>M: APNs push
+  alt same window still active and attested
+    RT->>D: companion_message (window_id)
+    D->>D: Matching-window guard → Floating Bar + edge glow
+  else locked, paused, ended, or disconnected
+    RT->>RT: Suppress proactive presentation
   end
-  M->>RT: WSS reconnect → hello_ok hydrates timeline
 ```
 
 ### Invariants
 
-- **Cron** and **Heartbeat** are triggers, not notifications.
-- **Post-Message-Back** is the only path to push (Runtime → Control Plane → Expo).
-- Ordinary reply to a user message does **not** push; it lands in the timeline only.
+- Perception is the primary clock; the active-window floor targets a judgment
+  opportunity within 120 seconds.
+- The Companion remains silent by default and owns intervention judgment.
+- Coaching Post-Message-Back streams only to the matching Desktop window. It
+  never falls back to Mobile, Control Plane push, or a macOS notification.
+- Ordinary interactive routing remains separate and unchanged.
 
 ### Code map
 
-| Concern                   | Agent Runtime                                       | Control Plane                                               | Mobile                                                                                   |
-| ------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Cron                      | `domains/cron/` (poll loop, `/crons/` VFS cards)    | —                                                           | —                                                                                        |
-| Heartbeat                 | `domains/heartbeat/` (computed schedule, silent OK) | —                                                           | —                                                                                        |
-| Post-Message-Back         | `delivery/service/post-message-back.ts`             | —                                                           | —                                                                                        |
-| Push handoff              | Control Plane push client in `delivery-port.ts`     | `notifications/ui/post-internal-notifications-push.ts`      | —                                                                                        |
-| Token storage             | —                                                   | `devices/repo/devices.ts`                                   | `POST /devices/register`                                                                 |
-| Receipt cleanup           | —                                                   | `POST /internal/notifications/check-receipts` (maintenance) | —                                                                                        |
-| Permission + registration | —                                                   | —                                                           | Grant Permissions in onboarding funnel; `POST /devices/register` around first chat entry |
-| Continuity cue            | —                                                   | —                                                           | `chat-presentation.ts` (`Following up` from `via_post_message_back`)                     |
+| Concern                   | Agent Runtime                                      | Desktop Client                                      |
+| ------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| Window gate               | `coaching_windows` + live connection attestation   | `DesktopCoachingWindowCoordinator`                  |
+| Cadence                   | 120-second Monitoring coordinator                  | Existing smart local capture cadence                |
+| Judgment                  | Monitoring Turn + coaching Procedure Floor         | Evidence only; no drift classifier                  |
+| Post-Message-Back         | Persist, revalidate matching window, stream        | Match `window_id`, then Floating Bar + edge glow     |
+| Failure behavior          | No push; history/reconnect remains server truth    | Lock/Pause/end/disconnect suppress visual effect    |
 
 ---
 
@@ -408,14 +426,13 @@ Business domains per deployable (each follows `types → config → repo → ser
 
 ### Protocol (WSS, Neon Auth JWT on `connect`)
 
-| Client → Runtime                                  | Runtime → Client                |
-| ------------------------------------------------- | ------------------------------- |
-| `connect` (+ `client_kind`, optional `client_tz`) | `hello_ok` (reconnect snapshot) |
-| `user_message` (Mobile)                           | `companion_message`             |
-| `perception_event` (Desktop)                      | `session_snapshot`              |
-| `session_end_marker` (Desktop)                    | `history_backfill_response`     |
-| `presence_update`, `delivery_ack`                 | `runtime_error`                 |
-| `history_backfill_request`                        |                                 |
+| Client → Runtime                                                                 | Runtime → Client                               |
+| -------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `connect` (+ `client_kind`, optional `client_tz`, optional `capabilities`)        | `hello_ok` (reconnect snapshot)                |
+| `coaching_window_started`, `coaching_window_ended`, `coaching_window_presence`   | `companion_message` (+ optional `window_id`)   |
+| `perception_event` (optional `window_id` for queued legacy-event compatibility) | `runtime_ingress_ack`                          |
+| `perception_tombstone`, `session_end_marker`                                     | `session_snapshot`, `history_backfill_response` |
+| `user_message`, `presence_update`, `delivery_ack`, `history_backfill_request`    | `runtime_error`                                |
 
 Full schemas: `packages/protocol/src/index.ts`.
 

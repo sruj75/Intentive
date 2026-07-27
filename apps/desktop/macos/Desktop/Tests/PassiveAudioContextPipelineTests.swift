@@ -26,6 +26,7 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     systemAudioMode: SystemAudioCaptureMode = .onlyDuringMeetings,
     meetingActive: Bool = false,
     activeWindow: (() throws -> DesktopWindowContext?)? = nil,
+    transcriptionService: (any LocalTranscriptionService)? = nil,
     idFactory: @escaping () -> String = { "passive-audio-fixed" },
     cadence: AmbientAudioCadenceGate = AmbientAudioCadenceGate()
   ) -> Harness {
@@ -33,12 +34,12 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     let store = InMemoryScreenMemoryStore()
     let coordinator = AmbientAudioCoordinator(
       audioMemory: store,
-      publisher: PerceptionPublisher(runtimeClient: runtime)
+      publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
     )
     let pipeline = PassiveAudioContextPipeline(
       coordinator: coordinator,
       voiceGate: StubVoiceActivityGate(hasSpeech: hasSpeech),
-      transcription: StubTranscription(text: transcript),
+      transcription: transcriptionService ?? StubTranscription(text: transcript),
       settingsProvider: { settings },
       microphonePermissionProvider: { microphonePermission },
       systemAudioPermissionProvider: { systemAudioPermission },
@@ -243,6 +244,23 @@ final class PassiveAudioContextPipelineTests: XCTestCase {
     XCTAssertEqual(outcome, .skipped("empty transcript"))
   }
 
+  func testCancellationDuringTranscriptionPreventsDetailedTranscriptPersistenceAndPublish() async {
+    let transcription = SuspendedTranscription(text: "late private transcript")
+    let h = makeHarness(transcriptionService: transcription)
+    let ingest = Task {
+      await h.pipeline.ingest(pcm16k: pcm, source: .microphone)
+    }
+    await transcription.waitUntilStarted()
+
+    ingest.cancel()
+    transcription.complete()
+    let outcome = await ingest.value
+
+    XCTAssertEqual(outcome, .skipped("capture stopped"))
+    XCTAssertTrue(h.store.recentAudioMemory(limit: 1).isEmpty)
+    XCTAssertTrue(h.runtime.perceptionEvents.isEmpty)
+  }
+
   func testExcludedActiveAppIsSkipped() async {
     let h = makeHarness(
       settings: CompilerSettings(excludedApps: ["1Password"], ambientAudioCaptureEnabled: true),
@@ -264,4 +282,33 @@ private struct StubVoiceActivityGate: VoiceActivityGate {
 private struct StubTranscription: LocalTranscriptionService {
   var text: String
   func transcribe(_ pcm16k: Data) async throws -> String { text }
+}
+
+@MainActor
+private final class SuspendedTranscription: LocalTranscriptionService {
+  private let text: String
+  private var continuation: CheckedContinuation<String, Never>?
+  private(set) var started = false
+
+  init(text: String) {
+    self.text = text
+  }
+
+  func transcribe(_ pcm16k: Data) async throws -> String {
+    started = true
+    return await withCheckedContinuation {
+      continuation = $0
+    }
+  }
+
+  func waitUntilStarted() async {
+    while !started {
+      await Task.yield()
+    }
+  }
+
+  func complete() {
+    continuation?.resume(returning: text)
+    continuation = nil
+  }
 }

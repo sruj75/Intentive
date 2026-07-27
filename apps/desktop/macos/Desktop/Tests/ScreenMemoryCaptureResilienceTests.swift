@@ -110,6 +110,20 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
     XCTAssertTrue(loop.state.isRunning)
   }
 
+  func testSynchronousCoachingSuspensionCancelsPendingWakeRestart() async {
+    let loop = makeLoop(intervalSeconds: 30)
+    let ctrl = makeController(loop: loop)
+    ctrl.setUserEnabled(true)
+    ctrl.receiveSystemEvent(.systemSleep)
+    ctrl.receiveSystemEvent(.systemWake)
+
+    ctrl.suspendForCoachingBoundary()
+    await flushPendingTasks()
+
+    XCTAssertFalse(loop.state.isRunning)
+    XCTAssertEqual(ctrl.state, .disabled)
+  }
+
   // MARK: - 3. Lock pauses; unlock resumes
 
   func testScreenLockPausesAndUnlockResumes() async throws {
@@ -602,7 +616,7 @@ final class ScreenMemoryCaptureResilienceTests: XCTestCase {
       coordinator: CaptureCoordinator(
         compiler: ContextCompiler(),
         screenMemory: store,
-        publisher: PerceptionPublisher(runtimeClient: runtime)
+        publisher: PerceptionPublisher(runtimeClient: runtime, windowIdProvider: desktopTestCoachingWindowIdProvider)
       ),
       source: resolvedSource,
       settingsProvider: { CompilerSettings(captureEnabled: true) },

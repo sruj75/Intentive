@@ -34,11 +34,47 @@ public enum DesktopRuntimeSessionState: Equatable, Sendable {
   }
 }
 
+/// Fail-closed bridge from verified account identity to the durable local
+/// profile that owns Coaching Window lifecycle and perception ingress.
+public enum DesktopCoachingProfileReadiness {
+  public static func isReady(
+    verifiedUserID: String?,
+    mountedDurableProfileUserID: String?
+  ) -> Bool {
+    guard
+      let verifiedUserID = stableUserID(verifiedUserID),
+      let mountedUserID = stableUserID(mountedDurableProfileUserID)
+    else {
+      return false
+    }
+    return verifiedUserID == mountedUserID
+  }
+
+  fileprivate static func stableUserID(_ rawUserID: String?) -> String? {
+    let userID = rawUserID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard
+      !userID.isEmpty,
+      DesktopLocalProfile.sanitizedUserID(userID) != DesktopLocalProfile.anonymousUserID
+    else {
+      return nil
+    }
+    return userID
+  }
+}
+
 @MainActor
 public final class DesktopRuntimeSessionCoordinator {
   public private(set) var state: DesktopRuntimeSessionState = .signedOut
   public private(set) var accountState: AccountState?
   public private(set) var registeredDeviceId: String?
+  public private(set) var hasAuthenticatedCredential: Bool
+  /// A stable user identity verified by the Control Plane for this process.
+  ///
+  /// A restored credential alone does not establish which durable local
+  /// profile owns Coaching Window evidence.
+  public var verifiedUserID: String? {
+    DesktopCoachingProfileReadiness.stableUserID(accountState?.userId)
+  }
 
   public let runtime: RuntimeAdapter
 
@@ -62,6 +98,7 @@ public final class DesktopRuntimeSessionCoordinator {
     self.device = device
     self.runtime = runtime
     accountState = initialAccountState
+    hasAuthenticatedCredential = initialAccountState != nil
     self.capturePermissionGranted = capturePermissionGranted
     self.timeZone = timeZone
   }
@@ -73,6 +110,7 @@ public final class DesktopRuntimeSessionCoordinator {
         markSignedOut()
         return state
       }
+      hasAuthenticatedCredential = true
       return await connect(jwt: jwt)
     } catch {
       state = .failed(error.localizedDescription)
@@ -84,6 +122,7 @@ public final class DesktopRuntimeSessionCoordinator {
   public func signInAndConnect() async -> DesktopRuntimeSessionState {
     do {
       let jwt = try await auth.signIn()
+      hasAuthenticatedCredential = true
       return await connect(jwt: jwt)
     } catch DesktopAuthError.missingToken {
       markSignedOut()
@@ -166,6 +205,7 @@ public final class DesktopRuntimeSessionCoordinator {
   private func markSignedOut() {
     accountState = nil
     registeredDeviceId = nil
+    hasAuthenticatedCredential = false
     state = .signedOut
   }
 }

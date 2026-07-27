@@ -5,6 +5,10 @@ public enum ClientKind: String, Codable, Equatable, Sendable {
   case desktop
 }
 
+public enum ClientCapability: String, Codable, Equatable, Sendable {
+  case desktopCoachingV1 = "desktop_coaching_v1"
+}
+
 public enum ProtocolEventError: Error, Equatable, LocalizedError {
   case invalidTopLevel
   case missingType
@@ -12,6 +16,10 @@ public enum ProtocolEventError: Error, Equatable, LocalizedError {
   case unknownKeys(type: String, keys: [String])
   case invalidEmbeddingDimension(expected: Int, actual: Int)
   case payloadContainsRawFrameBytes
+  case coachingWindowRequired
+  case invalidUUID(field: String)
+  case invalidTimestamp(field: String)
+  case invalidLiteral(field: String, expected: String)
 
   public var errorDescription: String? {
     switch self {
@@ -27,6 +35,14 @@ public enum ProtocolEventError: Error, Equatable, LocalizedError {
       return "Embedding vector length \(actual) does not match dim \(expected)."
     case .payloadContainsRawFrameBytes:
       return "Perception events must not contain raw frame bytes."
+    case .coachingWindowRequired:
+      return "New Desktop perception requires an active Coaching Window."
+    case .invalidUUID(let field):
+      return "Protocol field \(field) must be a UUID."
+    case .invalidTimestamp(let field):
+      return "Protocol field \(field) must be an ISO-8601 timestamp."
+    case .invalidLiteral(let field, let expected):
+      return "Protocol field \(field) must equal \(expected)."
     }
   }
 }
@@ -120,6 +136,7 @@ public struct PerceptionEmbeddingRef: Codable, Equatable, Sendable {
 public struct PerceptionEvent: Codable, Equatable, Sendable {
   public let type: String
   public var eventId: String
+  public var windowId: String?
   public var sourceClient: ClientKind
   public var capturedAt: String
   public var periodStart: String
@@ -138,6 +155,7 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
 
   public init(
     eventId: String,
+    windowId: String? = nil,
     sourceClient: ClientKind = .desktop,
     capturedAt: String,
     periodStart: String,
@@ -154,6 +172,7 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
   ) {
     self.type = "perception_event"
     self.eventId = eventId
+    self.windowId = windowId
     self.sourceClient = sourceClient
     self.capturedAt = capturedAt
     self.periodStart = periodStart
@@ -172,6 +191,7 @@ public struct PerceptionEvent: Codable, Equatable, Sendable {
   enum CodingKeys: String, CodingKey, CaseIterable {
     case type
     case eventId = "event_id"
+    case windowId = "window_id"
     case sourceClient = "source_client"
     case capturedAt = "captured_at"
     case periodStart = "period_start"
@@ -295,13 +315,21 @@ public struct HelloOk: Codable, Equatable, Sendable {
 public struct CompanionMessage: Codable, Equatable, Sendable {
   public let type: String
   public var messageId: String
+  public var windowId: String?
   public var body: String
   public var emittedAt: String
   public var viaPostMessageBack: Bool
 
-  public init(messageId: String, body: String, emittedAt: String, viaPostMessageBack: Bool = false) {
+  public init(
+    messageId: String,
+    windowId: String? = nil,
+    body: String,
+    emittedAt: String,
+    viaPostMessageBack: Bool = false
+  ) {
     self.type = "companion_message"
     self.messageId = messageId
+    self.windowId = windowId
     self.body = body
     self.emittedAt = emittedAt
     self.viaPostMessageBack = viaPostMessageBack
@@ -310,6 +338,7 @@ public struct CompanionMessage: Codable, Equatable, Sendable {
   enum CodingKeys: String, CodingKey, CaseIterable {
     case type
     case messageId = "message_id"
+    case windowId = "window_id"
     case body
     case emittedAt = "emitted_at"
     case viaPostMessageBack = "via_post_message_back"
@@ -321,12 +350,14 @@ public struct UserMessage: Codable, Equatable, Sendable {
   public var messageId: String
   public var body: String
   public var sentAt: String
+  public var windowId: String?
 
-  public init(messageId: String, body: String, sentAt: String) {
+  public init(messageId: String, body: String, sentAt: String, windowId: String? = nil) {
     self.type = "user_message"
     self.messageId = messageId
     self.body = body
     self.sentAt = sentAt
+    self.windowId = windowId
   }
 
   enum CodingKeys: String, CodingKey {
@@ -334,6 +365,7 @@ public struct UserMessage: Codable, Equatable, Sendable {
     case messageId = "message_id"
     case body
     case sentAt = "sent_at"
+    case windowId = "window_id"
   }
 }
 
@@ -343,13 +375,20 @@ public struct ConnectEvent: Codable, Equatable, Sendable {
   public var clientKind: ClientKind
   public var clientVersion: String
   public var clientTz: String?
+  public var capabilities: [ClientCapability]?
 
-  public init(authToken: String, clientVersion: String, clientTz: String?) {
+  public init(
+    authToken: String,
+    clientVersion: String,
+    clientTz: String?,
+    capabilities: [ClientCapability]? = nil
+  ) {
     self.type = "connect"
     self.authToken = authToken
     self.clientKind = .desktop
     self.clientVersion = clientVersion
     self.clientTz = clientTz
+    self.capabilities = capabilities
   }
 
   enum CodingKeys: String, CodingKey {
@@ -358,6 +397,95 @@ public struct ConnectEvent: Codable, Equatable, Sendable {
     case clientKind = "client_kind"
     case clientVersion = "client_version"
     case clientTz = "client_tz"
+    case capabilities
+  }
+}
+
+public enum CoachingWindowStartReason: String, Codable, Equatable, Sendable {
+  case appLaunch = "app_launch"
+  case loginLaunch = "login_launch"
+  case signIn = "sign_in"
+  case onboardingCompleted = "onboarding_completed"
+  case systemWake = "system_wake"
+  case userResume = "user_resume"
+  case permissionRestored = "permission_restored"
+  case crashRecovery = "crash_recovery"
+}
+
+public struct CoachingWindowStarted: Codable, Equatable, Sendable {
+  public let type: String
+  public var windowId: String
+  public var startedAt: String
+  public var reason: CoachingWindowStartReason
+
+  public init(windowId: String, startedAt: String, reason: CoachingWindowStartReason) {
+    self.type = "coaching_window_started"
+    self.windowId = windowId
+    self.startedAt = startedAt
+    self.reason = reason
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case windowId = "window_id"
+    case startedAt = "started_at"
+    case reason
+  }
+}
+
+public enum CoachingWindowEndReason: String, Codable, Equatable, Sendable {
+  case pause
+  case systemSleep = "system_sleep"
+  case signOut = "sign_out"
+  case quit
+  case crash
+  case permissionLost = "permission_lost"
+}
+
+public struct CoachingWindowEnded: Codable, Equatable, Sendable {
+  public let type: String
+  public var windowId: String
+  public var endedAt: String
+  public var reason: CoachingWindowEndReason
+
+  public init(windowId: String, endedAt: String, reason: CoachingWindowEndReason) {
+    self.type = "coaching_window_ended"
+    self.windowId = windowId
+    self.endedAt = endedAt
+    self.reason = reason
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case windowId = "window_id"
+    case endedAt = "ended_at"
+    case reason
+  }
+}
+
+public enum CoachingWindowPresenceState: String, Codable, Equatable, Sendable {
+  case active
+  case locked
+}
+
+public struct CoachingWindowPresence: Codable, Equatable, Sendable {
+  public let type: String
+  public var windowId: String
+  public var state: CoachingWindowPresenceState
+  public var changedAt: String
+
+  public init(windowId: String, state: CoachingWindowPresenceState, changedAt: String) {
+    self.type = "coaching_window_presence"
+    self.windowId = windowId
+    self.state = state
+    self.changedAt = changedAt
+  }
+
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case type
+    case windowId = "window_id"
+    case state
+    case changedAt = "changed_at"
   }
 }
 
@@ -495,6 +623,8 @@ public enum RuntimeIngressKind: String, Codable, Equatable, Sendable {
   case perceptionEvent = "perception_event"
   case perceptionTombstone = "perception_tombstone"
   case sessionEndMarker = "session_end_marker"
+  case coachingWindowStarted = "coaching_window_started"
+  case coachingWindowEnded = "coaching_window_ended"
 }
 
 /// A durable-ingress acknowledgement the Runtime sends only after the event
@@ -543,7 +673,11 @@ public struct ProtocolEventCodec {
       type: "perception_event",
       allowed: Set(PerceptionEvent.CodingKeys.allCases.map(\.stringValue))
     )
-    return try decoder.decode(PerceptionEvent.self, from: data)
+    let event = try decoder.decode(PerceptionEvent.self, from: data)
+    if let windowId = event.windowId {
+      try validateUUID(windowId, field: "window_id")
+    }
+    return event
   }
 
   public static func decodePerceptionTombstone(_ data: Data) throws -> PerceptionTombstone {
@@ -562,6 +696,45 @@ public struct ProtocolEventCodec {
       allowed: Set(SessionEndMarker.CodingKeys.allCases.map(\.stringValue))
     )
     return try decoder.decode(SessionEndMarker.self, from: data)
+  }
+
+  public static func decodeCoachingWindowStarted(_ data: Data) throws -> CoachingWindowStarted {
+    try validateAllowedKeys(
+      data: data,
+      type: "coaching_window_started",
+      allowed: Set(CoachingWindowStarted.CodingKeys.allCases.map(\.stringValue))
+    )
+    let event = try decoder.decode(CoachingWindowStarted.self, from: data)
+    try validateLiteral(event.type, expected: "coaching_window_started", field: "type")
+    try validateUUID(event.windowId, field: "window_id")
+    try validateTimestamp(event.startedAt, field: "started_at")
+    return event
+  }
+
+  public static func decodeCoachingWindowEnded(_ data: Data) throws -> CoachingWindowEnded {
+    try validateAllowedKeys(
+      data: data,
+      type: "coaching_window_ended",
+      allowed: Set(CoachingWindowEnded.CodingKeys.allCases.map(\.stringValue))
+    )
+    let event = try decoder.decode(CoachingWindowEnded.self, from: data)
+    try validateLiteral(event.type, expected: "coaching_window_ended", field: "type")
+    try validateUUID(event.windowId, field: "window_id")
+    try validateTimestamp(event.endedAt, field: "ended_at")
+    return event
+  }
+
+  public static func decodeCoachingWindowPresence(_ data: Data) throws -> CoachingWindowPresence {
+    try validateAllowedKeys(
+      data: data,
+      type: "coaching_window_presence",
+      allowed: Set(CoachingWindowPresence.CodingKeys.allCases.map(\.stringValue))
+    )
+    let event = try decoder.decode(CoachingWindowPresence.self, from: data)
+    try validateLiteral(event.type, expected: "coaching_window_presence", field: "type")
+    try validateUUID(event.windowId, field: "window_id")
+    try validateTimestamp(event.changedAt, field: "changed_at")
+    return event
   }
 
   public static func decodeRuntimeToClientEvent(_ data: Data) throws -> RuntimeToClientEvent {
@@ -587,14 +760,20 @@ public struct ProtocolEventCodec {
         type: type,
         allowed: Set(CompanionMessage.CodingKeys.allCases.map(\.stringValue))
       )
-      return .companionMessage(try decoder.decode(CompanionMessage.self, from: data))
+      let message = try decoder.decode(CompanionMessage.self, from: data)
+      if let windowId = message.windowId {
+        try validateUUID(windowId, field: "window_id")
+      }
+      return .companionMessage(message)
     case "runtime_ingress_ack":
       try validateAllowedKeys(
         data: data,
         type: type,
         allowed: Set(RuntimeIngressAck.CodingKeys.allCases.map(\.stringValue))
       )
-      return .runtimeIngressAck(try decoder.decode(RuntimeIngressAck.self, from: data))
+      let acknowledgement = try decoder.decode(RuntimeIngressAck.self, from: data)
+      try validateUUID(acknowledgement.ingressId, field: "ingress_id")
+      return .runtimeIngressAck(acknowledgement)
     case "runtime_error":
       try validateAllowedKeys(
         data: data,
@@ -630,6 +809,30 @@ public struct ProtocolEventCodec {
     let unknown = Set(object.keys).subtracting(allowed)
     if !unknown.isEmpty {
       throw ProtocolEventError.unknownKeys(type: type, keys: unknown.sorted())
+    }
+  }
+
+  private static func validateUUID(_ value: String, field: String) throws {
+    guard UUID(uuidString: value) != nil else {
+      throw ProtocolEventError.invalidUUID(field: field)
+    }
+  }
+
+  private static func validateTimestamp(_ value: String, field: String) throws {
+    guard ISO8601DateFormatter.intentiveProtocol.date(from: value) != nil
+      || ISO8601DateFormatter().date(from: value) != nil
+    else {
+      throw ProtocolEventError.invalidTimestamp(field: field)
+    }
+  }
+
+  private static func validateLiteral(
+    _ value: String,
+    expected: String,
+    field: String
+  ) throws {
+    guard value == expected else {
+      throw ProtocolEventError.invalidLiteral(field: field, expected: expected)
     }
   }
 }

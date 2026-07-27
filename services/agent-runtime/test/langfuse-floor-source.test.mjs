@@ -1,9 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createLangfuseFloorSource } from "../dist/index.js";
+import { createLangfuseFloorSource, parseProcedureFloorBundle } from "../dist/index.js";
 
-test("Langfuse floor source fetches the four procedure prompts at the requested label", async () => {
+const bundle = [
+  "# Intentive Desktop Performance Coach",
+  "",
+  "## File: SOUL.md",
+  "",
+  "soul body",
+  "",
+  "## File: AGENTS.md",
+  "",
+  "agents body",
+  "",
+  "## File: BOOTSTRAP.md",
+  "",
+  "bootstrap body",
+  "",
+  "## File: HEARTBEAT.md",
+  "",
+  "heartbeat body",
+].join("\n");
+
+test("Langfuse floor source fetches the canonical bundle at the requested label", async () => {
   const calls = [];
   const source = createLangfuseFloorSource({
     client: {
@@ -11,9 +31,9 @@ test("Langfuse floor source fetches the four procedure prompts at the requested 
         calls.push({ name, version, options });
         return {
           name,
-          version: name.endsWith("soul") ? 10 : 11,
-          prompt: `${name} body`,
-          toJSON: () => JSON.stringify({ name, version: name.endsWith("soul") ? 10 : 11 }),
+          version: 4,
+          prompt: bundle,
+          toJSON: () => JSON.stringify({ name, version: 4 }),
         };
       },
     },
@@ -21,17 +41,34 @@ test("Langfuse floor source fetches the four procedure prompts at the requested 
 
   const floor = await source.fetch("production");
 
-  assert.deepEqual(
-    calls.map((call) => [call.name, call.options]),
-    [
-      ["companion-soul", { label: "production", type: "text" }],
-      ["companion-agents", { label: "production", type: "text" }],
-      ["companion-bootstrap", { label: "production", type: "text" }],
-      ["companion-heartbeat", { label: "production", type: "text" }],
-    ],
+  assert.deepEqual(calls, [
+    {
+      name: "intentive-runtime-bundle",
+      version: undefined,
+      options: { label: "production", type: "text" },
+    },
+  ]);
+  assert.deepEqual(floor.documents, {
+    SOUL: "soul body",
+    AGENTS: "agents body",
+    BOOTSTRAP: "bootstrap body",
+    HEARTBEAT: "heartbeat body",
+  });
+  assert.equal(floor.version, "4");
+  assert.deepEqual(floor.langfusePrompts, [{ name: "intentive-runtime-bundle", version: 4 }]);
+});
+
+test("bundle parser rejects missing, duplicate, and empty procedure documents", () => {
+  assert.throws(
+    () => parseProcedureFloorBundle(bundle.replace(/## File: HEARTBEAT\.md[\s\S]*$/, "")),
+    /missing required documents: HEARTBEAT/,
   );
-  assert.equal(floor.documents.SOUL, "companion-soul body");
-  assert.equal(floor.documents.HEARTBEAT, "companion-heartbeat body");
-  assert.equal(floor.version, "SOUL:10,AGENTS:11,BOOTSTRAP:11,HEARTBEAT:11");
-  assert.deepEqual(floor.langfusePrompts[0], { name: "companion-soul", version: 10 });
+  assert.throws(
+    () => parseProcedureFloorBundle(`${bundle}\n\n## File: SOUL.md\n\nduplicate`),
+    /duplicate SOUL\.md/,
+  );
+  assert.throws(
+    () => parseProcedureFloorBundle(bundle.replace("heartbeat body", "   ")),
+    /empty HEARTBEAT\.md/,
+  );
 });

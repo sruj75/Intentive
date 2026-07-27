@@ -8,16 +8,23 @@
 import { serve } from "@hono/node-server";
 import { neon } from "@neondatabase/serverless";
 import { createJwtVerifier, createLocalDevJwtVerifier } from "@intentive/providers/auth";
+import { createFlagClient } from "@intentive/providers/flags";
 import { bootstrapObservability } from "@intentive/providers/observability";
 import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
 import { Langfuse } from "langfuse-langchain";
 import { WebSocketServer } from "ws";
 
 import { loadConfig } from "./config/env.js";
-import { createBundledFallbackSource } from "./domains/bundles/repo/bundled-fallback.js";
 import { createLangfuseFloorSource } from "./domains/bundles/repo/langfuse-floor-source.js";
 import { assembleSystemPrompt } from "./domains/bundles/service/assemble-system-prompt.js";
 import { createProcedureFloorResolver } from "./domains/bundles/service/procedure-floor-resolver.js";
+import { createCoachingFeatureGate } from "./domains/coaching/service/feature-gate.js";
+import { createRecentCoachingEvidenceReader } from "./domains/coaching/repo/recent-evidence.js";
+import { createCoachingWindowsRepo } from "./domains/coaching/repo/coaching-windows.js";
+import { createMonitoringCoordinator } from "./domains/coaching/runtime/monitoring-coordinator.js";
+import type { MonitoringCoordinator } from "./domains/coaching/runtime/monitoring-coordinator.js";
+import { createCoachingMetrics } from "./domains/coaching/service/coaching-metrics.js";
+import { createOpeningOrientation } from "./domains/coaching/service/opening-orientation.js";
 import { createConversationRepo } from "./domains/conversation/repo/conversation.js";
 import { toConversationEntry } from "./domains/conversation/service/project-ingress.js";
 import { createCronBackend } from "./domains/cron/repo/cron-backend.js";
@@ -28,6 +35,8 @@ import { createCronTurnHandler } from "./domains/cron/service/cron-turn.js";
 import { createCpPushClient } from "./domains/delivery/repo/cp-push-client.js";
 import { createDeliveriesRepo } from "./domains/delivery/repo/deliveries.js";
 import { createDeliveryPort } from "./domains/delivery/service/delivery-port.js";
+import { createCoachingPostMessageBack } from "./domains/delivery/service/coaching-post-message-back.js";
+import { createCoachingPostMessageBackTool } from "./domains/delivery/service/coaching-post-message-back-tool.js";
 import { createPostMessageBack } from "./domains/delivery/service/post-message-back.js";
 import { createPostMessageBackTool } from "./domains/delivery/service/post-message-back-tool.js";
 import { createConnectionRegistry } from "./domains/gateway/runtime/connection-registry.js";
@@ -50,10 +59,12 @@ import { createRuntimeTurnsRepo } from "./domains/runtime/repo/runtime-turns.js"
 import { createMonitoringTurn } from "./domains/runtime/service/monitoring-turn.js";
 import { createTurn } from "./domains/runtime/service/turn.js";
 import { createTurnRunner } from "./domains/runtime/service/turn-runner.js";
+import { createToolsForTurn } from "./domains/runtime/service/turn-tools.js";
 import { createWorkingContext } from "./domains/runtime/service/working-context.js";
 import { createEventLedger } from "./domains/sessions/repo/event-ledger.js";
 import { createAgentInstanceRepo } from "./domains/sessions/repo/instance-registry.js";
-import { createSensoryBufferReader } from "./domains/sessions/repo/sensory-buffer.js";
+import { createBootstrapLifecycleRepo } from "./domains/sessions/repo/bootstrap-lifecycle.js";
+import { createBootstrapLifecycle } from "./domains/sessions/service/bootstrap-lifecycle.js";
 import type { TransactionalSql } from "./domains/sessions/repo/sql.js";
 import { createPerUserChannel } from "./domains/sessions/runtime/per-user-channel.js";
 import { createStartSession } from "./domains/sessions/service/start-session.js";
@@ -62,20 +73,23 @@ import { retryTransientDb as retryTransientDbOperation } from "./runtime/db-retr
 import { createShutdown } from "./runtime/shutdown.js";
 
 const config = loadConfig();
-const langfuseConfig = config.langfuse;
-const langfuseClient = langfuseConfig
-  ? new Langfuse({
-      publicKey: langfuseConfig.publicKey,
-      secretKey: langfuseConfig.secretKey,
-      baseUrl: langfuseConfig.baseUrl,
-    })
-  : null;
+const coachingGate = createCoachingFeatureGate({
+  flags: createFlagClient({
+    defaults: { desktop_coaching_v1: config.coaching.enabled },
+  }),
+  founderUserIds: config.coaching.founderUserIds,
+});
+const langfuseClient = new Langfuse({
+  publicKey: config.langfuse.publicKey,
+  secretKey: config.langfuse.secretKey,
+  baseUrl: config.langfuse.baseUrl,
+});
 const observability = bootstrapObservability(
   {
     sentry: config.sentry,
     langfuse: config.langfuse,
   },
-  langfuseClient ? { shutdown: [() => drainLangfuseClient(langfuseClient)] } : {},
+  { shutdown: [() => drainLangfuseClient(langfuseClient)] },
 );
 const log = observability.createLogger("agent-runtime");
 const retryTransientDb = <T>(operation: () => Promise<T>) =>
@@ -95,16 +109,16 @@ const resilientSql = withTransactionRetry(sql);
 // write-path hooks below can push committed due-times onto them; their `enqueue`
 // callbacks close over `channel` / `fireCron` / `monitoringTurn`, which are only
 // invoked at fire-time (after `start()`), so the forward references are safe.
-const heartbeatFloorMs = 60 * 60_000;
+const heartbeatFloorMs = 120_000;
 const heartbeatScheduleRepo = createHeartbeatScheduleRepo(sql);
 const cronJobs = createCronJobsRepo(sql);
 
 let channel: PerUserChannel;
+let monitoringCoordinator: MonitoringCoordinator;
 
 const heartbeatScheduler = createHeartbeatScheduler({
   scheduleRepo: heartbeatScheduleRepo,
-  enqueueHeartbeat: (userId) =>
-    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "heartbeat")),
+  enqueueHeartbeat: (userId) => monitoringCoordinator?.onHeartbeat(userId) ?? false,
   floorMs: heartbeatFloorMs,
   logger: log,
 });
@@ -127,15 +141,8 @@ const verifier =
         audience: config.neonAuth.audience,
       });
 
-const registry = createAgentInstanceRepo(sql, {
-  onNewUser: (userId) => {
-    // ADR-0035: bootstrap a brand-new user's first heartbeat. The `has` guard
-    // keeps existing users (already in the heap from boot) untouched on reconnect.
-    if (!heartbeatScheduler.has(userId)) {
-      heartbeatScheduler.schedule(userId, new Date(Date.now() + heartbeatFloorMs));
-    }
-  },
-});
+const registry = createAgentInstanceRepo(sql);
+const bootstrapLifecycle = createBootstrapLifecycle(createBootstrapLifecycleRepo(sql));
 const resilientRegistry = {
   loadOrCreate: (input: Parameters<typeof registry.loadOrCreate>[0]) =>
     retryTransientDb(() => registry.loadOrCreate(input)),
@@ -148,7 +155,8 @@ const resilientRegistry = {
 };
 const ledger = createEventLedger(sql);
 const conversation = createConversationRepo(sql);
-const sensoryBuffer = createSensoryBufferReader(sql);
+const coachingWindows = createCoachingWindowsRepo(sql);
+const recentCoachingEvidence = createRecentCoachingEvidenceReader(sql);
 const perceptionEmbedder = createOpenRouterPerceptionEmbedder({
   apiKey: config.model.apiKey,
   baseUrl: config.model.baseUrl,
@@ -157,6 +165,10 @@ const perceptionRecords = createPerceptionRecordsRepo(sql, perceptionEmbedder);
 const runtimeTurns = createRuntimeTurnsRepo(sql);
 const cronRuns = createCronRunsRepo(sql);
 const connectionRegistry = createConnectionRegistry({ logger: log });
+const coachingMetrics = createCoachingMetrics({
+  logger: log,
+  isEnabled: (userId) => coachingGate.isEnabled(userId),
+});
 const deliveries = createDeliveriesRepo(sql);
 const cpPush = createCpPushClient({
   baseUrl: config.controlPlane.baseUrl,
@@ -166,11 +178,38 @@ const deliveryPort = createDeliveryPort({
   registry: connectionRegistry,
   deliveries,
   cpPush,
+  authorizeProactive: async (userId, windowId) =>
+    coachingGate.isEnabled(userId) &&
+    (await retryTransientDb(() => coachingWindows.isActive(userId, windowId))),
+  coachingMetrics,
   logger: log,
 });
 const postMessageBack = createPostMessageBack({
   conversation,
   deliveryPort,
+  logger: log,
+});
+const coachingPostMessageBack = createCoachingPostMessageBack({
+  connections: connectionRegistry,
+  conversation,
+  deliveryPort,
+  authorize: async (userId, context) => {
+    if (
+      !coachingGate.isEnabled(userId) ||
+      !(await retryTransientDb(() => coachingWindows.isActive(userId, context.windowId)))
+    ) {
+      return false;
+    }
+    return retryTransientDb(() =>
+      recentCoachingEvidence.isCurrent({
+        userId,
+        windowId: context.windowId,
+        cursorStart: context.evidenceCursorStart,
+        cursorEnd: context.evidenceCursorEnd,
+        version: context.evidenceVersion,
+      }),
+    );
+  },
   logger: log,
 });
 const memoryStore = PostgresStore.fromConnString(config.neon.url, { schema: "agent_runtime" });
@@ -186,11 +225,13 @@ const cronBackend = createCronBackend({
   onCancelCron: (id) => cronScheduler.cancel(id),
 });
 const agentBackend = createAgentBackend({ store: memoryStore, cronBackend });
-const fallbackFloorSource = createBundledFallbackSource();
 const floorResolver = createProcedureFloorResolver({
-  source: langfuseClient ? createLangfuseFloorSource({ client: langfuseClient }) : null,
-  fallback: fallbackFloorSource,
+  source: createLangfuseFloorSource({ client: langfuseClient }),
 });
+// The Procedure Floor is a hard Runtime dependency. Resolve and validate it
+// before opening listeners so a missing or malformed production prompt fails
+// deployment visibly instead of serving undefined behavior.
+await floorResolver.resolve("production");
 const runtimeAdapter = createDeepAgentsAdapter({
   connectionUri: config.neon.url,
   modelName: config.model.model,
@@ -199,14 +240,44 @@ const runtimeAdapter = createDeepAgentsAdapter({
   backend: agentBackend.backend,
   // A fresh handler per turn (not one shared instance) keeps each turn's trace
   // isolated; langfuse's handler holds the active trace on mutable state.
-  createCallbackHandler: langfuseConfig ? observability.createCallbackHandler : null,
-  createTools: (input) => [
-    createPostMessageBackTool({ postMessageBack, userId: input.userId }),
-    createSearchScreenContextTool({
-      search: (searchInput) => retryTransientDb(() => perceptionRecords.search(searchInput)),
-      userId: input.userId,
+  createCallbackHandler: observability.createCallbackHandler,
+  createTools: (input) =>
+    createToolsForTurn(input, {
+      // Opening returns its one stable visible response directly. Monitoring
+      // receives only internally bound egress: the fixed window evidence cannot
+      // be bypassed with user-wide historical search.
+      ordinaryEgress: () =>
+        createPostMessageBackTool({
+          postMessageBack,
+          userId: input.userId,
+        }),
+      coachingEgress: () => {
+        if (
+          input.windowId === undefined ||
+          input.evidenceVersion === undefined ||
+          input.evidenceCursorStart === undefined ||
+          input.evidenceCursorEnd === undefined ||
+          input.effects === undefined
+        ) {
+          throw new Error("Monitoring egress requires internally bound turn identity");
+        }
+        return createCoachingPostMessageBackTool({
+          postMessageBack: coachingPostMessageBack,
+          userId: input.userId,
+          windowId: input.windowId,
+          evidenceVersion: input.evidenceVersion,
+          evidenceCursorStart: input.evidenceCursorStart,
+          evidenceCursorEnd: input.evidenceCursorEnd,
+          effects: input.effects,
+        });
+      },
+      // Historical perception search remains an ordinary interactive tool.
+      screenContext: () =>
+        createSearchScreenContextTool({
+          search: (searchInput) => retryTransientDb(() => perceptionRecords.search(searchInput)),
+          userId: input.userId,
+        }),
     }),
-  ],
   openRouter: {
     apiKey: config.model.apiKey,
     baseUrl: config.model.baseUrl,
@@ -216,7 +287,6 @@ const runtimeAdapter = createDeepAgentsAdapter({
 await retryTransientDb(() => runtimeAdapter.setup());
 const workingContext = createWorkingContext({
   readUserProfile: (userId) => retryTransientDb(() => readUserProfile(memoryStore, userId, log)),
-  readRecentPerception: (userId) => retryTransientDb(() => sensoryBuffer.readLatest(userId)),
 });
 const turn = createTurn({
   sql: resilientSql,
@@ -224,14 +294,24 @@ const turn = createTurn({
   workingContext,
   runtimeTurns,
   fallbackModel: config.model.model,
-  onTurnCommitted: (userId) =>
-    heartbeatScheduler.schedule(userId, new Date(Date.now() + heartbeatFloorMs)),
   logger: log,
 });
 const runTurn = createTurnRunner({
   sql,
   adapter: runtimeAdapter,
   conversation,
+  bootstrap: bootstrapLifecycle,
+  isBootstrapReplyEligible: async (session, event) => {
+    const windowId = event.window_id;
+    return (
+      session.clientKind === "desktop" &&
+      session.capabilities.includes("desktop_coaching_v1") &&
+      windowId !== undefined &&
+      coachingGate.isEnabled(session.userId) &&
+      connectionRegistry.hasActiveCoachingWindow(session.userId, windowId) &&
+      (await retryTransientDb(() => coachingWindows.isActive(session.userId, windowId)))
+    );
+  },
   deliveryPort,
   turn,
   logger: log,
@@ -247,14 +327,24 @@ const fireCron = createCronTurnHandler({
   logger: log,
 });
 const monitoringTurn = createMonitoringTurn({
-  floorResolver,
   turn,
+});
+const openingOrientation = createOpeningOrientation({
+  bootstrap: bootstrapLifecycle,
+  windows: coachingWindows,
+  conversation,
+  deliveryPort,
+  turn,
+  isEligible: (userId) => coachingGate.isEnabled(userId),
+  isActivelyAttested: (userId, windowId) =>
+    connectionRegistry.hasActiveCoachingWindow(userId, windowId),
+  logger: log,
 });
 const perceptionIngressHooks = createPerceptionIngressHooks({
   embedder: perceptionEmbedder,
+  loadEmbeddingCandidate: (expectedRecord) =>
+    retryTransientDb(() => perceptionRecords.readEmbeddingCandidate(expectedRecord)),
   storeEmbedding: (input) => retryTransientDb(() => perceptionRecords.storeEmbedding(input)),
-  enqueueMonitoring: (userId) =>
-    channel.enqueueBestEffort(userId, () => monitoringTurn(userId, "perception_event")),
   onEmbeddingError: (error, context) => {
     log.error("perception.embedding_failed", error, {
       user_id: context.userId,
@@ -282,10 +372,37 @@ channel = createPerUserChannel({
     if (event.type === "perception_tombstone") {
       queries.push(perceptionRecords.tombstoneQuery(session.userId, event));
     }
+    if (event.type === "coaching_window_started" || event.type === "coaching_window_ended") {
+      queries.push(...coachingWindows.projectLifecycle(session.userId, event));
+    }
     return queries;
   },
   runTurn,
-  ...perceptionIngressHooks,
+  onPerceptionProjected: perceptionIngressHooks.onPerceptionProjected,
+  onPerceptionArrived: (session, event) => {
+    if (event.type === "perception_event") {
+      monitoringCoordinator.onPerception(session, event);
+    }
+  },
+  onCoachingWindowLifecycle: (session, event) => {
+    coachingMetrics.onLifecycle(session.userId, event);
+    monitoringCoordinator.onLifecycle(session, event);
+  },
+  onUserMessageCommitted: (session) => {
+    coachingMetrics.onUserMessage(session);
+  },
+  logger: log,
+});
+monitoringCoordinator = createMonitoringCoordinator({
+  gate: coachingGate,
+  windows: coachingWindows,
+  evidence: recentCoachingEvidence,
+  connections: connectionRegistry,
+  channel,
+  opening: openingOrientation,
+  monitoringTurn,
+  scheduler: heartbeatScheduler,
+  floorMs: heartbeatFloorMs,
   logger: log,
 });
 const startSession = createStartSession({
@@ -320,7 +437,13 @@ const internalServer = serve({ fetch: internalApp.fetch, port: config.internalIn
 // The Per-User Channel is the single serialization point: state-mutating ingress
 // (`user_message`, `perception_event`, `session_end_marker`) and History Backfill
 // reads both pass through it, so reads observe earlier accepted writes in order.
-const routePostConnectEvent = createPostConnectRouter({ channel });
+const routePostConnectEvent = createPostConnectRouter({
+  channel,
+  coachingConnections: connectionRegistry,
+  onCoachingPresence: (session, event) => monitoringCoordinator.onPresence(session, event),
+  onCoachingDeliveryAck: (session, messageId) =>
+    monitoringCoordinator.onDeliveryAck(session, messageId),
+});
 
 const wss = new WebSocketServer({ port: config.port });
 wss.on("connection", (socket) => {

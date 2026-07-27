@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { neon } from "@neondatabase/serverless";
+import { applyMigrationText } from "./lib/migration-runner.mjs";
 
 // Applies the Agent Runtime's domain SQL migrations (the `agent_runtime` schema
 // tables) against the database in DATABASE_URL / NEON_DATABASE_URL. The LangGraph
@@ -28,22 +29,6 @@ const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sq
 
 for (const file of files) {
   const sqlText = await readFile(path.join(migrationsDir, file), "utf8");
-  for (const statement of splitStatements(sqlText)) {
-    await sql.query(statement);
-  }
+  await applyMigrationText(sql, sqlText);
   console.log(`applied ${file}`);
-}
-
-function splitStatements(sqlText) {
-  return stripSqlComments(sqlText)
-    .split(";")
-    .map((statement) => stripSqlComments(statement).trim())
-    .filter(Boolean);
-}
-
-function stripSqlComments(statement) {
-  return statement
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("--"))
-    .join("\n");
 }

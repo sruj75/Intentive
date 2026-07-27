@@ -35,6 +35,7 @@ final class DesktopRuntimeSessionTests: XCTestCase {
 
     XCTAssertEqual(state, .connecting)
     XCTAssertEqual(session.accountState?.userId, "user-1")
+    XCTAssertEqual(session.verifiedUserID, "user-1")
     XCTAssertEqual(session.registeredDeviceId, "device-row-1")
     XCTAssertEqual(controlPlane.registeredFingerprints, ["fingerprint-1"])
     XCTAssertEqual(controlPlane.getMeCapturePermissionSignals, [true])
@@ -65,6 +66,46 @@ final class DesktopRuntimeSessionTests: XCTestCase {
     XCTAssertEqual(state, .signedOut)
     XCTAssertTrue(controlPlane.getMeCapturePermissionSignals.isEmpty)
     XCTAssertNil(socket.connectedURL)
+  }
+
+  func testVerifiedUserNeedsMatchingMountedDurableProfileForCoaching() {
+    XCTAssertTrue(
+      DesktopCoachingProfileReadiness.isReady(
+        verifiedUserID: "user-1",
+        mountedDurableProfileUserID: "user-1"
+      )
+    )
+    XCTAssertFalse(
+      DesktopCoachingProfileReadiness.isReady(
+        verifiedUserID: "user-1",
+        mountedDurableProfileUserID: nil
+      )
+    )
+    XCTAssertFalse(
+      DesktopCoachingProfileReadiness.isReady(
+        verifiedUserID: "user-1",
+        mountedDurableProfileUserID: "user-2"
+      )
+    )
+  }
+
+  func testRestoredCredentialRemainsKnownWhenControlPlaneIsUnavailable() async {
+    let session = DesktopRuntimeSessionCoordinator(
+      auth: FakeAuthAdapter(token: "user-jwt"),
+      controlPlane: FakeDesktopControlPlane(error: TestControlPlaneError.unavailable),
+      device: ClientDeviceService(deviceId: "fingerprint-1"),
+      runtime: RuntimeAdapter(socket: SessionFakeRuntimeSocket(), clientVersion: "desktop-test"),
+      capturePermissionGranted: { true }
+    )
+
+    let state = await session.restoreAndConnect()
+
+    guard case .failed = state else {
+      return XCTFail("expected unavailable Control Plane to fail the connection")
+    }
+    XCTAssertTrue(session.hasAuthenticatedCredential)
+    XCTAssertNil(session.accountState)
+    XCTAssertNil(session.verifiedUserID)
   }
 
   func testAccountGateStopsBeforeDeviceRegistrationAndRouting() async {
@@ -251,6 +292,7 @@ private final class FakeAuthAdapter: AuthAdapter {
 private final class FakeDesktopControlPlane: DesktopControlPlaneRoutingClient {
   var accountState: AccountState
   var routingResult: RuntimeRoutingResult
+  var error: Error?
   private(set) var getMeCapturePermissionSignals: [Bool] = []
   private(set) var routingCapturePermissionSignals: [Bool] = []
   private(set) var registeredFingerprints: [String] = []
@@ -261,13 +303,16 @@ private final class FakeDesktopControlPlane: DesktopControlPlaneRoutingClient {
       hasAgentInstance: false,
       hasDesktopClient: false
     ),
-    routingResult: RuntimeRoutingResult = .retry(retryAfterSeconds: nil)
+    routingResult: RuntimeRoutingResult = .retry(retryAfterSeconds: nil),
+    error: Error? = nil
   ) {
     self.accountState = accountState
     self.routingResult = routingResult
+    self.error = error
   }
 
   func getMe(jwt: String, capturePermissionGranted: Bool) async throws -> AccountState {
+    if let error { throw error }
     getMeCapturePermissionSignals.append(capturePermissionGranted)
     return accountState
   }
@@ -281,6 +326,10 @@ private final class FakeDesktopControlPlane: DesktopControlPlaneRoutingClient {
     routingCapturePermissionSignals.append(capturePermissionGranted)
     return routingResult
   }
+}
+
+private enum TestControlPlaneError: Error {
+  case unavailable
 }
 
 private final class SessionFakeRuntimeSocket: RuntimeSocket {

@@ -124,6 +124,8 @@ public protocol PerceptionEventOutbox: AnyObject {
   func enqueuePerceptionEvent(_ event: PerceptionEvent) throws
   func enqueuePerceptionTombstone(_ tombstone: PerceptionTombstone) throws
   func enqueueSessionEndMarker(_ marker: SessionEndMarker) throws
+  func enqueueCoachingWindowStarted(_ event: CoachingWindowStarted) throws
+  func enqueueCoachingWindowEnded(_ event: CoachingWindowEnded) throws
   /// Pending items in durable enqueue order across all kinds, for redelivery.
   func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem]
   /// Remove one acknowledged item. Idempotent on redelivery.
@@ -139,12 +141,16 @@ public enum RuntimeIngressOutboxItem: Equatable, Sendable {
   case perceptionEvent(PerceptionEvent)
   case perceptionTombstone(PerceptionTombstone)
   case sessionEndMarker(SessionEndMarker)
+  case coachingWindowStarted(CoachingWindowStarted)
+  case coachingWindowEnded(CoachingWindowEnded)
 
   public var kind: RuntimeIngressKind {
     switch self {
     case .perceptionEvent: return .perceptionEvent
     case .perceptionTombstone: return .perceptionTombstone
     case .sessionEndMarker: return .sessionEndMarker
+    case .coachingWindowStarted: return .coachingWindowStarted
+    case .coachingWindowEnded: return .coachingWindowEnded
     }
   }
 
@@ -153,6 +159,8 @@ public enum RuntimeIngressOutboxItem: Equatable, Sendable {
     case .perceptionEvent(let event): return event.eventId
     case .perceptionTombstone(let tombstone): return tombstone.tombstoneId
     case .sessionEndMarker(let marker): return marker.markerId
+    case .coachingWindowStarted(let event): return event.windowId
+    case .coachingWindowEnded(let event): return event.windowId
     }
   }
 
@@ -276,6 +284,14 @@ public final class InMemoryScreenMemoryStore: ScreenMemoryStore, AudioMemoryStor
     upsertIngress(.sessionEndMarker(marker))
   }
 
+  public func enqueueCoachingWindowStarted(_ event: CoachingWindowStarted) throws {
+    upsertIngress(.coachingWindowStarted(event))
+  }
+
+  public func enqueueCoachingWindowEnded(_ event: CoachingWindowEnded) throws {
+    upsertIngress(.coachingWindowEnded(event))
+  }
+
   public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
     Array(ingressOutbox.prefix(max(0, limit)))
   }
@@ -322,6 +338,12 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
     store as? ScreenMemoryArchive
   }
 
+  /// The verified owner of the currently mounted durable Screen Memory and
+  /// ingress outbox. In-memory fallback storage deliberately exposes no owner.
+  public var durableProfileUserID: String? {
+    activeArchive?.userID
+  }
+
   public func replace(with store: ScreenMemoryStore, profileID: String) {
     if profileID == self.profileID {
       carryPendingPerceptionEvents(to: store)
@@ -366,6 +388,14 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
     try (store as? PerceptionEventOutbox)?.enqueueSessionEndMarker(marker)
   }
 
+  public func enqueueCoachingWindowStarted(_ event: CoachingWindowStarted) throws {
+    try (store as? PerceptionEventOutbox)?.enqueueCoachingWindowStarted(event)
+  }
+
+  public func enqueueCoachingWindowEnded(_ event: CoachingWindowEnded) throws {
+    try (store as? PerceptionEventOutbox)?.enqueueCoachingWindowEnded(event)
+  }
+
   public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
     try (store as? PerceptionEventOutbox)?.pendingIngress(limit: limit) ?? []
   }
@@ -399,6 +429,10 @@ public final class SwitchableScreenMemoryStore: ScreenMemoryStore, AudioMemorySt
           try replacementOutbox.enqueuePerceptionTombstone(tombstone)
         case .sessionEndMarker(let marker):
           try replacementOutbox.enqueueSessionEndMarker(marker)
+        case .coachingWindowStarted(let event):
+          try replacementOutbox.enqueueCoachingWindowStarted(event)
+        case .coachingWindowEnded(let event):
+          try replacementOutbox.enqueueCoachingWindowEnded(event)
         }
         try currentOutbox.removeIngress(kind: item.kind, ingressId: item.ingressId)
       } catch {
@@ -1280,6 +1314,24 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
     )
   }
 
+  public func enqueueCoachingWindowStarted(_ event: CoachingWindowStarted) throws {
+    try enqueueIngress(
+      kind: .coachingWindowStarted,
+      ingressId: event.windowId,
+      payload: try ProtocolEventCodec.encode(event),
+      expiresAt: nil
+    )
+  }
+
+  public func enqueueCoachingWindowEnded(_ event: CoachingWindowEnded) throws {
+    try enqueueIngress(
+      kind: .coachingWindowEnded,
+      ingressId: event.windowId,
+      payload: try ProtocolEventCodec.encode(event),
+      expiresAt: nil
+    )
+  }
+
   public func pendingIngress(limit: Int) throws -> [RuntimeIngressOutboxItem] {
     // `seq` is the monotonic enqueue order across every kind, so an event can
     // never be redelivered behind its own later tombstone.
@@ -1309,6 +1361,18 @@ public final class SQLiteScreenMemoryStore: ScreenMemoryStore, AudioMemoryStore,
               .perceptionTombstone(try ProtocolEventCodec.decodePerceptionTombstone(payload)))
           case .sessionEndMarker:
             items.append(.sessionEndMarker(try ProtocolEventCodec.decodeSessionEndMarker(payload)))
+          case .coachingWindowStarted:
+            items.append(
+              .coachingWindowStarted(
+                try ProtocolEventCodec.decodeCoachingWindowStarted(payload)
+              )
+            )
+          case .coachingWindowEnded:
+            items.append(
+              .coachingWindowEnded(
+                try ProtocolEventCodec.decodeCoachingWindowEnded(payload)
+              )
+            )
           case nil:
             // Unknown kind from a forward-incompatible row: skip rather than fail
             // the whole drain.

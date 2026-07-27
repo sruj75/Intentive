@@ -44,7 +44,9 @@ MVP 1 spikes `assistant-ui/native` as a replaceable Chat Primitive Engine behind
 14. As a user who needs Mac context for the current experience, I want contextual prompts (not a repeated blocking gate), so the app stays honest about capability.
 15. As a user who skipped Mac setup, I want recovery in **Account Surface**, so I can fix it later.
 16. As a user, I want relationship onboarding inside **Companion Chat**, so onboarding feels relational.
-17. As a user, I want the runtime-generated first opening (via **Conversation Start Trigger**), so the companion starts the relationship — not a client hardcoded welcome.
+17. As a user, I want my first authored message to receive a real Agent Runtime
+    reply, so the relationship starts in Companion Chat without a client
+    hardcoded welcome or an infrastructure-triggered greeting.
 18. As a user, I want one continuous **Companion Chat** after setup, so returning feels like an ongoing relationship.
 19. As a user, I want no dashboard, task board, streaks, or bottom tabs in V1.
 20. As a user, I want a full-screen Liquid Glass Chat Shell, so conversation is primary.

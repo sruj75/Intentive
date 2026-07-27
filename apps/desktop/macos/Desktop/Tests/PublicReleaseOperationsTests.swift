@@ -93,6 +93,39 @@ final class PublicReleaseOperationsTests: XCTestCase {
     XCTAssertEqual(sink.errors.count, 1)
   }
 
+  func testCoachingTelemetryKeepsOnlyContentFreeOperationalDimensions() {
+    let sink = RecordingTelemetryClient()
+    let telemetry = PrivacyFilteringTelemetryClient(
+      downstream: sink,
+      analyticsConsent: { true }
+    )
+
+    telemetry.track(
+      TelemetryEvent(
+        name: .coachingWindowEnded,
+        properties: [
+          "reason": .string("pause"),
+          "duration_ms": .integer(120_000),
+          "window_id": .string("11111111-1111-4111-8111-111111111111"),
+          "message": .string("private coaching body"),
+        ]
+      )
+    )
+
+    XCTAssertEqual(
+      sink.events,
+      [
+        TelemetryEvent(
+          name: .coachingWindowEnded,
+          properties: [
+            "reason": .string("pause"),
+            "duration_ms": .integer(120_000),
+          ]
+        )
+      ]
+    )
+  }
+
   func testDiagnosticsRotateByAgeAndBudgetThenExportAndClear() throws {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("intentive-diagnostics-tests-\(UUID().uuidString)", isDirectory: true)

@@ -7,6 +7,7 @@ public enum IntentiveSetupStep: String, CaseIterable, Identifiable, Sendable {
   case trust
   case screenRecording
   case microphone
+  case systemAudio
   case accessibility
   case floatingBarShortcut
   case floatingBarDemo
@@ -19,34 +20,48 @@ public protocol IntentiveSetupPresenting: ObservableObject {
   var crossClientSetupComplete: Bool { get }
   var authenticationLoading: Bool { get }
   var authenticationError: String? { get }
+  var setupCompletionError: String? { get }
   var setupStep: IntentiveSetupStep { get }
   var screenRecordingGranted: Bool { get }
   var microphoneGranted: Bool { get }
+  var systemAudioGranted: Bool { get }
   var accessibilityGranted: Bool { get }
   var shortcutLabel: String { get }
   func signIn()
   func cancelSignIn()
   func completeCurrentSetupStep()
-  func skipCurrentSetupStep()
   func requestScreenRecording()
   func openScreenRecordingSettings()
   func refreshSetupPermissions()
   func requestMicrophone()
   func openMicrophoneSettings()
+  func requestSystemAudio()
+  func openSystemAudioSettings()
   func requestAccessibility()
   func openAccessibilitySettings()
+  func openLoginItemsSettings()
   func openFloatingBar()
 }
 
 public extension IntentiveSetupPresenting {
   func startScreenRecordingPermissionFlow() {
+    // The model owns the complete two-part flow: ordinary Screen Recording
+    // authorization first, then a disposable ScreenCaptureKit capture that
+    // presents macOS's separate direct-capture consent. Opening System Settings
+    // synchronously here would race that asynchronous probe.
     requestScreenRecording()
-    guard !screenRecordingGranted else { return }
-    openScreenRecordingSettings()
   }
 
   func refreshSetupPermissionsAfterApplicationActivation() {
     refreshSetupPermissions()
+  }
+
+  var launchAtLoginApprovalRecoveryAvailable: Bool {
+    guard let normalizedError = setupCompletionError?.lowercased() else {
+      return false
+    }
+    return normalizedError.contains("launch at login")
+      && normalizedError.contains("approval")
   }
 }
 
@@ -126,9 +141,6 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
       HStack {
         Text("Intentive").font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
         Spacer()
-        if model.setupStep != .trust {
-          Button("Skip", action: model.skipCurrentSetupStep).buttonStyle(.plain).foregroundColor(OmiColors.textTertiary)
-        }
       }.padding(.horizontal, OmiSpacing.xxl).padding(.vertical, OmiSpacing.lg)
       Divider().background(OmiColors.backgroundTertiary)
       GeometryReader { geometry in
@@ -137,6 +149,9 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
             progressRail
             titleBlock
             setupContent
+            if let setupCompletionError = model.setupCompletionError {
+              setupCompletionFailure(setupCompletionError)
+            }
           }
           .frame(maxWidth: 600)
           .frame(minHeight: geometry.size.height, alignment: .center)
@@ -173,19 +188,28 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
       VStack(spacing: OmiSpacing.lg) {
         permissionRow(icon: "display", title: "Screen Recording", detail: "Build local context from what you're working on.")
         permissionRow(icon: "mic.fill", title: "Microphone", detail: "Capture voice notes and meeting context locally.")
+        permissionRow(icon: "waveform", title: "System Audio", detail: "Understand meeting and media context locally.")
         permissionRow(icon: "accessibility", title: "Accessibility", detail: "Know the active app and summon the Floating Bar.")
         primary("Continue", id: "setup-continue", action: model.completeCurrentSetupStep)
       }
     case .screenRecording:
       permissionCard(
         icon: "display",
-        title: "Screen Recording",
-        detail: "Screen Recording lets Intentive see what you're working on.",
+        title: "Screen Capture",
+        detail: "Intentive first requests Screen Recording, then performs one disposable capture so macOS can confirm direct window access before background coaching begins.",
         granted: model.screenRecordingGranted,
         request: model.startScreenRecordingPermissionFlow
       )
     case .microphone:
-      permissionCard(icon: "mic.fill", title: "Microphone", detail: "Microphone access lets Intentive capture optional local audio context.", granted: model.microphoneGranted, request: model.requestMicrophone)
+      permissionCard(icon: "mic.fill", title: "Microphone", detail: "Microphone access lets Intentive understand local audio context while coaching is active.", granted: model.microphoneGranted, request: model.requestMicrophone)
+    case .systemAudio:
+      permissionCard(
+        icon: "waveform",
+        title: "System Audio",
+        detail: "Intentive starts and immediately stops one disposable audio tap so macOS asks now—not after setup or at login.",
+        granted: model.systemAudioGranted,
+        request: model.requestSystemAudio
+      )
     case .accessibility:
       permissionCard(icon: "accessibility", title: "Accessibility", detail: "Accessibility lets Intentive detect the active app and respond to your shortcut.", granted: model.accessibilityGranted, request: model.requestAccessibility)
     case .floatingBarShortcut:
@@ -200,7 +224,7 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
       VStack(spacing: OmiSpacing.xl) {
         Image(systemName: "text.bubble.fill").font(.system(size: 40)).foregroundColor(.white)
         Text("Try the real Floating Bar").font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
-        Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message, or skip if you're offline.").intentiveSetupDetail()
+        Text(demoTimedOut ? "You can continue now and try again later." : "Open the text-only bar and send a message before finishing setup.").intentiveSetupDetail()
         HStack {
           primary("Open Floating Bar", id: "setup-open-floating-bar", action: model.openFloatingBar)
           Button("Finish", action: model.completeCurrentSetupStep)
@@ -245,6 +269,30 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     }
   }
 
+  private func setupCompletionFailure(_ message: String) -> some View {
+    VStack(alignment: .leading, spacing: OmiSpacing.md) {
+      Label("Setup couldn’t finish", systemImage: "exclamationmark.triangle.fill")
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundColor(OmiColors.error)
+      Text(message)
+        .font(.system(size: 13))
+        .foregroundColor(OmiColors.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      if model.launchAtLoginApprovalRecoveryAvailable {
+        Button("Open Login Items Settings", action: model.openLoginItemsSettings)
+          .buttonStyle(OmiButtonStyle(.secondary))
+          .accessibilityIdentifier("setup-open-login-items-settings")
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(OmiSpacing.lg)
+    .background(
+      RoundedRectangle(cornerRadius: OmiChrome.elementRadius)
+        .fill(OmiColors.error.opacity(0.1))
+    )
+    .accessibilityIdentifier("setup-completion-error")
+  }
+
   private func primary(
     _ title: String,
     id: String? = nil,
@@ -261,7 +309,8 @@ public struct IntentiveMacSetupView<Model: IntentiveSetupPresenting>: View {
     switch model.setupStep {
     case .trust: ("Before we continue", "I’m going to ask for a few permissions.", "Intentive is private by design. These permissions help it understand your work and help in the right places.")
     case .screenRecording: ("Permission", "Let Intentive read your screen.", "Screen Recording lets Intentive see what you're working on.")
-    case .microphone: ("Permission", "Let Intentive hear optional context.", "Microphone access is used for local sensing, never to fill the composer.")
+    case .microphone: ("Permission", "Let Intentive hear work context.", "Microphone access is required for local sensing while Coaching is active, never to fill the composer.")
+    case .systemAudio: ("Permission", "Let Intentive hear system audio.", "System Audio is prepared now so background Coaching never discovers its first-use prompt after setup.")
     case .accessibility: ("Permission", "Let Intentive work across your Mac.", "Accessibility identifies the active app and supports the global Floating Bar shortcut.")
     case .floatingBarShortcut: ("Shortcut", "Intentive is one shortcut away.", "Learn the shortcut you'll use to reach your Companion from anywhere.")
     case .floatingBarDemo: ("Try it", "Meet your Floating Bar.", "Open the real text-only conversation surface before finishing setup.")

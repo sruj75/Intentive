@@ -104,7 +104,8 @@ public final class MessageStore {
     updateStatus(messageId, status: .failed(reason))
   }
 
-  public func appendCompanion(_ companion: CompanionMessage) {
+  @discardableResult
+  public func appendCompanion(_ companion: CompanionMessage) -> Bool {
     upsert(
       ChatMessage(
         id: companion.messageId,
@@ -121,11 +122,14 @@ public final class MessageStore {
     messages.first { $0.id == id }
   }
 
-  private func upsert(_ message: ChatMessage) {
+  @discardableResult
+  private func upsert(_ message: ChatMessage) -> Bool {
     if let index = messages.firstIndex(where: { $0.id == message.id }) {
       messages[index] = message
+      return false
     } else {
       messages.append(message)
+      return true
     }
   }
 
@@ -169,7 +173,16 @@ public protocol RuntimeChatClient: AnyObject {
   func sendPerceptionEvent(_ event: PerceptionEvent) throws
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws
   func sendSessionEndMarker(_ marker: SessionEndMarker) throws
+  func sendCoachingWindowStarted(_ event: CoachingWindowStarted) throws
+  func sendCoachingWindowEnded(_ event: CoachingWindowEnded) throws
+  func sendCoachingWindowPresence(_ event: CoachingWindowPresence) throws
   func acknowledge(messageId: String) throws
+}
+
+public extension RuntimeChatClient {
+  func sendCoachingWindowStarted(_ event: CoachingWindowStarted) throws {}
+  func sendCoachingWindowEnded(_ event: CoachingWindowEnded) throws {}
+  func sendCoachingWindowPresence(_ event: CoachingWindowPresence) throws {}
 }
 
 public final class DisconnectedRuntimeChatClient: RuntimeChatClient {
@@ -192,6 +205,9 @@ public final class DisconnectedRuntimeChatClient: RuntimeChatClient {
   public func sendPerceptionEvent(_ event: PerceptionEvent) throws {}
   public func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {}
   public func sendSessionEndMarker(_ marker: SessionEndMarker) throws {}
+  public func sendCoachingWindowStarted(_ event: CoachingWindowStarted) throws {}
+  public func sendCoachingWindowEnded(_ event: CoachingWindowEnded) throws {}
+  public func sendCoachingWindowPresence(_ event: CoachingWindowPresence) throws {}
   public func acknowledge(messageId: String) throws {}
 }
 
@@ -209,7 +225,9 @@ public final class RuntimeAdapter: RuntimeChatClient {
 
   private let socket: RuntimeSocket
   private let clientVersion: String
+  private let clientCapabilities: [ClientCapability]?
   private let now: () -> Date
+  private let activeCoachingWindowId: () -> String?
   private var outboundQueue: [Data] = []
   private var pendingUserMessages: [String: UserMessage] = [:]
 
@@ -217,11 +235,15 @@ public final class RuntimeAdapter: RuntimeChatClient {
     socket: RuntimeSocket,
     messageStore: MessageStore = MessageStore(),
     clientVersion: String,
+    clientCapabilities: [ClientCapability]? = nil,
+    activeCoachingWindowId: @escaping () -> String? = { nil },
     now: @escaping () -> Date = Date.init
   ) {
     self.socket = socket
     self.messageStore = messageStore
     self.clientVersion = clientVersion
+    self.clientCapabilities = clientCapabilities
+    self.activeCoachingWindowId = activeCoachingWindowId
     self.now = now
   }
 
@@ -229,7 +251,12 @@ public final class RuntimeAdapter: RuntimeChatClient {
     connectionGeneration += 1
     status = .connecting
     try socket.connect(url: routing.webSocketURL, jwt: routing.runtimeJWT)
-    let connect = ConnectEvent(authToken: routing.runtimeJWT, clientVersion: clientVersion, clientTz: timeZone.identifier)
+    let connect = ConnectEvent(
+      authToken: routing.runtimeJWT,
+      clientVersion: clientVersion,
+      clientTz: timeZone.identifier,
+      capabilities: clientCapabilities
+    )
     try socket.send(ProtocolEventCodec.encode(connect))
   }
 
@@ -260,9 +287,21 @@ public final class RuntimeAdapter: RuntimeChatClient {
     case .historyBackfillResponse(let response):
       messageStore.prependServerPage(response.sessionSnapshot)
     case .companionMessage(let companion):
-      messageStore.appendCompanion(companion)
-      onCompanionMessage?(companion)
-      try acknowledge(messageId: companion.messageId)
+      if companion.viaPostMessageBack, companion.windowId != nil {
+        // Coaching delivery is not acknowledged at socket receipt. The
+        // MainActor effect runner performs the final matching-window check,
+        // projects it into the transcript, presents (or dedupes) the effect,
+        // and only then acknowledges it.
+        // Every retry must reach that guard because an earlier queued effect
+        // may have been suppressed by Pause, lock, or window replacement.
+        onCompanionMessage?(companion)
+      } else {
+        let isNewMessage = messageStore.appendCompanion(companion)
+        if isNewMessage {
+          onCompanionMessage?(companion)
+        }
+        try acknowledge(messageId: companion.messageId)
+      }
     case .runtimeIngressAck(let ack):
       onIngressAck?(ack)
     case .runtimeError(let error):
@@ -275,7 +314,8 @@ public final class RuntimeAdapter: RuntimeChatClient {
     let message = UserMessage(
       messageId: "desktop_\(UUID().uuidString)",
       body: body,
-      sentAt: now().protocolTimestamp
+      sentAt: now().protocolTimestamp,
+      windowId: activeCoachingWindowId()
     )
     pendingUserMessages[message.messageId] = message
     let rendered = messageStore.appendPending(message)
@@ -298,6 +338,18 @@ public final class RuntimeAdapter: RuntimeChatClient {
 
   public func sendSessionEndMarker(_ marker: SessionEndMarker) throws {
     try sendDurableIngress(ProtocolEventCodec.encode(marker))
+  }
+
+  public func sendCoachingWindowStarted(_ event: CoachingWindowStarted) throws {
+    try sendDurableIngress(ProtocolEventCodec.encode(event))
+  }
+
+  public func sendCoachingWindowEnded(_ event: CoachingWindowEnded) throws {
+    try sendDurableIngress(ProtocolEventCodec.encode(event))
+  }
+
+  public func sendCoachingWindowPresence(_ event: CoachingWindowPresence) throws {
+    try sendOrQueue(ProtocolEventCodec.encode(event))
   }
 
   public func sendPresence(foreground: Bool) throws {

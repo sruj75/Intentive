@@ -9,12 +9,15 @@ export const allowedLogAttrKeys = [
   "category",
   "retryable",
   "attempts",
+  "count",
   "error_type",
   "duration_ms",
   "queue_latency_ms",
   "scheduler_lag_ms",
   "token_input",
   "token_output",
+  "cost_available",
+  "cost_credits",
   "model",
   "bundle_version",
   "connected_clients",
@@ -93,7 +96,7 @@ export function createLogger(
         ...attrs,
         error_type: attrs?.error_type ?? errorType(error),
       });
-      options.sentry?.captureException(error ?? new Error(event), { tags });
+      options.sentry?.captureException(contentRedactedError(error), { tags });
     },
     child(nextBindings) {
       return createLogger(name, {
@@ -135,6 +138,12 @@ function isScalar(value: unknown): value is LogAttrValue {
 
 function errorType(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
+}
+
+function contentRedactedError(error: unknown): Error {
+  const sanitized = new Error("Content-redacted application error");
+  sanitized.name = errorType(error);
+  return sanitized;
 }
 
 /** The canonical error→string used for log attrs and durable error columns. */

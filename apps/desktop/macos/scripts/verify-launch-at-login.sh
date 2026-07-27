@@ -6,8 +6,8 @@ set -euo pipefail
 # Deterministic, CI-runnable checks:
 #   1. the bundle ships a valid LaunchAgent plist that SMAppService registers;
 #   2. its BundleProgram is bundle-relative so it survives moves;
-#   3. the login invocation is marked `--background` and menu-bar-scoped;
-#   4. launching with `--background` yields a running menu-bar-only process
+#   3. the LaunchAgent owns a one-shot launcher, not the sensing process;
+#   4. that launcher yields a running menu-bar-only main process
 #      (no window becomes key, no regular Dock activation) that then quits.
 #
 # The physical login cycle ("no Dock/window flash" on real login) and the
@@ -48,36 +48,54 @@ done
 [[ -n "$EVIDENCE_ROOT" ]] || fail "--evidence-root is required"
 mkdir -p "$EVIDENCE_ROOT/launch-at-login"
 
-BUNDLE_ID="com.heyintentive.desktop"
-LABEL="com.heyintentive.desktop.login"
-PLIST="$APP/Contents/Library/LaunchAgents/$LABEL.plist"
+INFO_PLIST="$APP/Contents/Info.plist"
 EXECUTABLE="$APP/Contents/MacOS/Intentive"
+LOGIN_LAUNCHER="$APP/Contents/MacOS/IntentiveLoginLauncher"
+BUNDLE_ID="$(
+  /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$INFO_PLIST" 2>/dev/null
+)"
+PLIST="$APP/Contents/Library/LaunchAgents/$BUNDLE_ID.login-launcher-v1.plist"
+LEGACY_PLIST="$APP/Contents/Library/LaunchAgents/com.heyintentive.desktop.login.plist"
 
 [[ -f "$PLIST" ]] || fail "bundled LaunchAgent plist missing: $PLIST"
+[[ -f "$LEGACY_PLIST" ]] \
+  || fail "targeted legacy LaunchAgent retirement plist missing: $LEGACY_PLIST"
 plutil -lint "$PLIST" >/dev/null || fail "LaunchAgent plist is not valid"
+[[ -x "$LOGIN_LAUNCHER" ]] || fail "one-shot login launcher is missing"
 
 read_plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$PLIST" 2>/dev/null; }
+LABEL="$(read_plist Label)"
 
-[[ "$(read_plist Label)" == "$LABEL" ]] || fail "LaunchAgent Label mismatch"
 # BundleProgram must be bundle-relative so login launch survives an app move.
-[[ "$(read_plist BundleProgram)" == "Contents/MacOS/Intentive" ]] \
+[[ "$LABEL" == "$BUNDLE_ID.login-launcher-v1" ]] \
+  || fail "LaunchAgent must use the fresh versioned service identity"
+[[ "$(read_plist BundleProgram)" == "Contents/MacOS/IntentiveLoginLauncher" ]] \
   || fail "LaunchAgent BundleProgram must be bundle-relative"
-[[ "$(read_plist 'ProgramArguments:1')" == "--background" ]] \
-  || fail "login invocation must pass --background for a menu-bar-only launch"
+[[ "$(read_plist 'ProgramArguments:0')" == "Contents/MacOS/IntentiveLoginLauncher" ]] \
+  || fail "LaunchAgent must invoke the one-shot login launcher"
 [[ "$(read_plist 'AssociatedBundleIdentifiers:0')" == "$BUNDLE_ID" ]] \
   || fail "LaunchAgent must associate the Intentive bundle identifier"
 [[ "$(read_plist RunAtLoad)" == "true" ]] || fail "LaunchAgent must RunAtLoad"
 
 cp "$PLIST" "$EVIDENCE_ROOT/launch-at-login/LaunchAgent.plist"
+cp "$LEGACY_PLIST" \
+  "$EVIDENCE_ROOT/launch-at-login/LegacyLaunchAgentRetirement.plist"
 
-# Background launch: the login path. Prove a menu-bar-only process comes up and
+# Background launch: the login-helper path. Prove a menu-bar-only process comes up and
 # that no window belonging to it becomes the frontmost/key window.
-pkill -f "^$EXECUTABLE( |\$)" >/dev/null 2>&1 || true
-"$EXECUTABLE" --background >"$EVIDENCE_ROOT/launch-at-login/background-launch.log" 2>&1 &
-BG_PID=$!
+osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
+for _ in {1..50}; do
+  pgrep -f "^$EXECUTABLE( |\$)" >/dev/null || break
+  sleep 0.1
+done
+pgrep -f "^$EXECUTABLE( |\$)" >/dev/null \
+  && fail "existing Intentive process did not quit gracefully"
+"$LOGIN_LAUNCHER" >"$EVIDENCE_ROOT/launch-at-login/background-launch.log" 2>&1
+BG_PID=""
 launched=false
 for _ in {1..100}; do
-  if kill -0 "$BG_PID" 2>/dev/null; then launched=true; break; fi
+  BG_PID="$(pgrep -n -f "^$EXECUTABLE( |\$)" || true)"
+  if [[ -n "$BG_PID" ]] && kill -0 "$BG_PID" 2>/dev/null; then launched=true; break; fi
   sleep 0.1
 done
 [[ "$launched" == true ]] || fail "background login launch did not start"
@@ -95,8 +113,7 @@ echo "frontmost after background launch: ${FRONT_BUNDLE:-unknown}" \
 menu_bar_only=true
 [[ "$FRONT_BUNDLE" == "$BUNDLE_ID" ]] && menu_bar_only=false
 
-kill "$BG_PID" >/dev/null 2>&1 || true
-pkill -f "^$EXECUTABLE( |\$)" >/dev/null 2>&1 || true
+osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
 
 [[ "$menu_bar_only" == true ]] \
   || fail "background launch became frontmost; login launch must stay menu-bar-only"
@@ -106,7 +123,7 @@ import json, pathlib, sys
 path, tag, sha, digest = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
 payload = {
     "ok": True,
-    "registration": "bundled LaunchAgent validated (label, bundle-relative program, --background, RunAtLoad)",
+    "registration": "fresh versioned LaunchAgent validated (label, one-shot bundle-relative launcher, RunAtLoad)",
     "background_launch": "menu-bar-only process started without becoming frontmost",
     "operator_observed": [
         "login launch shows no Dock/window flash",
@@ -114,6 +131,7 @@ payload = {
     ],
     "evidence_files": [
         "launch-at-login/LaunchAgent.plist",
+        "launch-at-login/LegacyLaunchAgentRetirement.plist",
         "launch-at-login/background-launch.log",
     ],
 }

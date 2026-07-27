@@ -281,6 +281,13 @@ final class DesktopPublicReleaseOperations {
     )
   }
 
+  func trackCoachingEvent(
+    _ name: TelemetryEventName,
+    properties: [String: TelemetryValue] = [:]
+  ) {
+    telemetry.track(TelemetryEvent(name: name, properties: properties))
+  }
+
   func submitUserReport(message: String, name: String, email: String) throws {
     let temporaryRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
       "Intentive-Report-\(UUID().uuidString)", isDirectory: true)

@@ -25,6 +25,8 @@ test("turn execution resolves the floor, invokes the adapter, and appends the ok
     fallbackModel: "fallback-model",
     workingContext: async (input) => {
       order.push("assemble");
+      assert.equal(input.evidenceCursorStart, 4);
+      assert.equal(input.evidenceCursorEnd, 9);
       return {
         userId: input.userId,
         threadId: input.threadId,
@@ -49,11 +51,16 @@ test("turn execution resolves the floor, invokes the adapter, and appends the ok
     },
   });
 
-  await turn({
+  const result = await turn({
     userId: "user_1",
     threadId: "thread_1",
     body: "hello",
     trigger: "user_message",
+    windowId: "11111111-1111-4111-8111-111111111111",
+    evidenceCursorStart: 4,
+    evidenceCursorEnd: 9,
+    evidenceVersion: "evidence_v1",
+    recentPerception: "bounded coaching evidence",
     floor: () => {
       order.push("floor");
       return Promise.resolve(floor("floor_v1"));
@@ -68,6 +75,7 @@ test("turn execution resolves the floor, invokes the adapter, and appends the ok
   });
 
   assert.deepEqual(order, ["floor", "assemble", "invoke", "success:trace_1", "transaction"]);
+  assert.equal(result?.reply, "hello from Companion");
   // The spine appends the runtime_turns anchor *after* the caller's rows.
   assert.deepEqual(transactions, [[successQuery, anchorQuery]]);
   assert.deepEqual(turnRecords, [
@@ -77,6 +85,11 @@ test("turn execution resolves the floor, invokes the adapter, and appends the ok
       traceId: "trace_1",
       model: "model",
       bundleVersion: "floor_v1",
+      windowId: "11111111-1111-4111-8111-111111111111",
+      trigger: "user_message",
+      evidenceCursorStart: 4,
+      evidenceCursorEnd: 9,
+      evidenceVersion: "evidence_v1",
       status: "ok",
       error: null,
     },
@@ -135,10 +148,131 @@ test("turn execution appends a failed anchor and contains the error when policy 
       traceId: null,
       model: "fallback-model",
       bundleVersion: null,
+      windowId: null,
+      trigger: "cron",
+      evidenceCursorStart: null,
+      evidenceCursorEnd: null,
+      evidenceVersion: null,
       status: "failed",
-      error: "model unavailable",
+      error: "Error",
     },
   ]);
+});
+
+test("a swallowed coaching egress failure records a failed turn and does not consume evidence", async () => {
+  const attemptQuery = Promise.resolve([{ attempted: true }]);
+  const anchorQuery = Promise.resolve([{ id: "turn_1" }]);
+  const transactions = [];
+  const turnRecords = [];
+  const turn = createTurn({
+    sql: { transaction: async (queries) => transactions.push(queries) },
+    runtimeTurns: {
+      recordQuery: (record) => {
+        turnRecords.push(record);
+        return anchorQuery;
+      },
+    },
+    fallbackModel: "fallback-model",
+    workingContext: async (input) => ({
+      userId: input.userId,
+      threadId: input.threadId,
+      body: input.body,
+      trigger: input.trigger,
+      pinnedFloor: input.floor,
+      userProfile: "",
+    }),
+    adapter: {
+      invoke: async (input) => {
+        // DeepAgents converts a thrown tool error into a ToolMessage. The
+        // side-effect guard must still fail the shell turn after invoke returns.
+        input.effects.fail(new Error("coaching delivery was not accepted"));
+        return {
+          reply: "model continued after the tool error",
+          traceId: "trace_failed_egress",
+          model: "model",
+          bundleVersion: "floor_v1",
+        };
+      },
+    },
+  });
+
+  const result = await turn({
+    userId: "user_1",
+    threadId: "user_1",
+    body: "monitor",
+    trigger: "perception_event",
+    windowId: "11111111-1111-4111-8111-111111111111",
+    evidenceCursorStart: 4,
+    evidenceCursorEnd: 8,
+    evidenceVersion: "11111111-1111-4111-8111-111111111111:4-8",
+    floor: () => Promise.resolve(floor("floor_v1")),
+    onSuccess: () => [assert.fail("failed coaching delivery must not advance the evidence cursor")],
+    onFailure: (error) => {
+      assert.match(String(error), /delivery was not accepted/);
+      return { queries: [attemptQuery], rethrow: false };
+    },
+  });
+
+  assert.equal(result, null);
+  assert.deepEqual(transactions, [[attemptQuery, anchorQuery]]);
+  assert.equal(turnRecords[0].status, "failed");
+  assert.equal(turnRecords[0].evidenceCursorStart, 4);
+  assert.equal(turnRecords[0].evidenceCursorEnd, 8);
+});
+
+test("a failed Coaching Turn persists only a content-free error type", async () => {
+  const ocrSecret = "OCR_SECRET_runtime_turns_must_not_retain_7f43c9";
+  const turnRecords = [];
+  const turn = createTurn({
+    sql: { transaction: async (queries) => queries },
+    runtimeTurns: {
+      recordQuery: (record) => {
+        turnRecords.push(record);
+        return Promise.resolve([{ id: "turn_1" }]);
+      },
+    },
+    fallbackModel: "fallback-model",
+    workingContext: async (input) => ({
+      userId: input.userId,
+      threadId: input.threadId,
+      body: input.body,
+      trigger: input.trigger,
+      pinnedFloor: input.floor,
+      userProfile: "",
+    }),
+    adapter: {
+      invoke: async () => {
+        const error = new TypeError(`provider rejected OCR evidence: ${ocrSecret}`);
+        error.code = `SECRET_CODE:${ocrSecret}`;
+        error.cause = new Error(`secret cause: ${ocrSecret}`);
+        throw error;
+      },
+    },
+  });
+
+  const result = await turn({
+    userId: "user_1",
+    threadId: "user_1",
+    body: "monitor",
+    trigger: "perception_event",
+    windowId: "11111111-1111-4111-8111-111111111111",
+    evidenceCursorStart: 4,
+    evidenceCursorEnd: 8,
+    evidenceVersion: "11111111-1111-4111-8111-111111111111:4-8",
+    recentPerception: `Visible screen text: ${ocrSecret}`,
+    floor: () => Promise.resolve(floor("floor_v1")),
+    onSuccess: () => {
+      throw new Error("unexpected success policy");
+    },
+    onFailure: (error) => {
+      assert.match(String(error), new RegExp(ocrSecret));
+      return { queries: [], rethrow: false };
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(turnRecords[0].error, "TypeError");
+  assert.doesNotMatch(JSON.stringify(turnRecords[0]), new RegExp(ocrSecret));
 });
 
 test("turn execution rethrows after recording failure rows when policy requires containment upstream", async () => {
@@ -209,7 +343,7 @@ test("a floor-resolution failure flows through the failure path with no adapter 
     },
   });
 
-  await turn({
+  const result = await turn({
     userId: "user_1",
     threadId: "thread_1",
     body: "hello",
@@ -226,9 +360,10 @@ test("a floor-resolution failure flows through the failure path with no adapter 
 
   assert.equal(assembled, false);
   assert.equal(invoked, false);
+  assert.equal(result, null);
   assert.deepEqual(transactions, [[anchorQuery]]);
   assert.equal(turnRecords[0].status, "failed");
-  assert.equal(turnRecords[0].error, "floor unavailable");
+  assert.equal(turnRecords[0].error, "Error");
 });
 
 test("turn execution invokes onTurnCommitted with the user id after a successful anchor commit", async () => {

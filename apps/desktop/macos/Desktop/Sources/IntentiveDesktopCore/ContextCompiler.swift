@@ -526,6 +526,7 @@ public final class PerceptionPublisher {
   private let outbox: PerceptionEventOutbox?
   private let isRuntimeConnected: () -> Bool
   private let connectionGeneration: () -> Int
+  private let windowIdProvider: () -> String?
   private let now: () -> Date
 
   /// Items sent on the current connection but not yet acknowledged, keyed by
@@ -540,12 +541,14 @@ public final class PerceptionPublisher {
     outbox: PerceptionEventOutbox? = nil,
     isRuntimeConnected: @escaping () -> Bool = { true },
     connectionGeneration: @escaping () -> Int = { 0 },
+    windowIdProvider: @escaping () -> String? = { nil },
     now: @escaping () -> Date = Date.init
   ) {
     self.runtimeClient = runtimeClient
     self.outbox = outbox
     self.isRuntimeConnected = isRuntimeConnected
     self.connectionGeneration = connectionGeneration
+    self.windowIdProvider = windowIdProvider
     self.now = now
   }
 
@@ -554,8 +557,12 @@ public final class PerceptionPublisher {
     guard artifact.rawFrameBytes == nil else {
       throw ProtocolEventError.payloadContainsRawFrameBytes
     }
+    guard let windowId = windowIdProvider() else {
+      throw ProtocolEventError.coachingWindowRequired
+    }
     let event = PerceptionEvent(
       eventId: artifact.id,
+      windowId: windowId,
       capturedAt: artifact.capturedAt,
       periodStart: artifact.periodStart,
       periodEnd: artifact.periodEnd,
@@ -569,22 +576,32 @@ public final class PerceptionPublisher {
       expiresAt: Self.expiry(capturedAt: artifact.capturedAt, retentionClass: artifact.retentionClass),
       localRecordRef: artifact.localRecordRef
     )
-    try outbox?.enqueuePerceptionEvent(event)
-    trySend(.perceptionEvent(event))
+    try enqueueAndDrain(.perceptionEvent(event))
     return event
   }
 
   /// Durably queue a tenant-scoped deletion for propagation to the Runtime.
   public func publishTombstone(_ tombstone: PerceptionTombstone) throws {
-    try outbox?.enqueuePerceptionTombstone(tombstone)
-    trySend(.perceptionTombstone(tombstone))
+    try enqueueAndDrain(.perceptionTombstone(tombstone))
   }
 
   /// Durably queue a session-end marker (clean stop, quit, or a leftover-lock
   /// crash marker) for propagation to the Runtime.
   public func publishSessionEnd(_ marker: SessionEndMarker) throws {
-    try outbox?.enqueueSessionEndMarker(marker)
-    trySend(.sessionEndMarker(marker))
+    try enqueueAndDrain(.sessionEndMarker(marker))
+  }
+
+  public func publishWindowStarted(_ event: CoachingWindowStarted) throws {
+    try enqueueAndDrain(.coachingWindowStarted(event))
+  }
+
+  public func publishWindowEnded(_ event: CoachingWindowEnded) throws {
+    try enqueueAndDrain(.coachingWindowEnded(event))
+  }
+
+  public func publishWindowPresence(_ event: CoachingWindowPresence) throws {
+    guard isRuntimeConnected() else { return }
+    try runtimeClient.sendCoachingWindowPresence(event)
   }
 
   /// Delete an acknowledged item once the Runtime confirms its ledger+projection
@@ -593,6 +610,10 @@ public final class PerceptionPublisher {
   public func acknowledge(_ ack: RuntimeIngressAck) throws {
     inFlight.remove(inFlightKey(kind: ack.ingressKind, ingressId: ack.ingressId))
     try outbox?.removeIngress(kind: ack.ingressKind, ingressId: ack.ingressId)
+    // The deletion above is the durable acknowledgement boundary. Refill the
+    // bounded in-flight window afterward, but never turn a later transport or
+    // outbox-read failure into an apparent acknowledgement failure.
+    drainPendingBestEffort()
   }
 
   /// Redeliver every unacknowledged item in durable enqueue order, dropping
@@ -625,19 +646,48 @@ public final class PerceptionPublisher {
     return try outbox.dropExpiredPerceptionEvents(now: now())
   }
 
-  private func trySend(_ item: RuntimeIngressOutboxItem) {
+  private func enqueueAndDrain(_ item: RuntimeIngressOutboxItem) throws {
+    guard let outbox else {
+      sendWithoutDurableOutboxBestEffort(item)
+      return
+    }
+    switch item {
+    case .perceptionEvent(let event):
+      try outbox.enqueuePerceptionEvent(event)
+    case .perceptionTombstone(let tombstone):
+      try outbox.enqueuePerceptionTombstone(tombstone)
+    case .sessionEndMarker(let marker):
+      try outbox.enqueueSessionEndMarker(marker)
+    case .coachingWindowStarted(let event):
+      try outbox.enqueueCoachingWindowStarted(event)
+    case .coachingWindowEnded(let event):
+      try outbox.enqueueCoachingWindowEnded(event)
+    }
+    // Delivery happens only by reading the durable FIFO. This prevents a new
+    // publish from bypassing an older row beyond the bounded in-flight batch.
+    drainPendingBestEffort()
+  }
+
+  private func drainPendingBestEffort() {
+    guard isRuntimeConnected() else { return }
+    do {
+      _ = try flushPendingIngress()
+    } catch {
+      // The item is already durable (or the acknowledgement already deleted).
+      // A later publish, acknowledgement, reconnect, or launch sweep retries.
+    }
+  }
+
+  /// Compatibility path for isolated compiler tests that intentionally omit an
+  /// outbox. The assembled Desktop always supplies its durable profile outbox.
+  private func sendWithoutDurableOutboxBestEffort(_ item: RuntimeIngressOutboxItem) {
     resetInFlightIfConnectionChanged()
     guard isRuntimeConnected() else { return }
-    // A freshly compiled artifact is never expired; stale queued items are the
-    // ones an expired record could hide in, and those are dropped on the
-    // redelivery path (`flushPendingIngress`) and the launch sweep before any
-    // send — an expired record never leaves the Mac.
     do {
       try send(item)
       inFlight.insert(inFlightKey(kind: item.kind, ingressId: item.ingressId))
     } catch {
-      // Send failed; the durable outbox redelivers on the next flush. Deletion
-      // still waits for a `runtime_ingress_ack`, so nothing is lost.
+      // No durable retry exists in this compatibility-only path.
     }
   }
 
@@ -649,6 +699,10 @@ public final class PerceptionPublisher {
       try runtimeClient.sendPerceptionTombstone(tombstone)
     case .sessionEndMarker(let marker):
       try runtimeClient.sendSessionEndMarker(marker)
+    case .coachingWindowStarted(let event):
+      try runtimeClient.sendCoachingWindowStarted(event)
+    case .coachingWindowEnded(let event):
+      try runtimeClient.sendCoachingWindowEnded(event)
     }
   }
 

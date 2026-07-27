@@ -38,6 +38,7 @@ public final class FloatingControlBarManager {
   }
 
   public var isVisible: Bool { window?.isVisible == true }
+  public var isCoachingPaused: Bool { controller?.isCoachingPaused == true }
 
   /// The floating bar's transcript view. Fed from Core's `MessageStore` via
   /// `refreshMessages()`; the salvaged view reads it through `sharedFloatingProvider`.
@@ -101,6 +102,22 @@ public final class FloatingControlBarManager {
 
   public func hide() {
     window?.orderOut(nil)
+  }
+
+  public func resumeCoaching() {
+    controller?.resumeCoaching()
+    guard let window else { return }
+    synchronizeConversation(in: window)
+    window.state.objectWillChange.send()
+  }
+
+  public func refreshCoachingState() {
+    guard let window else { return }
+    synchronizeConversation(in: window)
+    if isCoachingPaused, window.isVisible {
+      window.resizeToResponseHeightPublic(animated: false)
+    }
+    window.state.objectWillChange.send()
   }
 
   /// Surfaces a freshly arrived companion reply as the bar's current answer.

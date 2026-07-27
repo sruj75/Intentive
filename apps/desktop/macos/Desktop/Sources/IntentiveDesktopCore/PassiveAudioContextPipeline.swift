@@ -86,6 +86,9 @@ public final class PassiveAudioContextPipeline {
     source: PassiveAudioSource,
     at capturedAt: Date? = nil
   ) async -> PassiveAudioIngestOutcome {
+    guard !Task.isCancelled else {
+      return .skipped("capture stopped")
+    }
     let settings = settingsProvider()
 
     guard settings.ambientAudioCaptureEnabled else {
@@ -123,7 +126,11 @@ public final class PassiveAudioContextPipeline {
     let periodStart = now()
     switch source {
     case .microphone:
-      guard await voiceGate.containsSpeech(pcm16k) else {
+      let containsSpeech = await voiceGate.containsSpeech(pcm16k)
+      guard !Task.isCancelled else {
+        return .skipped("capture stopped")
+      }
+      guard containsSpeech else {
         return .skipped("no speech detected")
       }
     case .systemAudio:
@@ -141,6 +148,9 @@ public final class PassiveAudioContextPipeline {
 
     do {
       let rawTranscript = try await transcription.transcribe(pcm16k)
+      guard !Task.isCancelled else {
+        return .skipped("capture stopped")
+      }
       let transcriptText = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !transcriptText.isEmpty else {
         return .skipped("empty transcript")
@@ -157,8 +167,13 @@ public final class PassiveAudioContextPipeline {
         transcript: transcriptText,
         source: source.rawValue
       )
+      guard !Task.isCancelled else {
+        return .skipped("capture stopped")
+      }
       let event = try coordinator.accept(transcript: transcript)
       return .captured(source: source, eventPublished: event != nil)
+    } catch is CancellationError {
+      return .skipped("capture stopped")
     } catch {
       return .failed(error.localizedDescription)
     }

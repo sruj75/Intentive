@@ -61,34 +61,6 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSettingsPresenting {
     }
   }
 
-  var screenCaptureEnabled: Bool {
-    get { model.compilerSettings.captureEnabled }
-    set { model.setCaptureEnabled(newValue) }
-  }
-
-  var audioRecordingEnabled: Bool {
-    get { model.compilerSettings.ambientAudioCaptureEnabled }
-    set { model.setAmbientAudioCaptureEnabled(newValue) }
-  }
-
-  var systemAudioMode: IntentiveSystemAudioMode {
-    get {
-      switch model.utilitySettings.systemAudioMode {
-      case .never: .never
-      case .onlyDuringMeetings: .meetings
-      case .always: .always
-      }
-    }
-    set {
-      let mode: SystemAudioCaptureMode = switch newValue {
-      case .never: .never
-      case .meetings: .onlyDuringMeetings
-      case .always: .always
-      }
-      model.setSystemAudioMode(mode)
-    }
-  }
-
   var notificationsAuthorized: Bool { notificationsAuthorizedState }
   var launchAtLogin: Bool {
     get { model.utilitySettings.launchAtLogin }
@@ -278,18 +250,24 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
     if case .failed(let message) = model.runtimeState { return message }
     return nil
   }
+  var setupCompletionError: String? { model.setupCompletionError }
   var setupStep: IntentiveSetupStep {
     switch model.onboardingRequirements.nextIncompleteStep ?? .floatingBarDemo {
     case .trust: .trust
     case .screenRecording: .screenRecording
     case .microphone: .microphone
+    case .systemAudio: .systemAudio
     case .accessibility: .accessibility
     case .floatingBarShortcut: .floatingBarShortcut
     case .floatingBarDemo: .floatingBarDemo
     }
   }
-  var screenRecordingGranted: Bool { model.screenRecordingPermissionGranted }
+  var screenRecordingGranted: Bool {
+    model.screenRecordingPermissionGranted
+      && model.directScreenCapturePermissionGranted
+  }
   var microphoneGranted: Bool { model.microphonePermissionStatus.isGranted }
+  var systemAudioGranted: Bool { model.systemAudioPermissionGranted }
   var accessibilityGranted: Bool { accessibilityGrantedState }
   var shortcutLabel: String {
     switch model.utilitySettings.floatingBarShortcut {
@@ -310,24 +288,11 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
     case .trust: model.markOnboardingStepReviewed(.trust)
     case .screenRecording: model.decideScreenRecording(.granted)
     case .microphone: model.decideAudio(.granted)
+    case .systemAudio: model.decideSystemAudio(.granted)
     case .accessibility: model.markOnboardingStepReviewed(.accessibility)
     case .floatingBarShortcut: model.markOnboardingStepReviewed(.floatingBarShortcut)
     case .floatingBarDemo:
-      model.markOnboardingStepReviewed(.floatingBarDemo)
       model.finishOnboarding()
-    }
-  }
-
-  func skipCurrentSetupStep() {
-    switch setupStep {
-    case .screenRecording: model.decideScreenRecording(.deferred)
-    case .microphone: model.decideAudio(.deferred)
-    case .accessibility: model.markOnboardingStepReviewed(.accessibility)
-    case .floatingBarShortcut: model.markOnboardingStepReviewed(.floatingBarShortcut)
-    case .floatingBarDemo:
-      model.markOnboardingStepReviewed(.floatingBarDemo)
-      model.finishOnboarding()
-    case .trust: break
     }
   }
 
@@ -336,16 +301,20 @@ extension IntentiveDesktopPresentationAdapter: IntentiveSetupPresenting {
   func refreshSetupPermissions() {
     model.refreshOnboardingPermissions()
     accessibilityGrantedState = AXIsProcessTrusted()
+    model.setAccessibilityPermissionGranted(accessibilityGrantedState)
   }
   func requestMicrophone() { Task { await model.requestMicrophonePermission() } }
   func openMicrophoneSettings() { model.openMicrophoneSettings() }
+  func requestSystemAudio() { model.requestSystemAudioPermission() }
+  func openSystemAudioSettings() { model.openSystemAudioSettings() }
   func requestAccessibility() {
     let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
     accessibilityGrantedState = AXIsProcessTrustedWithOptions(options)
+    model.setAccessibilityPermissionGranted(accessibilityGrantedState)
   }
   func openAccessibilitySettings() {
-    guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
-    NSWorkspace.shared.open(url)
+    NSWorkspace.shared.open(DesktopSystemSettingsDestination.accessibility.url)
   }
+  func openLoginItemsSettings() { model.openLoginItemsSettings() }
   func openFloatingBar() { model.openFloatingBarFromOnboarding() }
 }

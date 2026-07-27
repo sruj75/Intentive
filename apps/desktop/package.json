@@ -6,7 +6,7 @@
     "acceptance:assembled": "bash macos/scripts/run-assembled-acceptance.sh",
     "build": "bash macos/scripts/swiftpm.sh build -c debug --package-path macos/Desktop",
     "desktop:accept": "bash macos/scripts/run-assembled-acceptance.sh",
-    "desktop:check": "bash macos/scripts/test-with-coverage.sh && bash macos/scripts/verify-app-bundle.sh",
+    "desktop:check": "pnpm preview:soak:test && bash macos/scripts/test-with-coverage.sh && bash macos/scripts/verify-app-bundle.sh",
     "desktop:release-proof": "bash macos/scripts/run-stage2-release-proof.sh",
     "internal:build": "bash macos/scripts/tart-internal-build.sh --build",
     "internal:close": "bash macos/scripts/tart-internal-build.sh --delete",
@@ -14,10 +14,12 @@
     "internal:status": "bash macos/scripts/tart-internal-build.sh --status",
     "preview:install": "bash macos/scripts/install-preview.sh",
     "preview:publish": "bash macos/scripts/publish-preview.sh",
+    "preview:soak": "node macos/scripts/preview-soak.mjs",
+    "preview:soak:test": "node macos/tests/preview-soak-evaluator.test.mjs && node macos/tests/preview-soak-contracts.test.mjs",
     "release:acceptance:test": "bash macos/tests/test-signed-artifact-smoke.sh",
     "release:smoke": "bash macos/scripts/verify-app-bundle.sh",
     "typecheck": "bash macos/scripts/swiftpm.sh build -c debug --package-path macos/Desktop",
-    "test": "bash macos/test.sh",
+    "test": "pnpm preview:soak:test && bash macos/test.sh",
     "test:coverage": "bash macos/scripts/test-with-coverage.sh"
   }
 }

@@ -2,6 +2,119 @@ import Foundation
 import XCTest
 
 final class RenovationAssetGuardTests: XCTestCase {
+  func testStatusMenuPreservesExplicitItemEnablement() throws {
+    let root = try repoRoot()
+    let appDelegate = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveAppDelegate.swift"
+      ),
+      encoding: .utf8
+    )
+
+    XCTAssertTrue(
+      appDelegate.contains("menu.autoenablesItems = false"),
+      "AppKit must not override the Coaching and updater item states"
+    )
+  }
+
+  func testOpenIntentiveCanRecreateTheSingletonPrimaryWindow() throws {
+    let root = try repoRoot()
+    let app = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveApp.swift"
+      ),
+      encoding: .utf8
+    )
+    let appDelegate = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveAppDelegate.swift"
+      ),
+      encoding: .utf8
+    )
+
+    XCTAssertTrue(
+      app.contains("appDelegate.attach(")
+        && app.contains("makePrimaryWindowContent:"),
+      "The delegate must receive the Settings window factory before any scene appears"
+    )
+    XCTAssertFalse(
+      app.contains(".onAppear {\n        appDelegate.attach("),
+      "A background launch cannot wait for a hidden scene to attach its own reopen action"
+    )
+    XCTAssertTrue(
+      appDelegate.contains("private var primaryWindowController: NSWindowController?"),
+      "Open Intentive must retain one AppKit window controller"
+    )
+    XCTAssertTrue(
+      appDelegate.contains("NSHostingController(rootView: makePrimaryWindowContent())"),
+      "The singleton controller must be able to recreate the SwiftUI Settings surface"
+    )
+    XCTAssertTrue(
+      appDelegate.contains("window.isReleasedWhenClosed = false"),
+      "Closing Settings must leave one reusable singleton window"
+    )
+    XCTAssertTrue(
+      appDelegate.contains(
+        #"window.identifier = NSUserInterfaceItemIdentifier("intentive-primary-window")"#
+      ),
+      "Computer Use and acceptance need a stable primary-window identity"
+    )
+    XCTAssertTrue(
+      appDelegate.contains("guard !didPlacePrimaryWindowForFirstShow")
+        && appDelegate.contains(
+          "DesktopPrimaryWindowPlacement.frameForFirstVisibleShow("
+        ),
+      "Only the first visible show may replace hidden AppKit placement"
+    )
+    XCTAssertFalse(
+      appDelegate.contains("window.center()"),
+      "Hidden background materialization must not center against an unsuitable screen"
+    )
+    let showWindow = try XCTUnwrap(
+      appDelegate.range(of: "primaryWindowController?.showWindow(nil)")
+    )
+    let placeWindow = try XCTUnwrap(
+      appDelegate.range(of: "placePrimaryWindowForFirstVisibleShowIfNeeded(window)")
+    )
+    let frontWindow = try XCTUnwrap(
+      appDelegate.range(of: "window.makeKeyAndOrderFront(nil)")
+    )
+    XCTAssertLessThan(
+      showWindow.lowerBound,
+      frontWindow.lowerBound,
+      "The retained singleton must be shown before it is made key"
+    )
+    XCTAssertLessThan(
+      frontWindow.lowerBound,
+      placeWindow.lowerBound,
+      "Intentive placement must be the final first-show frame mutation after AppKit restoration"
+    )
+  }
+
+  func testBackgroundLaunchReasonIsConfiguredBeforeHostedLaunchWorkBegins() throws {
+    let root = try repoRoot()
+    let appDelegate = try String(
+      contentsOf: root.appendingPathComponent(
+        "apps/desktop/macos/Desktop/Sources/Intentive/IntentiveAppDelegate.swift"
+      ),
+      encoding: .utf8
+    )
+    let configure = try XCTUnwrap(
+      appDelegate.range(
+        of: "model.configureCoachingLaunch(background: launchedInBackground)"
+      )
+    )
+    let materialize = try XCTUnwrap(
+      appDelegate.range(of: "ensurePrimaryWindow()?.orderOut(nil)")
+    )
+
+    XCTAssertLessThan(
+      configure.lowerBound,
+      materialize.lowerBound,
+      "The --background launch reason must be fixed before MainWindowView starts launch reconciliation"
+    )
+  }
+
   func testShippedSettingsExposeExplicitAnalyticsConsentControl() throws {
     let root = try repoRoot()
     let settingsPage = try String(
@@ -129,6 +242,13 @@ final class RenovationAssetGuardTests: XCTestCase {
     }
 
     XCTAssertTrue(stalePaths.isEmpty, "Intentive presentation APIs still use Omi names: \(stalePaths)")
+    XCTAssertFalse(
+      try presentationPaths.contains { path in
+        try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+          .contains("skipCurrentSetupStep")
+      },
+      "Removed setup Skip action remains in the presentation contract"
+    )
 
     let manifest = try String(
       contentsOf: root.appendingPathComponent("apps/desktop/macos/Desktop/Package.swift"),

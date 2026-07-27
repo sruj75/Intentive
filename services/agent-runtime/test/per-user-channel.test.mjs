@@ -49,7 +49,7 @@ test("accept commits the ledger marker before projection queries in one transact
   assert.deepEqual(transactions[0], [ledgerQuery, projectionQuery]);
 });
 
-test("accept derives stable dedup keys for messages, perception events, and end markers", async () => {
+test("accept derives stable dedup keys for messages, perception, capture, and Coaching Window lifecycle", async () => {
   const records = [];
   const channel = createPerUserChannel({
     sql: { transaction: async () => [] },
@@ -67,6 +67,8 @@ test("accept derives stable dedup keys for messages, perception events, and end 
   await channel.accept(session, perceptionEvent("perception_1"));
   await channel.accept(session, sessionEndMarker("marker_1"));
   await channel.accept(session, sessionEndMarker("marker_2", "2026-06-09T00:02:00.000Z"));
+  await channel.accept(session, coachingWindowStarted("11111111-1111-4111-8111-111111111111"));
+  await channel.accept(session, coachingWindowEnded("11111111-1111-4111-8111-111111111111"));
 
   assert.deepEqual(
     records.map((record) => [record.kind, record.dedupKey]),
@@ -76,6 +78,8 @@ test("accept derives stable dedup keys for messages, perception events, and end 
       // The marker's own stable UUID is its dedup key, so redelivery dedupes.
       ["session_end_marker", "marker_1"],
       ["session_end_marker", "marker_2"],
+      ["coaching_window_started", "11111111-1111-4111-8111-111111111111"],
+      ["coaching_window_ended", "11111111-1111-4111-8111-111111111111"],
     ],
   );
 });
@@ -181,6 +185,7 @@ test("turn failures are contained after ingress commits and the user lane keeps 
 
 test("runTurn is called once for a new user message and not for duplicates or non-user events", async () => {
   const turnEvents = [];
+  const committedMessages = [];
   const transactionResults = [[[{ id: "ledger_1" }]], [[]], [[{ id: "ledger_2" }]]];
   const channel = createPerUserChannel({
     sql: {
@@ -192,6 +197,9 @@ test("runTurn is called once for a new user message and not for duplicates or no
     runTurn: async (_session, event) => {
       turnEvents.push(event);
     },
+    onUserMessageCommitted: (seenSession, event) => {
+      committedMessages.push([seenSession.userId, event.message_id]);
+    },
   });
 
   const message = userMessage("message_1");
@@ -200,6 +208,7 @@ test("runTurn is called once for a new user message and not for duplicates or no
   await channel.accept(session, perceptionEvent("perception_1"));
 
   assert.deepEqual(turnEvents, [message]);
+  assert.deepEqual(committedMessages, [[session.userId, "message_1"]]);
 });
 
 test("onPerceptionArrived fires once for new perception events only", async () => {
@@ -247,6 +256,33 @@ test("onPerceptionArrived fires once for new perception events only", async () =
   assert.deepEqual(turnEvents, ["user_message"]);
 });
 
+test("Coaching Window lifecycle publishes once only after a newly inserted lifecycle event commits", async () => {
+  const lifecycle = [];
+  const transactionResults = [[[{ id: "start_ledger" }]], [[]], [[{ id: "end_ledger" }]]];
+  const channel = createPerUserChannel({
+    sql: {
+      transaction: async () => transactionResults.shift(),
+    },
+    ledger: { recordQuery: () => Promise.resolve([{ id: "ledger" }]) },
+    conversation: { readSnapshot: async () => emptySnapshot() },
+    project: () => [],
+    onCoachingWindowLifecycle: (seenSession, event) => {
+      lifecycle.push([seenSession.userId, event.type, event.window_id]);
+    },
+  });
+  const windowId = "11111111-1111-4111-8111-111111111111";
+  const started = coachingWindowStarted(windowId);
+
+  await channel.accept(session, started);
+  await channel.accept(session, started);
+  await channel.accept(session, coachingWindowEnded(windowId));
+
+  assert.deepEqual(lifecycle, [
+    [session.userId, "coaching_window_started", windowId],
+    [session.userId, "coaching_window_ended", windowId],
+  ]);
+});
+
 function emptySnapshot() {
   return { messages: [], before_cursor: null };
 }
@@ -285,6 +321,24 @@ function perceptionEvent(eventId) {
     retention_class: "screen_memory_30d",
     confidence: 0.9,
     local_record_ref: `screen-memory://${eventId}`,
+  };
+}
+
+function coachingWindowStarted(windowId) {
+  return {
+    type: "coaching_window_started",
+    window_id: windowId,
+    started_at: "2026-06-09T00:03:00.000Z",
+    reason: "app_launch",
+  };
+}
+
+function coachingWindowEnded(windowId) {
+  return {
+    type: "coaching_window_ended",
+    window_id: windowId,
+    ended_at: "2026-06-09T00:04:00.000Z",
+    reason: "pause",
   };
 }
 

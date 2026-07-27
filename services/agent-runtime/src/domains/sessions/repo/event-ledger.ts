@@ -26,7 +26,7 @@ export function createEventLedger(sql: Sql): EventLedger {
           ${record.userId},
           ${record.kind},
           ${record.dedupKey},
-          ${JSON.stringify(record.payload)}::jsonb
+          ${JSON.stringify(ledgerPayload(record))}::jsonb
         )
         ON CONFLICT (user_id, kind, dedup_key) DO NOTHING
         RETURNING id
@@ -38,4 +38,16 @@ export function createEventLedger(sql: Sql): EventLedger {
       return { isNew: rows.length === 1 };
     },
   };
+}
+
+function ledgerPayload(record: LedgerRecord): unknown {
+  const event = record.payload;
+  if (event.type !== "perception_event") {
+    return event;
+  }
+
+  // Perception identity and ordering already live in the ledger's typed
+  // columns. Detailed or reconstructable perception data belongs only in the
+  // expiring projection.
+  return {};
 }

@@ -8,6 +8,25 @@ import XCTest
 /// loop, but over the WS Protocol with crash-safe SQLite durability, expiry
 /// enforcement, and tenant-scoped tombstones.
 final class PerceptionSyncTests: XCTestCase {
+  private static let activeWindowId = "11111111-1111-4111-8111-111111111111"
+
+  func testPublisherRejectsNewPerceptionWithoutAnActiveCoachingWindow() throws {
+    let store = InMemoryScreenMemoryStore()
+    let client = ScriptedPerceptionRuntimeClient()
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { true },
+      windowIdProvider: { nil }
+    )
+
+    XCTAssertThrowsError(try publisher.publish(artifact(id: "windowless"))) { error in
+      XCTAssertEqual(error as? ProtocolEventError, .coachingWindowRequired)
+    }
+    XCTAssertTrue(try store.pendingIngress(limit: 10).isEmpty)
+    XCTAssertTrue(client.receivedEvents.isEmpty)
+  }
+
   func testDurableOutboxKeepsRowsUntilAcknowledgedAcrossAnOutage() throws {
     let store = try SQLiteScreenMemoryStore(databaseURL: temporaryDatabaseURL())
     let client = ScriptedPerceptionRuntimeClient()
@@ -17,7 +36,8 @@ final class PerceptionSyncTests: XCTestCase {
       runtimeClient: client,
       outbox: store,
       isRuntimeConnected: { client.connected },
-      connectionGeneration: { generation }
+      connectionGeneration: { generation },
+      windowIdProvider: { Self.activeWindowId }
     )
 
     // Offline: every publish durably queues, nothing is delivered.
@@ -56,7 +76,12 @@ final class PerceptionSyncTests: XCTestCase {
   func testDuplicateAcknowledgementIsIdempotent() throws {
     let store = InMemoryScreenMemoryStore()
     let client = ScriptedPerceptionRuntimeClient()
-    let publisher = PerceptionPublisher(runtimeClient: client, outbox: store, isRuntimeConnected: { true })
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { true },
+      windowIdProvider: { Self.activeWindowId }
+    )
 
     try publisher.publish(artifact(id: "evt-dup"))
     let ack = RuntimeIngressAck(ingressKind: .perceptionEvent, ingressId: "evt-dup")
@@ -74,7 +99,8 @@ final class PerceptionSyncTests: XCTestCase {
     let publisher = PerceptionPublisher(
       runtimeClient: client,
       outbox: store,
-      isRuntimeConnected: { client.connected }
+      isRuntimeConnected: { client.connected },
+      windowIdProvider: { Self.activeWindowId }
     )
 
     try publisher.publish(artifact(id: "evt-order"))
@@ -93,6 +119,188 @@ final class PerceptionSyncTests: XCTestCase {
     XCTAssertEqual(kinds, [.perceptionEvent, .perceptionTombstone])
   }
 
+  func testCoachingLifecycleAndWindowBoundPerceptionShareOneDurableOrder() throws {
+    let store = InMemoryScreenMemoryStore()
+    let client = ScriptedPerceptionRuntimeClient()
+    client.connected = false
+    let windowId = "11111111-1111-4111-8111-111111111111"
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { client.connected },
+      windowIdProvider: { windowId }
+    )
+    let at = "2026-07-26T08:00:00.000Z"
+
+    try publisher.publishWindowStarted(
+      CoachingWindowStarted(windowId: windowId, startedAt: at, reason: .appLaunch)
+    )
+    let event = try publisher.publish(artifact(id: "window-event"))
+    try publisher.publishWindowEnded(
+      CoachingWindowEnded(windowId: windowId, endedAt: at, reason: .pause)
+    )
+
+    XCTAssertEqual(event.windowId, windowId)
+    XCTAssertEqual(
+      try store.pendingIngress(limit: 10).map(\.kind),
+      [.coachingWindowStarted, .perceptionEvent, .coachingWindowEnded]
+    )
+  }
+
+  func testAcknowledgementsRefillMoreThanOneBatchInStrictDurableOrder() throws {
+    let store = InMemoryScreenMemoryStore()
+    let client = ScriptedPerceptionRuntimeClient()
+    client.connected = false
+    let windowId = Self.activeWindowId
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { client.connected },
+      windowIdProvider: { windowId }
+    )
+    let at = "2026-07-26T08:00:00.000Z"
+
+    try publisher.publishWindowStarted(
+      CoachingWindowStarted(windowId: windowId, startedAt: at, reason: .appLaunch)
+    )
+    for index in 0..<100 {
+      try publisher.publish(artifact(id: "batch-event-\(index)"))
+    }
+    try publisher.publishWindowEnded(
+      CoachingWindowEnded(windowId: windowId, endedAt: at, reason: .pause)
+    )
+    try publisher.publishTombstone(
+      PerceptionTombstone(
+        tombstoneId: "batch-tombstone",
+        reason: .manualDelete,
+        eventRefs: ["batch-event-99"],
+        emittedAt: at
+      )
+    )
+    try publisher.publishSessionEnd(
+      SessionEndMarker(
+        markerId: "batch-session-end",
+        sessionId: "batch-session",
+        endedAt: at,
+        reason: .userToggle
+      )
+    )
+    let expected = try store.pendingIngress(limit: 200)
+    XCTAssertEqual(expected.count, 104)
+
+    client.connected = true
+    XCTAssertEqual(try publisher.flushPendingIngress(), 100)
+
+    for (index, item) in expected.enumerated() {
+      guard client.receivedIngress.indices.contains(index) else {
+        XCTFail("ack \(index) did not refill the next durable FIFO row")
+        return
+      }
+      XCTAssertEqual(client.receivedIngress[index], item)
+      try publisher.acknowledge(
+        RuntimeIngressAck(ingressKind: item.kind, ingressId: item.ingressId)
+      )
+    }
+
+    XCTAssertEqual(client.receivedIngress, expected)
+    XCTAssertTrue(try store.pendingIngress(limit: 200).isEmpty)
+  }
+
+  func testLaterPublishCannotBypassAnOlderRowBeyondTheActiveBatch() throws {
+    let store = InMemoryScreenMemoryStore()
+    let client = ScriptedPerceptionRuntimeClient()
+    client.connected = false
+    let windowId = Self.activeWindowId
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { client.connected },
+      windowIdProvider: { windowId }
+    )
+    let at = "2026-07-26T08:00:00.000Z"
+
+    try publisher.publishWindowStarted(
+      CoachingWindowStarted(windowId: windowId, startedAt: at, reason: .appLaunch)
+    )
+    for index in 0..<100 {
+      try publisher.publish(artifact(id: "older-event-\(index)"))
+    }
+    let olderRows = try store.pendingIngress(limit: 200)
+    XCTAssertEqual(olderRows.count, 101)
+
+    client.connected = true
+    XCTAssertEqual(try publisher.flushPendingIngress(), 100)
+    XCTAssertEqual(client.receivedIngress, Array(olderRows.prefix(100)))
+
+    let laterEnd = CoachingWindowEnded(
+      windowId: windowId,
+      endedAt: at,
+      reason: .pause
+    )
+    try publisher.publishWindowEnded(laterEnd)
+
+    XCTAssertEqual(client.receivedIngress, Array(olderRows.prefix(100)))
+
+    try publisher.acknowledge(
+      RuntimeIngressAck(
+        ingressKind: olderRows[0].kind,
+        ingressId: olderRows[0].ingressId
+      )
+    )
+    XCTAssertEqual(client.receivedIngress.last, olderRows[100])
+
+    try publisher.acknowledge(
+      RuntimeIngressAck(
+        ingressKind: olderRows[1].kind,
+        ingressId: olderRows[1].ingressId
+      )
+    )
+    XCTAssertEqual(client.receivedIngress.last, .coachingWindowEnded(laterEnd))
+  }
+
+  func testAcknowledgementDeletionSurvivesRefillFailure() throws {
+    let store = InMemoryScreenMemoryStore()
+    let client = ScriptedPerceptionRuntimeClient()
+    client.connected = false
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { client.connected },
+      windowIdProvider: { Self.activeWindowId }
+    )
+
+    for index in 0..<101 {
+      try publisher.publish(artifact(id: "refill-failure-\(index)"))
+    }
+    client.connected = true
+    XCTAssertEqual(try publisher.flushPendingIngress(), 100)
+    XCTAssertEqual(client.eventSendCount, 100)
+
+    client.failEventsAfter = 100
+    XCTAssertNoThrow(
+      try publisher.acknowledge(
+        RuntimeIngressAck(
+          ingressKind: .perceptionEvent,
+          ingressId: "refill-failure-0"
+        )
+      )
+    )
+
+    XCTAssertEqual(client.eventSendCount, 101)
+    XCTAssertFalse(
+      try store.pendingPerceptionEvents(limit: 200)
+        .contains { $0.eventId == "refill-failure-0" }
+    )
+    XCTAssertTrue(
+      try store.pendingPerceptionEvents(limit: 200)
+        .contains { $0.eventId == "refill-failure-100" }
+    )
+
+    client.failEventsAfter = nil
+    XCTAssertEqual(try publisher.flushPendingIngress(), 1)
+    XCTAssertEqual(client.receivedEvents.last?.eventId, "refill-failure-100")
+  }
+
   func testPendingTailSurvivesRelaunchMidOutage() throws {
     let url = try temporaryDatabaseURL()
     let offlineClient = ScriptedPerceptionRuntimeClient()
@@ -103,7 +311,8 @@ final class PerceptionSyncTests: XCTestCase {
       let publisher = PerceptionPublisher(
         runtimeClient: offlineClient,
         outbox: store,
-        isRuntimeConnected: { offlineClient.connected }
+        isRuntimeConnected: { offlineClient.connected },
+        windowIdProvider: { Self.activeWindowId }
       )
       for index in 0..<3 {
         try publisher.publish(artifact(id: "durable-\(index)"))
@@ -118,7 +327,8 @@ final class PerceptionSyncTests: XCTestCase {
     let publisher = PerceptionPublisher(
       runtimeClient: onlineClient,
       outbox: reopened,
-      isRuntimeConnected: { true }
+      isRuntimeConnected: { true },
+      windowIdProvider: { Self.activeWindowId }
     )
     let flushed = try publisher.flushPendingIngress()
     XCTAssertEqual(flushed, 3)
@@ -225,7 +435,12 @@ final class PerceptionSyncTests: XCTestCase {
   func testPublisherBuildsTextOnlyEventWithExpiryAndOpaqueRef() throws {
     let store = InMemoryScreenMemoryStore()
     let client = ScriptedPerceptionRuntimeClient()
-    let publisher = PerceptionPublisher(runtimeClient: client, outbox: store, isRuntimeConnected: { true })
+    let publisher = PerceptionPublisher(
+      runtimeClient: client,
+      outbox: store,
+      isRuntimeConnected: { true },
+      windowIdProvider: { Self.activeWindowId }
+    )
 
     let capturedAt = Date().protocolTimestamp
     let event = try publisher.publish(
@@ -486,7 +701,8 @@ private final class ScriptedPerceptionRuntimeClient: RuntimeChatClient {
   private(set) var receivedEvents: [PerceptionEvent] = []
   private(set) var receivedTombstones: [PerceptionTombstone] = []
   private(set) var receivedMarkers: [SessionEndMarker] = []
-  private var eventSendCount = 0
+  private(set) var receivedIngress: [RuntimeIngressOutboxItem] = []
+  private(set) var eventSendCount = 0
 
   enum TransportError: Error { case dropped }
 
@@ -501,14 +717,25 @@ private final class ScriptedPerceptionRuntimeClient: RuntimeChatClient {
       throw TransportError.dropped
     }
     receivedEvents.append(event)
+    receivedIngress.append(.perceptionEvent(event))
   }
 
   func sendPerceptionTombstone(_ tombstone: PerceptionTombstone) throws {
     receivedTombstones.append(tombstone)
+    receivedIngress.append(.perceptionTombstone(tombstone))
   }
 
   func sendSessionEndMarker(_ marker: SessionEndMarker) throws {
     receivedMarkers.append(marker)
+    receivedIngress.append(.sessionEndMarker(marker))
+  }
+
+  func sendCoachingWindowStarted(_ event: CoachingWindowStarted) throws {
+    receivedIngress.append(.coachingWindowStarted(event))
+  }
+
+  func sendCoachingWindowEnded(_ event: CoachingWindowEnded) throws {
+    receivedIngress.append(.coachingWindowEnded(event))
   }
 
   func acknowledge(messageId: String) throws {}

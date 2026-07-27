@@ -83,7 +83,7 @@ and launch-at-login registration are tied to application identity.
 | App              | `Intentive Preview.app`                  |
 | Bundle ID        | `com.heyintentive.desktop.preview`       |
 | Auth callback    | `intentive-desktop-preview`              |
-| LaunchAgent      | `com.heyintentive.desktop.preview.login` |
+| LaunchAgent      | `com.heyintentive.desktop.preview.login-launcher-v1` |
 | Installation     | `/Applications/Intentive Preview.app`    |
 | Updates          | Sparkle ZIP from a GitHub pre-release    |
 | Signing          | Developer ID                             |
@@ -135,10 +135,16 @@ Production.
 
 ## What Preview acceptance means
 
-Use both clients normally for days, not minutes. Watch Sentry for errors and
-PostHog for the same product events Production records. Fix problems in
-Development, publish another Preview client update, and continue using the same
-account and state.
+The Desktop Performance Coach implementation reaches Preview when the signed
+`Intentive Preview.app` is installed, completes a real production sign-in, opens
+one Desktop Coaching Window, delivers one non-focus-stealing Opening Orientation,
+and proves Pause Coaching stops every perception source. There is no fixed
+dogfood-day count before the founder can start using that build.
+
+After that installation gate, use the Preview normally and watch Langfuse,
+Sentry, and PostHog. Fix problems in Development, publish another Preview client
+update, and continue using the same account and state. Repeated real-work evidence
+is the product-learning loop; it is not a prerequisite for beginning the loop.
 
 Do not reset permissions, create a clean database, or run a disposable VM to
 approve Preview. Those actions answer a different question: whether a brand-new

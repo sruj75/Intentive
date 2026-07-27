@@ -1,6 +1,10 @@
 import type { SessionMessage } from "@intentive/protocol";
 
-import type { ConversationEntry, ConversationRepo } from "../types/conversation.js";
+import type {
+  ConversationEntry,
+  ConversationRepo,
+  ConversationSnapshotAudience,
+} from "../types/conversation.js";
 import type { Sql } from "./sql.js";
 
 const DEFAULT_LIMIT = 50;
@@ -19,6 +23,10 @@ interface ConversationRow {
   readonly via_post_message_back: boolean;
 }
 
+interface CanonicalBodyRow {
+  readonly body: string;
+}
+
 export function createConversationRepo(sql: Sql): ConversationRepo {
   return {
     appendQuery(entry: ConversationEntry) {
@@ -26,13 +34,14 @@ export function createConversationRepo(sql: Sql): ConversationRepo {
       // `seq` and `at` are assigned by the database.
       return sql`
         INSERT INTO agent_runtime.conversation_messages
-          (user_id, message_id, author, body, via_post_message_back)
+          (user_id, message_id, author, body, via_post_message_back, window_id)
         VALUES (
           ${entry.userId},
           ${entry.messageId},
           ${entry.author},
           ${entry.body},
-          ${entry.viaPostMessageBack}
+          ${entry.viaPostMessageBack},
+          ${entry.windowId ?? null}
         )
         ON CONFLICT (user_id, message_id) DO NOTHING
       `;
@@ -42,7 +51,32 @@ export function createConversationRepo(sql: Sql): ConversationRepo {
       await this.appendQuery(entry);
     },
 
-    async readSnapshot(userId, before, limit = DEFAULT_LIMIT) {
+    async appendCanonical(entry: ConversationEntry) {
+      // The first statement waits for any concurrent conflicting insert to
+      // settle. Conversation rows are never deleted, so the following read
+      // returns the one write-once body without a no-op UPDATE/MVCC rewrite.
+      await this.append(entry);
+      const rows = await sql<CanonicalBodyRow>`
+        SELECT body
+        FROM agent_runtime.conversation_messages
+        WHERE user_id = ${entry.userId}
+          AND message_id = ${entry.messageId}
+        LIMIT 1
+      `;
+      const canonical = rows[0];
+      if (!canonical) {
+        throw new Error("Canonical Conversation History row is unavailable");
+      }
+      return canonical.body;
+    },
+
+    async readSnapshot(
+      userId,
+      before,
+      limit = DEFAULT_LIMIT,
+      audience: ConversationSnapshotAudience = "ordinary",
+    ) {
+      const includeWindowBound = audience === "desktop";
       // Read newest-first, one row past the window, so the sentinel tells us
       // whether older history exists beyond what we return.
       const rows =
@@ -51,13 +85,16 @@ export function createConversationRepo(sql: Sql): ConversationRepo {
               SELECT seq, message_id, author, body, at, via_post_message_back
               FROM agent_runtime.conversation_messages
               WHERE user_id = ${userId}
+                AND (${includeWindowBound} OR window_id IS NULL)
               ORDER BY seq DESC
               LIMIT ${limit + 1}
             `
           : await sql<ConversationRow>`
               SELECT seq, message_id, author, body, at, via_post_message_back
               FROM agent_runtime.conversation_messages
-              WHERE user_id = ${userId} AND seq < ${before}::bigint
+              WHERE user_id = ${userId}
+                AND (${includeWindowBound} OR window_id IS NULL)
+                AND seq < ${before}::bigint
               ORDER BY seq DESC
               LIMIT ${limit + 1}
             `;

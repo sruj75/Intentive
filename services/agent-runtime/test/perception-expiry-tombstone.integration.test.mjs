@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { createPerceptionRecordsRepo, toPerceptionRecord } from "../dist/index.js";
+import {
+  createEventLedger,
+  createPerceptionIngressHooks,
+  createPerceptionRecordsRepo,
+  toPerceptionRecord,
+} from "../dist/index.js";
 import {
   applyMigrationFile,
   applySql,
@@ -16,14 +22,10 @@ import {
 
 const skip = !hasNeonBranchCreds();
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../migrations");
-const migrations = [
-  "0001_sessions.sql",
-  "0010_perception_records.sql",
-  "0011_perception_expiry_tombstone.sql",
-];
 
 let branchId;
 let sql;
+let ledger;
 
 // A deterministic embedder: only the query strings we care about map to vectors,
 // so the vector-recall path is exercised without a live model.
@@ -43,10 +45,14 @@ before(async () => {
   const branch = await createBranch();
   branchId = branch.branchId;
   await applySql(branch.connectionUri, "CREATE SCHEMA IF NOT EXISTS agent_runtime;");
-  for (const file of migrations) {
+  const migrationFiles = (await readdir(migrationsDir))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  for (const file of migrationFiles) {
     await applyMigrationFile(branch.connectionUri, path.join(migrationsDir, file));
   }
   sql = await connect(branch.connectionUri);
+  ledger = createEventLedger(sql);
 });
 
 after(async () => {
@@ -136,10 +142,11 @@ test("hybrid search recalls a term-disjoint neighbour, and degrades to FTS", { s
     "vec_1",
     "invoice reconciliation spreadsheet",
   );
+  const embeddedCandidate = await requireEmbeddingCandidate(hybridRepo, userId, embeddedEvent);
   await hybridRepo.storeEmbedding({
     modelId: embedder.modelId,
     vector: [1, 0, 0],
-    expectedRecord: toPerceptionRecord(userId, embeddedEvent),
+    expectedRecord: embeddedCandidate,
   });
 
   // The query shares no literal tokens with the summary, so FTS returns nothing.
@@ -162,30 +169,118 @@ test(
     const permitted = screenEvent("redaction_1", false);
     const redacted = screenEvent("redaction_1", true);
 
-    await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, permitted))]);
+    await projectEvent(repo, userId, permitted);
+    const permittedCandidate = await requireEmbeddingCandidate(repo, userId, permitted);
     await repo.storeEmbedding({
       modelId: embedder.modelId,
       vector: [1, 0, 0],
-      expectedRecord: toPerceptionRecord(userId, permitted),
+      expectedRecord: permittedCandidate,
     });
 
     // A transport retry with identical embedding inputs keeps the valid vector.
-    await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, permitted))]);
+    await projectEvent(repo, userId, permitted);
     assert.deepEqual(
       (await repo.search({ userId, query: "payroll secret" })).map((row) => row.eventId),
       ["redaction_1"],
     );
 
-    await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, redacted))]);
+    await projectEvent(repo, userId, redacted);
     assert.deepEqual(await repo.search({ userId, query: "payroll secret" }), []);
 
     // Simulate the original embedding request finishing after the redacted upsert.
     await repo.storeEmbedding({
       modelId: embedder.modelId,
       vector: [1, 0, 0],
-      expectedRecord: toPerceptionRecord(userId, permitted),
+      expectedRecord: permittedCandidate,
     });
     assert.deepEqual(await repo.search({ userId, query: "payroll secret" }), []);
+  },
+);
+
+test(
+  "a redaction committed while embedding is in flight rejects the stale vector even when summary and signals are unchanged",
+  { skip },
+  async () => {
+    const repo = createPerceptionRecordsRepo(sql);
+    const userId = randomUUID();
+    const event = screenEvent("redaction_race_1", false);
+    let releaseProvider;
+    const providerGate = new Promise((resolve) => {
+      releaseProvider = resolve;
+    });
+    let embeddingStarted;
+    const started = new Promise((resolve) => {
+      embeddingStarted = resolve;
+    });
+    let storeFinished;
+    const finished = new Promise((resolve) => {
+      storeFinished = resolve;
+    });
+    let embeddingError = null;
+
+    await projectEvent(repo, userId, event);
+    const hooks = createPerceptionIngressHooks({
+      embedder: {
+        modelId: "test-embed",
+        dim: 3,
+        embed: async (text) => {
+          embeddingStarted(text);
+          await providerGate;
+          return [1, 0, 0];
+        },
+      },
+      loadEmbeddingCandidate: (expectedRecord) => repo.readEmbeddingCandidate(expectedRecord),
+      storeEmbedding: async (input) => {
+        await repo.storeEmbedding(input);
+        storeFinished();
+      },
+      onEmbeddingError: (error) => {
+        embeddingError = error;
+        storeFinished();
+      },
+    });
+
+    hooks.onPerceptionProjected({ userId }, event);
+    assert.match(await started, /payroll secret/);
+
+    // Model a privacy redaction/scrub that changes only the structured
+    // permitted-text columns. The summary and opaque signals intentionally stay
+    // byte-for-byte identical so they cannot accidentally satisfy the CAS.
+    await sql`
+      UPDATE agent_runtime.perception_records
+      SET
+        window_title = NULL,
+        ocr_text = NULL,
+        content_redacted = true
+      WHERE user_id = ${userId}
+        AND event_id = ${event.event_id}
+    `;
+    assert.equal(await repo.readEmbeddingCandidate(toPerceptionRecord(userId, event)), null);
+
+    releaseProvider();
+    await finished;
+    assert.equal(embeddingError, null);
+
+    const rows = await sql`
+      SELECT
+        summary,
+        signals,
+        content_redacted,
+        embedding_model_id,
+        embedding
+      FROM agent_runtime.perception_records
+      WHERE user_id = ${userId}
+        AND event_id = ${event.event_id}
+    `;
+    assert.deepEqual(rows, [
+      {
+        summary: event.summary,
+        signals: event.signals,
+        content_redacted: true,
+        embedding_model_id: null,
+        embedding: null,
+      },
+    ]);
   },
 );
 
@@ -212,8 +307,26 @@ async function appendRecord(repo, userId, eventId, summary, overrides = {}) {
     expires_at: overrides.expiresAt ?? "2099-06-09T00:00:00.000Z",
     local_record_ref: `screen-memory://${eventId}`,
   };
-  await sql.transaction([repo.appendQuery(toPerceptionRecord(userId, event))]);
+  await projectEvent(repo, userId, event);
   return event;
+}
+
+async function projectEvent(repo, userId, event) {
+  await sql.transaction([
+    ledger.recordQuery({
+      userId,
+      kind: "perception_event",
+      dedupKey: event.event_id,
+      payload: event,
+    }),
+    repo.appendQuery(toPerceptionRecord(userId, event)),
+  ]);
+}
+
+async function requireEmbeddingCandidate(repo, userId, event) {
+  const candidate = await repo.readEmbeddingCandidate(toPerceptionRecord(userId, event));
+  assert.ok(candidate);
+  return candidate;
 }
 
 function screenEvent(eventId, contentRedacted) {

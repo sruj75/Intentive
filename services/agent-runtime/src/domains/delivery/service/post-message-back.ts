@@ -7,7 +7,7 @@ import type { DeliveryPort, PostMessageBack } from "../types/delivery.js";
 
 export function createPostMessageBack(params: {
   readonly conversation: Pick<ConversationRepo, "append">;
-  readonly deliveryPort: DeliveryPort;
+  readonly deliveryPort: Pick<DeliveryPort, "deliverOrdinaryProactive">;
   readonly newMessageId?: () => string;
   readonly logger?: Logger;
 }): PostMessageBack {
@@ -23,7 +23,11 @@ export function createPostMessageBack(params: {
       body,
       viaPostMessageBack: true,
     });
-    await params.deliveryPort.deliver({ userId, messageId, body }, "proactive");
+    await params.deliveryPort.deliverOrdinaryProactive({
+      userId,
+      messageId,
+      body,
+    });
     logger.info("delivery.pmb", {
       user_id: userId,
       message_id: messageId,

@@ -217,7 +217,10 @@ jobs:
             "$APP_BUNDLE/Contents/Frameworks/Sentry.framework"; do
             codesign --force --options runtime --timestamp --deep --sign "$SIGNING_IDENTITY" "$framework"
           done
-          codesign --force --options runtime --timestamp --deep \
+          codesign --force --options runtime --timestamp \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_BUNDLE/Contents/MacOS/IntentiveLoginLauncher"
+          codesign --force --options runtime --timestamp \
             --entitlements apps/desktop/macos/Desktop/Intentive-Release.entitlements \
             --sign "$SIGNING_IDENTITY" \
             "$APP_BUNDLE"

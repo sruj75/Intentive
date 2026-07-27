@@ -2,6 +2,8 @@ export const PROCEDURE_FLOOR_DOCUMENTS = ["SOUL", "AGENTS", "BOOTSTRAP", "HEARTB
 
 export type ProcedureFloorDocument = (typeof PROCEDURE_FLOOR_DOCUMENTS)[number];
 
+export const PROCEDURE_FLOOR_PROMPT_NAME = "intentive-runtime-bundle";
+
 export type ProcedureFloorDocuments = Record<ProcedureFloorDocument, string>;
 
 export interface PinnedProcedureFloor {
@@ -22,6 +24,6 @@ export type TurnTrigger =
   | "user_message"
   | "perception_event"
   | "session_end_marker"
-  | "conversation_start"
+  | "opening_orientation"
   | "cron"
   | "heartbeat";

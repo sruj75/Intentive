@@ -8,6 +8,7 @@ let package = Package(
   ],
   products: [
     .executable(name: "Intentive", targets: ["Intentive"]),
+    .executable(name: "IntentiveLoginLauncher", targets: ["IntentiveLoginLauncher"]),
     .library(name: "IntentiveDesktopCore", targets: ["IntentiveDesktopCore"]),
     .library(name: "IntentiveDesktopNativeAdapters", targets: ["IntentiveDesktopNativeAdapters"]),
     .library(name: "IntentiveDesktopNativeAssets", targets: ["IntentiveDesktopNativeAssets"]),
@@ -82,6 +83,7 @@ let package = Package(
       exclude: [
         // These are separate SwiftPM targets sharing the repository's Sources root.
         "Intentive",
+        "IntentiveLoginLauncher",
         "IntentiveDesktopCore",
         "IntentiveDesktopNativeAdapters",
         "Resources/AppIcon.icns",
@@ -134,6 +136,11 @@ let package = Package(
         // The compact, transparent Intentive mark used by the macOS menu bar.
         .copy("Resources/IntentiveMenuBarIcon.png")
       ]
+    ),
+    .executableTarget(
+      name: "IntentiveLoginLauncher",
+      dependencies: ["IntentiveDesktopCore"],
+      path: "Sources/IntentiveLoginLauncher"
     ),
     .testTarget(
       name: "IntentiveDesktopCoreTests",

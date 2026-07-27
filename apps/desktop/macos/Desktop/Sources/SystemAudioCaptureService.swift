@@ -73,7 +73,9 @@ public enum SystemAudioPCMDownmixer {
 @available(macOS 14.4, *)
 public class SystemAudioCaptureService: @unchecked Sendable {
 
-    public init() {}
+    public init() {
+        audioQueue.setSpecific(key: audioQueueKey, value: 1)
+    }
 
     // MARK: - Types
 
@@ -120,6 +122,9 @@ public class SystemAudioCaptureService: @unchecked Sendable {
     private var isCapturing = false
     private var onAudioChunk: AudioChunkHandler?
     private var onAudioLevel: AudioLevelHandler?
+    private let stateLock = NSRecursiveLock()
+    private var starting = false
+    private var generation: UInt64 = 0
 
     /// Target sample rate for local transcription and Runtime voice turns.
     private let targetSampleRate: Double = 16000
@@ -134,9 +139,11 @@ public class SystemAudioCaptureService: @unchecked Sendable {
     // Tap UUID for identification
     private let tapUUID = UUID()
 
-    /// Dedicated queue for CoreAudio device operations (start/stop)
-    /// to avoid blocking the main thread on AudioDeviceStart/Stop calls.
+    /// Dedicated queue serializing CoreAudio device operations. Starts run
+    /// asynchronously; stop waits on this queue so returning from `stop()` is
+    /// the physical privacy boundary.
     private let audioQueue = DispatchQueue(label: "com.intentive.systemaudiocapture.device")
+    private let audioQueueKey = DispatchSpecificKey<UInt8>()
 
     // MARK: - Permission Checking
 
@@ -164,36 +171,55 @@ public class SystemAudioCaptureService: @unchecked Sendable {
     ///   - onAudioChunk: Callback receiving 16-bit PCM audio data chunks at 16kHz mono
     ///   - onAudioLevel: Optional callback receiving normalized audio level (0.0 - 1.0)
     func startCapture(onAudioChunk: @escaping AudioChunkHandler, onAudioLevel: AudioLevelHandler? = nil) async throws {
-        guard !isCapturing else {
+        let startGeneration: UInt64? = stateLock.withLock {
+            guard !isCapturing, !starting else { return nil }
+            generation &+= 1
+            starting = true
+            return generation
+        }
+        guard let startGeneration else {
             log("SystemAudioCapture: Already capturing")
             return
         }
-
-        self.onAudioChunk = onAudioChunk
-        self.onAudioLevel = onAudioLevel
 
         // All CoreAudio HAL calls (CreateTap, CreateAggregateDevice, AudioDeviceStart) are
         // synchronous IPC to coreaudiod via mach_msg. After wake from sleep the daemon can
         // take seconds to respond, blocking the caller. Dispatch the entire setup to audioQueue,
         // mirroring the pattern already used in stopCapture().
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            audioQueue.async { [weak self] in
-                guard let self else {
-                    continuation.resume()
-                    return
-                }
-                do {
-                    try self.startCaptureOnQueue()
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                audioQueue.async { [weak self] in
+                    guard let self else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    do {
+                        try self.startCaptureOnQueue(
+                            generation: startGeneration,
+                            onAudioChunk: onAudioChunk,
+                            onAudioLevel: onAudioLevel
+                        )
+                        continuation.resume()
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } catch {
+            stateLock.withLock {
+                guard generation == startGeneration else { return }
+                starting = false
+            }
+            throw error
         }
     }
 
     /// Performs all blocking CoreAudio HAL setup. Must be called on audioQueue, not the main thread.
-    private func startCaptureOnQueue() throws {
+    private func startCaptureOnQueue(
+        generation startGeneration: UInt64,
+        onAudioChunk: @escaping AudioChunkHandler,
+        onAudioLevel: AudioLevelHandler?
+    ) throws {
         // 1. Create tap description for all system audio
         let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         tapDescription.uuid = tapUUID
@@ -296,51 +322,52 @@ public class SystemAudioCaptureService: @unchecked Sendable {
             throw SystemAudioCaptureError.deviceStartFailed(status)
         }
 
-        isCapturing = true
+        let accepted = stateLock.withLock {
+            guard generation == startGeneration, starting else { return false }
+            self.onAudioChunk = onAudioChunk
+            self.onAudioLevel = onAudioLevel
+            isCapturing = true
+            starting = false
+            return true
+        }
+        guard accepted else {
+            cleanup()
+            throw CancellationError()
+        }
         log("SystemAudioCapture: Started capturing system audio")
     }
 
     /// Stop capturing system audio
     func stopCapture() {
-        guard isCapturing else { return }
-        isCapturing = false
-        onAudioChunk = nil
-        onAudioLevel = nil
-
-        // Capture values for background cleanup to avoid blocking main thread
-        let procID = self.ioProcID
-        let aggDevID = self.aggregateDeviceID
-        let tID = self.tapID
-
-        self.ioProcID = nil
-        self.aggregateDeviceID = kAudioObjectUnknown
-        self.tapID = kAudioObjectUnknown
-        self.audioConverter = nil
-        self.inputFormat = nil
-        self.targetFormat = nil
-        self.sourceSampleRate = 0.0
-        self.sourceChannelCount = 0
-
-        // AudioDeviceStop can block — run off main thread
-        audioQueue.async {
-            if let procID = procID, aggDevID != kAudioObjectUnknown {
-                AudioDeviceStop(aggDevID, procID)
-                AudioDeviceDestroyIOProcID(aggDevID, procID)
-            }
-            if aggDevID != kAudioObjectUnknown {
-                AudioHardwareDestroyAggregateDevice(aggDevID)
-            }
-            if tID != kAudioObjectUnknown {
-                AudioHardwareDestroyProcessTap(tID)
-            }
+        stateLock.withLock {
+            generation &+= 1
+            starting = false
+            isCapturing = false
+            onAudioChunk = nil
+            onAudioLevel = nil
         }
+        performOnAudioQueueSynchronously { cleanup() }
 
         log("SystemAudioCapture: Stopped capturing")
     }
 
+    /// Wait until every previously enqueued Core Audio operation, including
+    /// physical tap/device teardown from `stopCapture()`, has completed.
+    ///
+    /// The onboarding authorization probe uses this barrier before it records
+    /// System Audio as prepared. That prevents the real Coaching source from
+    /// racing a disposable aggregate device that is still being destroyed.
+    public func waitForCaptureStop() async {
+        await withCheckedContinuation { continuation in
+            audioQueue.async {
+                continuation.resume()
+            }
+        }
+    }
+
     /// Check if currently capturing
     var capturing: Bool {
-        return isCapturing
+        stateLock.withLock { isCapturing }
     }
 
     // MARK: - Private Methods
@@ -370,6 +397,9 @@ public class SystemAudioCaptureService: @unchecked Sendable {
 
     /// Handle incoming audio data from the tap
     private func handleAudioInput(_ inputData: UnsafePointer<AudioBufferList>?, timestamp: UnsafePointer<AudioTimeStamp>?) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        let callbackGeneration = generation
         guard isCapturing,
               let inputData,
               let converter = audioConverter,
@@ -476,13 +506,31 @@ public class SystemAudioCaptureService: @unchecked Sendable {
             let rms = sqrt(sumOfSquares / Float(pcmData.count))
             // Clamp to 0.0 - 1.0 range
             let level = min(Float(1.0), max(Float(0.0), rms))
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard self?.isCaptureActive(generation: callbackGeneration) == true else {
+                    return
+                }
                 levelHandler(level)
             }
         }
 
         // Send to callback
+        guard isCapturing, generation == callbackGeneration else { return }
         onAudioChunk?(byteData)
+    }
+
+    private func isCaptureActive(generation candidate: UInt64) -> Bool {
+        stateLock.withLock {
+            isCapturing && generation == candidate
+        }
+    }
+
+    private func performOnAudioQueueSynchronously(_ operation: () -> Void) {
+        if DispatchQueue.getSpecific(key: audioQueueKey) != nil {
+            operation()
+        } else {
+            audioQueue.sync(execute: operation)
+        }
     }
 
     /// Clean up tap resources
@@ -516,24 +564,14 @@ public class SystemAudioCaptureService: @unchecked Sendable {
     }
 
     deinit {
-        // Use sync in deinit to ensure cleanup completes before deallocation
-        let procID = self.ioProcID
-        let aggDevID = self.aggregateDeviceID
-        let tID = self.tapID
-        if procID != nil || aggDevID != kAudioObjectUnknown || tID != kAudioObjectUnknown {
-            audioQueue.sync {
-                if let procID = procID, aggDevID != kAudioObjectUnknown {
-                    AudioDeviceStop(aggDevID, procID)
-                    AudioDeviceDestroyIOProcID(aggDevID, procID)
-                }
-                if aggDevID != kAudioObjectUnknown {
-                    AudioHardwareDestroyAggregateDevice(aggDevID)
-                }
-                if tID != kAudioObjectUnknown {
-                    AudioHardwareDestroyProcessTap(tID)
-                }
-            }
+        stateLock.withLock {
+            generation &+= 1
+            starting = false
+            isCapturing = false
+            onAudioChunk = nil
+            onAudioLevel = nil
         }
+        performOnAudioQueueSynchronously { cleanup() }
     }
 }
 
@@ -544,5 +582,11 @@ extension SystemAudioCaptureService: PassiveAudioStreamingSource {
         try await startCapture(onAudioChunk: onPCM16k)
     }
     public func stop() { stopCapture() }
-    public func clearPendingBuffers() { audioConverter?.reset() }
+    public func clearPendingBuffers() {
+        performOnAudioQueueSynchronously {
+            stateLock.withLock {
+                audioConverter?.reset()
+            }
+        }
+    }
 }

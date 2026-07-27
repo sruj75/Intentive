@@ -703,41 +703,45 @@ if let report = findAfterScrolling(app, id: "about-report-issue") {
 if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intentive") {
   AXUIElementPerformAction(statusItem, kAXPressAction as CFString)
   RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-  if let capture = findLast(app, id: "menu-screen-capture-switch") {
-    let capturedBefore = integer(bridgeState()["capture_source_frames"])
+  let windowBeforePause = bridgeState()["coaching_window_id"] as? String
+  if let pause = findLast(app, id: "menu-pause-coaching") {
     record(
-      name: "capture-enable-first-frame",
-      element: capture,
-      assertion: "AXPress starts the authoritative capture source and produces a real first frame",
-      action: { AXUIElementPerformAction(capture, kAXPressAction as CFString) },
+      name: "coaching-pause",
+      element: pause,
+      assertion: "AXPress pauses Coaching and synchronously stops screen and audio sensing",
+      action: { AXUIElementPerformAction(pause, kAXPressAction as CFString) },
       verify: {
-        let deadline = Date().addingTimeInterval(15)
+        let deadline = Date().addingTimeInterval(4)
         while Date() < deadline {
           let state = bridgeState()
-          if String(describing: state["capture_state"] ?? "").localizedCaseInsensitiveContains("running"),
-            integer(state["capture_source_frames"]) > capturedBefore,
-            integer(state["screen_memory_frames"]) > 0 { return true }
+          if state["coaching_paused"] as? Bool == true,
+            state["capture_source_running"] as? Bool == false,
+            String(describing: state["passive_audio_state"] ?? "") == "disabled" { return true }
           RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return false
       }
     )
   }
-  if find(app, id: "menu-audio-recording-switch") == nil {
+  if find(app, id: "menu-resume-coaching") == nil {
     AXUIElementPerformAction(statusItem, kAXPressAction as CFString)
     RunLoop.current.run(until: Date().addingTimeInterval(0.2))
   }
-  if let audio = findLast(app, id: "menu-audio-recording-switch") {
+  if let resume = findLast(app, id: "menu-resume-coaching") {
     record(
-      name: "audio-microphone-running",
-      element: audio,
-      assertion: "AXPress starts the real CoreAudio microphone source",
-      action: { AXUIElementPerformAction(audio, kAXPressAction as CFString) },
+      name: "coaching-resume",
+      element: resume,
+      assertion: "AXPress resumes Coaching in a fresh window and restarts all sensing",
+      action: { AXUIElementPerformAction(resume, kAXPressAction as CFString) },
       verify: {
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
-          if String(describing: bridgeState()["passive_audio_state"] ?? "")
-            .localizedCaseInsensitiveContains("microphone: true") { return true }
+          let state = bridgeState()
+          if let resumedWindow = state["coaching_window_id"] as? String,
+            resumedWindow != windowBeforePause,
+            state["capture_source_running"] as? Bool == true,
+            String(describing: state["passive_audio_state"] ?? "")
+              .localizedCaseInsensitiveContains("microphone: true") { return true }
           RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return false
@@ -750,6 +754,29 @@ if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intenti
   }
 }
 
+record(
+  name: "capture-enable-first-frame",
+  element: initialRoot,
+  assertion: "resuming Coaching starts the authoritative screen source and produces a frame"
+) {
+  let deadline = Date().addingTimeInterval(15)
+  while Date() < deadline {
+    let state = bridgeState()
+    if state["capture_source_running"] as? Bool == true,
+      integer(state["capture_source_frames"]) > 0 { return true }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+  }
+  return false
+}
+record(
+  name: "audio-microphone-running",
+  element: initialRoot,
+  assertion: "resuming Coaching starts the microphone source"
+) {
+  String(describing: bridgeState()["passive_audio_state"] ?? "")
+    .localizedCaseInsensitiveContains("microphone: true")
+}
+
 // Omi-style AppKit menu and Report Issue. Opening and sending are real AX
 // actions; the bridge is used only for state observation.
 if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intentive") {
@@ -760,7 +787,7 @@ if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intenti
     action: { AXUIElementPerformAction(statusItem, kAXPressAction as CFString) },
     verify: {
       let expected = [
-        "menu-screen-capture-switch", "menu-audio-recording-switch", "menu-open-conversation",
+        "menu-pause-coaching", "menu-open-conversation",
         "menu-open-intentive", "menu-check-updates", "menu-account", "menu-reset-onboarding",
         "menu-report-issue", "menu-sign-out", "menu-quit-intentive",
       ]
@@ -782,74 +809,21 @@ if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intenti
   }
 }
 
-if !steps.contains(where: { $0.name == "capture-enable-first-frame" && $0.passed })
-  || !steps.contains(where: { $0.name == "audio-microphone-running" && $0.passed }) {
-  bringMainWindowForward()
-  if let general = find(app, id: "sidebar-general")
-    ?? findTitle(app, "General").flatMap(pressableAncestor) {
-    AXUIElementPerformAction(general, kAXPressAction as CFString)
-    RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-  }
-  if !steps.contains(where: { $0.name == "capture-enable-first-frame" && $0.passed }),
-    let capture = find(app, id: "general-screen-capture-toggle") {
-    let capturedBefore = integer(bridgeState()["capture_source_frames"])
-    record(
-      name: "capture-enable-first-frame",
-      element: capture,
-      assertion: "AXPress starts authoritative capture through the Omi-derived General control",
-      action: { AXUIElementPerformAction(capture, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline {
-          let state = bridgeState()
-          if state["capture_source_running"] as? Bool == true,
-            integer(state["capture_source_frames"]) > capturedBefore { return true }
-          RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        return false
-      }
-    )
-  }
-  if !steps.contains(where: { $0.name == "audio-microphone-running" && $0.passed }),
-    let audio = find(app, id: "general-audio-recording-toggle") {
-    record(
-      name: "audio-microphone-running",
-      element: audio,
-      assertion: "AXPress starts passive microphone sensing through the Omi-derived General control",
-      action: { AXUIElementPerformAction(audio, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline {
-          if String(describing: bridgeState()["passive_audio_state"] ?? "")
-            .localizedCaseInsensitiveContains("microphone: true") { return true }
-          RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        return false
-      }
-    )
-  }
-}
-
-
-// Quiesce both real sensing coordinators through production settings controls
-// before faulting the Runtime link so the durable-outbox count cannot grow.
-bringMainWindowForward()
-if let general = find(app, id: "sidebar-general")
-  ?? findTitle(app, "General").flatMap(pressableAncestor) {
-  AXUIElementPerformAction(general, kAXPressAction as CFString)
-  RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-  if let capture = find(app, id: "general-screen-capture-toggle"),
-    integer(bridgeState()["capture_enabled"]) == 1 {
+// Quiesce every sensing source through the one production Pause control before
+// faulting the Runtime link so the durable-outbox count cannot grow.
+if let statusItem = find(app, id: "menu-status-item") ?? findTitle(app, "Intentive") {
+  openStatusMenu(statusItem)
+  if let pause = findLast(app, id: "menu-pause-coaching") {
     record(
       name: "capture-disable",
-      element: capture,
-      assertion: "AXPress stops the authoritative capture source",
-      action: { AXUIElementPerformAction(capture, kAXPressAction as CFString) },
+      element: pause,
+      assertion: "Pause Coaching synchronously stops the authoritative screen source",
+      action: { AXUIElementPerformAction(pause, kAXPressAction as CFString) },
       verify: {
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline {
           let state = bridgeState()
-          if integer(state["capture_enabled"]) == 0,
+          if state["coaching_paused"] as? Bool == true,
             state["capture_source_running"] as? Bool == false { return true }
           RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
@@ -857,25 +831,15 @@ if let general = find(app, id: "sidebar-general")
       }
     )
   }
-  if let audio = find(app, id: "general-audio-recording-toggle"),
-    integer(bridgeState()["passive_audio_enabled"]) == 1 {
-    record(
-      name: "audio-disable",
-      element: audio,
-      assertion: "AXPress stops microphone and meeting-gated system audio",
-      action: { AXUIElementPerformAction(audio, kAXPressAction as CFString) },
-      verify: {
-        let deadline = Date().addingTimeInterval(3)
-        while Date() < deadline {
-          let state = bridgeState()
-          if integer(state["passive_audio_enabled"]) == 0,
-            String(describing: state["passive_audio_state"] ?? "") == "disabled" { return true }
-          RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        return false
-      }
-    )
-  }
+}
+record(
+  name: "audio-disable",
+  element: initialRoot,
+  assertion: "the same Pause boundary stops microphone and system-audio sensing"
+) {
+  let state = bridgeState()
+  return state["coaching_paused"] as? Bool == true
+    && String(describing: state["passive_audio_state"] ?? "") == "disabled"
 }
 
 let pendingBefore = integer(bridgeState()["runtime_ingress_pending"])
@@ -929,7 +893,7 @@ record(
   verify: { integer(bridgeState()["runtime_ingress_pending"]) == 0 }
 )
 
-// Sleep/wake/display recovery, meeting-gated system audio, mic VAD ingestion,
+// Sleep/wake/display recovery, Coaching-owned system audio, mic VAD ingestion,
 // permission degradation, retention expiry, tombstone ordering, and durable
 // termination markers have no user control to press. The bridge simulates them
 // over the real coordinators and reports a matrix; the driver promotes each
@@ -938,10 +902,20 @@ let matrixResponse = try bridgeRequest("POST", "/v1/fixtures/expanded-matrix")
 let expandedMatrix = matrixResponse["expanded_matrix"] as? [String: Any] ?? [:]
 let matrixProofs: [(String, String)] = [
   ("audio-vad-ingestion", "Silero-gated microphone PCM reaches the transcription seam"),
-  ("audio-meeting-system-tap", "system audio starts only for a detected meeting"),
+  ("audio-meeting-system-tap", "system audio runs inside the active Coaching Window"),
   ("audio-permission-degradation", "revoking microphone permission fails the source closed"),
+  (
+    "coaching-permission-restoration-new-window",
+    "restoring the final missing permission creates a fresh Coaching Window"
+  ),
   ("capture-sleep", "system sleep stops the capture source"),
   ("capture-wake", "system wake restarts the capture source"),
+  ("coaching-lock-stops-sensors", "locking retains the Coaching Window and stops every sensor"),
+  ("coaching-unlock-same-window", "unlocking reattests the same Coaching Window"),
+  ("coaching-pause-stops-sensors", "Pause stops every sensor and enters read-only Coaching state"),
+  ("coaching-resume-new-window", "Resume creates a fresh Coaching Window"),
+  ("coaching-stale-window-suppressed", "nil and stale-window proactive effects stay hidden"),
+  ("coaching-matching-window-shown", "a matching-window proactive effect uses the Floating Bar"),
   ("capture-display-change", "a display change finalizes and resumes capture"),
   ("runtime-structured-search-ingress", "captured screens emit structured searchable perception ingress"),
   ("runtime-retention-expiry", "retention expiry drops records and emits a retention-expiry tombstone"),
@@ -1061,10 +1035,15 @@ let required = [
   "floating-bar-ordinary-reply-silent", "floating-bar-text-send",
   "floating-bar-close-reopen-continuity", "proactive-pmb-auto-present",
   "pmb-reply-through-composer",
+  "coaching-pause", "coaching-resume",
   "runtime-lost-ack", "runtime-reconnect-redelivery", "runtime-ack-dedupe",
   // Environment behaviors with no user control, simulated over the real coordinators.
   "audio-vad-ingestion", "audio-meeting-system-tap", "audio-permission-degradation",
+  "coaching-permission-restoration-new-window",
   "capture-sleep", "capture-wake", "capture-display-change",
+  "coaching-lock-stops-sensors", "coaching-unlock-same-window",
+  "coaching-pause-stops-sensors", "coaching-resume-new-window",
+  "coaching-stale-window-suppressed", "coaching-matching-window-shown",
   "runtime-structured-search-ingress", "runtime-retention-expiry",
   "runtime-tombstone-ordering", "runtime-durable-quit-crash-markers",
   "menu-order", "report-issue-send",
